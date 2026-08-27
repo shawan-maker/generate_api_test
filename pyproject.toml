@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "api-ai-test"
+version = "0.1.0"
+description = "Module-level API auto-discovery and test generation framework"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "playwright>=1.44",
+    "opencv-python-headless>=4.9",
+    "httpx>=0.27",
+    "pyyaml>=6.0",
+    "jsonpath-ng>=1.6",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov", "flake8", "jinja2"]
+
+[tool.setuptools.packages.find]
+include = ["lib*", "discovery*", "module_discovery*", "generators*"]

@@ -1,0 +1,10 @@
+{
+  "_comment": "人工根因校正文件。格式：{用例ID: {category: 'env'|'script'|'product'|'flaky', note: '说明', createdAt: 'ISO时间'}}",
+  "_example": {
+    "模块名": {
+      "category": "env",
+      "note": "环境限制：资源池未开通",
+      "createdAt": "2026-08-25T10:00:00"
+    }
+  }
+}

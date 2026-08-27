@@ -1,0 +1,2753 @@
+openapi: 3.1.0
+info:
+  title: estack 私有云控制台 (syyhb 环境) — discovered API catalog
+  version: 1.0.0
+  description: 'Exported from API_AI_test on 2026-08-19T06:02:06.305513+00:00
+
+    Source: 2026-08-19T03:14:16.263191+00:00
+
+    Endpoints: 37
+
+    x-kb-* 扩展字段标注了来源/信任度/CRUD 分类/service 与资源归属。'
+servers:
+- url: https://console-estack-syyhb.cmecloud.cn/estack/api/estack
+  description: estack 私有云控制台 (syyhb 环境)
+paths:
+  /estack/api/estack/draco/v1/authority/national:
+    get:
+      summary: detail:authority
+      operationId: get__estack_api_estack_draco_v1_authority_national
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 7d7c8ec2fee1e76b
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    userId: null
+                    username: null
+                    authoritys:
+                    - id: db915d62819d43218c717df6708c7150
+                      authorityKey: VM_BK_CLONE_ENABLED
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 36769ee816d04d95bbd300a3f85fc537
+                      authorityKey: IsCaptcha
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 7e0951891c184b72b64bee8f3e6697da
+                      authorityKey: BILLING
+                      authorityValue: 计费
+                      authorityKeyList: null
+                    - id: 772c6d339945425d9d29c3287f873c4b
+                      authorityKey: MaxBandwidth
+                      authorityValue: '10240'
+                      authorityKeyList: null
+                    - id: 0f7a7a2e15f940f78204c8956befc1a7
+                      authorityKey: ai
+                      authorityValue: 'false'
+                      authorityKeyList: null
+                    - id: bbc53bafe2ac43a7a5c460465f67442e
+                      authorityKey: isTenantIsolation
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 21fe2f06497c4cfe819dff8543aa6615
+                      authorityKey: AccessHJ
+                      authorityValue: 'false'
+                      authorityKeyList: null
+                    - id: 0a70ebe855dd46949258a6d64d23598b
+                      authorityKey: EMAIL
+                      authorityValue: 邮箱网关
+                      authorityKeyList: null
+                    - id: 8240b96b057d4cf6be0b83b71258db24
+                      authorityKey: IsShowLanguage
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: d18858a4e71e4d08bc13a75582cdc088
+                      authorityKey: TC
+                      authorityValue: 天池
+                      authorityKeyList: null
+                    - id: 7c807540ebb446a49326b01d99f50553
+                      authorityKey: NON_PRIVATE_NETWORK
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 018382283dcc4c8cbf83d4fabb14c130
+                      authorityKey: MESSAGE
+                      authorityValue: 短信网关
+                      authorityKeyList: null
+                    - id: 31e713e12ab548578080122e0b5a54bb
+                      authorityKey: Language
+                      authorityValue: zh-CN
+                      authorityKeyList: null
+                    - id: 7058015933fa483cb7e19181c57dd723
+                      authorityKey: Currency
+                      authorityValue: ￥
+                      authorityKeyList: null
+                    - id: 6b67bd41b7684b528540ec35197d057b
+                      authorityKey: LABEL
+                      authorityValue: 标签
+                      authorityKeyList: null
+                    - id: 5a05596c47b2451ea622ab0b62ad6abe
+                      authorityKey: AreaCode
+                      authorityValue: '86'
+                      authorityKeyList: null
+                    - id: 5712ba7143624b96a5191d3b5b85d3fe
+                      authorityKey: passCheck
+                      authorityValue: 'false'
+                      authorityKeyList: null
+                    - id: 820b6a30e89b40fd864a199a549431b8
+                      authorityKey: RESOURCESET
+                      authorityValue: 资源集
+                      authorityKeyList: null
+                    - id: 68e3c0b8a1cd4f17a23314fc58f257cd
+                      authorityKey: onlyCountry
+                      authorityValue: '86'
+                      authorityKeyList: null
+                    - id: 8f1b60a6019d43d9bc009e93014718e3
+                      authorityKey: register
+                      authorityValue: 'true'
+                      authorityKeyList: null
+              - summary: status=200
+                value:
+                  traceId: df1e041e3dd3267e
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    userId: null
+                    username: null
+                    authoritys:
+                    - id: e5f69a9efc4c439b99154833fe476d6b
+                      authorityKey: VM_BK_CLONE_ENABLED
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 3351d56989ce48379d59362ff1454e78
+                      authorityKey: IsCaptcha
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 1369e81af3bf488a928aaed832d2c6b8
+                      authorityKey: BILLING
+                      authorityValue: 计费
+                      authorityKeyList: null
+                    - id: cb049be19d294b91a82f50ab64aaf600
+                      authorityKey: MaxBandwidth
+                      authorityValue: '10240'
+                      authorityKeyList: null
+                    - id: 5546732724734f18aecbef939a853ac7
+                      authorityKey: ai
+                      authorityValue: 'false'
+                      authorityKeyList: null
+                    - id: 3ea00cc7aef34dc985c4c6cc35ca54ea
+                      authorityKey: isTenantIsolation
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 51cc87be28f24506865e0f029f021199
+                      authorityKey: AccessHJ
+                      authorityValue: 'false'
+                      authorityKeyList: null
+                    - id: 1625c936da5b4176bcf5fd9501f2e402
+                      authorityKey: EMAIL
+                      authorityValue: 邮箱网关
+                      authorityKeyList: null
+                    - id: 059afb9c31f94b6984d3101166daec5c
+                      authorityKey: IsShowLanguage
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: bc2398f024004ccdb2b9bfdf8165b3a4
+                      authorityKey: TC
+                      authorityValue: 天池
+                      authorityKeyList: null
+                    - id: 3f90ace369b74e3485d52be9e889c97b
+                      authorityKey: NON_PRIVATE_NETWORK
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 51a69d7caf414e08b332ac80ed76a7d8
+                      authorityKey: MESSAGE
+                      authorityValue: 短信网关
+                      authorityKeyList: null
+                    - id: 665243826f5a42bca80744e459d7d2f9
+                      authorityKey: Language
+                      authorityValue: zh-CN
+                      authorityKeyList: null
+                    - id: 226207614da6490ea1e0fb21f75d7a18
+                      authorityKey: Currency
+                      authorityValue: ￥
+                      authorityKeyList: null
+                    - id: b25d98f3440843808ef5ba6c5e02bf57
+                      authorityKey: LABEL
+                      authorityValue: 标签
+                      authorityKeyList: null
+                    - id: 1e52951d185742a4972726c03bf68c16
+                      authorityKey: AreaCode
+                      authorityValue: '86'
+                      authorityKeyList: null
+                    - id: ca946c18b1e34a19bb937c41a2d5c3c7
+                      authorityKey: passCheck
+                      authorityValue: 'false'
+                      authorityKeyList: null
+                    - id: 2243c5a4e7b140f19f5e4d644071f5a6
+                      authorityKey: RESOURCESET
+                      authorityValue: 资源集
+                      authorityKeyList: null
+                    - id: df9abad23e234050bd5ccc17ea0f7b14
+                      authorityKey: onlyCountry
+                      authorityValue: '86'
+                      authorityKeyList: null
+                    - id: 11864a6a90e34c60a1efe6c76d10fc37
+                      authorityKey: register
+                      authorityValue: 'true'
+                      authorityKeyList: null
+              - summary: status=200
+                value:
+                  traceId: 3b0bf4220d32fb2d
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    userId: null
+                    username: null
+                    authoritys:
+                    - id: e2433c4a28ed4601a3de312e9a1e12ba
+                      authorityKey: VM_BK_CLONE_ENABLED
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 75730954c374423db456ee204784b21f
+                      authorityKey: IsCaptcha
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: a0be455c193647f88bb0d52ce4dd6e53
+                      authorityKey: BILLING
+                      authorityValue: 计费
+                      authorityKeyList: null
+                    - id: 2d7cd9655a0440d081346bcfbc26be52
+                      authorityKey: MaxBandwidth
+                      authorityValue: '10240'
+                      authorityKeyList: null
+                    - id: ad42b86b2c824b73bbf2d2375ae4b890
+                      authorityKey: ai
+                      authorityValue: 'false'
+                      authorityKeyList: null
+                    - id: 23c0bd4d3d364c9a8db6ae0839fa4887
+                      authorityKey: isTenantIsolation
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 1ee89d43c4e14f6aa01aeb9b0e5ab2e1
+                      authorityKey: AccessHJ
+                      authorityValue: 'false'
+                      authorityKeyList: null
+                    - id: 2a9cd7664b0241fd8113f9a1f51d86ba
+                      authorityKey: EMAIL
+                      authorityValue: 邮箱网关
+                      authorityKeyList: null
+                    - id: cc39f079df7c45ebaa7216b4ef36edc7
+                      authorityKey: IsShowLanguage
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 88785e0dbeab4d0787b9061bf2f7a093
+                      authorityKey: TC
+                      authorityValue: 天池
+                      authorityKeyList: null
+                    - id: b66805c8189f451eb36aae20c0000822
+                      authorityKey: NON_PRIVATE_NETWORK
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 32f16b3ee0cd4cce81a91c3815f9164f
+                      authorityKey: MESSAGE
+                      authorityValue: 短信网关
+                      authorityKeyList: null
+                    - id: bd93a260860e46e18958ddbca4eb7f7b
+                      authorityKey: Language
+                      authorityValue: zh-CN
+                      authorityKeyList: null
+                    - id: 127d8e3a7c1e42ea92479f5b2ffe271d
+                      authorityKey: Currency
+                      authorityValue: ￥
+                      authorityKeyList: null
+                    - id: 58c43b0158c44961bb0c02b012292c53
+                      authorityKey: LABEL
+                      authorityValue: 标签
+                      authorityKeyList: null
+                    - id: 5ce56d3796a140b2b9a60d0c7419e150
+                      authorityKey: AreaCode
+                      authorityValue: '86'
+                      authorityKeyList: null
+                    - id: b19420cc21724f80ad3bccd41fdce394
+                      authorityKey: passCheck
+                      authorityValue: 'false'
+                      authorityKeyList: null
+                    - id: cc42bdce2d8340968af905d27c46666c
+                      authorityKey: RESOURCESET
+                      authorityValue: 资源集
+                      authorityKeyList: null
+                    - id: a1ea8e236ffd46c798f7bd9b10253076
+                      authorityKey: onlyCountry
+                      authorityValue: '86'
+                      authorityKeyList: null
+                    - id: a6116380803945f2b5f96ef458bf6e39
+                      authorityKey: register
+                      authorityValue: 'true'
+                      authorityKeyList: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: detail
+      x-kb-service: draco
+      x-kb-resource: authority
+  /estack/api/estack/delphini/v1/dynamic-dictionary/json:
+    post:
+      summary: action:dynamic-dictionary
+      operationId: post__estack_api_estack_delphini_v1_dynamic-dictionary_json
+      tags:
+      - delphini
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: action
+      x-kb-service: delphini
+      x-kb-resource: dynamic-dictionary
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                categories:
+                  type: string
+                  description: ''
+                languages:
+                  type: string
+                  description: ''
+  /estack/api/estack/pegasi/v1/system-theme:
+    get:
+      summary: detail:system-theme
+      operationId: get__estack_api_estack_pegasi_v1_system-theme
+      tags:
+      - pegasi
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 110ad0e6e1eb8998
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    id: default
+                    portalId: default
+                    themeType: BLUE
+                    systemIdentifierId: default
+                    loginIdentifierId: null
+                    tabId: default
+                    portal:
+                      id: default
+                      name: 默认科技风
+                      frontImageUrl: null
+                      backImageUrl: null
+                      titleLayout: null
+                      titles: []
+                      isDefault: true
+                      chOverviewUrl: null
+                      chOverviewBase64: null
+                      hkOverviewUrl: null
+                      hkOverviewBase64: null
+                      enOverviewUrl: null
+                      enOverviewBase64: null
+                      createdAt: null
+                      updatedAt: null
+                    systemIdentifier:
+                      id: default
+                      name: null
+                      type: null
+                      url: null
+                      logoUrl: null
+                      logoName: null
+                      iconUrl: null
+                      iconBase64: null
+                      imageUrl: null
+                      imageBase64: null
+                      textType: null
+                      titles: []
+                      isDefault: true
+                      createdAt: '2024-05-10 12:25:51'
+                      updatedAt: '2024-05-10 12:25:51'
+                    loginIdentifier: null
+                    tab:
+                      id: default
+                      name: 默认页签
+                      title: eStack Enterprise
+                      favicon: 97082d9dc4aa4fe59a23d8321311d627.ico
+                      createdAt: '2025-02-06 17:29:45'
+                      updatedAt: '2025-02-07 09:43:11'
+              - summary: status=200
+                value:
+                  traceId: 4073baa4b335cc51
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    id: default
+                    portalId: default
+                    themeType: BLUE
+                    systemIdentifierId: default
+                    loginIdentifierId: null
+                    tabId: default
+                    portal:
+                      id: default
+                      name: 默认科技风
+                      frontImageUrl: null
+                      backImageUrl: null
+                      titleLayout: null
+                      titles: []
+                      isDefault: true
+                      chOverviewUrl: null
+                      chOverviewBase64: null
+                      hkOverviewUrl: null
+                      hkOverviewBase64: null
+                      enOverviewUrl: null
+                      enOverviewBase64: null
+                      createdAt: null
+                      updatedAt: null
+                    systemIdentifier:
+                      id: default
+                      name: null
+                      type: null
+                      url: null
+                      logoUrl: null
+                      logoName: null
+                      iconUrl: null
+                      iconBase64: null
+                      imageUrl: null
+                      imageBase64: null
+                      textType: null
+                      titles: []
+                      isDefault: true
+                      createdAt: '2024-05-10 12:25:51'
+                      updatedAt: '2024-05-10 12:25:51'
+                    loginIdentifier: null
+                    tab:
+                      id: default
+                      name: 默认页签
+                      title: eStack Enterprise
+                      favicon: 97082d9dc4aa4fe59a23d8321311d627.ico
+                      createdAt: '2025-02-06 17:29:45'
+                      updatedAt: '2025-02-07 09:43:11'
+              - summary: status=200
+                value:
+                  traceId: 6654c60bc658151a
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    id: default
+                    portalId: default
+                    themeType: BLUE
+                    systemIdentifierId: default
+                    loginIdentifierId: null
+                    tabId: default
+                    portal:
+                      id: default
+                      name: 默认科技风
+                      frontImageUrl: null
+                      backImageUrl: null
+                      titleLayout: null
+                      titles: []
+                      isDefault: true
+                      chOverviewUrl: null
+                      chOverviewBase64: null
+                      hkOverviewUrl: null
+                      hkOverviewBase64: null
+                      enOverviewUrl: null
+                      enOverviewBase64: null
+                      createdAt: null
+                      updatedAt: null
+                    systemIdentifier:
+                      id: default
+                      name: null
+                      type: null
+                      url: null
+                      logoUrl: null
+                      logoName: null
+                      iconUrl: null
+                      iconBase64: null
+                      imageUrl: null
+                      imageBase64: null
+                      textType: null
+                      titles: []
+                      isDefault: true
+                      createdAt: '2024-05-10 12:25:51'
+                      updatedAt: '2024-05-10 12:25:51'
+                    loginIdentifier: null
+                    tab:
+                      id: default
+                      name: 默认页签
+                      title: eStack Enterprise
+                      favicon: 97082d9dc4aa4fe59a23d8321311d627.ico
+                      createdAt: '2025-02-06 17:29:45'
+                      updatedAt: '2025-02-07 09:43:11'
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: detail
+      x-kb-service: pegasi
+      x-kb-resource: system-theme
+  /estack/api/estack/draco/v1/images/pictures:
+    get:
+      summary: action:images
+      operationId: get__estack_api_estack_draco_v1_images_pictures
+      tags:
+      - draco
+      parameters:
+      - name: noloading
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''true'']'
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: action
+      x-kb-service: draco
+      x-kb-resource: images
+  /estack/api/estack/draco/v1/images/pictures-verification:
+    get:
+      summary: action:images
+      operationId: get__estack_api_estack_draco_v1_images_pictures-verification
+      tags:
+      - draco
+      parameters:
+      - name: noloading
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''true'']'
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: action
+      x-kb-service: draco
+      x-kb-resource: images
+  /estack/api/estack/draco/v1/users/current-user:
+    get:
+      summary: detail:users
+      operationId: get__estack_api_estack_draco_v1_users_current-user
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=401
+                value:
+                  traceId: 41b8d96d2bd3aa55
+                  success: false
+                  message: invalid token
+                  errorCode: invalid token
+              - summary: status=200
+                value:
+                  traceId: 09184a89040d92ff
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    id: 93552edc908e4dadae761fff1fd0f24c
+                    tenantId: cec63451f8bf4ceebb9ada0b87d829bf
+                    tenantName: Super Management Department
+                    adminId: 644e7d7b19c744d6a1d3194b8d819fd3
+                    ramId: 93552edc908e4dadae761fff1fd0f24c
+                    name: estack-yy
+                    userName: estack-yy
+                    email: l*****u@163.com
+                    phone: 188***1683
+                    encryptedEmail: d5DMRsWzfs9NOAiRMBvZMNq7TvsxOeiZ
+                    encryptedPhone: 3hmpCM+112+O+OaTCsGN9A==
+                    countryCode: '+86'
+                    description: ''
+                    createdAt: '2025-01-24 12:19:29'
+                    updatedAt: '2025-03-11 17:24:50'
+                    deleted: false
+                    state: ENABLE
+                    isAdmin: false
+                    isProjectManager: false
+                    isAuthentication: false
+                    roleId: null
+                    roleName: null
+                    ancestorList:
+                    - Super Management Department
+                    isPassword: true
+                    isEmail: true
+                    isPhone: true
+                    poolNameList: null
+                    isRootTenantUser: true
+                    isApproval: false
+                    tenantLevel: 0
+                    locked: false
+                    policyIdList:
+                    - OPERATION
+                    policyList:
+                    - id: OPERATION
+                      tenantId: null
+                      policyName: 运营管理员
+                      policyType: SYSTEM
+                      policyCategory: ORGANIZATION
+                      description: null
+                      released: false
+                      deleted: null
+                      originalPolicyName: RAM.POLICES.POLICY_NAME.OPERATIONS_ADMIN
+                    countryCodePhone: +86 188***1683
+                    password: '***MASKED***'
+                    projectIdList: null
+                    needRamIdentity: null
+                    isInnerUser: null
+                    userType: null
+                    isForceChange: false
+                    isTempPassword: false
+                    mfLoginPolicy: null
+                    enableMultiFactLoginPolicy: null
+                    maintainAt: null
+              - summary: status=200
+                value:
+                  traceId: e48269386330885c
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    id: 93552edc908e4dadae761fff1fd0f24c
+                    tenantId: cec63451f8bf4ceebb9ada0b87d829bf
+                    tenantName: Super Management Department
+                    adminId: 644e7d7b19c744d6a1d3194b8d819fd3
+                    ramId: 93552edc908e4dadae761fff1fd0f24c
+                    name: estack-yy
+                    userName: estack-yy
+                    email: l*****u@163.com
+                    phone: 188***1683
+                    encryptedEmail: d5DMRsWzfs9NOAiRMBvZMNq7TvsxOeiZ
+                    encryptedPhone: 3hmpCM+112+O+OaTCsGN9A==
+                    countryCode: '+86'
+                    description: ''
+                    createdAt: '2025-01-24 12:19:29'
+                    updatedAt: '2025-03-11 17:24:50'
+                    deleted: false
+                    state: ENABLE
+                    isAdmin: false
+                    isProjectManager: false
+                    isAuthentication: false
+                    roleId: null
+                    roleName: null
+                    ancestorList:
+                    - Super Management Department
+                    isPassword: true
+                    isEmail: true
+                    isPhone: true
+                    poolNameList: null
+                    isRootTenantUser: true
+                    isApproval: false
+                    tenantLevel: 0
+                    locked: false
+                    policyIdList:
+                    - OPERATION
+                    policyList:
+                    - id: OPERATION
+                      tenantId: null
+                      policyName: 运营管理员
+                      policyType: SYSTEM
+                      policyCategory: ORGANIZATION
+                      description: null
+                      released: false
+                      deleted: null
+                      originalPolicyName: RAM.POLICES.POLICY_NAME.OPERATIONS_ADMIN
+                    countryCodePhone: +86 188***1683
+                    password: '***MASKED***'
+                    projectIdList: null
+                    needRamIdentity: null
+                    isInnerUser: null
+                    userType: null
+                    isForceChange: false
+                    isTempPassword: false
+                    mfLoginPolicy: null
+                    enableMultiFactLoginPolicy: null
+                    maintainAt: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: detail
+      x-kb-service: draco
+      x-kb-resource: users
+  /estack/api/estack/draco/v1/images/checkcap/code:
+    get:
+      summary: action:images
+      operationId: get__estack_api_estack_draco_v1_images_checkcap_code
+      tags:
+      - draco
+      parameters:
+      - name: capcode
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''c7bd0c89fccd40bf88fc963f04f44647'', ''f01f2c31f3704a6e9e7ebdcdb6a8e99d'']'
+      - name: xpos
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''100'', ''123'']'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: e6559bcbfd017103
+                  success: false
+                  errorMessage: 验证失败
+                  message: 验证失败
+                  errorCode: Login.UserLoginImageCodeFailed
+                  entity: null
+              - summary: status=200
+                value:
+                  traceId: 8307e5567e790e84
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity: true
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: action
+      x-kb-service: draco
+      x-kb-resource: images
+  /estack/api/estack/draco/v1/users/query-login-policy:
+    get:
+      summary: action:users
+      operationId: get__estack_api_estack_draco_v1_users_query-login-policy
+      tags:
+      - draco
+      parameters:
+      - name: userName
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''estack-yy'']'
+      - name: isDesensitization
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''false'']'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 27ab2b20da6de9d5
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    userName: null
+                    loginPolicyType: NO_SECONDARY_VERIFICATION
+                    countryCode: null
+                    phone: null
+                    email: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: action
+      x-kb-service: draco
+      x-kb-resource: users
+  /estack/api/estack/draco/v1/users/login:
+    post:
+      summary: action:users
+      operationId: post__estack_api_estack_draco_v1_users_login
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: fa2b10dc2133c9d0
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    scope: null
+                    authorizeUrl: null
+                    redirectUri: null
+                    access_token: a13acac0-127f-4e39-b7dc-38fb56013a7e
+                    token_type: bearer
+                    refresh_token: null
+                    expires_in: '7199'
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: action
+      x-kb-service: draco
+      x-kb-resource: users
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                capcode:
+                  type: string
+                  description: ''
+                password:
+                  type: string
+                  description: ''
+                username:
+                  type: string
+                  description: ''
+                xpos:
+                  type: string
+                  description: ''
+  /estack/api/estack/draco/v1/users/password/expire-notice:
+    get:
+      summary: detail:users
+      operationId: get__estack_api_estack_draco_v1_users_password_expire-notice
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 031db42e5b59e276
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    username: estack-yy
+                    daysToExpire: 322
+                    noticeMessage: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: detail
+      x-kb-service: draco
+      x-kb-resource: users
+  /estack/api/estack/pegasi/v1/menu/side-tree:
+    post:
+      summary: list:menu
+      operationId: post__estack_api_estack_pegasi_v1_menu_side-tree
+      tags:
+      - pegasi
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: pegasi
+      x-kb-resource: menu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                isVisible:
+                  type: string
+                  description: ''
+                userId:
+                  type: string
+                  description: ''
+  /estack/api/estack/pegasi/v1/menu/portal/tree:
+    post:
+      summary: list:menu
+      operationId: post__estack_api_estack_pegasi_v1_menu_portal_tree
+      tags:
+      - pegasi
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: pegasi
+      x-kb-resource: menu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                isAll:
+                  type: string
+                  description: ''
+                rootId:
+                  type: string
+                  description: ''
+  /estack/api/estack/pegasi/v1/product-introduction/portal:
+    get:
+      summary: detail:product-introduction
+      operationId: get__estack_api_estack_pegasi_v1_product-introduction_portal
+      tags:
+      - pegasi
+      parameters:
+      - name: resourceType
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''portal'']'
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: detail
+      x-kb-service: pegasi
+      x-kb-resource: product-introduction
+  /estack/api/estack/draco/v1/basic-config/ai:
+    get:
+      summary: detail:basic-config
+      operationId: get__estack_api_estack_draco_v1_basic-config_ai
+      tags:
+      - draco
+      parameters:
+      - name: key
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''ai'']'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 67f2e6a0857f15a4
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    id: 3d8cb513acf24c64976d15152f15afa1
+                    authorityKey: ai
+                    authorityValue: 'false'
+                    authorityKeyList: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: detail
+      x-kb-service: draco
+      x-kb-resource: basic-config
+  /estack/api/estack/pegasi/v1/menu/tree:
+    post:
+      summary: list:menu
+      operationId: post__estack_api_estack_pegasi_v1_menu_tree
+      tags:
+      - pegasi
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: pegasi
+      x-kb-resource: menu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                isVisible:
+                  type: string
+                  description: ''
+                rootId:
+                  type: string
+                  description: ''
+                userId:
+                  type: string
+                  description: ''
+  /estack/api/estack/draco/v1/tenants/display-by-role:
+    get:
+      summary: list:tenants
+      operationId: get__estack_api_estack_draco_v1_tenants_display-by-role
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: tenants
+  /estack/api/estack/draco/v1/tenants/users:
+    get:
+      summary: list:tenants
+      operationId: get__estack_api_estack_draco_v1_tenants_users
+      tags:
+      - draco
+      parameters:
+      - name: tenantId
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''08ef519b17da471aa7190ffb2be11c8a'']'
+      - name: pageNum
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''1'']'
+      - name: pageSize
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''10'']'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 2457e7a0f4c96515
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    total: 1
+                    list:
+                    - id: e59f06f5469842ec948a87ff60251332
+                      tenantId: 08ef519b17da471aa7190ffb2be11c8a
+                      tenantName: estack-admin-galaxy
+                      adminId: null
+                      ramId: e59f06f5469842ec948a87ff60251332
+                      name: estack-admin-galaxy-0817
+                      userName: estack-admin-galaxy-0817
+                      email: a*****a@aa.a
+                      phone: 188***8888
+                      encryptedEmail: rJFvlcDGqyo=
+                      encryptedPhone: KvtUD+0z9jrwVshBOqhQpg==
+                      countryCode: '+86'
+                      description: ''
+                      createdAt: '2026-08-17 17:43:56'
+                      updatedAt: null
+                      deleted: false
+                      state: ENABLE
+                      isAdmin: true
+                      isProjectManager: null
+                      isAuthentication: null
+                      roleId: null
+                      roleName: null
+                      ancestorList:
+                      - estack-admin-galaxy
+                      isPassword: true
+                      isEmail: true
+                      isPhone: true
+                      poolNameList: null
+                      isRootTenantUser: true
+                      isApproval: true
+                      tenantLevel: 0
+                      locked: false
+                      policyIdList:
+                      - d66aad0a182647b9bc0e59761b474490
+                      - 4c7e4cd05f0d4d20a6e658b9857cda19
+                      policyList:
+                      - id: d66aad0a182647b9bc0e59761b474490
+                        tenantId: null
+                        policyName: 项目管理员
+                        policyType: SYSTEM
+                        policyCategory: PROJECT
+                        description: null
+                        released: false
+                        deleted: null
+                        originalPolicyName: RAM.POLICES.POLICY_NAME.PROJECT_ADMIN
+                      - id: 4c7e4cd05f0d4d20a6e658b9857cda19
+                        tenantId: null
+                        policyName: 单位管理员
+                        policyType: SYSTEM
+                        policyCategory: ORGANIZATION
+                        description: null
+                        released: false
+                        deleted: null
+                        originalPolicyName: 单位管理员
+                      countryCodePhone: +86 188***8888
+                      password: '***MASKED***'
+                      projectIdList: null
+                      needRamIdentity: null
+                      isInnerUser: null
+                      userType: null
+                      isForceChange: null
+                      isTempPassword: null
+                      mfLoginPolicy:
+                        id: 91fa6bd08f6341bb85d943d1e1ce3dd5
+                        tenantId: cec63451f8bf4ceebb9ada0b87d829bf
+                        loginPolicyType: NO_SECONDARY_VERIFICATION
+                        enabled: true
+                      enableMultiFactLoginPolicy: true
+                      maintainAt: null
+                    pageNum: 1
+                    pageSize: 10
+                    size: 1
+                    startRow: 1
+                    endRow: 1
+                    pages: 1
+                    prePage: 0
+                    nextPage: 0
+                    isFirstPage: true
+                    isLastPage: true
+                    hasPreviousPage: false
+                    hasNextPage: false
+                    navigatePages: 8
+                    navigatepageNums:
+                    - 1
+                    navigateFirstPage: 1
+                    navigateLastPage: 1
+              - summary: status=200
+                value:
+                  traceId: 3df8d7cb3b54d598
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    total: 1
+                    list:
+                    - id: e59f06f5469842ec948a87ff60251332
+                      tenantId: 08ef519b17da471aa7190ffb2be11c8a
+                      tenantName: estack-admin-galaxy
+                      adminId: null
+                      ramId: e59f06f5469842ec948a87ff60251332
+                      name: estack-admin-galaxy-0817
+                      userName: estack-admin-galaxy-0817
+                      email: a*****a@aa.a
+                      phone: 188***8888
+                      encryptedEmail: rJFvlcDGqyo=
+                      encryptedPhone: KvtUD+0z9jrwVshBOqhQpg==
+                      countryCode: '+86'
+                      description: ''
+                      createdAt: '2026-08-17 17:43:56'
+                      updatedAt: null
+                      deleted: false
+                      state: ENABLE
+                      isAdmin: true
+                      isProjectManager: null
+                      isAuthentication: null
+                      roleId: null
+                      roleName: null
+                      ancestorList:
+                      - estack-admin-galaxy
+                      isPassword: true
+                      isEmail: true
+                      isPhone: true
+                      poolNameList: null
+                      isRootTenantUser: true
+                      isApproval: true
+                      tenantLevel: 0
+                      locked: false
+                      policyIdList:
+                      - d66aad0a182647b9bc0e59761b474490
+                      - 4c7e4cd05f0d4d20a6e658b9857cda19
+                      policyList:
+                      - id: d66aad0a182647b9bc0e59761b474490
+                        tenantId: null
+                        policyName: 项目管理员
+                        policyType: SYSTEM
+                        policyCategory: PROJECT
+                        description: null
+                        released: false
+                        deleted: null
+                        originalPolicyName: RAM.POLICES.POLICY_NAME.PROJECT_ADMIN
+                      - id: 4c7e4cd05f0d4d20a6e658b9857cda19
+                        tenantId: null
+                        policyName: 单位管理员
+                        policyType: SYSTEM
+                        policyCategory: ORGANIZATION
+                        description: null
+                        released: false
+                        deleted: null
+                        originalPolicyName: 单位管理员
+                      countryCodePhone: +86 188***8888
+                      password: '***MASKED***'
+                      projectIdList: null
+                      needRamIdentity: null
+                      isInnerUser: null
+                      userType: null
+                      isForceChange: null
+                      isTempPassword: null
+                      mfLoginPolicy:
+                        id: 91fa6bd08f6341bb85d943d1e1ce3dd5
+                        tenantId: cec63451f8bf4ceebb9ada0b87d829bf
+                        loginPolicyType: NO_SECONDARY_VERIFICATION
+                        enabled: true
+                      enableMultiFactLoginPolicy: true
+                      maintainAt: null
+                    pageNum: 1
+                    pageSize: 10
+                    size: 1
+                    startRow: 1
+                    endRow: 1
+                    pages: 1
+                    prePage: 0
+                    nextPage: 0
+                    isFirstPage: true
+                    isLastPage: true
+                    hasPreviousPage: false
+                    hasNextPage: false
+                    navigatePages: 8
+                    navigatepageNums:
+                    - 1
+                    navigateFirstPage: 1
+                    navigateLastPage: 1
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: tenants
+  /estack/api/estack/pegasi/v1/menu/favorite/list:
+    get:
+      summary: list:menu
+      operationId: get__estack_api_estack_pegasi_v1_menu_favorite_list
+      tags:
+      - pegasi
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 4f96f5ba898847fa
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity: []
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: pegasi
+      x-kb-resource: menu
+  /estack/api/estack/pegasi/v1/menu/access-log:
+    get:
+      summary: list:menu
+      operationId: get__estack_api_estack_pegasi_v1_menu_access-log
+      tags:
+      - pegasi
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: b50ca7ec803837f2
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity: []
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: pegasi
+      x-kb-resource: menu
+  /estack/api/estack/libra/v1/notice/new/count/all-type:
+    get:
+      summary: list:notice
+      operationId: get__estack_api_estack_libra_v1_notice_new_count_all-type
+      tags:
+      - libra
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 710d3f8a9f1da904
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                  - type: ANNOUNCE
+                    count: 0
+                  - type: MESSAGE
+                    count: 0
+                  - type: RESOURCE
+                    count: 0
+                  - type: WARNING
+                    count: 0
+                  - type: APPROVE
+                    count: 0
+                  - type: ALL
+                    count: 0
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: libra
+      x-kb-resource: notice
+  /estack/api/estack/draco/v1/users/{id}/data-perfection:
+    get:
+      summary: list:users
+      operationId: get__estack_api_estack_draco_v1_users_id_data-perfection
+      tags:
+      - draco
+      parameters:
+      - name: id
+        in: path
+        schema:
+          type: string
+        description: 'sample: []'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 8ad4be38f0e2c694
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity: 0.6666666666666666
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: users
+  /estack/api/estack/draco/v1/users/detail:
+    get:
+      summary: detail:users
+      operationId: get__estack_api_estack_draco_v1_users_detail
+      tags:
+      - draco
+      parameters:
+      - name: userId
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''93552edc908e4dadae761fff1fd0f24c'']'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 56c0edc214af6ab3
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    id: 93552edc908e4dadae761fff1fd0f24c
+                    tenantId: cec63451f8bf4ceebb9ada0b87d829bf
+                    tenantName: Super Management Department
+                    adminId: 644e7d7b19c744d6a1d3194b8d819fd3
+                    ramId: 93552edc908e4dadae761fff1fd0f24c
+                    name: estack-yy
+                    userName: estack-yy
+                    email: l*****u@163.com
+                    phone: 188***1683
+                    encryptedEmail: d5DMRsWzfs9NOAiRMBvZMNq7TvsxOeiZ
+                    encryptedPhone: 3hmpCM+112+O+OaTCsGN9A==
+                    countryCode: '+86'
+                    description: ''
+                    createdAt: '2025-01-24 12:19:29'
+                    updatedAt: '2025-03-11 17:24:50'
+                    deleted: false
+                    state: ENABLE
+                    isAdmin: false
+                    isProjectManager: false
+                    isAuthentication: false
+                    roleId: null
+                    roleName: null
+                    ancestorList:
+                    - Super Management Department
+                    isPassword: true
+                    isEmail: true
+                    isPhone: true
+                    poolNameList: null
+                    isRootTenantUser: true
+                    isApproval: false
+                    tenantLevel: 0
+                    locked: false
+                    policyIdList:
+                    - OPERATION
+                    policyList:
+                    - id: OPERATION
+                      tenantId: null
+                      policyName: 运营管理员
+                      policyType: SYSTEM
+                      policyCategory: ORGANIZATION
+                      description: null
+                      released: false
+                      deleted: null
+                      originalPolicyName: RAM.POLICES.POLICY_NAME.OPERATIONS_ADMIN
+                    countryCodePhone: +86 188***1683
+                    password: '***MASKED***'
+                    projectIdList: null
+                    needRamIdentity: null
+                    isInnerUser: null
+                    userType: null
+                    isForceChange: false
+                    isTempPassword: false
+                    mfLoginPolicy:
+                      id: 91fa6bd08f6341bb85d943d1e1ce3dd5
+                      tenantId: cec63451f8bf4ceebb9ada0b87d829bf
+                      loginPolicyType: NO_SECONDARY_VERIFICATION
+                      enabled: true
+                    enableMultiFactLoginPolicy: true
+                    maintainAt: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: detail
+      x-kb-service: draco
+      x-kb-resource: users
+  /estack/api/estack/draco/v1/password-policy:
+    get:
+      summary: detail:password-policy
+      operationId: get__estack_api_estack_draco_v1_password-policy
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 372ff839ce054f3d
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    id: 90542be67d584ab09daa12e697fb041a
+                    tenantId: cec63451f8bf4ceebb9ada0b87d829bf
+                    minPasswordLength: 8
+                    requireLowercaseCharacters: false
+                    requireUppercaseCharacters: true
+                    requireNumbers: true
+                    requireSymbols: true
+                    minPasswordDifferentCharacter: 0
+                    createdAt: '2023-08-30 10:07:14'
+                    updatedAt: '2025-03-08 18:39:42'
+                    deleted: false
+                    userName: null
+              - summary: status=200
+                value:
+                  traceId: d30091930f6f5537
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    id: 90542be67d584ab09daa12e697fb041a
+                    tenantId: cec63451f8bf4ceebb9ada0b87d829bf
+                    minPasswordLength: 8
+                    requireLowercaseCharacters: false
+                    requireUppercaseCharacters: true
+                    requireNumbers: true
+                    requireSymbols: true
+                    minPasswordDifferentCharacter: 0
+                    createdAt: '2023-08-30 10:07:14'
+                    updatedAt: '2025-03-08 18:39:42'
+                    deleted: false
+                    userName: null
+              - summary: status=200
+                value:
+                  traceId: 73c8a67bb7d3a827
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    id: 90542be67d584ab09daa12e697fb041a
+                    tenantId: cec63451f8bf4ceebb9ada0b87d829bf
+                    minPasswordLength: 8
+                    requireLowercaseCharacters: false
+                    requireUppercaseCharacters: true
+                    requireNumbers: true
+                    requireSymbols: true
+                    minPasswordDifferentCharacter: 0
+                    createdAt: '2023-08-30 10:07:14'
+                    updatedAt: '2025-03-08 18:39:42'
+                    deleted: false
+                    userName: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: detail
+      x-kb-service: draco
+      x-kb-resource: password-policy
+  /estack/api/estack/draco/v1/accesskey/list:
+    post:
+      summary: list:accesskey
+      operationId: post__estack_api_estack_draco_v1_accesskey_list
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 161b117fb433c139
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    total: 1
+                    list:
+                    - accessKeyId: 93552EDCG26cEWowiJylDR7M
+                      userId: 93552edc908e4dadae761fff1fd0f24c
+                      userName: estack-yy
+                      createAt: '2025-03-17 14:41:05'
+                      lastUsedDate: '2026-08-19 11:08:01'
+                      status: AVAILABLE
+                    pageNum: 1
+                    pageSize: 10
+                    size: 1
+                    startRow: 1
+                    endRow: 1
+                    pages: 1
+                    prePage: 0
+                    nextPage: 0
+                    isFirstPage: true
+                    isLastPage: true
+                    hasPreviousPage: false
+                    hasNextPage: false
+                    navigatePages: 8
+                    navigatepageNums:
+                    - 1
+                    navigateFirstPage: 1
+                    navigateLastPage: 1
+              - summary: status=200
+                value:
+                  traceId: 5fbd1620bcc560e2
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    total: 2
+                    list:
+                    - accessKeyId: 93552EDClUcg7SeNSRHUvrHU
+                      userId: 93552edc908e4dadae761fff1fd0f24c
+                      userName: estack-yy
+                      createAt: '2026-08-19 11:08:36'
+                      lastUsedDate: null
+                      status: AVAILABLE
+                    - accessKeyId: 93552EDCG26cEWowiJylDR7M
+                      userId: 93552edc908e4dadae761fff1fd0f24c
+                      userName: estack-yy
+                      createAt: '2025-03-17 14:41:05'
+                      lastUsedDate: '2026-08-19 11:08:01'
+                      status: AVAILABLE
+                    pageNum: 1
+                    pageSize: 10
+                    size: 2
+                    startRow: 1
+                    endRow: 2
+                    pages: 1
+                    prePage: 0
+                    nextPage: 0
+                    isFirstPage: true
+                    isLastPage: true
+                    hasPreviousPage: false
+                    hasNextPage: false
+                    navigatePages: 8
+                    navigatepageNums:
+                    - 1
+                    navigateFirstPage: 1
+                    navigateLastPage: 1
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: accesskey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pageNum:
+                  type: string
+                  description: ''
+                pageSize:
+                  type: string
+                  description: ''
+  /estack/api/estack/draco/v1/accesskey/create:
+    post:
+      summary: create:accesskey
+      operationId: post__estack_api_estack_draco_v1_accesskey_create
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: b4ff295e098e3748
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    accessKeyId: 93552EDClUcg7SeNSRHUvrHU
+                    accessKeySecret: 1A0D5123B0CC42808E1ED3158D97A640
+                    userId: 93552edc908e4dadae761fff1fd0f24c
+                    userName: estack-yy
+                    createAt: '2026-08-19 11:08:36'
+                    lastUsedDate: null
+                    status: AVAILABLE
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: create
+      x-kb-service: draco
+      x-kb-resource: accesskey
+  /estack/api/estack/draco/v1/tenants/root:
+    get:
+      summary: detail:tenants
+      operationId: get__estack_api_estack_draco_v1_tenants_root
+      tags:
+      - draco
+      parameters:
+      - name: pageNum
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''1'']'
+      - name: pageSize
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''10'']'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 6b34c5d2a8663e9c
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    total: 2
+                    list:
+                    - id: 08ef519b17da471aa7190ffb2be11c8a
+                      name: estack-admin-galaxy
+                      description: ''
+                      root: 08ef519b17da471aa7190ffb2be11c8a
+                      ancestor: 08ef519b17da471aa7190ffb2be11c8a
+                      descendant: 08ef519b17da471aa7190ffb2be11c8a
+                      depth: 0
+                      level: 0
+                      isRoot: true
+                      isOpenRecycleBin: false
+                      hasChildren: false
+                      tenantType: PHYSICAL
+                      createdAt: '2026-08-17 17:43:56'
+                      updatedAt: null
+                      deleted: false
+                      ancestorList: []
+                      adminName: estack-admin-galaxy-0817
+                      adminUserName: estack-admin-galaxy-0817
+                      adminId: e59f06f5469842ec948a87ff60251332
+                      departmentLevel: Level-1 Department
+                      poolNameList: null
+                      poolInfoList: null
+                      isFrozen: false
+                      isInner: false
+                      enableMultiFactLoginPolicy: null
+                      mfloginPolicy: null
+                    - id: 8449d3a0b7a64614bf4955c23e0bf03f
+                      name: 内循环账号管理
+                      description: 内循环单位
+                      root: 8449d3a0b7a64614bf4955c23e0bf03f
+                      ancestor: 8449d3a0b7a64614bf4955c23e0bf03f
+                      descendant: 8449d3a0b7a64614bf4955c23e0bf03f
+                      depth: 0
+                      level: 0
+                      isRoot: true
+                      isOpenRecycleBin: false
+                      hasChildren: true
+                      tenantType: PHYSICAL
+                      createdAt: '2026-08-14 14:35:51'
+                      updatedAt: null
+                      deleted: false
+                      ancestorList: []
+                      adminName: estack-inner
+                      adminUserName: estack-inner
+                      adminId: 4975ba09bb6c4aed9ec5c01af93c40c4
+                      departmentLevel: Level-1 Department
+                      poolNameList: null
+                      poolInfoList: null
+                      isFrozen: false
+                      isInner: true
+                      enableMultiFactLoginPolicy: null
+                      mfloginPolicy: null
+                    pageNum: 1
+                    pageSize: 10
+                    size: 2
+                    startRow: 1
+                    endRow: 2
+                    pages: 1
+                    prePage: 0
+                    nextPage: 0
+                    isFirstPage: true
+                    isLastPage: true
+                    hasPreviousPage: false
+                    hasNextPage: false
+                    navigatePages: 8
+                    navigatepageNums:
+                    - 1
+                    navigateFirstPage: 1
+                    navigateLastPage: 1
+              - summary: status=200
+                value:
+                  traceId: 64a0808e045ed021
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    total: 2
+                    list:
+                    - id: 08ef519b17da471aa7190ffb2be11c8a
+                      name: estack-admin-galaxy
+                      description: ''
+                      root: 08ef519b17da471aa7190ffb2be11c8a
+                      ancestor: 08ef519b17da471aa7190ffb2be11c8a
+                      descendant: 08ef519b17da471aa7190ffb2be11c8a
+                      depth: 0
+                      level: 0
+                      isRoot: true
+                      isOpenRecycleBin: false
+                      hasChildren: false
+                      tenantType: PHYSICAL
+                      createdAt: '2026-08-17 17:43:56'
+                      updatedAt: null
+                      deleted: false
+                      ancestorList: []
+                      adminName: estack-admin-galaxy-0817
+                      adminUserName: estack-admin-galaxy-0817
+                      adminId: e59f06f5469842ec948a87ff60251332
+                      departmentLevel: Level-1 Department
+                      poolNameList: null
+                      poolInfoList: null
+                      isFrozen: false
+                      isInner: false
+                      enableMultiFactLoginPolicy: null
+                      mfloginPolicy: null
+                    - id: 8449d3a0b7a64614bf4955c23e0bf03f
+                      name: 内循环账号管理
+                      description: 内循环单位
+                      root: 8449d3a0b7a64614bf4955c23e0bf03f
+                      ancestor: 8449d3a0b7a64614bf4955c23e0bf03f
+                      descendant: 8449d3a0b7a64614bf4955c23e0bf03f
+                      depth: 0
+                      level: 0
+                      isRoot: true
+                      isOpenRecycleBin: false
+                      hasChildren: true
+                      tenantType: PHYSICAL
+                      createdAt: '2026-08-14 14:35:51'
+                      updatedAt: null
+                      deleted: false
+                      ancestorList: []
+                      adminName: estack-inner
+                      adminUserName: estack-inner
+                      adminId: 4975ba09bb6c4aed9ec5c01af93c40c4
+                      departmentLevel: Level-1 Department
+                      poolNameList: null
+                      poolInfoList: null
+                      isFrozen: false
+                      isInner: true
+                      enableMultiFactLoginPolicy: null
+                      mfloginPolicy: null
+                    pageNum: 1
+                    pageSize: 2
+                    size: 2
+                    startRow: 0
+                    endRow: 1
+                    pages: 1
+                    prePage: 0
+                    nextPage: 0
+                    isFirstPage: true
+                    isLastPage: true
+                    hasPreviousPage: false
+                    hasNextPage: false
+                    navigatePages: 8
+                    navigatepageNums:
+                    - 1
+                    navigateFirstPage: 1
+                    navigateLastPage: 1
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: detail
+      x-kb-service: draco
+      x-kb-resource: tenants
+  /estack/api/estack/draco/v1/maintain/list:
+    post:
+      summary: list:maintain
+      operationId: post__estack_api_estack_draco_v1_maintain_list
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: ac560fe84e9b56a6
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    total: 0
+                    list: []
+                    pageNum: 1
+                    pageSize: 10
+                    size: 0
+                    startRow: 0
+                    endRow: 0
+                    pages: 0
+                    prePage: 0
+                    nextPage: 0
+                    isFirstPage: true
+                    isLastPage: true
+                    hasPreviousPage: false
+                    hasNextPage: false
+                    navigatePages: 8
+                    navigatepageNums: []
+                    navigateFirstPage: 0
+                    navigateLastPage: 0
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: maintain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pageNum:
+                  type: string
+                  description: ''
+                pageSize:
+                  type: string
+                  description: ''
+  /estack/api/estack/draco/v1/tenants/children:
+    get:
+      summary: list:tenants
+      operationId: get__estack_api_estack_draco_v1_tenants_children
+      tags:
+      - draco
+      parameters:
+      - name: tenantId
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''08ef519b17da471aa7190ffb2be11c8a'']'
+      - name: pageNum
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''1'']'
+      - name: pageSize
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''10'']'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 5edb0181878220f2
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    total: 0
+                    list: []
+                    pageNum: 1
+                    pageSize: 10
+                    size: 0
+                    startRow: 0
+                    endRow: 0
+                    pages: 0
+                    prePage: 0
+                    nextPage: 0
+                    isFirstPage: true
+                    isLastPage: true
+                    hasPreviousPage: false
+                    hasNextPage: false
+                    navigatePages: 8
+                    navigatepageNums: []
+                    navigateFirstPage: 0
+                    navigateLastPage: 0
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: tenants
+  /estack/api/estack/draco/v1/policies/list:
+    post:
+      summary: list:policies
+      operationId: post__estack_api_estack_draco_v1_policies_list
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 1c688e70215e6e48
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    total: 1
+                    list:
+                    - id: 1f8e392309fc414c9d77d45d0315fedc
+                      createdAt: '2024-05-28 22:05:41'
+                      updatedAt: '2024-06-04 03:05:39'
+                      mainAccountId: SYSTEM
+                      tenantId: 08ef519b17da471aa7190ffb2be11c8a
+                      policyName: 普通用户
+                      policyType: SYSTEM
+                      policyCategory: ORGANIZATION
+                      description: 普通用户
+                      attachmentCount: 0
+                      released: true
+                      deleted: false
+                      originalPolicyName: null
+                    pageNum: 1
+                    pageSize: 1
+                    size: 1
+                    startRow: 0
+                    endRow: 0
+                    pages: 1
+                    prePage: 0
+                    nextPage: 0
+                    isFirstPage: true
+                    isLastPage: true
+                    hasPreviousPage: false
+                    hasNextPage: false
+                    navigatePages: 8
+                    navigatepageNums:
+                    - 1
+                    navigateFirstPage: 1
+                    navigateLastPage: 1
+              - summary: status=200
+                value:
+                  traceId: a17977c8d101242a
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    total: 0
+                    list: []
+                    pageNum: 1
+                    pageSize: 0
+                    size: 0
+                    startRow: 0
+                    endRow: 0
+                    pages: 0
+                    prePage: 0
+                    nextPage: 0
+                    isFirstPage: true
+                    isLastPage: true
+                    hasPreviousPage: false
+                    hasNextPage: false
+                    navigatePages: 8
+                    navigatepageNums: []
+                    navigateFirstPage: 0
+                    navigateLastPage: 0
+              - summary: status=200
+                value:
+                  traceId: 4595c963146b6815
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    total: 9
+                    list:
+                    - id: 4b1e0a9c69424855ac22b674939fb667
+                      createdAt: '2025-04-18 17:33:39'
+                      updatedAt: '2025-04-18 17:33:44'
+                      mainAccountId: SYSTEM
+                      tenantId: 08ef519b17da471aa7190ffb2be11c8a
+                      policyName: 运维管理员
+                      policyType: SYSTEM
+                      policyCategory: ORGANIZATION
+                      description: 运维管理员
+                      attachmentCount: 0
+                      released: false
+                      deleted: false
+                      originalPolicyName: null
+                    - id: 4c7e4cd05f0d4d20a6e658b9857cda19
+                      createdAt: '2024-12-10 16:01:11'
+                      updatedAt: '2024-12-10 16:01:11'
+                      mainAccountId: SYSTEM
+                      tenantId: 08ef519b17da471aa7190ffb2be11c8a
+                      policyName: 单位管理员
+                      policyType: SYSTEM
+                      policyCategory: ORGANIZATION
+                      description: 单位管理员
+                      attachmentCount: 1
+                      released: false
+                      deleted: false
+                      originalPolicyName: null
+                    - id: 1f8e392309fc414c9d77d45d0315fedc
+                      createdAt: '2024-05-28 22:05:41'
+                      updatedAt: '2024-06-04 03:05:39'
+                      mainAccountId: SYSTEM
+                      tenantId: 08ef519b17da471aa7190ffb2be11c8a
+                      policyName: 普通用户
+                      policyType: SYSTEM
+                      policyCategory: ORGANIZATION
+                      description: 普通用户
+                      attachmentCount: 0
+                      released: true
+                      deleted: false
+                      originalPolicyName: null
+                    - id: MAINTAIN
+                      createdAt: '2024-02-29 09:05:41'
+                      updatedAt: '2024-03-11 03:50:25'
+                      mainAccountId: SYSTEM
+                      tenantId: 08ef519b17da471aa7190ffb2be11c8a
+                      policyName: 代维管理员
+                      policyType: SYSTEM
+                      policyCategory: ORGANIZATION
+                      description: 代维管理员
+                      attachmentCount: 0
+                      released: false
+                      deleted: false
+                      originalPolicyName: null
+                    - id: OPERATION
+                      createdAt: '2024-02-26 11:20:55'
+                      updatedAt: '2024-02-26 11:20:55'
+                      mainAccountId: SYSTEM
+                      tenantId: 08ef519b17da471aa7190ffb2be11c8a
+                      policyName: 运营管理员
+                      policyType: SYSTEM
+                      policyCategory: ORGANIZATION
+                      description: 运营管理员
+                      attachmentCount: 0
+                      released: false
+                      deleted: false
+                      originalPolicyName: null
+                    - id: 49db3ec997244173bb73c2d2cf3cb4e8
+                      createdAt: '2024-02-26 11:20:08'
+                      updatedAt: '2024-02-26 11:20:08'
+                      mainAccountId: SYSTEM
+                      tenantId: 08ef519b17da471aa7190ffb2be11c8a
+                      policyName: 部门管理员
+                      policyType: SYSTEM
+                      policyCategory: ORGANIZATION
+                      description: 部门管理员
+                      attachmentCount: 0
+                      released: false
+                      deleted: false
+                      originalPolicyName: null
+                    - id: d66aad0a182647b9bc0e59761b474490
+                      createdAt: '2024-02-05 17:54:06'
+                      updatedAt: '2024-02-05 17:54:06'
+                      mainAccountId: SYSTEM
+                      tenantId: 08ef519b17da471aa7190ffb2be11c8a
+                      policyName: 项目管理员
+                      policyType: SYSTEM
+                      policyCategory: PROJECT
+                      description: 项目管理员
+                      attachmentCount: 1
+                      released: false
+                      deleted: false
+                      originalPolicyName: null
+                    - id: a2f3cbf9990544f69d05495b7c1219c5
+                      createdAt: '2024-02-05 15:52:02'
+                      updatedAt: '2024-05-28 07:08:08'
+                      mainAccountId: SYSTEM
+                      tenantId: 08ef519b17da471aa7190ffb2be11c8a
+                      policyName: 项目操作人员
+                      policyType: SYSTEM
+                      policyCategory: PROJECT
+                      description: 项目操作人员
+                      attachmentCount: 0
+                      released: true
+                      deleted: false
+                      originalPolicyName: null
+                    - id: 3533d543aaa04d83acc22b371eaf13a5
+                      createdAt: '2024-02-05 15:45:00'
+                      updatedAt: '2024-06-24 03:19:26'
+                      mainAccountId: SYSTEM
+                      tenantId: 08ef519b17da471aa7190ffb2be11c8a
+                      policyName: 项目只读人员
+                      policyType: SYSTEM
+                      policyCategory: PROJECT
+                      description: 项目只读人员
+                      attachmentCount: 0
+                      released: true
+                      deleted: false
+                      originalPolicyName: null
+                    pageNum: 1
+                    pageSize: 10
+                    size: 9
+                    startRow: 1
+                    endRow: 9
+                    pages: 1
+                    prePage: 1
+                    nextPage: 1
+                    isFirstPage: true
+                    isLastPage: true
+                    hasPreviousPage: false
+                    hasNextPage: false
+                    navigatePages: 1
+                    navigatepageNums:
+                    - 1
+                    navigateFirstPage: 1
+                    navigateLastPage: 1
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: policies
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                isIncludeDefaultPolicy:
+                  type: string
+                  description: ''
+                pageNum:
+                  type: string
+                  description: ''
+                pageSize:
+                  type: string
+                  description: ''
+                policyCategory:
+                  type: string
+                  description: ''
+                policyType:
+                  type: string
+                  description: ''
+                tenantId:
+                  type: string
+                  description: ''
+  /estack/api/estack/draco/v1/groups:
+    get:
+      summary: list:groups
+      operationId: get__estack_api_estack_draco_v1_groups
+      tags:
+      - draco
+      parameters:
+      - name: pageNum
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''1'']'
+      - name: pageSize
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''10'']'
+      - name: tenantId
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''08ef519b17da471aa7190ffb2be11c8a'']'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: b3d2069cd7affce7
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    total: 0
+                    list: null
+                    pageNum: 0
+                    pageSize: 0
+                    size: 0
+                    startRow: 0
+                    endRow: 0
+                    pages: 0
+                    prePage: 0
+                    nextPage: 0
+                    isFirstPage: false
+                    isLastPage: false
+                    hasPreviousPage: false
+                    hasNextPage: false
+                    navigatePages: 0
+                    navigatepageNums: null
+                    navigateFirstPage: 0
+                    navigateLastPage: 0
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: groups
+  /estack/api/estack/draco/v1/products:
+    get:
+      summary: list:products
+      operationId: get__estack_api_estack_draco_v1_products
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: products
+  /estack/api/estack/draco/v1/tenants/display:
+    get:
+      summary: list:tenants
+      operationId: get__estack_api_estack_draco_v1_tenants_display
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: tenants
+  /estack/api/estack/draco/v1/attachments:
+    post:
+      summary: create:attachments
+      operationId: post__estack_api_estack_draco_v1_attachments
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 9036f0aa81e0e36a
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    total: 2
+                    list:
+                    - id: bd7f902b415a4a87a88bafe7f594417f
+                      mainAccountId: 08ef519b17da471aa7190ffb2be11c8a
+                      policyId: 4c7e4cd05f0d4d20a6e658b9857cda19
+                      policyName: 单位管理员
+                      policyDescription: 单位管理员
+                      principleId: e59f06f5469842ec948a87ff60251332
+                      principleName: estack-admin-galaxy-0817
+                      attachScope:
+                        projects: '*'
+                        pools: '*'
+                        collections: '*'
+                      principleType: USER
+                      attachedAt: '2026-08-17 17:43:58'
+                    - id: 7b3340c0b97444f59d44580b9e4c0ebe
+                      mainAccountId: 08ef519b17da471aa7190ffb2be11c8a
+                      policyId: d66aad0a182647b9bc0e59761b474490
+                      policyName: 项目管理员
+                      policyDescription: 项目管理员
+                      principleId: e59f06f5469842ec948a87ff60251332
+                      principleName: estack-admin-galaxy-0817
+                      attachScope:
+                        projects:
+                        - id: 012726a4bb2a43fd8f95241c0df042ed
+                          name: estack-admin-galaxy_defaultProject
+                          tenantId: 08ef519b17da471aa7190ffb2be11c8a
+                          tenantName: estack-admin-galaxy
+                          ancestorList:
+                          - estack-admin-galaxy
+                          description: null
+                          status: ONLINE
+                          managerId: e59f06f5469842ec948a87ff60251332
+                          managerName: estack-admin-galaxy-0817
+                          managerUserName: estack-admin-galaxy-0817
+                          managerTenantId: null
+                          managerTenantName: null
+                          managerPhone: null
+                          managerEmail: null
+                          managerCountryCode: null
+                          createdAt: '2026-08-17 17:43:58'
+                          updatedAt: '2026-08-17 17:43:58'
+                          offlineAt: null
+                          endAt: null
+                          remainingTime: null
+                          remainingTimeUnit: null
+                          endType: FOREVER
+                          defaulted: true
+                          deleted: false
+                          attachments: []
+                        pools: '*'
+                        collections: '*'
+                      principleType: USER
+                      attachedAt: '2026-08-17 17:43:58'
+                    pageNum: 1
+                    pageSize: 10
+                    size: 2
+                    startRow: 1
+                    endRow: 2
+                    pages: 1
+                    prePage: 1
+                    nextPage: 1
+                    isFirstPage: true
+                    isLastPage: true
+                    hasPreviousPage: false
+                    hasNextPage: false
+                    navigatePages: 1
+                    navigatepageNums:
+                    - 1
+                    navigateFirstPage: 1
+                    navigateLastPage: 1
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: create
+      x-kb-service: draco
+      x-kb-resource: attachments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pageNum:
+                  type: string
+                  description: ''
+                pageSize:
+                  type: string
+                  description: ''
+                searchType:
+                  type: string
+                  description: ''
+                tenantId:
+                  type: string
+                  description: ''
+  /estack/api/estack/draco/v1/black-white-list/system-config:
+    get:
+      summary: detail:black-white-list
+      operationId: get__estack_api_estack_draco_v1_black-white-list_system-config
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 6c944da4bb2018e2
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    id: 94524479db09498b90bfef7e17d861c3
+                    type: BLACK
+                    enable: true
+                    enabledAt: '2025-03-19 19:38:29'
+                    disabledAt: null
+                    enabledBy: 644e7d7b19c744d6a1d3194b8d819fd3
+                    disabledBy: null
+              - summary: status=200
+                value:
+                  traceId: 520b82bb1890c731
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    id: 94524479db09498b90bfef7e17d861c3
+                    type: BLACK
+                    enable: true
+                    enabledAt: '2025-03-19 19:38:29'
+                    disabledAt: null
+                    enabledBy: 644e7d7b19c744d6a1d3194b8d819fd3
+                    disabledBy: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: detail
+      x-kb-service: draco
+      x-kb-resource: black-white-list
+  /estack/api/estack/draco/v1/black-white-list:
+    post:
+      summary: create:black-white-list
+      operationId: post__estack_api_estack_draco_v1_black-white-list
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 690c0c427f21dd06
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    total: 0
+                    list: []
+                    pageNum: 1
+                    pageSize: 10
+                    size: 0
+                    startRow: 0
+                    endRow: 0
+                    pages: 0
+                    prePage: 0
+                    nextPage: 0
+                    isFirstPage: true
+                    isLastPage: true
+                    hasPreviousPage: false
+                    hasNextPage: false
+                    navigatePages: 8
+                    navigatepageNums: []
+                    navigateFirstPage: 0
+                    navigateLastPage: 0
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: create
+      x-kb-service: draco
+      x-kb-resource: black-white-list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enableList:
+                  type: string
+                  description: ''
+                pageNum:
+                  type: string
+                  description: ''
+                pageSize:
+                  type: string
+                  description: ''
+                type:
+                  type: string
+                  description: ''
+  /estack/api/estack/draco/v1/projects/list:
+    post:
+      summary: list:projects
+      operationId: post__estack_api_estack_draco_v1_projects_list
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 7fdd66cfdd79e51b
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    total: 1
+                    list:
+                    - id: 012726a4bb2a43fd8f95241c0df042ed
+                      name: estack-admin-galaxy_defaultProject
+                      tenantId: 08ef519b17da471aa7190ffb2be11c8a
+                      tenantName: estack-admin-galaxy
+                      ancestorList:
+                      - estack-admin-galaxy
+                      description: null
+                      status: ONLINE
+                      managerId: e59f06f5469842ec948a87ff60251332
+                      managerName: estack-admin-galaxy-0817
+                      managerUserName: estack-admin-galaxy-0817
+                      managerTenantId: 08ef519b17da471aa7190ffb2be11c8a
+                      managerTenantName: estack-admin-galaxy
+                      managerPhone: 188***8888
+                      managerEmail: a*****a@aa.a
+                      managerCountryCode: '+86'
+                      createdAt: '2026-08-17 17:43:58'
+                      updatedAt: '2026-08-17 17:43:58'
+                      offlineAt: null
+                      endAt: null
+                      remainingTime: null
+                      remainingTimeUnit: null
+                      endType: FOREVER
+                      defaulted: true
+                      deleted: false
+                      attachments: []
+                    pageNum: 1
+                    pageSize: 10
+                    size: 1
+                    startRow: 1
+                    endRow: 1
+                    pages: 1
+                    prePage: 0
+                    nextPage: 0
+                    isFirstPage: true
+                    isLastPage: true
+                    hasPreviousPage: false
+                    hasNextPage: false
+                    navigatePages: 8
+                    navigatepageNums:
+                    - 1
+                    navigateFirstPage: 1
+                    navigateLastPage: 1
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: projects
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                filterJoinedProject:
+                  type: string
+                  description: ''
+                isDisplayChildren:
+                  type: string
+                  description: ''
+                pageNum:
+                  type: string
+                  description: ''
+                pageSize:
+                  type: string
+                  description: ''
+                statusList:
+                  type: string
+                  description: ''
+                tenantId:
+                  type: string
+                  description: ''
+  /estack/api/estack/draco/v1/tenants/users/display-unit-total:
+    get:
+      summary: list:tenants
+      operationId: get__estack_api_estack_draco_v1_tenants_users_display-unit-total
+      tags:
+      - draco
+      parameters:
+      - name: tenantId
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''08ef519b17da471aa7190ffb2be11c8a'']'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: b27f00e4745c177f
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                  - id: 08ef519b17da471aa7190ffb2be11c8a
+                    name: estack-admin-galaxy
+                    nameAlias: null
+                    type: TENANT
+                    tenantId: null
+                    state: null
+                    children:
+                    - id: e59f06f5469842ec948a87ff60251332
+                      name: estack-admin-galaxy-0817
+                      nameAlias: estack-admin-galaxy-0817
+                      type: USER
+                      tenantId: null
+                      state: ENABLE
+                      children: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: tenants

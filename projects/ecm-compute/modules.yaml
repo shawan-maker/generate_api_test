@@ -1,0 +1,38 @@
+# ===== modules.yaml — 模块清单驱动批量发现 =====
+# 声明项目内所有待发现的模块入口 URL，供 run.py --all-modules 批量驱动。
+#
+# 用法:
+#   python -m module_discovery.run --project ecm-compute --all-modules
+#   python -m module_discovery.run --project ecm-compute --all-modules --stage 1
+#
+# 格式说明:
+#   modules:
+#     - name: 模块中文名称（唯一标识，用于文件名和显示）
+#       url: 相对路径或绝对 URL（相对路径自动拼接 base_url）
+#       enabled: true/false（可选，默认 true，设为 false 可跳过）
+#       tags: [标签列表]（可选，用于分组筛选）
+#       priority: 数字（可选，越小越先执行，默认 100）
+#
+# 增量发现:
+#   run.py 会检查 kb/module_discovered/<name>.json 的 mtime，
+#   若 modules.yaml 中该模块的 url 未变更且已有发现结果，则跳过。
+#   可用 --force 强制重新发现所有模块。
+
+modules:
+  - name: 用户管理
+    url: /estack/web/estack/user-center/user-manage/user
+    enabled: true
+    tags: [用户中心, 基础]
+    priority: 1
+
+  - name: 角色管理
+    url: /estack/web/estack/user-center/user-manage/role
+    enabled: true
+    tags: [用户中心, 权限]
+    priority: 2
+
+  # - name: 云主机列表
+  #   url: /estack/web/ecm-compute-static/vm/list
+  #   enabled: true
+  #   tags: [弹性计算, 核心]
+  #   priority: 1

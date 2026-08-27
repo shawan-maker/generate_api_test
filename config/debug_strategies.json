@@ -1,0 +1,264 @@
+{
+  "version": "1.0.0",
+  "updated_by": "用户管理",
+  "updated_at": "2026-08-27",
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-08-27",
+      "module": "用户管理",
+      "changes": "初始版本：从 Phase 1-3 问题总结提取的诊断策略"
+    }
+  ],
+  "strategies": {
+    "row_not_found": {
+      "description": "表格行查找失败时的诊断流程",
+      "trigger": {
+        "condition": "find_data_row returns None after 3 retries",
+        "context": "Stage 2 - row operation"
+      },
+      "steps": [
+        {
+          "action": "screenshot",
+          "scope": "full_page",
+          "output": "screenshot.png",
+          "description": "截取完整页面截图"
+        },
+        {
+          "action": "dump_table_structure",
+          "include": [
+            "wrappers",
+            "fixed_columns",
+            "row_count",
+            "column_headers"
+          ],
+          "output": "table_structure.json",
+          "description": "提取表格 DOM 结构（含固定列）"
+        },
+        {
+          "action": "test_selectors",
+          "selectors_from": "selector_patterns.json#table_row_selectors",
+          "output": "selector_tests.json",
+          "description": "测试所有已知选择器的命中率"
+        },
+        {
+          "action": "search_marker_in_page",
+          "method": "textContent",
+          "output": "marker_locations.json",
+          "description": "在页面中搜索 marker 文本的位置"
+        },
+        {
+          "action": "check_pagination",
+          "include": [
+            "current_page",
+            "total_pages",
+            "page_size",
+            "total_count"
+          ],
+          "output": "pagination.json",
+          "description": "检查分页状态"
+        }
+      ],
+      "auto_fix": true,
+      "fix_target": "selector_patterns.json#table_row_selectors",
+      "fix_strategy": "add_new_selector_if_found",
+      "module_source": ["用户管理"],
+      "last_verified": "2026-08-27",
+      "status": "active"
+    },
+    "button_click_failed": {
+      "description": "行操作按钮点击失败时的诊断流程",
+      "trigger": {
+        "condition": "click_row_button_v2 returns False after 2 retries",
+        "context": "Stage 2 - row button click"
+      },
+      "steps": [
+        {
+          "action": "screenshot",
+          "scope": "row_area",
+          "output": "screenshot_row.png",
+          "description": "截取目标行区域截图"
+        },
+        {
+          "action": "dump_row_cells",
+          "include": [
+            "text",
+            "buttons",
+            "dropdowns",
+            "links"
+          ],
+          "output": "row_cells.json",
+          "description": "提取目标行的所有单元格内容"
+        },
+        {
+          "action": "check_fixed_right",
+          "selectors_from": "selector_patterns.json#table_action_button",
+          "output": "fixed_right_check.json",
+          "description": "检查固定右列是否存在目标按钮"
+        },
+        {
+          "action": "dump_fixed_right_dom",
+          "depth": 3,
+          "output": "fixed_right_dom.json",
+          "description": "提取固定右列的 DOM 结构（深度 3）"
+        },
+        {
+          "action": "test_xpath_templates",
+          "templates_from": "selector_patterns.json#table_action_button",
+          "output": "xpath_tests.json",
+          "description": "测试所有 XPath 模板的命中率"
+        }
+      ],
+      "auto_fix": true,
+      "fix_target": "selector_patterns.json#table_action_button",
+      "fix_strategy": "update_fallback_chain_priority",
+      "module_source": ["用户管理"],
+      "last_verified": "2026-08-27",
+      "status": "active"
+    },
+    "create_failed": {
+      "description": "创建操作失败时的诊断流程",
+      "trigger": {
+        "condition": "_handle_create_page_with_retry exhausts retries",
+        "context": "Stage 2 - create operation"
+      },
+      "steps": [
+        {
+          "action": "screenshot",
+          "scope": "full_page",
+          "output": "screenshot_create.png",
+          "description": "截取创建页面完整截图"
+        },
+        {
+          "action": "dump_form_state",
+          "include": [
+            "labels",
+            "values",
+            "errors",
+            "required",
+            "input_types"
+          ],
+          "output": "form_state.json",
+          "description": "提取表单字段状态（含校验错误）"
+        },
+        {
+          "action": "dump_interceptor_state",
+          "include": [
+            "call_count",
+            "last_calls",
+            "post_count",
+            "error_responses"
+          ],
+          "output": "interceptor_state.json",
+          "description": "提取请求拦截器状态"
+        },
+        {
+          "action": "check_form_validation_errors",
+          "selector": ".el-form-item__error",
+          "output": "form_errors.json",
+          "description": "检查表单校验错误信息"
+        },
+        {
+          "action": "check_dialog_state",
+          "include": [
+            "is_open",
+            "title",
+            "buttons"
+          ],
+          "output": "dialog_state.json",
+          "description": "检查对话框状态"
+        }
+      ],
+      "auto_fix": false,
+      "output_to": "output/debug/{module}/diagnostic_{timestamp}/",
+      "module_source": ["用户管理"],
+      "last_verified": "2026-08-27",
+      "status": "active"
+    },
+    "dropdown_not_opened": {
+      "description": "下拉菜单无法打开时的诊断流程",
+      "trigger": {
+        "condition": "click_row_more_item returns False after 2 retries",
+        "context": "Stage 2 - dropdown trigger"
+      },
+      "steps": [
+        {
+          "action": "screenshot",
+          "scope": "row_area",
+          "output": "screenshot_dropdown.png",
+          "description": "截取目标行区域截图"
+        },
+        {
+          "action": "test_dropdown_selectors",
+          "selectors_from": "selector_patterns.json#more_dropdown_trigger",
+          "output": "dropdown_selector_tests.json",
+          "description": "测试所有下拉触发器选择器"
+        },
+        {
+          "action": "check_el_dropdown_class",
+          "output": "el_dropdown_check.json",
+          "description": "检查 el-dropdown 类名是否存在"
+        },
+        {
+          "action": "try_native_click",
+          "method": "el.click()",
+          "output": "native_click_result.json",
+          "description": "尝试原生 click 方法"
+        }
+      ],
+      "auto_fix": true,
+      "fix_target": "selector_patterns.json#more_dropdown_trigger",
+      "fix_strategy": "add_click_method_hint",
+      "module_source": ["用户管理"],
+      "last_verified": "2026-08-27",
+      "status": "active"
+    },
+    "stage2_validation_failed": {
+      "description": "Stage 2 验证失败且重试耗尽时的诊断流程",
+      "trigger": {
+        "condition": "validate_stage2 returns False after max_recapture",
+        "context": "Stage 2 - validation"
+      },
+      "steps": [
+        {
+          "action": "screenshot",
+          "scope": "full_page",
+          "output": "screenshot_stage2_fail.png",
+          "description": "截取失败页面完整截图"
+        },
+        {
+          "action": "dump_capture_result",
+          "include": [
+            "classified",
+            "stats",
+            "response_samples"
+          ],
+          "output": "capture_result.json",
+          "description": "提取完整的捕获结果"
+        },
+        {
+          "action": "analyze_missing_apis",
+          "expected_categories": ["create", "query", "update", "delete"],
+          "output": "missing_apis_analysis.json",
+          "description": "分析缺失的 API 类别"
+        },
+        {
+          "action": "check_interceptor_logs",
+          "output": "interceptor_logs.json",
+          "description": "检查拦截器日志（请求/响应）"
+        },
+        {
+          "action": "compare_with_operation_patterns",
+          "patterns_from": "operation_patterns.json",
+          "output": "pattern_comparison.json",
+          "description": "与已知操作流程模式对比"
+        }
+      ],
+      "auto_fix": false,
+      "output_to": "output/debug/{module}/diagnostic_{timestamp}/",
+      "module_source": ["用户管理"],
+      "last_verified": "2026-08-27",
+      "status": "active"
+    }
+  }
+}

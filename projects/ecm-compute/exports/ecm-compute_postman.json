@@ -1,0 +1,3409 @@
+{
+  "info": {
+    "name": "移动云弹性计算 (ecm-compute, 10.151.37.249 环境) — discovered API catalog",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Exported from API_AI_test on 2026-08-19T06:02:07.269386+00:00\nEndpoints: 50\nSource: 2026-08-19T04:52:42.097345+00:00"
+  },
+  "item": [
+    {
+      "name": "None",
+      "item": [
+        {
+          "name": "POST /estack/api/estack/delphini/v1/dynamic-dictionary/json",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categories\": \"\",\n  \"languages\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/delphini/v1/dynamic-dictionary/json",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "delphini",
+                "v1",
+                "dynamic-dictionary",
+                "json"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: action\nService: None\nResource: dynamic-dictionary\nBody keys: ['categories', 'languages']"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — action 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /estack/api/estack/taurus/v1/ai-robot/conversations",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"limit\": \"\",\n  \"noloading\": \"\",\n  \"userId\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/taurus/v1/ai-robot/conversations",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "taurus",
+                "v1",
+                "ai-robot",
+                "conversations"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: create\nService: None\nResource: ai-robot\nBody keys: ['limit', 'noloading', 'userId']"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — create 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/virgo/v1/resource-quota-items/ECS",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/virgo/v1/resource-quota-items/ECS",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "virgo",
+                "v1",
+                "resource-quota-items",
+                "ECS"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: None\nResource: resource-quota-items\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/libra/v1/notice/new/count/all-type",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/libra/v1/notice/new/count/all-type",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "libra",
+                "v1",
+                "notice",
+                "new",
+                "count",
+                "all-type"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: None\nResource: notice\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /estack/api/estack/libra/inner/v1/tags/resources/tags",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resources\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/libra/inner/v1/tags/resources/tags",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "libra",
+                "inner",
+                "v1",
+                "tags",
+                "resources",
+                "tags"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: create\nService: None\nResource: tags\nBody keys: ['resources']"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — create 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /estack/api/estack/orion/v1/order/queryInstancePriceInfoExt",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"instanceIds\": \"\",\n  \"userId\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/orion/v1/order/queryInstancePriceInfoExt",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "orion",
+                "v1",
+                "order",
+                "queryInstancePriceInfoExt"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: None\nResource: order\nBody keys: ['instanceIds', 'userId']"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /estack/api/estack-vpc-server-console/customer/v3/port/list",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rangeInServerIds\": \"\",\n  \"types\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack-vpc-server-console/customer/v3/port/list",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack-vpc-server-console",
+                "customer",
+                "v3",
+                "port",
+                "list"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: None\nResource: port\nBody keys: ['rangeInServerIds', 'types']"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack-console-backend-bms/acl/v3/BareMetal/userconfig/IRONIC_LIST_FIELDS",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack-console-backend-bms/acl/v3/BareMetal/userconfig/IRONIC_LIST_FIELDS",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack-console-backend-bms",
+                "acl",
+                "v3",
+                "BareMetal",
+                "userconfig",
+                "IRONIC_LIST_FIELDS"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: None\nResource: BareMetal\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack-console-backend-bms/acl/v3/BareMetal/check/IBIronic",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack-console-backend-bms/acl/v3/BareMetal/check/IBIronic",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack-console-backend-bms",
+                "acl",
+                "v3",
+                "BareMetal",
+                "check",
+                "IBIronic"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: action\nService: None\nResource: BareMetal\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — action 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack-console-backend-bms/acl/v3/BareMetal/stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack-console-backend-bms/acl/v3/BareMetal/stats",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack-console-backend-bms",
+                "acl",
+                "v3",
+                "BareMetal",
+                "stats"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: None\nResource: BareMetal\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack-console-backend-bms/acl/v3/BareMetal/with/network",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack-console-backend-bms/acl/v3/BareMetal/with/network",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack-console-backend-bms",
+                "acl",
+                "v3",
+                "BareMetal",
+                "with",
+                "network"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: None\nResource: BareMetal\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "cancer",
+      "item": [
+        {
+          "name": "GET /estack/api/estack/cancer/v1/pools/list/region/public",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/cancer/v1/pools/list/region/public",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "cancer",
+                "v1",
+                "pools",
+                "list",
+                "region",
+                "public"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: cancer\nResource: pools\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /estack/api/estack/cancer/v1/pools/list/public",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productList\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/cancer/v1/pools/list/public",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "cancer",
+                "v1",
+                "pools",
+                "list",
+                "public"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: cancer\nResource: pools\nBody keys: ['productList']"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /estack/api/estack/cancer/inner/v1/pools/list/with-region/public",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ignoreInvalid\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/cancer/inner/v1/pools/list/with-region/public",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "cancer",
+                "inner",
+                "v1",
+                "pools",
+                "list",
+                "with-region",
+                "public"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: create\nService: cancer\nResource: pools\nBody keys: ['ignoreInvalid']"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — create 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /estack/api/estack/cancer/inner/v1/pools/list/public",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/cancer/inner/v1/pools/list/public",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "cancer",
+                "inner",
+                "v1",
+                "pools",
+                "list",
+                "public"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: cancer\nResource: pools\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/cancer/inner/v1/pools/list/region/public",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/cancer/inner/v1/pools/list/region/public",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "cancer",
+                "inner",
+                "v1",
+                "pools",
+                "list",
+                "region",
+                "public"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: cancer\nResource: pools\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "draco",
+      "item": [
+        {
+          "name": "GET /estack/api/estack/draco/v1/authority/national",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/draco/v1/authority/national",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "draco",
+                "v1",
+                "authority",
+                "national"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: draco\nResource: authority\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/draco/v1/images/pictures-verification",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/draco/v1/images/pictures-verification",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "draco",
+                "v1",
+                "images",
+                "pictures-verification"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: draco\nResource: images\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/draco/v1/images/pictures",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/draco/v1/images/pictures",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "draco",
+                "v1",
+                "images",
+                "pictures"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: draco\nResource: images\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/draco/v1/users/current-user",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/draco/v1/users/current-user",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "draco",
+                "v1",
+                "users",
+                "current-user"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: draco\nResource: users\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/draco/v1/images/checkcap/code",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/draco/v1/images/checkcap/code",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "draco",
+                "v1",
+                "images",
+                "checkcap",
+                "code"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: action\nService: draco\nResource: images\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — action 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /estack/api/estack/draco/v1/users/login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"capcode\": \"\",\n  \"password\": \"\",\n  \"username\": \"\",\n  \"xpos\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/draco/v1/users/login",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "draco",
+                "v1",
+                "users",
+                "login"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: action\nService: draco\nResource: users\nBody keys: ['capcode', 'password', 'username', 'xpos']"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — action 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/draco/v1/users/password/expire-notice",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/draco/v1/users/password/expire-notice",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "draco",
+                "v1",
+                "users",
+                "password",
+                "expire-notice"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: draco\nResource: users\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/draco/v1/basic-config/ai",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/draco/v1/basic-config/ai",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "draco",
+                "v1",
+                "basic-config",
+                "ai"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: draco\nResource: basic-config\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /estack/api/estack/draco/v1/redirect-url/list",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceTypes\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/draco/v1/redirect-url/list",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "draco",
+                "v1",
+                "redirect-url",
+                "list"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: draco\nResource: redirect-url\nBody keys: ['resourceTypes']"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/draco/inner/v1/basic-config/AccessHJ",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/draco/inner/v1/basic-config/AccessHJ",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "draco",
+                "inner",
+                "v1",
+                "basic-config",
+                "AccessHJ"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: draco\nResource: basic-config\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/draco/v1/authority",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/draco/v1/authority",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "draco",
+                "v1",
+                "authority"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: draco\nResource: authority\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/draco/inner/v1/users/current-user",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/draco/inner/v1/users/current-user",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "draco",
+                "inner",
+                "v1",
+                "users",
+                "current-user"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: draco\nResource: users\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/draco/v1/users/detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/draco/v1/users/detail",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "draco",
+                "v1",
+                "users",
+                "detail"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: detail\nService: draco\nResource: users\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — detail 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /estack/api/estack/draco/v1/projects/list/available",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productList\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/draco/v1/projects/list/available",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "draco",
+                "v1",
+                "projects",
+                "list",
+                "available"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: draco\nResource: projects\nBody keys: ['productList']"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /estack/api/estack/draco/inner/v1/projects/list",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productList\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/draco/inner/v1/projects/list",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "draco",
+                "inner",
+                "v1",
+                "projects",
+                "list"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: draco\nResource: projects\nBody keys: ['productList']"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/draco/inner/v1/authority",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/draco/inner/v1/authority",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "draco",
+                "inner",
+                "v1",
+                "authority"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: draco\nResource: authority\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /estack/api/estack/draco/inner/v1/tenants/list",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/draco/inner/v1/tenants/list",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "draco",
+                "inner",
+                "v1",
+                "tenants",
+                "list"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: draco\nResource: tenants\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/draco/inner/v1/basic-config/Currency",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/draco/inner/v1/basic-config/Currency",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "draco",
+                "inner",
+                "v1",
+                "basic-config",
+                "Currency"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: draco\nResource: basic-config\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/draco/inner/v1/basic-config/MaxBandwidth",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/draco/inner/v1/basic-config/MaxBandwidth",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "draco",
+                "inner",
+                "v1",
+                "basic-config",
+                "MaxBandwidth"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: draco\nResource: basic-config\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "pegasi",
+      "item": [
+        {
+          "name": "GET /estack/api/estack/pegasi/v1/system-theme",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/pegasi/v1/system-theme",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "pegasi",
+                "v1",
+                "system-theme"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: pegasi\nResource: system-theme\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /estack/api/estack/pegasi/v1/menu/side-tree",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isVisible\": \"\",\n  \"userId\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/pegasi/v1/menu/side-tree",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "pegasi",
+                "v1",
+                "menu",
+                "side-tree"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: create\nService: pegasi\nResource: menu\nBody keys: ['isVisible', 'userId']"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — create 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/pegasi/v1/product-introduction/portal",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/pegasi/v1/product-introduction/portal",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "pegasi",
+                "v1",
+                "product-introduction",
+                "portal"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: pegasi\nResource: product-introduction\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /estack/api/estack/pegasi/v1/menu/portal/tree",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isAll\": \"\",\n  \"rootId\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/pegasi/v1/menu/portal/tree",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "pegasi",
+                "v1",
+                "menu",
+                "portal",
+                "tree"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: pegasi\nResource: menu\nBody keys: ['isAll', 'rootId']"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/pegasi/v1/system-theme/default/tab",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/pegasi/v1/system-theme/default/tab",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "pegasi",
+                "v1",
+                "system-theme",
+                "default",
+                "tab"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: pegasi\nResource: system-theme\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /estack/api/estack/pegasi/inner/v1/menu/check-auth/list",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceTypes\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/pegasi/inner/v1/menu/check-auth/list",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "pegasi",
+                "inner",
+                "v1",
+                "menu",
+                "check-auth",
+                "list"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: action\nService: pegasi\nResource: menu\nBody keys: ['resourceTypes']"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — action 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/pegasi/inner/v1/service-menu/check-auth/DECLOUD",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/pegasi/inner/v1/service-menu/check-auth/DECLOUD",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "pegasi",
+                "inner",
+                "v1",
+                "service-menu",
+                "check-auth",
+                "DECLOUD"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: action\nService: pegasi\nResource: service-menu\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — action 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/pegasi/inner/v1/service-menu/check-auth/IRONIC",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/pegasi/inner/v1/service-menu/check-auth/IRONIC",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "pegasi",
+                "inner",
+                "v1",
+                "service-menu",
+                "check-auth",
+                "IRONIC"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: action\nService: pegasi\nResource: service-menu\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — action 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/pegasi/inner/v1/service-menu/check-auth/ECS",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/pegasi/inner/v1/service-menu/check-auth/ECS",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "pegasi",
+                "inner",
+                "v1",
+                "service-menu",
+                "check-auth",
+                "ECS"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: action\nService: pegasi\nResource: service-menu\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — action 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /estack/api/estack/pegasi/v1/menu/tree",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isVisible\": \"\",\n  \"rootId\": \"\",\n  \"userId\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/pegasi/v1/menu/tree",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "pegasi",
+                "v1",
+                "menu",
+                "tree"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: pegasi\nResource: menu\nBody keys: ['isVisible', 'rootId', 'userId']"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/pegasi/v1/menu/favorite/list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/pegasi/v1/menu/favorite/list",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "pegasi",
+                "v1",
+                "menu",
+                "favorite",
+                "list"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: pegasi\nResource: menu\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/pegasi/v1/menu/access-log",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/pegasi/v1/menu/access-log",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "pegasi",
+                "v1",
+                "menu",
+                "access-log"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: pegasi\nResource: menu\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /estack/api/estack/pegasi/inner/v1/service-menu/service-project/pools",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": \"\",\n  \"resourceType\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/pegasi/inner/v1/service-menu/service-project/pools",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "pegasi",
+                "inner",
+                "v1",
+                "service-menu",
+                "service-project",
+                "pools"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: create\nService: pegasi\nResource: service-menu\nBody keys: ['projectId', 'resourceType']"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — create 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/pegasi/inner/v1/system-theme/default/tab",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/pegasi/inner/v1/system-theme/default/tab",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "pegasi",
+                "inner",
+                "v1",
+                "system-theme",
+                "default",
+                "tab"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: list\nService: pegasi\nResource: system-theme\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — list 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /estack/api/estack/pegasi/inner/v1/service-menu/check-auth/EAS",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "SID",
+                "value": "{{SID}}",
+                "description": "固定站点标识"
+              }
+            ],
+            "body": null,
+            "url": {
+              "raw": "https://10.151.37.249/estack/api/estack/api/estack/pegasi/inner/v1/service-menu/check-auth/EAS",
+              "protocol": "https",
+              "host": "10.151.37.249",
+              "path": [
+                "estack",
+                "api",
+                "estack",
+                "pegasi",
+                "inner",
+                "v1",
+                "service-menu",
+                "check-auth",
+                "EAS"
+              ],
+              "variable": []
+            },
+            "description": "CRUD: action\nService: pegasi\nResource: service-menu\nBody keys: []"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// API_AI_test — action 自动断言",
+                  "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });",
+                  "",
+                  "// 真成功红线: success==true && !errorCode (estack 约定)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var success = body.success !== undefined ? body.success : true;",
+                  "    var hasError = body.errorCode !== undefined && body.errorCode !== null && body.errorCode !== \"\";",
+                  "    pm.test(\"业务成功 (success==true && !errorCode)\", function() {",
+                  "        pm.expect(success).to.be.true;",
+                  "        pm.expect(hasError).to.be.false;",
+                  "    });",
+                  "} catch(e) {}",
+                  "",
+                  "// 提取变量(供 CRUD 链传递)",
+                  "try {",
+                  "    var body = pm.response.json();",
+                  "    var id = body.data?.id || body.id || body.entity?.id;",
+                  "    if (id) pm.collectionVariables.set(\"createdId\", id);",
+                  "} catch(e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "SID",
+      "value": "bf5eadddf8eb496bb7788474f8322c6e"
+    },
+    {
+      "key": "createdId",
+      "value": ""
+    }
+  ]
+}

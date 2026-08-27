@@ -1,0 +1,25 @@
+{
+  "_comment": [
+    "CRUD 人工校正层 —— 优先级最高, 覆盖自动分类器结果。",
+    "对应 EcsCloud output/config/failure_overrides.json 的设计: 机器猜错的地方由人一次性钉死。",
+    "key 格式: '<METHOD> <path_template>' (精确) 或 '<path_template>' (不分方法)。",
+    "value: create | list | detail | update | delete | action",
+    "每次修正后重跑 `python run_p0.py --remerge` 即可生效, 无需重新登录抓包。"
+  ],
+  "overrides": {
+    "POST /estack/api/estack/pegasi/v1/menu/side-tree": "list",
+    "POST /estack/api/estack/pegasi/v1/menu/portal/tree": "list",
+    "GET /estack/api/estack/draco/v1/users/current-user": "detail",
+    "GET /estack/api/estack/draco/v1/tenants/root": "detail",
+    "GET /estack/api/estack/draco/v1/password-policy": "detail",
+    "GET /estack/api/estack/pegasi/v1/system-theme": "detail",
+    "GET /estack/api/estack/draco/v1/basic-config/ai": "detail",
+    "GET /estack/api/estack/draco/v1/authority/national": "detail",
+    "GET /estack/api/estack/draco/v1/black-white-list/system-config": "detail",
+    "GET /estack/api/estack/draco/v1/users/password/expire-notice": "detail",
+    "GET /estack/api/estack/pegasi/v1/product-introduction/portal": "detail",
+    "GET /estack/api/estack/draco/v1/images/pictures": "action",
+    "GET /estack/api/estack/draco/v1/images/pictures-verification": "action",
+    "POST /estack/api/estack/draco/v1/black-white-list": "create"
+  }
+}

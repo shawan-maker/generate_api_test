@@ -1,0 +1,9 @@
+{
+  "base_url": "https://10.151.37.249",
+  "api_base": "/estack/api",
+  "header_name": "Authorization",
+  "header_prefix": "Bearer ",
+  "fixed_headers": {
+    "Estack-Language": "zh-CN"
+  }
+}

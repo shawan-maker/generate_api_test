@@ -1,0 +1,226 @@
+[
+  {
+    "label": "账户信息",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "账户管理"
+  },
+  {
+    "label": "修改密码",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "账户管理"
+  },
+  {
+    "label": "AccessKey设置",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "账户管理"
+  },
+  {
+    "label": "单位管理",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "访问控制"
+  },
+  {
+    "label": "代维管理",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "访问控制"
+  },
+  {
+    "label": "部门管理",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "访问控制"
+  },
+  {
+    "label": "用户管理",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "访问控制"
+  },
+  {
+    "label": "用户组管理",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "访问控制"
+  },
+  {
+    "label": "角色管理",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "访问控制"
+  },
+  {
+    "label": "授权管理",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "访问控制"
+  },
+  {
+    "label": "黑白名单",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "访问控制"
+  },
+  {
+    "label": "部门项目",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "项目中心"
+  },
+  {
+    "label": "全局单位配额",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "配额管理"
+  },
+  {
+    "label": "全局项目配额",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "配额管理"
+  },
+  {
+    "label": "配额申请历史",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "配额管理"
+  },
+  {
+    "label": "资源级配额",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "配额管理"
+  },
+  {
+    "label": "资源池容量",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "容量管理"
+  },
+  {
+    "label": "容量告警",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "容量管理"
+  },
+  {
+    "label": "容量预测",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "容量管理"
+  },
+  {
+    "label": "资源清单",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "资源管理"
+  },
+  {
+    "label": "瓶颈分析",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "资源管理"
+  },
+  {
+    "label": "闲置分析",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "资源管理"
+  },
+  {
+    "label": "日志查询",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "日志管理"
+  },
+  {
+    "label": "日志设置",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "日志管理"
+  },
+  {
+    "label": "账户管理",
+    "href": "",
+    "level": 0,
+    "is_group": true,
+    "group": ""
+  },
+  {
+    "label": "访问控制",
+    "href": "",
+    "level": 0,
+    "is_group": true,
+    "group": ""
+  },
+  {
+    "label": "项目管理",
+    "href": "",
+    "level": 0,
+    "is_group": true,
+    "group": ""
+  },
+  {
+    "label": "项目中心",
+    "href": "",
+    "level": 0,
+    "is_group": true,
+    "group": ""
+  },
+  {
+    "label": "配额管理",
+    "href": "",
+    "level": 0,
+    "is_group": true,
+    "group": ""
+  },
+  {
+    "label": "容量管理",
+    "href": "",
+    "level": 0,
+    "is_group": true,
+    "group": ""
+  },
+  {
+    "label": "资源管理",
+    "href": "",
+    "level": 0,
+    "is_group": true,
+    "group": ""
+  },
+  {
+    "label": "日志管理",
+    "href": "",
+    "level": 0,
+    "is_group": true,
+    "group": ""
+  }
+]

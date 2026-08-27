@@ -1,0 +1,110 @@
+[
+  {
+    "method": "POST",
+    "url": "https://console-estack-syyhb.cmecloud.cn/estack/api/estack/draco/v1/users/login",
+    "path": "/estack/api/estack/draco/v1/users/login",
+    "query": {},
+    "request_headers": {"Authorization": "Bearer xxx", "Content-Type": "application/json"},
+    "request_body": {"username": "estack-yy", "password": "R@9eDuck$!mpleM00n", "xpos": 142},
+    "status": 200,
+    "response_body": {"traceId": "t1", "success": true, "message": "ok", "errorCode": "", "entity": {"token": "eyJhbGciOiJIUzI1NiJ9.xxx.yyy"}},
+    "source": "traffic",
+    "ts": 1
+  },
+  {
+    "method": "GET",
+    "url": "https://console-estack-syyhb.cmecloud.cn/estack/api/estack/draco/v1/images/checkcap/code",
+    "path": "/estack/api/estack/draco/v1/images/checkcap/code",
+    "query": {"t": "1690000000000"},
+    "request_headers": {"Authorization": "Bearer xxx"},
+    "request_body": null,
+    "status": 200,
+    "response_body": {"traceId": "t2", "success": true, "entity": {"backImage": "data:image/jpeg;base64,/9j/xxx", "slidingImage": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADwAAAA8CAYAAAA6/NlyAAAA"}},
+    "source": "traffic",
+    "ts": 2
+  },
+  {
+    "method": "GET",
+    "url": "https://console-estack-syyhb.cmecloud.cn/estack/api/estack/evelynn/v1/service-menu/xxx/product-menu",
+    "path": "/estack/api/estack/evelynn/v1/service-menu/xxx/product-menu",
+    "query": {},
+    "request_headers": {"Authorization": "Bearer xxx"},
+    "request_body": null,
+    "status": 200,
+    "response_body": {"traceId": "t3", "success": true, "entity": {"menus": [{"name": "用户中心", "path": "/user-center"}, {"name": "云主机", "path": "/compute/vm"}]}},
+    "source": "traffic",
+    "ts": 3
+  },
+  {
+    "method": "GET",
+    "url": "https://console-estack-syyhb.cmecloud.cn/estack/api/estack/draco/v1/users?page=1&size=10",
+    "path": "/estack/api/estack/draco/v1/users",
+    "query": {"page": "1", "size": "10"},
+    "request_headers": {"Authorization": "Bearer xxx"},
+    "request_body": null,
+    "status": 200,
+    "response_body": {"traceId": "t4", "success": true, "entity": {"list": [{"id": "u1", "name": "estack-yy"}], "total": 1}},
+    "source": "traffic",
+    "ts": 4
+  },
+  {
+    "method": "GET",
+    "url": "https://console-estack-syyhb.cmecloud.cn/estack/api/estack/draco/v1/users/12345",
+    "path": "/estack/api/estack/draco/v1/users/12345",
+    "query": {},
+    "request_headers": {"Authorization": "Bearer xxx"},
+    "request_body": null,
+    "status": 200,
+    "response_body": {"traceId": "t5", "success": true, "entity": {"id": "12345", "name": "estack-yy", "status": "active"}},
+    "source": "traffic",
+    "ts": 5
+  },
+  {
+    "method": "POST",
+    "url": "https://console-estack-syyhb.cmecloud.cn/estack/api/estack/draco/v1/users",
+    "path": "/estack/api/estack/draco/v1/users",
+    "query": {},
+    "request_headers": {"Authorization": "Bearer xxx", "Content-Type": "application/json"},
+    "request_body": {"username": "AT_user1", "password": "P@ssw0rd", "role": "viewer"},
+    "status": 200,
+    "response_body": {"traceId": "t6", "success": true, "entity": {"id": "99999"}},
+    "source": "traffic",
+    "ts": 6
+  },
+  {
+    "method": "PUT",
+    "url": "https://console-estack-syyhb.cmecloud.cn/estack/api/estack/draco/v1/users/12345",
+    "path": "/estack/api/estack/draco/v1/users/12345",
+    "query": {},
+    "request_headers": {"Authorization": "Bearer xxx", "Content-Type": "application/json"},
+    "request_body": {"name": "AT_user1_renamed"},
+    "status": 200,
+    "response_body": {"traceId": "t7", "success": true, "entity": {"id": "12345"}},
+    "source": "traffic",
+    "ts": 7
+  },
+  {
+    "method": "DELETE",
+    "url": "https://console-estack-syyhb.cmecloud.cn/estack/api/estack/draco/v1/users/12345",
+    "path": "/estack/api/estack/draco/v1/users/12345",
+    "query": {},
+    "request_headers": {"Authorization": "Bearer xxx"},
+    "request_body": null,
+    "status": 200,
+    "response_body": {"traceId": "t8", "success": true},
+    "source": "traffic",
+    "ts": 8
+  },
+  {
+    "method": "GET",
+    "url": "https://console-estack-syyhb.cmecloud.cn/estack/api/estack/sona/v1/cloud-accounts?page=1&size=20",
+    "path": "/estack/api/estack/sona/v1/cloud-accounts",
+    "query": {"page": "1", "size": "20"},
+    "request_headers": {"Authorization": "Bearer xxx"},
+    "request_body": null,
+    "status": 200,
+    "response_body": {"traceId": "t9", "success": true, "entity": {"list": [], "total": 0}},
+    "source": "traffic",
+    "ts": 9
+  }
+]

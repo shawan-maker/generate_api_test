@@ -1,0 +1,193 @@
+{
+  "version": "1.0.0",
+  "updated_by": "用户管理",
+  "updated_at": "2026-08-27",
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-08-27",
+      "module": "用户管理",
+      "changes": "初始版本：从 Phase 1-3 提取的 UI 选择器经验"
+    }
+  ],
+  "patterns": {
+    "table_row_selectors": {
+      "description": "Element UI 表格行选择器（含固定列）",
+      "selectors": [
+        {
+          "name": "main",
+          "selector": ".el-table__body-wrapper tbody tr",
+          "priority": 1,
+          "description": "主表格区域（非固定列）"
+        },
+        {
+          "name": "fixed_left",
+          "selector": ".el-table__fixed .el-table__fixed-body-wrapper tbody tr",
+          "priority": 2,
+          "description": "左侧固定列"
+        },
+        {
+          "name": "fixed_right",
+          "selector": ".el-table__fixed-right .el-table__fixed-body-wrapper tbody tr",
+          "priority": 3,
+          "description": "右侧固定列（通常包含操作按钮）"
+        }
+      ],
+      "module_source": ["用户管理"],
+      "confidence": 0.95,
+      "usage_count": 3,
+      "last_verified": "2026-08-27",
+      "status": "active"
+    },
+    "table_action_button": {
+      "description": "行操作按钮定位（固定右列优先）",
+      "fallback_chain": [
+        {
+          "strategy": "fixed_right",
+          "xpath": "//div[contains(@class,'el-table__fixed-right')]//tbody/tr[{row_index}]//span[contains(.,'{label}')]",
+          "priority": 1
+        },
+        {
+          "strategy": "fixed_body_wrapper",
+          "xpath": "//div[contains(@class,'el-table__fixed-body-wrapper')]//tbody/tr[{row_index}]//span[contains(.,'{label}')]",
+          "priority": 2
+        },
+        {
+          "strategy": "body_wrapper",
+          "xpath": "//div[contains(@class,'el-table__body-wrapper')]//tbody/tr[{row_index}]//span[contains(.,'{label}')]",
+          "priority": 3
+        }
+      ],
+      "xpath_templates": "@base_nav_kb.json#/composite/table-action-button",
+      "module_source": ["用户管理"],
+      "confidence": 0.90,
+      "usage_count": 5,
+      "last_verified": "2026-08-27",
+      "status": "active"
+    },
+    "more_dropdown_trigger": {
+      "description": "更多下拉菜单触发器",
+      "selectors": [
+        {
+          "type": "css",
+          "selector": ".el-dropdown",
+          "priority": 1
+        },
+        {
+          "type": "css",
+          "selector": "[class*='dropdown']",
+          "priority": 2
+        },
+        {
+          "type": "text",
+          "selector": "button:has-text('更多')",
+          "priority": 3
+        }
+      ],
+      "click_method": "native_el_click",
+      "note": "el-dropdown-selfdefine 只响应原生 el.click()",
+      "module_source": ["用户管理"],
+      "confidence": 1.0,
+      "usage_count": 8,
+      "last_verified": "2026-08-27",
+      "status": "active"
+    },
+    "form_fill_patterns": [
+      {
+        "match": "名称",
+        "template": "{username}",
+        "type": "text",
+        "priority": 1,
+        "module_source": ["用户管理"]
+      },
+      {
+        "match": "用户名",
+        "template": "AT_{username}_{ts}",
+        "type": "text",
+        "priority": 1,
+        "module_source": ["用户管理"]
+      },
+      {
+        "match": "编码",
+        "template": "code_{ts}",
+        "type": "text",
+        "priority": 2,
+        "module_source": ["用户管理"]
+      },
+      {
+        "match": "邮箱",
+        "template": "at_{ts}@test.com",
+        "type": "email",
+        "priority": 2,
+        "module_source": ["用户管理"]
+      },
+      {
+        "match": "手机",
+        "template": "138{ts}",
+        "type": "tel",
+        "priority": 2,
+        "module_source": ["用户管理"]
+      },
+      {
+        "match": "密码",
+        "template": "Test@123456",
+        "type": "password",
+        "priority": 3,
+        "module_source": ["用户管理"]
+      },
+      {
+        "match": "确认密码",
+        "template": "Test@123456",
+        "type": "password",
+        "priority": 3,
+        "module_source": ["用户管理"]
+      },
+      {
+        "match": "描述",
+        "template": "自动测试创建于{ts}",
+        "type": "textarea",
+        "priority": 4,
+        "module_source": ["用户管理"]
+      },
+      {
+        "match": "备注",
+        "template": "自动创建于{ts}",
+        "type": "textarea",
+        "priority": 4,
+        "module_source": ["用户管理"]
+      }
+    ],
+    "pagination": {
+      "description": "分页组件定位与操作",
+      "selectors": {
+        "container": ".el-pagination",
+        "next_button": ".el-pagination .btn-next:not(.disabled)",
+        "prev_button": ".el-pagination .btn-prev:not(.disabled)",
+        "page_info": ".el-pagination .el-pager",
+        "total_count": ".el-pagination .el-pagination__total"
+      },
+      "max_pages_to_search": 3,
+      "module_source": ["用户管理"],
+      "confidence": 0.85,
+      "usage_count": 2,
+      "last_verified": "2026-08-27",
+      "status": "active"
+    },
+    "dialog_modal": {
+      "description": "对话框/模态框定位与操作",
+      "selectors": {
+        "container": ".el-dialog, .el-message-box",
+        "close_button": ".el-dialog__close, .el-message-box__close",
+        "submit_button": ".el-dialog__footer button.el-button--primary",
+        "cancel_button": ".el-dialog__footer button.el-button--default",
+        "title": ".el-dialog__title"
+      },
+      "close_timeout_ms": 3000,
+      "module_source": ["用户管理"],
+      "confidence": 0.95,
+      "usage_count": 10,
+      "last_verified": "2026-08-27",
+      "status": "active"
+    }
+  }
+}

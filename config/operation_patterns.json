@@ -1,0 +1,181 @@
+{
+  "version": "1.0.0",
+  "updated_by": "用户管理",
+  "updated_at": "2026-08-27",
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-08-27",
+      "module": "用户管理",
+      "changes": "初始版本：从 Phase 2 提取的操作流程经验"
+    }
+  ],
+  "operations": {
+    "create_user_estack": {
+      "description": "estack 用户创建流程",
+      "module_pattern": "用户.*管理|user.*manage",
+      "steps": [
+        {
+          "action": "click_toolbar",
+          "button": "新增用户",
+          "timeout_ms": 8000,
+          "expected_result": "dialog_open"
+        },
+        {
+          "action": "fill_form",
+          "fields": ["账号", "姓名", "密码", "确认密码", "邮箱", "手机号", "描述"],
+          "strategy": "scan_and_fill",
+          "timeout_ms": 15000
+        },
+        {
+          "action": "select_dropdowns",
+          "selectors": ["系统角色", "部门角色"],
+          "strategy": "first_visible_option",
+          "skip_if_no_data": true
+        },
+        {
+          "action": "submit",
+          "button": "确定",
+          "timeout_ms": 10000,
+          "expected_api": "POST /estack/api/estack/draco/v1/users",
+          "verify_response": true
+        }
+      ],
+      "expected_apis": [
+        "POST /estack/api/estack/draco/v1/users",
+        "GET /estack/api/estack/draco/v1/users/list"
+      ],
+      "module_source": ["用户管理"],
+      "success_count": 1,
+      "failure_count": 0,
+      "last_verified": "2026-08-27",
+      "confidence": 0.95,
+      "status": "active"
+    },
+    "row_operations_estack": {
+      "description": "estack 行操作通用流程",
+      "direct_buttons": ["编辑", "删除"],
+      "dropdown_trigger": "更多",
+      "dropdown_items": ["冻结", "启用", "锁定", "解锁", "重置密码", "授权"],
+      "special_handling": {
+        "删除": {
+          "action": "confirm_message_box",
+          "timeout_ms": 8000,
+          "expected_api": "DELETE /estack/api/estack/draco/v1/users/*"
+        },
+        "授权": {
+          "action": "full_page_jump",
+          "timeout_ms": 10000,
+          "expected_url": "*/add-authority*",
+          "navigate_back": true
+        },
+        "重置密码": {
+          "action": "fill_password_form",
+          "fields": ["新密码", "确认新密码"],
+          "default_value": "Test@123456"
+        }
+      },
+      "operation_order": [
+        "编辑",
+        "冻结",
+        "启用",
+        "锁定",
+        "解锁",
+        "重置密码",
+        "授权",
+        "删除"
+      ],
+      "module_source": ["用户管理"],
+      "success_count": 1,
+      "failure_count": 0,
+      "last_verified": "2026-08-27",
+      "confidence": 0.90,
+      "status": "active"
+    },
+    "authorize_user_estack": {
+      "description": "estack 用户授权流程（穿梭框选策略）",
+      "module_pattern": "用户.*管理|user.*manage",
+      "steps": [
+        {
+          "action": "navigate_to_auth_page",
+          "url_pattern": "*/add-authority?tenantId={tenantId}&type=userList&rowId={userId}",
+          "timeout_ms": 10000
+        },
+        {
+          "action": "wait_for_page_load",
+          "selector": ".transfer-box-left",
+          "timeout_ms": 8000
+        },
+        {
+          "action": "select_policy",
+          "strategy": "click_first_row_in_left_box",
+          "timeout_ms": 5000
+        },
+        {
+          "action": "verify_selection",
+          "selector": ".transfer-box-right",
+          "expected_content": "策略",
+          "timeout_ms": 3000
+        },
+        {
+          "action": "submit",
+          "button": "确定",
+          "timeout_ms": 8000,
+          "expected_api": "POST /estack/api/estack/draco/v1/policies/attach-to-user",
+          "expected_redirect": "*/authority-manage*"
+        }
+      ],
+      "expected_apis": [
+        "POST /estack/api/estack/draco/v1/policies/attach-to-user"
+      ],
+      "module_source": ["用户管理"],
+      "success_count": 1,
+      "failure_count": 0,
+      "last_verified": "2026-08-27",
+      "confidence": 0.85,
+      "status": "active"
+    },
+    "create_role_estack": {
+      "description": "estack 角色创建流程",
+      "module_pattern": "角色.*管理|role.*manage",
+      "steps": [
+        {
+          "action": "click_toolbar",
+          "button": "创建角色",
+          "timeout_ms": 8000,
+          "expected_result": "dialog_open"
+        },
+        {
+          "action": "fill_form",
+          "fields": ["角色名称", "角色编码", "角色描述"],
+          "strategy": "scan_and_fill",
+          "timeout_ms": 10000
+        },
+        {
+          "action": "select_tree",
+          "selector": ".el-tree",
+          "strategy": "select_root_checkbox",
+          "max_depth": 3,
+          "timeout_ms": 8000
+        },
+        {
+          "action": "submit",
+          "button": "确定",
+          "timeout_ms": 10000,
+          "expected_api": "POST /estack/api/estack/draco/v1/policies",
+          "verify_response": true
+        }
+      ],
+      "expected_apis": [
+        "POST /estack/api/estack/draco/v1/policies",
+        "GET /estack/api/estack/draco/v1/policies/list"
+      ],
+      "module_source": ["角色管理"],
+      "success_count": 0,
+      "failure_count": 0,
+      "last_verified": "2026-08-27",
+      "confidence": 0.70,
+      "status": "needs_verification"
+    }
+  }
+}

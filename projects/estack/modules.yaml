@@ -1,0 +1,56 @@
+# ===== modules.yaml — 模块清单驱动批量发现 =====
+# 声明项目内所有待发现的模块入口 URL，供 run.py --all-modules 批量驱动。
+#
+# 用法:
+#   python -m module_discovery.run --project estack --all-modules
+#   python -m module_discovery.run --project estack --all-modules --stage 1
+#
+# 格式说明:
+#   modules:
+#     - name: 模块中文名称（唯一标识，用于文件名和显示）
+#       url: 相对路径或绝对 URL（相对路径自动拼接 base_url）
+#       enabled: true/false（可选，默认 true，设为 false 可跳过）
+#       tags: [标签列表]（可选，用于分组筛选）
+#       priority: 数字（可选，越小越先执行，默认 100）
+#
+# 增量发现:
+#   run.py 会检查 kb/module_discovered/<name>.json 的 mtime，
+#   若 modules.yaml 中该模块的 url 未变更且已有发现结果，则跳过。
+#   可用 --force 强制重新发现所有模块。
+
+modules:
+  - name: 用户管理
+    url: /estack/web/estack/user-center/user-manage/user
+    enabled: true
+    tags: [用户中心, 基础]
+    priority: 1
+
+  # - name: 角色管理
+  #   url: /estack/web/estack/user-center/role-manage
+  #   enabled: true
+  #   tags: [用户中心, 权限]
+  #   priority: 2
+
+  # - name: 部门管理
+  #   url: /estack/web/estack/user-center/dept-manage
+  #   enabled: true
+  #   tags: [用户中心, 组织架构]
+  #   priority: 3
+
+  # - name: 租户管理
+  #   url: /estack/web/estack/tenant-center/tenant-manage
+  #   enabled: true
+  #   tags: [租户中心]
+  #   priority: 1
+
+  # - name: AccessKey 设置
+  #   url: /estack/web/estack/user-center/accesskey-manage
+  #   enabled: true
+  #   tags: [用户中心, 安全]
+  #   priority: 5
+
+  # - name: 黑白名单
+  #   url: /estack/web/estack/security/black-whitelist
+  #   enabled: true
+  #   tags: [安全中心]
+  #   priority: 4

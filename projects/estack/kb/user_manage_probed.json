@@ -1,0 +1,323 @@
+[
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/draco/v1/users/list",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"d89d4fbae407a580\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/draco/v1/users/page",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"b7ad078f7b8c4cce\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/draco/v1/users/create",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"fd5d16026dc60443\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/draco/v1/users/save",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"14149c722690933d\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/draco/v1/users/delete",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"c7ab016e97ae13e8\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/draco/v1/users/update",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"20c32bf7a7a25520\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/draco/v1/users/lock",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"a8ce093de0be47f5\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/draco/v1/users/unlock",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"9f17c6a58794b11a\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/draco/v1/users/enable",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"afa1eb6c0850bc76\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/draco/v1/users/disable",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"6a7033132118b08e\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/draco/v1/users/reset-password",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"50b486e28401ca80\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/draco/v1/users/search",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"367423dc58d7278f\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/leo/v1/users/list",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"84e666b0f004d43a\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/leo/v1/users/page",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"d5607783b714a72a\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/leo/v1/users/create",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"f44ae6e83a62c6ad\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/leo/v1/users/save",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"541c68b0270a49b7\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/leo/v1/users/delete",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"b3bddca02194144f\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/leo/v1/users/update",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"9eb7af0edfe8d09b\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/leo/v1/users/lock",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"4283ff109b9ca735\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/leo/v1/users/unlock",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"05f8ed5798dcb21d\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/leo/v1/users/enable",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"96c678231179d191\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/leo/v1/users/disable",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"02deca6ca6ce993a\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/leo/v1/users/reset-password",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"003448a5fea2f39e\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/leo/v1/users/search",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"6a2a04df6e36d56b\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/pegasi/v1/users/list",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"9cd41913c88d251f\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/pegasi/v1/users/page",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"9db87514444386a8\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/pegasi/v1/users/create",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"b71228d8ec5500c4\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/pegasi/v1/users/save",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"5c2050baf2739645\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/pegasi/v1/users/delete",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"6e2437b812775e66\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/pegasi/v1/users/update",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"51d40223821a0a84\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/pegasi/v1/users/lock",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"31a96e34c17c0998\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/pegasi/v1/users/unlock",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"272d4796b1451c26\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/pegasi/v1/users/enable",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"8f64618e030b187d\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/pegasi/v1/users/disable",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"647d821b3071e978\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/pegasi/v1/users/reset-password",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"66c5eb85c9dab043\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/pegasi/v1/users/search",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"20cf6a8548fdb3cc\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/draco/v1/users/create",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"519a1ea6a1b15100\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/draco/v1/users/delete",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"6c3be10dfd634743\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/estack/api/estack/draco/v1/users/update",
+    "httpStatus": 403,
+    "success": false,
+    "message": "Illegal path, RAM verification failed",
+    "bodySample": "{\"traceId\":\"b51ced1299f76484\",\"success\":false,\"errorMessage\":\"Illegal path, RAM verification failed\",\"message\":\"Illegal path, RAM verification failed\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/estack/api/estack/draco/v1/users/probe",
+    "httpStatus": 200,
+    "success": false,
+    "errorCode": "Internal.Error",
+    "message": "系统内部异常，请联系管理员",
+    "bodySample": "{\"traceId\":\"7fd3a5158168ab13\",\"success\":false,\"errorMessage\":\"系统内部异常，请联系管理员\",\"message\":\"系统内部异常，请联系管理员\",\"errorCode\":\"Internal.Error\",\"entity\":null}"
+  }
+]

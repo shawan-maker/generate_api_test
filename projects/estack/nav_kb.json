@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "description": "estack 项目级导航覆盖（叠加在 config/base_nav_kb.json 之上，仅写本项目特有的偏差）",
+  "framework": "vue2-element-ui",
+  "ui_hints": {
+    "menu_container": ".el-menu",
+    "menu_item": ".el-menu-item",
+    "submenu": ".el-submenu__title",
+    "login": {
+      "username_placeholder": "用户名",
+      "password_placeholder": "登录密码",
+      "auth_button_text": "点击完成认证",
+      "login_button_text": "登录"
+    }
+  },
+  "menu_fallback_dom_selectors": [".el-menu-item", ".el-submenu__title"],
+  "known_resource_modules": [],
+  "notes": "登录页存在 2 套 LoginContain 实例(可见/隐藏)，定位须按 base_nav_kb 的 findVisibleLC 思路走可见 input 反查，避免命中隐藏实例。"
+}

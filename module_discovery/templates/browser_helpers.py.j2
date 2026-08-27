@@ -1,0 +1,71 @@
+# ========== 浏览器操作（委托 lib.browser_ops，前端加密场景纯 httpx 无法复现）==========
+_CREATE_URL_PATH = "{{ create_url_path }}"
+_RESPONSE_INTERCEPT_URL = "{{ response_intercept_url }}"
+_AUTH_URL_PATH = "{{ auth_url_path }}"
+
+def browser_create_user(base_url, cookies_file=None, username="{{ default_username }}", password="R@9eDuck$!mpleM00n",
+                        tenant_id="", admin_id=""):
+    """浏览器创建用户（委托 lib.browser_ops.browser_create_resource）。
+
+    返回 (userName, userId)；失败返回 (None, None)。
+    cookie domain 从 base_url 自动提取，不硬编码 IP。
+    """
+    cookies_file = cookies_file or str(
+        Path(__file__).resolve().parent.parent / "output" / "config" / "cookies.json")
+    ts_digits = str(int(time.time()))[-8:]
+    user_name = f"autotest{ts_digits}"
+    fill_map = {
+        "账号": user_name, "姓名": "自动化测试", "密码": "Test@123456",
+        "确认密码": "Test@123456", "邮箱": f"autotest{ts_digits}@test.com",
+        "手机号": f"138{ts_digits}", "描述": "自动创建测试用户",
+    }
+    # KB 注入补丁（estack 的 tenantId/adminId 自动补全）
+    inject_js = ""
+    if tenant_id or admin_id:
+{% raw %}
+        inject_js = f"""(() => {{
+            const MATCH = /\\/draco\\/v1\\/users/;
+            const FIXED = {{ tenantId: '{tenant_id}', adminId: '{admin_id}' }};
+            function inject(b) {{
+                try {{
+                    const o = JSON.parse(b);
+                    let changed = false;
+                    for (const k in FIXED) {{
+                        if (FIXED[k] && (o[k] === undefined || o[k] === null || o[k] === '')) {{
+                            o[k] = FIXED[k]; changed = true;
+                        }}
+                    }}
+                    return changed ? JSON.stringify(o) : b;
+                }} catch (e) {{ return b; }}
+            }}
+            const origSend = XMLHttpRequest.prototype.send;
+            XMLHttpRequest.prototype.send = function (b) {{
+                if (b && typeof b === 'string' && MATCH.test(this.__u || '')) arguments[0] = inject(b);
+                return origSend.apply(this, arguments);
+            }};
+        }})()"""
+{% endraw %}
+    _name, _id = browser_create_resource(
+        base_url=base_url,
+        create_url=_CREATE_URL_PATH or (base_url.rstrip("/") + "/estack/web/estack/user-center/user-manage/user/create-user"),
+        cookies_file=cookies_file,
+        fill_map=fill_map,
+        response_intercept_url=_RESPONSE_INTERCEPT_URL or "/draco/v1/users",
+        inject_js=inject_js,
+    )
+    if _id:
+        return user_name, _id
+    return None, None
+
+
+def browser_authorize_user(base_url, user_id, cookies_file=None, policy_keyword="普通用户"):
+    """浏览器授权用户（委托 lib.browser_ops.browser_authorize_resource）。"""
+    cookies_file = cookies_file or str(
+        Path(__file__).resolve().parent.parent / "output" / "config" / "cookies.json")
+    return browser_authorize_resource(
+        base_url=base_url,
+        resource_id=user_id,
+        auth_url_path=_AUTH_URL_PATH or "/estack/web/estack/user-center/user-manage/authority-manage/add-authority",
+        cookies_file=cookies_file,
+        policy_keyword=policy_keyword,
+    )

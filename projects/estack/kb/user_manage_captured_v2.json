@@ -1,0 +1,159 @@
+{
+  "captureTime": "2026-08-20T05:16:32.584Z",
+  "targetUrl": "https://console-estack-syyhb.cmecloud.cn/estack/web/estack/user-center/user-manage/user",
+  "totalCalls": 7,
+  "uniqueEndpoints": 4,
+  "endpoints": [
+    {
+      "method": "GET",
+      "pathname": "https://console-estack-syyhb.cmecloud.cn/estack/api/estack/draco/v1/users/current-user",
+      "operations": [
+        "init",
+        "page-load"
+      ],
+      "bodies": [],
+      "refHeaders": {
+        "referer": "https://console-estack-syyhb.cmecloud.cn/estack/web/estack/login"
+      }
+    },
+    {
+      "method": "POST",
+      "pathname": "https://console-estack-syyhb.cmecloud.cn/estack/api/estack/draco/v1/users/login",
+      "operations": [
+        "init"
+      ],
+      "bodies": [
+        "{\"username\":\"cJ8zA2vk3ExbqY6VWSheZV1PN0W4g5cQLTJgkQwVajTWeE7hlicb1vw4Y7TSslq5NX5fWP7bu93KUzGi8bsoAUEtuVsCp9rzlM6C5E0g+94pFYOFMewEWQQUkktpTvuJ9vtXLL8+KMiqi+szchWFcCCvT5qgs0IeFLvZbJRmh8M=\",\"password\":\"CGil6Vcb5rqaCAWpXQc1911fqSyxpM5RTK5wz1TtXOlG1UzpDZNMOSZvz0xceMutf1rBwaRWX4Io0BmLcjEBnsLmXhTzm8/+kTZPQ0f1nMYYTfkVttRfs5bpsaxyvqNn7zS7dI+jKEwnQ422LEBDPhW/vr8dmYlYyeQqWmgKBHw=\",\"capcode\":\"d66ae88849644c5897b53671193ab0fc\",\"xpos\":124}"
+      ],
+      "refHeaders": {
+        "referer": "https://console-estack-syyhb.cmecloud.cn/estack/web/estack/login"
+      }
+    },
+    {
+      "method": "GET",
+      "pathname": "https://console-estack-syyhb.cmecloud.cn/estack/api/estack/draco/v1/users/password/expire-notice",
+      "operations": [
+        "init"
+      ],
+      "bodies": [],
+      "refHeaders": {
+        "referer": "https://console-estack-syyhb.cmecloud.cn/estack/web/estack/login"
+      }
+    },
+    {
+      "method": "GET",
+      "pathname": "https://console-estack-syyhb.cmecloud.cn/estack/api/estack/draco/v1/users/query-login-policy",
+      "operations": [
+        "init"
+      ],
+      "bodies": [],
+      "refHeaders": {
+        "referer": "https://console-estack-syyhb.cmecloud.cn/estack/web/estack/login"
+      }
+    }
+  ],
+  "responseSamples": {
+    "https://console-estack-syyhb.cmecloud.cn/estack/api/estack/draco/v1/users/current-user": [
+      {
+        "status": 401,
+        "headers": {
+          "spanid": "086599fa18c6e0ae",
+          "strict-transport-security": "max-age=16000000; includeSubDomains; preload;",
+          "request_id": "98558e85e5914cad9df4555a0ad1b34e",
+          "server": "ecsc server inner",
+          "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+          "content-type": "application/json",
+          "traceid": "086599fa18c6e0ae",
+          "content-length": "121"
+        },
+        "body": "{\n  \"traceId\" : \"086599fa18c6e0ae\",\n  \"success\" : false,\n  \"message\" : \"invalid token\",\n  \"errorCode\" : \"invalid token\"\n}"
+      },
+      {
+        "status": 200,
+        "headers": {
+          "spanid": "44eedbb20adadebd",
+          "date": "Thu, 20 Aug 2026 05:16:06 GMT",
+          "strict-transport-security": "max-age=16000000; includeSubDomains; preload;",
+          "request_id": "4ded64c5f2e841b9bb3b2a19fe7dd1fa",
+          "server": "ecsc server inner",
+          "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+          "content-type": "application/json",
+          "traceid": "44eedbb20adadebd",
+          "content-length": "1957",
+          "skip_filter": "POST"
+        },
+        "body": "{\n  \"traceId\" : \"44eedbb20adadebd\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"id\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"tenantId\" : \"cec63451f8bf4ceebb9ada0b87d829bf\",\n    \"tenantName\" : \"Super Management Department\",\n    \"adminId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n    \"ramId\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"name\" : \"estack-yy\",\n    \"userName\" : \"estack-yy\",\n    \"email\" : \"l*****u@163.com\",\n    \"phone\" : \"188***1683\",\n    \"encryptedEmail\" : \"d5DMRsWzfs9NOAiRMBvZMNq7TvsxOeiZ\",\n    \"encryptedPhone\" : \"3hmpCM+112+O+OaTCsGN9A==\",\n    \"countryCode\" : \"+86\",\n    \"description\" : \"\",\n    \"createdAt\" : \"2025-01-24 12:19:29\",\n    \"updatedAt\" : \"2025-03-11 17:24:50\",\n    \"deleted\" : false,\n    \"state\" : \"ENABLE\",\n    \"isAdmin\" : false,\n    \"isProjectManager\" : false,\n    \"isAuthentication\" : false,\n    \"roleId\" : null,\n    \"roleName\" : null,\n    \"ancestorList\" : [ \"Super Management Department\" ],\n    \"isPassword\" : true,\n    \"isEmail\" : true,\n    \"isPhone\" : true,\n    \"poolNameList\" : null,\n    \"isRootTenantUser\" : true,\n    \"isApproval\" : false,\n    \"tenantLevel\" : 0,\n    \"locked\" : false,\n    \"policyIdList\" : [ \"OPERATION\" ],\n    \"policyList\" : [ {\n      \"id\" : \"OPERATION\",\n      \"tenantId\" : null,\n      \"policyName\" : \"运营管理员\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"ORGANIZATION\",\n      \"description\" : null,\n      \"released\" : false,\n      \"deleted\" : null,\n      \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.OPERATIONS_ADMIN\"\n    } ],\n    \"countryCodePhone\" : \"+86 188***1683\",\n    \"password\" : \"6974d2bb056747082f6b7fcd01d61d0c9fcbc34f189a6c12d9a295891454d8e2\",\n    \"projectIdList\" : null,\n    \"needRamIdentity\" : null,\n    \"isInnerUser\" : null,\n    \"userType\" : null,\n    \"isForceChange\" : false,\n    \"isTempPassword\" : false,\n    \"mfLoginPolicy\" : null,\n    \"enableMultiFactLoginPolicy\" : null,\n    \"maintainAt\" : null\n  }\n}"
+      },
+      {
+        "status": 200,
+        "headers": {
+          "spanid": "b5cc424206fbb9c6",
+          "date": "Thu, 20 Aug 2026 05:16:06 GMT",
+          "strict-transport-security": "max-age=16000000; includeSubDomains; preload;",
+          "request_id": "7b7ff6e4a2ee4ae8b38dfa51915f9d32",
+          "server": "ecsc server inner",
+          "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+          "content-type": "application/json",
+          "traceid": "b5cc424206fbb9c6",
+          "content-length": "1957",
+          "skip_filter": "POST"
+        },
+        "body": "{\n  \"traceId\" : \"b5cc424206fbb9c6\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"id\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"tenantId\" : \"cec63451f8bf4ceebb9ada0b87d829bf\",\n    \"tenantName\" : \"Super Management Department\",\n    \"adminId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n    \"ramId\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"name\" : \"estack-yy\",\n    \"userName\" : \"estack-yy\",\n    \"email\" : \"l*****u@163.com\",\n    \"phone\" : \"188***1683\",\n    \"encryptedEmail\" : \"d5DMRsWzfs9NOAiRMBvZMNq7TvsxOeiZ\",\n    \"encryptedPhone\" : \"3hmpCM+112+O+OaTCsGN9A==\",\n    \"countryCode\" : \"+86\",\n    \"description\" : \"\",\n    \"createdAt\" : \"2025-01-24 12:19:29\",\n    \"updatedAt\" : \"2025-03-11 17:24:50\",\n    \"deleted\" : false,\n    \"state\" : \"ENABLE\",\n    \"isAdmin\" : false,\n    \"isProjectManager\" : false,\n    \"isAuthentication\" : false,\n    \"roleId\" : null,\n    \"roleName\" : null,\n    \"ancestorList\" : [ \"Super Management Department\" ],\n    \"isPassword\" : true,\n    \"isEmail\" : true,\n    \"isPhone\" : true,\n    \"poolNameList\" : null,\n    \"isRootTenantUser\" : true,\n    \"isApproval\" : false,\n    \"tenantLevel\" : 0,\n    \"locked\" : false,\n    \"policyIdList\" : [ \"OPERATION\" ],\n    \"policyList\" : [ {\n      \"id\" : \"OPERATION\",\n      \"tenantId\" : null,\n      \"policyName\" : \"运营管理员\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"ORGANIZATION\",\n      \"description\" : null,\n      \"released\" : false,\n      \"deleted\" : null,\n      \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.OPERATIONS_ADMIN\"\n    } ],\n    \"countryCodePhone\" : \"+86 188***1683\",\n    \"password\" : \"6974d2bb056747082f6b7fcd01d61d0c9fcbc34f189a6c12d9a295891454d8e2\",\n    \"projectIdList\" : null,\n    \"needRamIdentity\" : null,\n    \"isInnerUser\" : null,\n    \"userType\" : null,\n    \"isForceChange\" : false,\n    \"isTempPassword\" : false,\n    \"mfLoginPolicy\" : null,\n    \"enableMultiFactLoginPolicy\" : null,\n    \"maintainAt\" : null\n  }\n}"
+      }
+    ],
+    "https://console-estack-syyhb.cmecloud.cn/estack/api/estack/draco/v1/users/query-login-policy": [
+      {
+        "status": 200,
+        "headers": {
+          "spanid": "71f82e7dcb575b2a",
+          "date": "Thu, 20 Aug 2026 05:16:06 GMT",
+          "strict-transport-security": "max-age=16000000; includeSubDomains; preload;",
+          "request_id": "a30eeb9d999343eb866c0eb04f4dea4f",
+          "server": "ecsc server inner",
+          "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+          "content-type": "application/json",
+          "traceid": "71f82e7dcb575b2a",
+          "content-length": "284",
+          "skip_filter": "POST"
+        },
+        "body": "{\n  \"traceId\" : \"71f82e7dcb575b2a\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"userName\" : null,\n    \"loginPolicyType\" : \"NO_SECONDARY_VERIFICATION\",\n    \"countryCode\" : null,\n    \"phone\" : null,\n    \"email\" : null\n  }\n}"
+      }
+    ],
+    "https://console-estack-syyhb.cmecloud.cn/estack/api/estack/draco/v1/users/login": [
+      {
+        "status": 200,
+        "headers": {
+          "spanid": "d39afc87304ac882",
+          "date": "Thu, 20 Aug 2026 05:16:06 GMT",
+          "strict-transport-security": "max-age=16000000; includeSubDomains; preload;",
+          "request_id": "6f4325c405154fb6ac3a8650a6ab37e9",
+          "server": "ecsc server inner",
+          "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+          "content-type": "application/json",
+          "traceid": "d39afc87304ac882",
+          "content-length": "360",
+          "skip_filter": "POST"
+        },
+        "body": "{\n  \"traceId\" : \"d39afc87304ac882\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"scope\" : null,\n    \"authorizeUrl\" : null,\n    \"redirectUri\" : null,\n    \"access_token\" : \"5552757c-3503-4795-8337-916340ca076a\",\n    \"token_type\" : \"bearer\",\n    \"refresh_token\" : null,\n    \"expires_in\" : \"7199\"\n  }\n}"
+      }
+    ],
+    "https://console-estack-syyhb.cmecloud.cn/estack/api/estack/draco/v1/users/password/expire-notice": [
+      {
+        "status": 200,
+        "headers": {
+          "spanid": "c13b37fec3f424ab",
+          "date": "Thu, 20 Aug 2026 05:16:06 GMT",
+          "strict-transport-security": "max-age=16000000; includeSubDomains; preload;",
+          "request_id": "b52925c1229b4eb0b036c26f6f13ba03",
+          "server": "ecsc server inner",
+          "vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+          "content-type": "application/json",
+          "traceid": "c13b37fec3f424ab",
+          "content-length": "226",
+          "skip_filter": "POST"
+        },
+        "body": "{\n  \"traceId\" : \"c13b37fec3f424ab\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"username\" : \"estack-yy\",\n    \"daysToExpire\" : 321,\n    \"noticeMessage\" : null\n  }\n}"
+      }
+    ]
+  }
+}

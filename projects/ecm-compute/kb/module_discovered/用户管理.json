@@ -1,0 +1,882 @@
+{
+  "capture_time": "2026-08-24T14:37:09",
+  "target_url": "https://10.151.37.249/estack/web/estack/user-center/user-manage/user",
+  "stats": {
+    "total_calls": 64,
+    "unique_endpoints": 30
+  },
+  "by_category": {
+    "other_get": [
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/users/current-user",
+        "contexts": [
+          "click:GO",
+          "click:创建用户",
+          "click:批量删除",
+          "dropdown:更多:冻结",
+          "dropdown:更多:授权",
+          "dropdown:更多:重置密码",
+          "dropdown:更多:锁定",
+          "init",
+          "row:删除",
+          "row:编辑"
+        ],
+        "bodies": [],
+        "request_body_sample": null
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/display-by-role",
+        "contexts": [
+          "click:创建用户",
+          "dropdown:更多:授权",
+          "nav_user_manage"
+        ],
+        "bodies": [],
+        "request_body_sample": null
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "contexts": [
+          "click:GO",
+          "click:创建用户",
+          "dropdown:更多:冻结",
+          "dropdown:更多:授权",
+          "dropdown:更多:解锁",
+          "dropdown:更多:锁定",
+          "nav_user_manage",
+          "row:删除",
+          "row:编辑"
+        ],
+        "bodies": [],
+        "request_body_sample": null
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/password-policy",
+        "contexts": [
+          "click:创建用户",
+          "dropdown:更多:重置密码"
+        ],
+        "bodies": [],
+        "request_body_sample": null
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/users/phone/usability",
+        "contexts": [
+          "click:创建用户"
+        ],
+        "bodies": [],
+        "request_body_sample": null
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/users/email/usability",
+        "contexts": [
+          "click:创建用户"
+        ],
+        "bodies": [],
+        "request_body_sample": null
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/authority/national",
+        "contexts": [
+          "dropdown:更多:授权"
+        ],
+        "bodies": [],
+        "request_body_sample": null
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/groups",
+        "contexts": [
+          "dropdown:更多:授权"
+        ],
+        "bodies": [],
+        "request_body_sample": null
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/18ae53b0745143e0b6ca9ee1f9513c64/root",
+        "contexts": [
+          "dropdown:更多:授权"
+        ],
+        "bodies": [],
+        "request_body_sample": null
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/pegasi/v1/system-theme",
+        "contexts": [
+          "dropdown:更多:授权"
+        ],
+        "bodies": [],
+        "request_body_sample": null
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/pegasi/v1/menu/access-log",
+        "contexts": [
+          "dropdown:更多:授权"
+        ],
+        "bodies": [],
+        "request_body_sample": null
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/authority",
+        "contexts": [
+          "dropdown:更多:授权"
+        ],
+        "bodies": [],
+        "request_body_sample": null
+      }
+    ],
+    "query": [
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/policies/list",
+        "contexts": [
+          "click:创建用户",
+          "dropdown:更多:授权"
+        ],
+        "bodies": [
+          "{\"policyType\":\"SYSTEM\",\"policyCategory\":\"ORGANIZATION\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\"}",
+          "{\"policyType\":\"CUSTOM\",\"policyCategory\":\"ORGANIZATION\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\"}",
+          "{\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\",\"policyCategory\":\"ORGANIZATION\"}"
+        ],
+        "request_body_sample": "{\"policyType\":\"SYSTEM\",\"policyCategory\":\"ORGANIZATION\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\"}"
+      },
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/projects/list",
+        "contexts": [
+          "dropdown:更多:授权"
+        ],
+        "bodies": [
+          "{\"isDisplayChildren\":true,\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\"}"
+        ],
+        "request_body_sample": "{\"isDisplayChildren\":true,\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\"}"
+      },
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/projects/list-by-user/userList",
+        "contexts": [
+          "dropdown:更多:授权"
+        ],
+        "bodies": [
+          "[\"3903efebcb9c4bf2b845508d4d6c6dda\"]"
+        ],
+        "request_body_sample": "[\"3903efebcb9c4bf2b845508d4d6c6dda\"]"
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/pegasi/v1/menu/favorite/list",
+        "contexts": [
+          "dropdown:更多:授权"
+        ],
+        "bodies": [],
+        "request_body_sample": null
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/libra/v1/notice/new/count/all-type",
+        "contexts": [
+          "dropdown:更多:授权"
+        ],
+        "bodies": [],
+        "request_body_sample": null
+      }
+    ],
+    "support": [
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/users/check",
+        "contexts": [
+          "click:创建用户"
+        ],
+        "bodies": [
+          "{\"userName\":\"autotest87553337\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\",\"noloading\":true,\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"name\":\"estack-yy\"}"
+        ],
+        "request_body_sample": "{\"userName\":\"autotest87553337\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\",\"noloading\":true,\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"name\":\"estack-yy\"}"
+      }
+    ],
+    "create": [
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/users",
+        "contexts": [
+          "click:创建用户"
+        ],
+        "bodies": [
+          "{\"userName\":\"autotest87553337\",\"password\":\"C2gehJJbJ756TuXQ9H0tcyvCnHAhaa/o8IpNFbnyMQAxNbDXQz9gZfZGKcPpWrXnGxpJ4lmAIrvEpDGIvDwztfkb+EaxlkBMrt+4B7oUV3wdP8/NcpFc32VuzXLGbgrHRUWMB9mQyJO/KreZLuM26Ex8fO3JNxN4rym+LpbYzlI=\",\"name\":\"自动化测试\",\"email\":\"DOZiy10PpTPdDZ6ECUSkT6QTjxHz1z8Rf9mfGfte6lETHk9+n/vKhR0a0CvZhGEafC4d4SrKHRZNdrAnUgmNz9JvWG26xnNZWcHlVyGaUrArRE3+rXSH5fz3HcmVUdDZJOp062yP19o9RioFt6VVAGbqlxp8iBYU5YZU0+jt0kg=\",\"phone\":\"cabhe/F1lWf9eJfZXJ6VG29ySlQiX1tEiWibJyLfcRDyOOG39ueCMAozoaNMrhvDv80nhiH+Y6fAYHpRnZSS7LCwNhaxoMeYEt04TU6xrpSPiUWjI/QR1G1Ojyxp6SCAErFqfSYDUfqZRqSmUeFkmUvwIVrvRc/7jg2Owg4L53Q=\",\"description\":\"自动创建测试用户\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\",\"countryCode\":\"+86\"}"
+        ],
+        "request_body_sample": "{\"userName\":\"autotest87553337\",\"password\":\"C2gehJJbJ756TuXQ9H0tcyvCnHAhaa/o8IpNFbnyMQAxNbDXQz9gZfZGKcPpWrXnGxpJ4lmAIrvEpDGIvDwztfkb+EaxlkBMrt+4B7oUV3wdP8/NcpFc32VuzXLGbgrHRUWMB9mQyJO/KreZLuM26Ex8fO3JNxN4rym+LpbYzlI=\",\"name\":\"自动化测试\",\"email\":\"DOZiy10PpTPdDZ6ECUSkT6QTjxHz1z8Rf9mfGfte6lETHk9+n/vKhR0a0CvZhGEafC4d4SrKHRZNdrAnUgmNz9JvWG26xnNZWcHlVyGaUrArRE3+rXSH5fz3HcmVUdDZJOp062yP19o9RioFt6VVAGbqlxp8iBYU5YZU0+jt0kg=\",\"phone\":\"cabhe/F1lWf9eJfZXJ6VG29ySlQiX1tEiWibJyLfcRDyOOG39ueCMAozoaNMrhvDv80nhiH+Y6fAYHpRnZSS7LCwNhaxoMeYEt04TU6xrpSPiUWjI/QR1G1Ojyxp6SCAErFqfSYDUfqZRqSmUeFkmUvwIVrvRc/7jg2Owg4L53Q=\",\"description\":\"自动创建测试用户\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\",\"countryCode\":\"+86\"}"
+      }
+    ],
+    "update": [
+      {
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/users/e7fc8fdd2e4e4b2a9acde911bb0d15e4",
+        "contexts": [
+          "row:编辑"
+        ],
+        "bodies": [
+          "{\"userId\":\"e7fc8fdd2e4e4b2a9acde911bb0d15e4\",\"name\":\"自动化测试\",\"description\":\"自动创建测试用户\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\",\"countryCode\":\"+86\",\"isEditOther\":true,\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+        ],
+        "request_body_sample": "{\"userId\":\"e7fc8fdd2e4e4b2a9acde911bb0d15e4\",\"name\":\"自动化测试\",\"description\":\"自动创建测试用户\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\",\"countryCode\":\"+86\",\"isEditOther\":true,\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+      }
+    ],
+    "lock": [
+      {
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/users/3903efebcb9c4bf2b845508d4d6c6dda/suspend",
+        "contexts": [
+          "dropdown:更多:冻结"
+        ],
+        "bodies": [
+          "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+        ],
+        "request_body_sample": "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+      },
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/users/lock/3903efebcb9c4bf2b845508d4d6c6dda",
+        "contexts": [
+          "dropdown:更多:锁定"
+        ],
+        "bodies": [
+          "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+        ],
+        "request_body_sample": "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+      }
+    ],
+    "unlock": [
+      {
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/users/3903efebcb9c4bf2b845508d4d6c6dda/enable",
+        "contexts": [
+          "dropdown:更多:启用"
+        ],
+        "bodies": [
+          "{\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+        ],
+        "request_body_sample": "{\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+      },
+      {
+        "method": "DELETE",
+        "pathname": "/estack/api/estack/draco/v1/users/unlock/3903efebcb9c4bf2b845508d4d6c6dda",
+        "contexts": [
+          "dropdown:更多:解锁"
+        ],
+        "bodies": [
+          "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+        ],
+        "request_body_sample": "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+      }
+    ],
+    "reset": [
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/password-reset/generate",
+        "contexts": [
+          "dropdown:更多:重置密码"
+        ],
+        "bodies": [
+          "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}"
+        ],
+        "request_body_sample": "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}"
+      }
+    ],
+    "authorize": [
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/identity",
+        "contexts": [
+          "dropdown:更多:授权"
+        ],
+        "bodies": [
+          "{\"action\":\"POLICY:BatchAttachUser\"}"
+        ],
+        "request_body_sample": "{\"action\":\"POLICY:BatchAttachUser\"}"
+      },
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/delphini/v1/dynamic-dictionary/json",
+        "contexts": [
+          "dropdown:更多:授权"
+        ],
+        "bodies": [
+          "{\"categories\":[\"frontConsole\"],\"languages\":[\"zh-CN\"]}",
+          "{\"categories\":[\"frontHeader\"]}"
+        ],
+        "request_body_sample": "{\"categories\":[\"frontConsole\"],\"languages\":[\"zh-CN\"]}"
+      },
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/pegasi/v1/menu/side-tree",
+        "contexts": [
+          "dropdown:更多:授权"
+        ],
+        "bodies": [
+          "{\"userId\":\"93552edc908e4dadae761fff1fd0f24c\",\"isVisible\":1}"
+        ],
+        "request_body_sample": "{\"userId\":\"93552edc908e4dadae761fff1fd0f24c\",\"isVisible\":1}"
+      },
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/pegasi/v1/menu/tree",
+        "contexts": [
+          "dropdown:更多:授权"
+        ],
+        "bodies": [
+          "{\"userId\":\"93552edc908e4dadae761fff1fd0f24c\",\"rootId\":\"all-resource\",\"isVisible\":1}"
+        ],
+        "request_body_sample": "{\"userId\":\"93552edc908e4dadae761fff1fd0f24c\",\"rootId\":\"all-resource\",\"isVisible\":1}"
+      }
+    ],
+    "delete": [
+      {
+        "method": "DELETE",
+        "pathname": "/estack/api/estack/draco/v1/users/e7fc8fdd2e4e4b2a9acde911bb0d15e4",
+        "contexts": [
+          "row:删除"
+        ],
+        "bodies": [
+          "{\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+        ],
+        "request_body_sample": "{\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+      }
+    ]
+  },
+  "all_endpoints": [
+    {
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/users/current-user",
+      "contexts": [
+        "click:GO",
+        "click:创建用户",
+        "click:批量删除",
+        "dropdown:更多:冻结",
+        "dropdown:更多:授权",
+        "dropdown:更多:重置密码",
+        "dropdown:更多:锁定",
+        "init",
+        "row:删除",
+        "row:编辑"
+      ],
+      "bodies": []
+    },
+    {
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/tenants/display-by-role",
+      "contexts": [
+        "click:创建用户",
+        "dropdown:更多:授权",
+        "nav_user_manage"
+      ],
+      "bodies": []
+    },
+    {
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/tenants/users",
+      "contexts": [
+        "click:GO",
+        "click:创建用户",
+        "dropdown:更多:冻结",
+        "dropdown:更多:授权",
+        "dropdown:更多:解锁",
+        "dropdown:更多:锁定",
+        "nav_user_manage",
+        "row:删除",
+        "row:编辑"
+      ],
+      "bodies": []
+    },
+    {
+      "method": "POST",
+      "pathname": "/estack/api/estack/draco/v1/policies/list",
+      "contexts": [
+        "click:创建用户",
+        "dropdown:更多:授权"
+      ],
+      "bodies": [
+        "{\"policyType\":\"SYSTEM\",\"policyCategory\":\"ORGANIZATION\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\"}",
+        "{\"policyType\":\"CUSTOM\",\"policyCategory\":\"ORGANIZATION\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\"}",
+        "{\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\",\"policyCategory\":\"ORGANIZATION\"}"
+      ]
+    },
+    {
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/password-policy",
+      "contexts": [
+        "click:创建用户",
+        "dropdown:更多:重置密码"
+      ],
+      "bodies": []
+    },
+    {
+      "method": "POST",
+      "pathname": "/estack/api/estack/draco/v1/users/check",
+      "contexts": [
+        "click:创建用户"
+      ],
+      "bodies": [
+        "{\"userName\":\"autotest87553337\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\",\"noloading\":true,\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"name\":\"estack-yy\"}"
+      ]
+    },
+    {
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/users/phone/usability",
+      "contexts": [
+        "click:创建用户"
+      ],
+      "bodies": []
+    },
+    {
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/users/email/usability",
+      "contexts": [
+        "click:创建用户"
+      ],
+      "bodies": []
+    },
+    {
+      "method": "POST",
+      "pathname": "/estack/api/estack/draco/v1/users",
+      "contexts": [
+        "click:创建用户"
+      ],
+      "bodies": [
+        "{\"userName\":\"autotest87553337\",\"password\":\"C2gehJJbJ756TuXQ9H0tcyvCnHAhaa/o8IpNFbnyMQAxNbDXQz9gZfZGKcPpWrXnGxpJ4lmAIrvEpDGIvDwztfkb+EaxlkBMrt+4B7oUV3wdP8/NcpFc32VuzXLGbgrHRUWMB9mQyJO/KreZLuM26Ex8fO3JNxN4rym+LpbYzlI=\",\"name\":\"自动化测试\",\"email\":\"DOZiy10PpTPdDZ6ECUSkT6QTjxHz1z8Rf9mfGfte6lETHk9+n/vKhR0a0CvZhGEafC4d4SrKHRZNdrAnUgmNz9JvWG26xnNZWcHlVyGaUrArRE3+rXSH5fz3HcmVUdDZJOp062yP19o9RioFt6VVAGbqlxp8iBYU5YZU0+jt0kg=\",\"phone\":\"cabhe/F1lWf9eJfZXJ6VG29ySlQiX1tEiWibJyLfcRDyOOG39ueCMAozoaNMrhvDv80nhiH+Y6fAYHpRnZSS7LCwNhaxoMeYEt04TU6xrpSPiUWjI/QR1G1Ojyxp6SCAErFqfSYDUfqZRqSmUeFkmUvwIVrvRc/7jg2Owg4L53Q=\",\"description\":\"自动创建测试用户\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\",\"countryCode\":\"+86\"}"
+      ]
+    },
+    {
+      "method": "PUT",
+      "pathname": "/estack/api/estack/draco/v1/users/e7fc8fdd2e4e4b2a9acde911bb0d15e4",
+      "contexts": [
+        "row:编辑"
+      ],
+      "bodies": [
+        "{\"userId\":\"e7fc8fdd2e4e4b2a9acde911bb0d15e4\",\"name\":\"自动化测试\",\"description\":\"自动创建测试用户\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\",\"countryCode\":\"+86\",\"isEditOther\":true,\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+      ]
+    },
+    {
+      "method": "PUT",
+      "pathname": "/estack/api/estack/draco/v1/users/3903efebcb9c4bf2b845508d4d6c6dda/suspend",
+      "contexts": [
+        "dropdown:更多:冻结"
+      ],
+      "bodies": [
+        "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+      ]
+    },
+    {
+      "method": "PUT",
+      "pathname": "/estack/api/estack/draco/v1/users/3903efebcb9c4bf2b845508d4d6c6dda/enable",
+      "contexts": [
+        "dropdown:更多:启用"
+      ],
+      "bodies": [
+        "{\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+      ]
+    },
+    {
+      "method": "POST",
+      "pathname": "/estack/api/estack/draco/v1/users/lock/3903efebcb9c4bf2b845508d4d6c6dda",
+      "contexts": [
+        "dropdown:更多:锁定"
+      ],
+      "bodies": [
+        "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "pathname": "/estack/api/estack/draco/v1/users/unlock/3903efebcb9c4bf2b845508d4d6c6dda",
+      "contexts": [
+        "dropdown:更多:解锁"
+      ],
+      "bodies": [
+        "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+      ]
+    },
+    {
+      "method": "POST",
+      "pathname": "/estack/api/estack/draco/v1/password-reset/generate",
+      "contexts": [
+        "dropdown:更多:重置密码"
+      ],
+      "bodies": [
+        "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}"
+      ]
+    },
+    {
+      "method": "POST",
+      "pathname": "/estack/api/estack/draco/v1/identity",
+      "contexts": [
+        "dropdown:更多:授权"
+      ],
+      "bodies": [
+        "{\"action\":\"POLICY:BatchAttachUser\"}"
+      ]
+    },
+    {
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/authority/national",
+      "contexts": [
+        "dropdown:更多:授权"
+      ],
+      "bodies": []
+    },
+    {
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/groups",
+      "contexts": [
+        "dropdown:更多:授权"
+      ],
+      "bodies": []
+    },
+    {
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/tenants/18ae53b0745143e0b6ca9ee1f9513c64/root",
+      "contexts": [
+        "dropdown:更多:授权"
+      ],
+      "bodies": []
+    },
+    {
+      "method": "POST",
+      "pathname": "/estack/api/estack/draco/v1/projects/list",
+      "contexts": [
+        "dropdown:更多:授权"
+      ],
+      "bodies": [
+        "{\"isDisplayChildren\":true,\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\"}"
+      ]
+    },
+    {
+      "method": "POST",
+      "pathname": "/estack/api/estack/draco/v1/projects/list-by-user/userList",
+      "contexts": [
+        "dropdown:更多:授权"
+      ],
+      "bodies": [
+        "[\"3903efebcb9c4bf2b845508d4d6c6dda\"]"
+      ]
+    },
+    {
+      "method": "POST",
+      "pathname": "/estack/api/estack/delphini/v1/dynamic-dictionary/json",
+      "contexts": [
+        "dropdown:更多:授权"
+      ],
+      "bodies": [
+        "{\"categories\":[\"frontConsole\"],\"languages\":[\"zh-CN\"]}",
+        "{\"categories\":[\"frontHeader\"]}"
+      ]
+    },
+    {
+      "method": "POST",
+      "pathname": "/estack/api/estack/pegasi/v1/menu/side-tree",
+      "contexts": [
+        "dropdown:更多:授权"
+      ],
+      "bodies": [
+        "{\"userId\":\"93552edc908e4dadae761fff1fd0f24c\",\"isVisible\":1}"
+      ]
+    },
+    {
+      "method": "GET",
+      "pathname": "/estack/api/estack/pegasi/v1/system-theme",
+      "contexts": [
+        "dropdown:更多:授权"
+      ],
+      "bodies": []
+    },
+    {
+      "method": "POST",
+      "pathname": "/estack/api/estack/pegasi/v1/menu/tree",
+      "contexts": [
+        "dropdown:更多:授权"
+      ],
+      "bodies": [
+        "{\"userId\":\"93552edc908e4dadae761fff1fd0f24c\",\"rootId\":\"all-resource\",\"isVisible\":1}"
+      ]
+    },
+    {
+      "method": "GET",
+      "pathname": "/estack/api/estack/pegasi/v1/menu/favorite/list",
+      "contexts": [
+        "dropdown:更多:授权"
+      ],
+      "bodies": []
+    },
+    {
+      "method": "GET",
+      "pathname": "/estack/api/estack/pegasi/v1/menu/access-log",
+      "contexts": [
+        "dropdown:更多:授权"
+      ],
+      "bodies": []
+    },
+    {
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/authority",
+      "contexts": [
+        "dropdown:更多:授权"
+      ],
+      "bodies": []
+    },
+    {
+      "method": "GET",
+      "pathname": "/estack/api/estack/libra/v1/notice/new/count/all-type",
+      "contexts": [
+        "dropdown:更多:授权"
+      ],
+      "bodies": []
+    },
+    {
+      "method": "DELETE",
+      "pathname": "/estack/api/estack/draco/v1/users/e7fc8fdd2e4e4b2a9acde911bb0d15e4",
+      "contexts": [
+        "row:删除"
+      ],
+      "bodies": [
+        "{\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+      ]
+    }
+  ],
+  "response_samples": {
+    "/estack/api/estack/draco/v1/users/current-user": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"f06244da897ad87c\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"id\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"tenantId\" : \"cec63451f8bf4ceebb9ada0b87d829bf\",\n    \"tenantName\" : \"Super Management Department\",\n    \"adminId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n    \"ramId\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"name\" : \"estack-yy\",\n    \"userName\" : \"estack-yy\",\n    \"email\" : \"1*****0@163.com\",\n    \"phone\" : \"150***9157\",\n    \"encryptedEmail\" : \"ICQ3P7Qw8rq62JEIG7ADuxgnf86GCBJV\",\n    \"encryptedPhone\" : \"15N8VjfV08lb5IJn0D5nXg==\",\n    \"countryCode\" : \"+86\",\n    \"description\" : \"\",\n    \"createdAt\" : \"2025-01-24 12:19:29\",\n    \"updatedAt\" : \"2026-06-29 09:24:17\",\n    \"deleted\" : false,\n    \"state\" : \"ENABLE\",\n    \"isAdmin\" : false,\n    \"isProjectManager\" : true,\n    \"isAuthentication\" : false,\n    \"roleId\" : null,\n    \"roleName\" : null,\n    \"ancestorList\" : [ \"Super Management Department\" ],\n    \"isPassword\" : true,\n    \"isEmail\" : true,\n    \"isPhone\" : true,\n    \"poolNameList\" : null,\n    \"isRootTenantUser\" : true,\n    \"isApproval\" : false,\n    \"tenantLevel\" : 0,\n    \"locked\" : false,\n    \"policyIdList\" : [ \"OPERATION\", \"d66aad0a182647b9bc0e59761b474490\" ],\n    \"policyList\" : [ {\n      \"id\" : \"OPERATION\",\n      \"tenantId\" : null,\n      \"policyName\" : \"运营管理员\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"ORGANIZATION\",\n      \"description\" : null,\n      \"released\" : false,\n      \"deleted\" : null,\n      \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.OPERATIONS_ADMIN\"\n    }, {\n      \"id\" : \"d66aad0a182647b9bc0e59761b474490\",\n      \"tenantId\" : null,\n      \"policyName\" : \"项目管理员\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"PROJECT\",\n      \"description\" : null,\n      \"released\" : false,\n      \"deleted\" : null,\n      \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.PROJECT_ADMIN\"\n    } ],\n    \"countryCodePhone\" : \"+86 150***9157\",\n    \"password\" : \"6974d2bb056747082f6b7fcd01d61d0c9fcbc34f189a6c12d9a295891454d8e2\",\n    \"projectIdList\" : null,\n    \"needRamIdentity\" : null,\n    \"isInnerUser\" : null,\n    \"userType\" : null,\n    \"isForceChange\" : false,\n    \"isTempPassword\" : false,\n    \"mfLoginPolicy\" : null,\n    \"enableMultiFactLoginPolicy\" : null,\n    \"maintainAt\" : null\n  }\n}"
+      },
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"ea4a288eba902ddd\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"id\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"tenantId\" : \"cec63451f8bf4ceebb9ada0b87d829bf\",\n    \"tenantName\" : \"Super Management Department\",\n    \"adminId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n    \"ramId\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"name\" : \"estack-yy\",\n    \"userName\" : \"estack-yy\",\n    \"email\" : \"1*****0@163.com\",\n    \"phone\" : \"150***9157\",\n    \"encryptedEmail\" : \"ICQ3P7Qw8rq62JEIG7ADuxgnf86GCBJV\",\n    \"encryptedPhone\" : \"15N8VjfV08lb5IJn0D5nXg==\",\n    \"countryCode\" : \"+86\",\n    \"description\" : \"\",\n    \"createdAt\" : \"2025-01-24 12:19:29\",\n    \"updatedAt\" : \"2026-06-29 09:24:17\",\n    \"deleted\" : false,\n    \"state\" : \"ENABLE\",\n    \"isAdmin\" : false,\n    \"isProjectManager\" : true,\n    \"isAuthentication\" : false,\n    \"roleId\" : null,\n    \"roleName\" : null,\n    \"ancestorList\" : [ \"Super Management Department\" ],\n    \"isPassword\" : true,\n    \"isEmail\" : true,\n    \"isPhone\" : true,\n    \"poolNameList\" : null,\n    \"isRootTenantUser\" : true,\n    \"isApproval\" : false,\n    \"tenantLevel\" : 0,\n    \"locked\" : false,\n    \"policyIdList\" : [ \"OPERATION\", \"d66aad0a182647b9bc0e59761b474490\" ],\n    \"policyList\" : [ {\n      \"id\" : \"OPERATION\",\n      \"tenantId\" : null,\n      \"policyName\" : \"运营管理员\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"ORGANIZATION\",\n      \"description\" : null,\n      \"released\" : false,\n      \"deleted\" : null,\n      \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.OPERATIONS_ADMIN\"\n    }, {\n      \"id\" : \"d66aad0a182647b9bc0e59761b474490\",\n      \"tenantId\" : null,\n      \"policyName\" : \"项目管理员\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"PROJECT\",\n      \"description\" : null,\n      \"released\" : false,\n      \"deleted\" : null,\n      \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.PROJECT_ADMIN\"\n    } ],\n    \"countryCodePhone\" : \"+86 150***9157\",\n    \"password\" : \"6974d2bb056747082f6b7fcd01d61d0c9fcbc34f189a6c12d9a295891454d8e2\",\n    \"projectIdList\" : null,\n    \"needRamIdentity\" : null,\n    \"isInnerUser\" : null,\n    \"userType\" : null,\n    \"isForceChange\" : false,\n    \"isTempPassword\" : false,\n    \"mfLoginPolicy\" : null,\n    \"enableMultiFactLoginPolicy\" : null,\n    \"maintainAt\" : null\n  }\n}"
+      }
+    ],
+    "/estack/api/estack/draco/v1/tenants/display-by-role": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"6cacf3dcfc7ce992\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : [ {\n    \"id\" : \"18ae53b0745143e0b6ca9ee1f9513c64\",\n    \"name\" : \"test0821\",\n    \"description\" : \"\",\n    \"root\" : \"18ae53b0745143e0b6ca9ee1f9513c64\",\n    \"ancestor\" : \"18ae53b0745143e0b6ca9ee1f9513c64\",\n    \"descendant\" : \"18ae53b0745143e0b6ca9ee1f9513c64\",\n    \"depth\" : 0,\n    \"level\" : 0,\n    \"isRoot\" : true,\n    \"isOpenRecycleBin\" : false,\n    \"hasChildren\" : false,\n    \"tenantType\" : \"PHYSICAL\",\n    \"createdAt\" : \"2026-08-21 17:28:34\",\n    \"updatedAt\" : null,\n    \"deleted\" : false,\n    \"ancestorList\" : [ ],\n    \"adminName\" : \"test08211\",\n    \"adminUserName\" : \"test08211\",\n    \"adminId\" : \"f44aa439feb44095aae452db5d617cd2\",\n    \"departmentLevel\" : \"Level-1 Department\",\n    \"poolNameList\" : null,\n    \"poolInfoList\" : null,\n    \"isFrozen\" : false,\n    \"isInner\" : false,\n    \"enableMultiFactLoginPolicy\" : false,\n    \"children\" : [ ],\n    \"containJoinedProject\" : null,\n    \"isSuperiorTenant\" : null,\n    \"mfloginPolicy\" : null\n  }, {\n    \"id\" : \"3129b5c1150c4b0496cdf920c97aff0c\",\n    \"name\" : \"TEST082005\",\n    \"description\" : \"TEST082005\",\n    \"root\" : \"3129b5c1150c4b0496cdf920c97aff0c\",\n    \"ancestor\" : \"3129b5c1150c4b0496cdf920c97aff0c\",\n    \"descendant\" : \"3129b5c1150c4b0496cdf920c97aff0c\",\n    \"depth\" : 0,\n    \"level\" : 0,\n    \"isRoot\" : true,\n    \"isOpenRecycleBin\" : false,\n    \"hasChildren\" : true,\n    \"tenantType\" : \"PHYSICAL\",\n    \"createdAt\" : \"2026-08-20 15:43:57\",\n    \"updatedAt\" : null,\n    \"deleted\" : false,\n    \"ancestorList\" : [ ],\n    \"adminName\" : \"TEST082005\",\n    \"adminUserName\" : \"TEST082005\",\n    \"adminId\" : \"c3249c6d15704e5083b60ec1efb917d9\",\n    \"departmentLevel\" : \"Level-1 Department\",\n    \"poolNameList\" : null,\n    \"poolInfoList\" : null,\n    \"isFrozen\" : false,\n    \"isInner\" : false,\n    \"enableMultiFactLoginPolicy\" : false,\n    \"children\" : [ {\n      \"id\" : \"e7e3dcd9cc2b487a8215ce56c622a4d9\",\n      \"name\" : \"TEST08200501\",\n      \"description\" : \"TEST08200501\",\n      \"root\" : \"3129b5c1150c4b0496cdf920c97aff0c\",\n      \"ancestor\" : \"3129b5c1150c4b0496cdf920c97aff0c\",\n      \"descendant\" : \"e7e3dcd9cc2b487a8215ce56c622a4d9\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-20 15:45:47\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"TEST082005\" ],\n      \"adminName\" : \"TEST08200501\",\n      \"adminUserName\" : \"TEST08200501\",\n      \"adminId\" : \"a4a3d66f162441618f585ee63786131e\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : false,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    } ],\n    \"containJoinedProject\" : n..."
+      },
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"3b6b25086198fdf5\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : [ {\n    \"id\" : \"18ae53b0745143e0b6ca9ee1f9513c64\",\n    \"name\" : \"test0821\",\n    \"description\" : \"\",\n    \"root\" : \"18ae53b0745143e0b6ca9ee1f9513c64\",\n    \"ancestor\" : \"18ae53b0745143e0b6ca9ee1f9513c64\",\n    \"descendant\" : \"18ae53b0745143e0b6ca9ee1f9513c64\",\n    \"depth\" : 0,\n    \"level\" : 0,\n    \"isRoot\" : true,\n    \"isOpenRecycleBin\" : false,\n    \"hasChildren\" : false,\n    \"tenantType\" : \"PHYSICAL\",\n    \"createdAt\" : \"2026-08-21 17:28:34\",\n    \"updatedAt\" : null,\n    \"deleted\" : false,\n    \"ancestorList\" : [ ],\n    \"adminName\" : \"test08211\",\n    \"adminUserName\" : \"test08211\",\n    \"adminId\" : \"f44aa439feb44095aae452db5d617cd2\",\n    \"departmentLevel\" : \"Level-1 Department\",\n    \"poolNameList\" : null,\n    \"poolInfoList\" : null,\n    \"isFrozen\" : false,\n    \"isInner\" : false,\n    \"enableMultiFactLoginPolicy\" : false,\n    \"children\" : [ ],\n    \"containJoinedProject\" : null,\n    \"isSuperiorTenant\" : null,\n    \"mfloginPolicy\" : null\n  }, {\n    \"id\" : \"3129b5c1150c4b0496cdf920c97aff0c\",\n    \"name\" : \"TEST082005\",\n    \"description\" : \"TEST082005\",\n    \"root\" : \"3129b5c1150c4b0496cdf920c97aff0c\",\n    \"ancestor\" : \"3129b5c1150c4b0496cdf920c97aff0c\",\n    \"descendant\" : \"3129b5c1150c4b0496cdf920c97aff0c\",\n    \"depth\" : 0,\n    \"level\" : 0,\n    \"isRoot\" : true,\n    \"isOpenRecycleBin\" : false,\n    \"hasChildren\" : true,\n    \"tenantType\" : \"PHYSICAL\",\n    \"createdAt\" : \"2026-08-20 15:43:57\",\n    \"updatedAt\" : null,\n    \"deleted\" : false,\n    \"ancestorList\" : [ ],\n    \"adminName\" : \"TEST082005\",\n    \"adminUserName\" : \"TEST082005\",\n    \"adminId\" : \"c3249c6d15704e5083b60ec1efb917d9\",\n    \"departmentLevel\" : \"Level-1 Department\",\n    \"poolNameList\" : null,\n    \"poolInfoList\" : null,\n    \"isFrozen\" : false,\n    \"isInner\" : false,\n    \"enableMultiFactLoginPolicy\" : false,\n    \"children\" : [ {\n      \"id\" : \"e7e3dcd9cc2b487a8215ce56c622a4d9\",\n      \"name\" : \"TEST08200501\",\n      \"description\" : \"TEST08200501\",\n      \"root\" : \"3129b5c1150c4b0496cdf920c97aff0c\",\n      \"ancestor\" : \"3129b5c1150c4b0496cdf920c97aff0c\",\n      \"descendant\" : \"e7e3dcd9cc2b487a8215ce56c622a4d9\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-20 15:45:47\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"TEST082005\" ],\n      \"adminName\" : \"TEST08200501\",\n      \"adminUserName\" : \"TEST08200501\",\n      \"adminId\" : \"a4a3d66f162441618f585ee63786131e\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : false,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    } ],\n    \"containJoinedProject\" : n..."
+      }
+    ],
+    "/estack/api/estack/draco/v1/tenants/users": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"7b9870938c615ccb\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"total\" : 12,\n    \"list\" : [ {\n      \"id\" : \"3903efebcb9c4bf2b845508d4d6c6dda\",\n      \"tenantId\" : \"18ae53b0745143e0b6ca9ee1f9513c64\",\n      \"tenantName\" : \"test0821\",\n      \"adminId\" : \"f44aa439feb44095aae452db5d617cd2\",\n      \"ramId\" : \"3903efebcb9c4bf2b845508d4d6c6dda\",\n      \"name\" : \"自动化测试\",\n      \"userName\" : \"autotest87553186\",\n      \"email\" : \"a*****1@test.com\",\n      \"phone\" : \"138***3191\",\n      \"encryptedEmail\" : \"z04O7KPYlyIsOVHrgQB8b6h3Hcr3bEPT2rtO+zE56Jk=\",\n      \"encryptedPhone\" : \"hhQvtIDzesI1aW1fPiQnEA==\",\n      \"countryCode\" : \"+86\",\n      \"description\" : \"自动创建测试用户\",\n      \"createdAt\" : \"2026-08-24 14:33:23\",\n      \"updatedAt\" : \"2026-08-24 14:33:35\",\n      \"deleted\" : false,\n      \"state\" : \"ENABLE\",\n      \"isAdmin\" : false,\n      \"isProjectManager\" : null,\n      \"isAuthentication\" : null,\n      \"roleId\" : null,\n      \"roleName\" : null,\n      \"ancestorList\" : [ \"test0821\" ],\n      \"isPassword\" : true,\n      \"isEmail\" : true,\n      \"isPhone\" : true,\n      \"poolNameList\" : null,\n      \"isRootTenantUser\" : true,\n      \"isApproval\" : false,\n      \"tenantLevel\" : 0,\n      \"locked\" : false,\n      \"policyIdList\" : [ \"1f8e392309fc414c9d77d45d0315fedc\", \"a2f3cbf9990544f69d05495b7c1219c5\" ],\n      \"policyList\" : [ {\n        \"id\" : \"1f8e392309fc414c9d77d45d0315fedc\",\n        \"tenantId\" : null,\n        \"policyName\" : \"普通用户\",\n        \"policyType\" : \"SYSTEM\",\n        \"policyCategory\" : \"ORGANIZATION\",\n        \"description\" : null,\n        \"released\" : true,\n        \"deleted\" : null,\n        \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.COMMON_ROLE\"\n      }, {\n        \"id\" : \"a2f3cbf9990544f69d05495b7c1219c5\",\n        \"tenantId\" : null,\n        \"policyName\" : \"项目操作人员\",\n        \"policyType\" : \"SYSTEM\",\n        \"policyCategory\" : \"PROJECT\",\n        \"description\" : null,\n        \"released\" : true,\n        \"deleted\" : null,\n        \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.PROJECT_OPERATOR\"\n      } ],\n      \"countryCodePhone\" : \"+86 138***3191\",\n      \"password\" : \"c912719dc004738fd92255a97447976af7929e8c0d3298bf7e98f66a7a7e9fbb\",\n      \"projectIdList\" : null,\n      \"needRamIdentity\" : null,\n      \"isInnerUser\" : null,\n      \"userType\" : null,\n      \"isForceChange\" : null,\n      \"isTempPassword\" : null,\n      \"mfLoginPolicy\" : {\n        \"id\" : \"91fa6bd08f6341bb85d943d1e1ce3dd5\",\n        \"tenantId\" : \"cec63451f8bf4ceebb9ada0b87d829bf\",\n        \"loginPolicyType\" : \"NO_SECONDARY_VERIFICATION\",\n        \"enabled\" : true\n      },\n      \"enableMultiFactLoginPolicy\" : true,\n      \"maintainAt\" : null\n    }, {\n      \"id\" : \"14abe24d98c94fb493d923a151ac62bf\",\n      \"tenantId\" : \"18ae53b0745143e0b6ca9ee1f9513c64\",\n      \"tenantName\" : \"test0821\",\n      \"adminId\" : \"f44aa439feb44095aae452db5d617cd2\",\n      \"ramId\" : \"14abe24d98c94fb493d923a151ac62bf\",\n      \"name\" : \"自动化测试\",\n      \"userName\" : \"autotest87550916\"..."
+      },
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"8098180421aea4ce\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"total\" : 13,\n    \"list\" : [ {\n      \"id\" : \"e7fc8fdd2e4e4b2a9acde911bb0d15e4\",\n      \"tenantId\" : \"18ae53b0745143e0b6ca9ee1f9513c64\",\n      \"tenantName\" : \"test0821\",\n      \"adminId\" : \"f44aa439feb44095aae452db5d617cd2\",\n      \"ramId\" : \"e7fc8fdd2e4e4b2a9acde911bb0d15e4\",\n      \"name\" : \"自动化测试\",\n      \"userName\" : \"autotest87553337\",\n      \"email\" : \"a*****2@test.com\",\n      \"phone\" : \"138***3342\",\n      \"encryptedEmail\" : \"z04O7KPYlyKH/PDjG1Fc7qh3Hcr3bEPT2rtO+zE56Jk=\",\n      \"encryptedPhone\" : \"hhQvtIDzesLyYiY14RpH1w==\",\n      \"countryCode\" : \"+86\",\n      \"description\" : \"自动创建测试用户\",\n      \"createdAt\" : \"2026-08-24 14:35:54\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"state\" : \"ENABLE\",\n      \"isAdmin\" : false,\n      \"isProjectManager\" : null,\n      \"isAuthentication\" : null,\n      \"roleId\" : null,\n      \"roleName\" : null,\n      \"ancestorList\" : [ \"test0821\" ],\n      \"isPassword\" : true,\n      \"isEmail\" : true,\n      \"isPhone\" : true,\n      \"poolNameList\" : null,\n      \"isRootTenantUser\" : true,\n      \"isApproval\" : false,\n      \"tenantLevel\" : 0,\n      \"locked\" : false,\n      \"policyIdList\" : [ \"a2f3cbf9990544f69d05495b7c1219c5\", \"1f8e392309fc414c9d77d45d0315fedc\" ],\n      \"policyList\" : [ {\n        \"id\" : \"a2f3cbf9990544f69d05495b7c1219c5\",\n        \"tenantId\" : null,\n        \"policyName\" : \"项目操作人员\",\n        \"policyType\" : \"SYSTEM\",\n        \"policyCategory\" : \"PROJECT\",\n        \"description\" : null,\n        \"released\" : true,\n        \"deleted\" : null,\n        \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.PROJECT_OPERATOR\"\n      }, {\n        \"id\" : \"1f8e392309fc414c9d77d45d0315fedc\",\n        \"tenantId\" : null,\n        \"policyName\" : \"普通用户\",\n        \"policyType\" : \"SYSTEM\",\n        \"policyCategory\" : \"ORGANIZATION\",\n        \"description\" : null,\n        \"released\" : true,\n        \"deleted\" : null,\n        \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.COMMON_ROLE\"\n      } ],\n      \"countryCodePhone\" : \"+86 138***3342\",\n      \"password\" : \"c9a0169b976ce6de4b7f6e3e6fc9906ea6a2ad7156f005817b1a18dd1ebe86df\",\n      \"projectIdList\" : null,\n      \"needRamIdentity\" : null,\n      \"isInnerUser\" : null,\n      \"userType\" : null,\n      \"isForceChange\" : null,\n      \"isTempPassword\" : null,\n      \"mfLoginPolicy\" : {\n        \"id\" : \"91fa6bd08f6341bb85d943d1e1ce3dd5\",\n        \"tenantId\" : \"cec63451f8bf4ceebb9ada0b87d829bf\",\n        \"loginPolicyType\" : \"NO_SECONDARY_VERIFICATION\",\n        \"enabled\" : true\n      },\n      \"enableMultiFactLoginPolicy\" : true,\n      \"maintainAt\" : null\n    }, {\n      \"id\" : \"3903efebcb9c4bf2b845508d4d6c6dda\",\n      \"tenantId\" : \"18ae53b0745143e0b6ca9ee1f9513c64\",\n      \"tenantName\" : \"test0821\",\n      \"adminId\" : \"f44aa439feb44095aae452db5d617cd2\",\n      \"ramId\" : \"3903efebcb9c4bf2b845508d4d6c6dda\",\n      \"name\" : \"自动化测试\",\n      \"userName\" : \"autotest87553186\",\n      \"email\" :..."
+      }
+    ],
+    "/estack/api/estack/draco/v1/password-policy": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"c994d1521e91524a\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"id\" : \"90542be67d584ab09daa12e697fb041a\",\n    \"tenantId\" : \"cec63451f8bf4ceebb9ada0b87d829bf\",\n    \"minPasswordLength\" : 8,\n    \"requireLowercaseCharacters\" : false,\n    \"requireUppercaseCharacters\" : true,\n    \"requireNumbers\" : true,\n    \"requireSymbols\" : true,\n    \"minPasswordDifferentCharacter\" : 0,\n    \"createdAt\" : \"2023-08-30 10:07:14\",\n    \"updatedAt\" : \"2025-03-08 18:39:42\",\n    \"deleted\" : false,\n    \"userName\" : null\n  }\n}"
+      },
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"6f44e20d0945a916\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"id\" : \"90542be67d584ab09daa12e697fb041a\",\n    \"tenantId\" : \"cec63451f8bf4ceebb9ada0b87d829bf\",\n    \"minPasswordLength\" : 8,\n    \"requireLowercaseCharacters\" : false,\n    \"requireUppercaseCharacters\" : true,\n    \"requireNumbers\" : true,\n    \"requireSymbols\" : true,\n    \"minPasswordDifferentCharacter\" : 0,\n    \"createdAt\" : \"2023-08-30 10:07:14\",\n    \"updatedAt\" : \"2025-03-08 18:39:42\",\n    \"deleted\" : false,\n    \"userName\" : null\n  }\n}"
+      }
+    ],
+    "/estack/api/estack/draco/v1/policies/list": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"621c1291f0f4a387\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"total\" : 1,\n    \"list\" : [ {\n      \"id\" : \"1f8e392309fc414c9d77d45d0315fedc\",\n      \"createdAt\" : \"2024-05-28 22:05:41\",\n      \"updatedAt\" : \"2024-06-04 03:05:39\",\n      \"mainAccountId\" : \"SYSTEM\",\n      \"tenantId\" : \"18ae53b0745143e0b6ca9ee1f9513c64\",\n      \"policyName\" : \"普通用户\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"ORGANIZATION\",\n      \"description\" : \"普通用户\",\n      \"attachmentCount\" : 11,\n      \"released\" : true,\n      \"deleted\" : false,\n      \"originalPolicyName\" : null\n    } ],\n    \"pageNum\" : 1,\n    \"pageSize\" : 1,\n    \"size\" : 1,\n    \"startRow\" : 0,\n    \"endRow\" : 0,\n    \"pages\" : 1,\n    \"prePage\" : 0,\n    \"nextPage\" : 0,\n    \"isFirstPage\" : true,\n    \"isLastPage\" : true,\n    \"hasPreviousPage\" : false,\n    \"hasNextPage\" : false,\n    \"navigatePages\" : 8,\n    \"navigatepageNums\" : [ 1 ],\n    \"navigateFirstPage\" : 1,\n    \"navigateLastPage\" : 1\n  }\n}"
+      },
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"b867738f5fb0957b\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"total\" : 0,\n    \"list\" : [ ],\n    \"pageNum\" : 1,\n    \"pageSize\" : 0,\n    \"size\" : 0,\n    \"startRow\" : 0,\n    \"endRow\" : 0,\n    \"pages\" : 0,\n    \"prePage\" : 0,\n    \"nextPage\" : 0,\n    \"isFirstPage\" : true,\n    \"isLastPage\" : true,\n    \"hasPreviousPage\" : false,\n    \"hasNextPage\" : false,\n    \"navigatePages\" : 8,\n    \"navigatepageNums\" : [ ],\n    \"navigateFirstPage\" : 0,\n    \"navigateLastPage\" : 0\n  }\n}"
+      }
+    ],
+    "/estack/api/estack/draco/v1/users/check": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"f2381c022acad73c\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : \"84707f6b-2e44-4fde-b240-cb4796c331ad\"\n}"
+      },
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"abb6b9bf91a3cfe7\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : \"502f1b2d-f0a0-4a65-8d5c-6c61d3a68af0\"\n}"
+      }
+    ],
+    "/estack/api/estack/draco/v1/users/phone/usability": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"34ff25524ab8bd64\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : true\n}"
+      },
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"4269fd1a3126079d\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : true\n}"
+      }
+    ],
+    "/estack/api/estack/draco/v1/users/email/usability": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"5233ea4bce501e28\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : true\n}"
+      },
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"c2bdde2c0cfaa842\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : true\n}"
+      }
+    ],
+    "/estack/api/estack/draco/v1/users": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"c7371a757e1cd1a9\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"id\" : \"e7fc8fdd2e4e4b2a9acde911bb0d15e4\",\n    \"tenantId\" : \"18ae53b0745143e0b6ca9ee1f9513c64\",\n    \"tenantName\" : \"test0821\",\n    \"adminId\" : \"f44aa439feb44095aae452db5d617cd2\",\n    \"ramId\" : \"e7fc8fdd2e4e4b2a9acde911bb0d15e4\",\n    \"name\" : \"自动化测试\",\n    \"userName\" : \"autotest87553337\",\n    \"email\" : \"a*****2@test.com\",\n    \"phone\" : \"138***3342\",\n    \"encryptedEmail\" : \"z04O7KPYlyKH/PDjG1Fc7qh3Hcr3bEPT2rtO+zE56Jk=\",\n    \"encryptedPhone\" : \"hhQvtIDzesLyYiY14RpH1w==\",\n    \"countryCode\" : \"+86\",\n    \"description\" : \"自动创建测试用户\",\n    \"createdAt\" : \"2026-08-24 14:35:54\",\n    \"updatedAt\" : null,\n    \"deleted\" : false,\n    \"state\" : \"ENABLE\",\n    \"isAdmin\" : false,\n    \"isProjectManager\" : false,\n    \"isAuthentication\" : false,\n    \"roleId\" : null,\n    \"roleName\" : null,\n    \"ancestorList\" : [ \"test0821\" ],\n    \"isPassword\" : true,\n    \"isEmail\" : true,\n    \"isPhone\" : true,\n    \"poolNameList\" : [ ],\n    \"isRootTenantUser\" : true,\n    \"isApproval\" : false,\n    \"tenantLevel\" : 0,\n    \"locked\" : false,\n    \"policyIdList\" : [ ],\n    \"policyList\" : [ ],\n    \"countryCodePhone\" : \"+86 138***3342\",\n    \"password\" : \"c9a0169b976ce6de4b7f6e3e6fc9906ea6a2ad7156f005817b1a18dd1ebe86df\",\n    \"projectIdList\" : null,\n    \"needRamIdentity\" : null,\n    \"isInnerUser\" : null,\n    \"userType\" : null,\n    \"isForceChange\" : false,\n    \"isTempPassword\" : false,\n    \"mfLoginPolicy\" : null,\n    \"enableMultiFactLoginPolicy\" : null,\n    \"maintainAt\" : null\n  }\n}"
+      }
+    ],
+    "/estack/api/estack/draco/v1/users/e7fc8fdd2e4e4b2a9acde911bb0d15e4": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"e6eea73d9a96c772\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"id\" : \"e7fc8fdd2e4e4b2a9acde911bb0d15e4\",\n    \"tenantId\" : \"18ae53b0745143e0b6ca9ee1f9513c64\",\n    \"tenantName\" : \"test0821\",\n    \"adminId\" : \"f44aa439feb44095aae452db5d617cd2\",\n    \"ramId\" : \"e7fc8fdd2e4e4b2a9acde911bb0d15e4\",\n    \"name\" : \"自动化测试\",\n    \"userName\" : \"autotest87553337\",\n    \"email\" : \"a*****2@test.com\",\n    \"phone\" : \"138***3342\",\n    \"encryptedEmail\" : \"z04O7KPYlyKH/PDjG1Fc7qh3Hcr3bEPT2rtO+zE56Jk=\",\n    \"encryptedPhone\" : \"hhQvtIDzesLyYiY14RpH1w==\",\n    \"countryCode\" : \"+86\",\n    \"description\" : \"自动创建测试用户\",\n    \"createdAt\" : \"2026-08-24 14:35:54\",\n    \"updatedAt\" : \"2026-08-24 14:36:06\",\n    \"deleted\" : false,\n    \"state\" : \"ENABLE\",\n    \"isAdmin\" : false,\n    \"isProjectManager\" : false,\n    \"isAuthentication\" : false,\n    \"roleId\" : null,\n    \"roleName\" : null,\n    \"ancestorList\" : [ \"test0821\" ],\n    \"isPassword\" : true,\n    \"isEmail\" : true,\n    \"isPhone\" : true,\n    \"poolNameList\" : null,\n    \"isRootTenantUser\" : true,\n    \"isApproval\" : false,\n    \"tenantLevel\" : 0,\n    \"locked\" : false,\n    \"policyIdList\" : [ \"a2f3cbf9990544f69d05495b7c1219c5\", \"1f8e392309fc414c9d77d45d0315fedc\" ],\n    \"policyList\" : [ {\n      \"id\" : \"a2f3cbf9990544f69d05495b7c1219c5\",\n      \"tenantId\" : null,\n      \"policyName\" : \"项目操作人员\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"PROJECT\",\n      \"description\" : null,\n      \"released\" : true,\n      \"deleted\" : null,\n      \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.PROJECT_OPERATOR\"\n    }, {\n      \"id\" : \"1f8e392309fc414c9d77d45d0315fedc\",\n      \"tenantId\" : null,\n      \"policyName\" : \"普通用户\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"ORGANIZATION\",\n      \"description\" : null,\n      \"released\" : true,\n      \"deleted\" : null,\n      \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.COMMON_ROLE\"\n    } ],\n    \"countryCodePhone\" : \"+86 138***3342\",\n    \"password\" : \"c9a0169b976ce6de4b7f6e3e6fc9906ea6a2ad7156f005817b1a18dd1ebe86df\",\n    \"projectIdList\" : null,\n    \"needRamIdentity\" : null,\n    \"isInnerUser\" : null,\n    \"userType\" : null,\n    \"isForceChange\" : false,\n    \"isTempPassword\" : false,\n    \"mfLoginPolicy\" : null,\n    \"enableMultiFactLoginPolicy\" : null,\n    \"maintainAt\" : null\n  }\n}"
+      },
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"0702db73a64acd70\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"id\" : \"e7fc8fdd2e4e4b2a9acde911bb0d15e4\",\n    \"tenantId\" : \"18ae53b0745143e0b6ca9ee1f9513c64\",\n    \"tenantName\" : \"test0821\",\n    \"adminId\" : \"f44aa439feb44095aae452db5d617cd2\",\n    \"ramId\" : \"e7fc8fdd2e4e4b2a9acde911bb0d15e4\",\n    \"name\" : \"自动化测试\",\n    \"userName\" : \"autotest87553337\",\n    \"email\" : \"a*****2@test.com\",\n    \"phone\" : \"138***3342\",\n    \"encryptedEmail\" : \"z04O7KPYlyKH/PDjG1Fc7qh3Hcr3bEPT2rtO+zE56Jk=\",\n    \"encryptedPhone\" : \"hhQvtIDzesLyYiY14RpH1w==\",\n    \"countryCode\" : \"+86\",\n    \"description\" : \"自动创建测试用户\",\n    \"createdAt\" : \"2026-08-24 14:35:54\",\n    \"updatedAt\" : \"2026-08-24 14:36:52\",\n    \"deleted\" : true,\n    \"state\" : \"ENABLE\",\n    \"isAdmin\" : false,\n    \"isProjectManager\" : false,\n    \"isAuthentication\" : false,\n    \"roleId\" : null,\n    \"roleName\" : null,\n    \"ancestorList\" : [ \"test0821\" ],\n    \"isPassword\" : true,\n    \"isEmail\" : true,\n    \"isPhone\" : true,\n    \"poolNameList\" : null,\n    \"isRootTenantUser\" : true,\n    \"isApproval\" : false,\n    \"tenantLevel\" : 0,\n    \"locked\" : false,\n    \"policyIdList\" : [ ],\n    \"policyList\" : [ ],\n    \"countryCodePhone\" : \"+86 138***3342\",\n    \"password\" : \"c9a0169b976ce6de4b7f6e3e6fc9906ea6a2ad7156f005817b1a18dd1ebe86df\",\n    \"projectIdList\" : null,\n    \"needRamIdentity\" : null,\n    \"isInnerUser\" : null,\n    \"userType\" : null,\n    \"isForceChange\" : false,\n    \"isTempPassword\" : false,\n    \"mfLoginPolicy\" : null,\n    \"enableMultiFactLoginPolicy\" : null,\n    \"maintainAt\" : null\n  }\n}"
+      }
+    ],
+    "/estack/api/estack/draco/v1/users/3903efebcb9c4bf2b845508d4d6c6dda/suspend": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"ecf89528688023f7\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"id\" : \"3903efebcb9c4bf2b845508d4d6c6dda\",\n    \"tenantId\" : \"18ae53b0745143e0b6ca9ee1f9513c64\",\n    \"tenantName\" : \"test0821\",\n    \"adminId\" : \"f44aa439feb44095aae452db5d617cd2\",\n    \"ramId\" : \"3903efebcb9c4bf2b845508d4d6c6dda\",\n    \"name\" : \"自动化测试\",\n    \"userName\" : \"autotest87553186\",\n    \"email\" : \"a*****1@test.com\",\n    \"phone\" : \"138***3191\",\n    \"encryptedEmail\" : \"z04O7KPYlyIsOVHrgQB8b6h3Hcr3bEPT2rtO+zE56Jk=\",\n    \"encryptedPhone\" : \"hhQvtIDzesI1aW1fPiQnEA==\",\n    \"countryCode\" : \"+86\",\n    \"description\" : \"自动创建测试用户\",\n    \"createdAt\" : \"2026-08-24 14:33:23\",\n    \"updatedAt\" : \"2026-08-24 14:33:35\",\n    \"deleted\" : false,\n    \"state\" : \"DISABLE\",\n    \"isAdmin\" : false,\n    \"isProjectManager\" : false,\n    \"isAuthentication\" : false,\n    \"roleId\" : null,\n    \"roleName\" : null,\n    \"ancestorList\" : [ \"test0821\" ],\n    \"isPassword\" : true,\n    \"isEmail\" : true,\n    \"isPhone\" : true,\n    \"poolNameList\" : null,\n    \"isRootTenantUser\" : true,\n    \"isApproval\" : false,\n    \"tenantLevel\" : 0,\n    \"locked\" : false,\n    \"policyIdList\" : [ \"1f8e392309fc414c9d77d45d0315fedc\", \"a2f3cbf9990544f69d05495b7c1219c5\" ],\n    \"policyList\" : [ {\n      \"id\" : \"1f8e392309fc414c9d77d45d0315fedc\",\n      \"tenantId\" : null,\n      \"policyName\" : \"普通用户\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"ORGANIZATION\",\n      \"description\" : null,\n      \"released\" : true,\n      \"deleted\" : null,\n      \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.COMMON_ROLE\"\n    }, {\n      \"id\" : \"a2f3cbf9990544f69d05495b7c1219c5\",\n      \"tenantId\" : null,\n      \"policyName\" : \"项目操作人员\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"PROJECT\",\n      \"description\" : null,\n      \"released\" : true,\n      \"deleted\" : null,\n      \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.PROJECT_OPERATOR\"\n    } ],\n    \"countryCodePhone\" : \"+86 138***3191\",\n    \"password\" : \"c912719dc004738fd92255a97447976af7929e8c0d3298bf7e98f66a7a7e9fbb\",\n    \"projectIdList\" : null,\n    \"needRamIdentity\" : null,\n    \"isInnerUser\" : null,\n    \"userType\" : null,\n    \"isForceChange\" : false,\n    \"isTempPassword\" : false,\n    \"mfLoginPolicy\" : null,\n    \"enableMultiFactLoginPolicy\" : null,\n    \"maintainAt\" : null\n  }\n}"
+      }
+    ],
+    "/estack/api/estack/draco/v1/users/3903efebcb9c4bf2b845508d4d6c6dda/enable": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"28b41b12c1a26f9f\",\n  \"success\" : false,\n  \"errorMessage\" : \"sendDefaultImpl call timeout; nested exception is org.apache.rocketmq.remoting.exception.RemotingTooMuchRequestException: sendDefaultImpl call timeout\",\n  \"message\" : \"sendDefaultImpl call timeout; nested exception is org.apache.rocketmq.remoting.exception.RemotingTooMuchRequestException: sendDefaultImpl call timeout\",\n  \"errorCode\" : null,\n  \"entity\" : null\n}"
+      }
+    ],
+    "/estack/api/estack/draco/v1/users/lock/3903efebcb9c4bf2b845508d4d6c6dda": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"f6be2e8c20653807\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : 1\n}"
+      }
+    ],
+    "/estack/api/estack/draco/v1/users/unlock/3903efebcb9c4bf2b845508d4d6c6dda": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"596641f47db24c59\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : 1\n}"
+      }
+    ],
+    "/estack/api/estack/draco/v1/password-reset/generate": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"9d646eb7c6928eff\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"userId\" : null,\n    \"password\" : \"V1!^RDLH\",\n    \"passwordStrength\" : \"WEAK\"\n  }\n}"
+      }
+    ],
+    "/estack/api/estack/draco/v1/identity": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"f57984ca2d61e90e\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : true\n}"
+      }
+    ],
+    "/estack/api/estack/draco/v1/authority/national": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"c93728a95140188c\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"userId\" : null,\n    \"username\" : null,\n    \"authoritys\" : [ {\n      \"id\" : \"436d5533bc7744f698c968596a060e1d\",\n      \"authorityKey\" : \"VM_BK_CLONE_ENABLED\",\n      \"authorityValue\" : \"true\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"14197536ebb84007b0577b52ca9d2579\",\n      \"authorityKey\" : \"IsCaptcha\",\n      \"authorityValue\" : \"true\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"83e9b428aa4b43928387efa80c0cef8e\",\n      \"authorityKey\" : \"BILLING\",\n      \"authorityValue\" : \"计费\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"0643b35909ec4a4799c5633040cb388f\",\n      \"authorityKey\" : \"MaxBandwidth\",\n      \"authorityValue\" : \"10240\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"ec69de20b4474843a05611874dedd164\",\n      \"authorityKey\" : \"ai\",\n      \"authorityValue\" : \"false\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"2130a4d5cb4c4eb08c52f23ef0da0cd7\",\n      \"authorityKey\" : \"isTenantIsolation\",\n      \"authorityValue\" : \"true\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"8ec21e9e84454d2a9681b04fbab95c09\",\n      \"authorityKey\" : \"AccessHJ\",\n      \"authorityValue\" : \"false\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"c2a3d060292a46f687170cf18149580d\",\n      \"authorityKey\" : \"isSecondPlatform\",\n      \"authorityValue\" : \"true\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"8f354c61471a48c2bfe1d74cfcc39796\",\n      \"authorityKey\" : \"IsShowLanguage\",\n      \"authorityValue\" : \"true\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"1865b2b165304371a1e1376b5ebee429\",\n      \"authorityKey\" : \"TC\",\n      \"authorityValue\" : \"天池\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"bd54614c20434a95991da58aca0bda3e\",\n      \"authorityKey\" : \"NON_PRIVATE_NETWORK\",\n      \"authorityValue\" : \"true\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"aa2a9aab374a427db48f186dda15fa0f\",\n      \"authorityKey\" : \"Language\",\n      \"authorityValue\" : \"en-US\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"ec69167001ad45b6ae99d1a2b80dd99f\",\n      \"authorityKey\" : \"isOnlyUkeyLogin\",\n      \"authorityValue\" : \"false\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"a8bac4795b7749b6824f1b363b130708\",\n      \"authorityKey\" : \"Currency\",\n      \"authorityValue\" : \"￥\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"c516e1a1f8d1429abf87d0c45ae3859b\",\n      \"authorityKey\" : \"LABEL\",\n      \"authorityValue\" : \"标签\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"f544b8210d5344a681d26293ec1a7401\",\n      \"authorityKey\" : \"AreaCode\",\n      \"authorityValue\" : \"86\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"d195b3958862492f8318b593b3a400f3\",\n      \"authorityKey\" : \"passCheck\",\n      \"authorityValue\" : \"true\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"27801c44440748ec823e19fc068a61ff\",\n      \"authorityKey\" : \"..."
+      },
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"a40de305041bf4a0\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"userId\" : null,\n    \"username\" : null,\n    \"authoritys\" : [ {\n      \"id\" : \"6e993a7ac4c346588ea82369cead8e4e\",\n      \"authorityKey\" : \"VM_BK_CLONE_ENABLED\",\n      \"authorityValue\" : \"true\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"d48ce9f6b9d04c14ac59501a0c99ce54\",\n      \"authorityKey\" : \"IsCaptcha\",\n      \"authorityValue\" : \"true\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"1c13699a1bbc465dbb2e0502b9f5597c\",\n      \"authorityKey\" : \"BILLING\",\n      \"authorityValue\" : \"计费\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"c9194c0f8ebe48228c9e1b8b2c7deb71\",\n      \"authorityKey\" : \"MaxBandwidth\",\n      \"authorityValue\" : \"10240\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"2f410929b6c545c7ad3565bce4d20a2f\",\n      \"authorityKey\" : \"ai\",\n      \"authorityValue\" : \"false\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"87d5d5390281452295b9c28f30daf2e0\",\n      \"authorityKey\" : \"isTenantIsolation\",\n      \"authorityValue\" : \"true\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"7b00715a4cf644b3b3ffbe9f6824b793\",\n      \"authorityKey\" : \"AccessHJ\",\n      \"authorityValue\" : \"false\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"8e096d7d7c5f4b6aa76aa1c980b1215d\",\n      \"authorityKey\" : \"isSecondPlatform\",\n      \"authorityValue\" : \"true\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"b0c7f0a44679455a84a0691d919494d2\",\n      \"authorityKey\" : \"IsShowLanguage\",\n      \"authorityValue\" : \"true\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"037eaaaf501a4120a1472c0b57fe27a5\",\n      \"authorityKey\" : \"TC\",\n      \"authorityValue\" : \"天池\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"5d3844cb40ec41f3a6f6b314aae26715\",\n      \"authorityKey\" : \"NON_PRIVATE_NETWORK\",\n      \"authorityValue\" : \"true\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"3d45f4d254af46d5b5b3b9793243debe\",\n      \"authorityKey\" : \"Language\",\n      \"authorityValue\" : \"en-US\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"ad77e1939b7b4d0f98cc489453b72851\",\n      \"authorityKey\" : \"isOnlyUkeyLogin\",\n      \"authorityValue\" : \"false\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"c3013e8e1ade420bbe992676d8bde74b\",\n      \"authorityKey\" : \"Currency\",\n      \"authorityValue\" : \"￥\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"0be4c0cda48e4b7aa70ae37d04def647\",\n      \"authorityKey\" : \"LABEL\",\n      \"authorityValue\" : \"标签\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"243a5a0ae45a4c97bece98847e9b13f9\",\n      \"authorityKey\" : \"AreaCode\",\n      \"authorityValue\" : \"86\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"9b3b4c3655724564a99745cfed7dc051\",\n      \"authorityKey\" : \"passCheck\",\n      \"authorityValue\" : \"true\",\n      \"authorityKeyList\" : null\n    }, {\n      \"id\" : \"3d78d6c246634866b55bff1d57d0139a\",\n      \"authorityKey\" : \"..."
+      }
+    ],
+    "/estack/api/estack/draco/v1/groups": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"4d38088dbf72e6e2\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"total\" : 0,\n    \"list\" : null,\n    \"pageNum\" : 0,\n    \"pageSize\" : 0,\n    \"size\" : 0,\n    \"startRow\" : 0,\n    \"endRow\" : 0,\n    \"pages\" : 0,\n    \"prePage\" : 0,\n    \"nextPage\" : 0,\n    \"isFirstPage\" : false,\n    \"isLastPage\" : false,\n    \"hasPreviousPage\" : false,\n    \"hasNextPage\" : false,\n    \"navigatePages\" : 0,\n    \"navigatepageNums\" : null,\n    \"navigateFirstPage\" : 0,\n    \"navigateLastPage\" : 0\n  }\n}"
+      }
+    ],
+    "/estack/api/estack/draco/v1/tenants/18ae53b0745143e0b6ca9ee1f9513c64/root": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"29b1cfa1fc61d6f3\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : \"18ae53b0745143e0b6ca9ee1f9513c64\"\n}"
+      }
+    ],
+    "/estack/api/estack/draco/v1/projects/list": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"8aaaccabae3adf8f\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"total\" : 1,\n    \"list\" : [ {\n      \"id\" : \"64fba0937d9f452d83028eab2c73700c\",\n      \"name\" : \"test0821_defaultProject\",\n      \"tenantId\" : \"18ae53b0745143e0b6ca9ee1f9513c64\",\n      \"tenantName\" : \"test0821\",\n      \"ancestorList\" : [ \"test0821\" ],\n      \"description\" : null,\n      \"status\" : \"ONLINE\",\n      \"managerId\" : \"f44aa439feb44095aae452db5d617cd2\",\n      \"managerName\" : \"test08211\",\n      \"managerUserName\" : \"test08211\",\n      \"managerTenantId\" : \"18ae53b0745143e0b6ca9ee1f9513c64\",\n      \"managerTenantName\" : null,\n      \"managerPhone\" : \"135***8765\",\n      \"managerEmail\" : \"v*****d@qq.com\",\n      \"managerCountryCode\" : \"+86\",\n      \"createdAt\" : \"2026-08-21 17:28:14\",\n      \"updatedAt\" : \"2026-08-21 17:28:14\",\n      \"offlineAt\" : null,\n      \"endAt\" : null,\n      \"remainingTime\" : null,\n      \"remainingTimeUnit\" : null,\n      \"endType\" : \"FOREVER\",\n      \"defaulted\" : true,\n      \"deleted\" : false,\n      \"attachments\" : [ ]\n    } ],\n    \"pageNum\" : 1,\n    \"pageSize\" : 1,\n    \"size\" : 1,\n    \"startRow\" : 0,\n    \"endRow\" : 0,\n    \"pages\" : 1,\n    \"prePage\" : 0,\n    \"nextPage\" : 0,\n    \"isFirstPage\" : true,\n    \"isLastPage\" : true,\n    \"hasPreviousPage\" : false,\n    \"hasNextPage\" : false,\n    \"navigatePages\" : 8,\n    \"navigatepageNums\" : [ 1 ],\n    \"navigateFirstPage\" : 1,\n    \"navigateLastPage\" : 1\n  }\n}"
+      }
+    ],
+    "/estack/api/estack/draco/v1/projects/list-by-user/userList": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"9cbc11b59bff7b32\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : [ \"64fba0937d9f452d83028eab2c73700c\" ]\n}"
+      }
+    ],
+    "/estack/api/estack/delphini/v1/dynamic-dictionary/json": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"50a3cda5c2df9bcf\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : \"{\\n  \\\"zh-CN\\\" : {\\n    \\\"筛选\\\" : \\\"筛选\\\",\\n    \\\"提交时间\\\" : \\\"提交时间\\\",\\n    \\\"全栈专属云\\\" : \\\"全栈专属云\\\",\\n    \\\"确定删除草稿:{0}?\\\" : \\\"确定删除草稿:{0}?\\\",\\n    \\\"发送者地址\\\" : \\\"发送者地址\\\",\\n    \\\"关联公网IP\\\" : \\\"关联公网IP\\\",\\n    \\\"本端网关\\\" : \\\"本端网关\\\",\\n    \\\"请注意：接收渠道、接收数量上限、接收时段和节假日消息接收开关将恢复为全局接收配置值，消息接收人恢复为仅通知发起者本人，消息机器人恢复为空。\\\" : \\\"请注意：接收渠道、接收数量上限、接收时段和节假日消息接收开关将恢复为全局接收配置值，消息接收人恢复为仅通知发起者本人，消息机器人恢复为空。\\\",\\n    \\\"开启健康检查，需要负载均衡器的后端成员云主机允许相应监控流量进入，需设置安全组流入规则。例如，开通http\\\" : \\\"开启健康检查，需要负载均衡器的后端成员云主机允许相应监控流量进入，需设置安全组流入规则。例如，开通http\\\",\\n    \\\"此操作将永久删除该安全组规则，是否继续？\\\" : \\\"此操作将永久删除该安全组规则，是否继续？\\\",\\n    \\\"立即应用\\\" : \\\"立即应用\\\",\\n    \\\"分配\\\" : \\\"分配\\\",\\n    \\\"当前故障告警申请还未绑定相应流程，请先为操作设计相关流程\\\" : \\\"当前故障告警申请还未绑定相应流程，请先为操作设计相关流程\\\",\\n    \\\"字符串，说明，最多200字\\\" : \\\"字符串，说明，最多200字\\\",\\n    \\\"是否删除IPSec VPN {0}?\\\" : \\\"是否删除IPSec VPN {0}?\\\",\\n    \\\"用户管理\\\" : \\\"用户管理\\\",\\n    \\\"系统角色名称\\\" : \\\"系统角色名称\\\",\\n    \\\"PEGASI.EXCEL.SERVICE_MENU.TENANT_ID\\\" : \\\"ID\\\",\\n    \\\"是否使用\\\" : \\\"是否使用\\\",\\n    \\\"默认页签不支持编辑\\\" : \\\"默认页签不支持编辑\\\",\\n    \\\"设置项目配额\\\" : \\\"设置项目配额\\\",\\n    \\\"性能优化型\\\" : \\\"性能优化型\\\",\\n    \\\"只支持下载来源为系统创建的SSH密钥\\\" : \\\"只支持下载来源为系统创建的SSH密钥\\\",\\n    \\\"为{0}\\\" : \\\"为{0}\\\",\\n    \\\"确定要将{scopeName}设为{serviceScopeText}吗？\\\" : \\\"确定要将{scopeName}设为{serviceScopeText}吗？\\\",\\n    \\\"Path入参：\\\" : \\\"Path入参：\\\",\\n    \\\"通用校验\\\" : \\\"通用校验\\\",\\n    \\\"任务同步状态\\\" : \\\"任务同步状态\\\",\\n    \\\"调试\\\" : \\\"调试\\\",\\n    \\\"跳过\\\" : \\\"跳过\\\",\\n    \\\"当前版本\\\" : \\\"当前版本\\\",\\n    \\\"节假日管理\\\" : \\\"节假日管理\\\",\\n    \\\"所有对象\\\" : \\\"所有对象\\\",\\n    \\\"请输入部门名称\\\" : \\\"请输入部门名称\\\",\\n    \\\"只导出表格\\\" : \\\"只导出表格\\\",\\n    \\\"已选{0}项目:{1}个{2}进行批量编辑\\\" : \\\"已选{0}项目:{1}个{2}进行批量编辑\\\",\\n    \\\"VMware宿主机\\\" : \\\"VMware宿主机\\\",\\n    \\\"创建云硬盘备份操作处理中\\\" : \\\"创建云硬盘备份操作处理中\\\",\\n    \\\"稽查中\\\" : \\\"稽查中\\\",\\n    \\\"设置监听器\\\" : \\\"设置监听器\\\",\\n    \\\"Cookie政策\\\" : \\\"Cookie政策\\\",\\n    \\\"提醒方式\\\" : \\\"提醒方式\\\",\\n    \\\"指定IPV4地址\\\" : \\\"指定IPV4地址\\\",\\n    \\\"权限规则\\\" : \\\"权限规则\\\",\\n    \\\"请选择未读消息\\\" : \\\"请选择未读消息\\\",\\n    \\\"详情URL\\\" : \\\"详情URL\\\",\\n    \\\"用量预警\\\" : \\\"用量预警\\\",\\n    \\\"?\\\" : \\\"?\\\",\\n    \\\"编辑额度预警成功\\\" : \\\"编辑额度预警成功\\\",\\n    \\\"是否确定删除该资源池?\\\" : \\\"是否确定删除该资源池?\\\",\\n    \\\"请选择生效日期\\\" : \\\"请选择生效日期\\\",\\n    \\\"选择时间\\\" : \\\"选择时间\\\",\\n    \\\"G\\\" : \\\"G\\\",\\n    \\\"文件管理\\\" : \\\"文件管理\\\",\\n    \\\"若所选资源绑定的其他标签与本标签的标签键相同，则会自动替换标签值\\\" : \\\"若所选资源绑定的其他标签与本标签的标签键相同，则会自动替换标签值\\\",\\n    \\\"下载信息到本地\\\" : \\\"下载信息到本地\\\",\\n    \\\"网卡IP\\\" : \\\"网卡IP\\\",\\n    \\\"全部产品\\\" : \\\"全部产品\\\",\\n    \\\"4.通过备份策略自动创建的备份资源会和手动创建的备份一同计入租户的备份配额。\\\" : \\\"4.通过备份策略自动创建的备份资源会和手动创建的备份一同计入租户的备份配额。\\\",\\n    \\\"还原错误\\\" : \\\"还原错误\\\",\\n    \\\"可保留1-64个\\\" : \\\"可保留1-64个\\\",\\n    \\\"网卡ID\\\" : \\\"网卡ID\\\",\\n    \\\"用户到期时间格式错误，需为yyyy-MM-dd格式\\\" : \\\"用户到期时间格式错误，需为yyyy-MM-dd格式\\\",\\n    \\\"告警\\\" : \\\"告警\\\",\\n    \\\"等待加入\\\" : \\\"等待加入\\\",\\n    \\\"不得超过100个字符\\\" : \\\"不得超过100个字符\\\",\\n    \\\"删除后将无法查看该消息，请谨慎操作\\\" : \\\"删除后将无法查看该消息，请谨慎操作\\\",\\n    \\\"IP地址区间\\\" : \\\"IP地址区间\\\",\\n    \\\"如果您的应用在实例之间需要较低的网络时延，则建议您将云服务器创建在相同的可用区内。\\\" : \\\"如果您的应用在实例之间需要较低的网络时延，则建议您将云服务器创建在相同的可用区内。\\\",\\n    \\\"正在更新中\\\" : \\\"正在更新中\\\",\\n    \\\"分析中\\\" : \\\"分析中\\\",\\n    \\\"请选择子网组\\\" : \\\"请选择子网组\\\",\\n    \\\"状态（仅一级栏目）\\\" : \\\"状态（仅一级栏目）\\\",\\n    \\\"请输入云服务模糊搜索..."
+      },
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"c6a5fd1115b7b9fc\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : \"{\\n  \\\"en-US\\\" : {\\n    \\\"边缘性能优化型系统盘\\\" : \\\"Edge PerformanceOptimization\\\",\\n    \\\"用户\\\" : \\\"User\\\",\\n    \\\"退出登录\\\" : \\\"Logout\\\",\\n    \\\"CREATE\\\" : \\\"Create\\\",\\n    \\\"请手动刷新\\\" : \\\"Please refresh manually\\\",\\n    \\\"云电脑（政企版）\\\" : \\\"Cloud Computing (Government Enterprise Edition)\\\",\\n    \\\"导航菜单清晰\\\" : \\\"Clear Navigation Menu\\\",\\n    \\\"问题总数\\\" : \\\"Total Number of Issues:\\\",\\n    \\\"运营中心\\\" : \\\"Operation Center\\\",\\n    \\\"页面跳转不方便\\\" : \\\"Inconvenient Page Navigation\\\",\\n    \\\"请输入您宝贵的意见和建议，我们将会认真对待\\\" : \\\"Please Enter Your Valuable Opinions and Suggestions, We Will Take Them Seriously\\\",\\n    \\\"请输入其他问题\\\" : \\\"Please Enter Other Problems\\\",\\n    \\\"云原生数据库 海山 分布式版\\\" : \\\"He3db for distributed\\\",\\n    \\\"高性能型系统盘-云创版\\\" : \\\"High performance system disk-YC\\\",\\n    \\\"云原生数据库 海山 数仓版\\\" : \\\"He3DB for AP\\\",\\n    \\\"数据库审计\\\" : \\\"Database Audit\\\",\\n    \\\"帮助文档\\\" : \\\"Help Documentation\\\",\\n    \\\"移动云云桌面\\\" : \\\"Cloud Desktop\\\",\\n    \\\"移动云达梦数据库\\\" : \\\"Da Meng Db\\\",\\n    \\\"后台管理\\\" : \\\"Backend Administration\\\",\\n    \\\"请输入搜索条件\\\" : \\\"Please enter search conditions\\\",\\n    \\\"边缘性能优化型云硬盘\\\" : \\\"Edge performance optimized disk\\\",\\n    \\\"容量型文件存储\\\" : \\\"Capacity file storage\\\",\\n    \\\"其他\\\" : \\\"Others\\\",\\n    \\\"注意\\\" : \\\"Attention\\\",\\n    \\\"容量型云硬盘-国产\\\" : \\\"CAP EBS GC\\\",\\n    \\\"边缘IPV6带宽\\\" : \\\"Edge Ipv6 Bandwidth\\\",\\n    \\\"人脸与人体识别\\\" : \\\"Face Body Recog\\\",\\n    \\\"边缘高性能型云硬盘\\\" : \\\"Edge SSD EBS\\\",\\n    \\\"抗DDoS\\\" : \\\"Anti DDoS\\\",\\n    \\\"您对云管平台的整体评价是？\\\" : \\\"What Is Your Overall Evaluation Of the Cloud Management Platform?\\\",\\n    \\\"数据加密\\\" : \\\"Data Encryption\\\",\\n    \\\"高性能型系统盘\\\" : \\\"High performance system disk\\\",\\n    \\\"边缘高性能型系统盘\\\" : \\\"EdgeHighPerformance\\\",\\n    \\\"边缘IPv4带宽\\\" : \\\"Edge Ipv4 Bandwidth\\\",\\n    \\\"高性能型云硬盘\\\" : \\\"High performance cloud disk\\\",\\n    \\\"智算极速型文件存储\\\" : \\\"Ai high-speed file storage\\\",\\n    \\\"性能优化型系统盘\\\" : \\\"Performance optimized system disk\\\",\\n    \\\"GPU云主机\\\" : \\\"GPU Elastic Compute Server\\\",\\n    \\\"性能优化型云硬盘-国产\\\" : \\\"Performance optimized disk-GC\\\",\\n    \\\"消息队列RocketMQ\\\" : \\\"RocketMQ\\\",\\n    \\\"移动云数据库管理服务DBMT\\\" : \\\"DBMT\\\",\\n    \\\"专属宿主机\\\" : \\\"Exclusive host\\\",\\n    \\\"您还未访问过云平台的产品\\\" : \\\"You have not yet visited any cloud platform products\\\",\\n    \\\"文档中心\\\" : \\\"Documentation Center\\\",\\n    \\\"请输入其他原因\\\" : \\\"Please Enter Other Reasons\\\",\\n    \\\"请输入您遇到的具体问题，我们将会认真对待\\\" : \\\"Please Enter the Specific Problems You Encountered, We Will Take Them Seriously\\\",\\n    \\\"非常不满意\\\" : \\\"Very Dissatisfied\\\",\\n    \\\"DELETE\\\" : \\\"Delete\\\",\\n    \\\"页面不够美观\\\" : \\\"Page Not Aesthetic Enough\\\",\\n    \\\"非常满意\\\" : \\\"Very Satisfied\\\",\\n    \\\"九天智算-训推一体\\\" : \\\"Nine day intelligent computing - integrated training and promotion\\\",\\n    \\\"消息队列RabbitMQ\\\" : \\\"RabbitMQ\\\",\\n    \\\"您感到满意的原因是？(最多选3项)\\\" : \\\"What Are the Reasons for Your Satisfaction? (Select Up to 3)\\\",\\n    \\\"云原生数据库 海山 MySQL 版\\\" : \\\"He3DB for MySQL\\\",\\n    \\\"运营总览\\\" : \\\"Operations Overview\\\",\\n    \\\"UPDATE\\\" : \\\"Update\\\",\\n    \\\"带宽\\\" : \\\"Ipv4 Ba..."
+      }
+    ],
+    "/estack/api/estack/pegasi/v1/system-theme": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"b2f830fceaf86ec6\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"id\" : \"default\",\n    \"portalId\" : \"default\",\n    \"themeType\" : \"BLUE\",\n    \"systemIdentifierId\" : \"default\",\n    \"loginIdentifierId\" : null,\n    \"tabId\" : \"default\",\n    \"portal\" : {\n      \"id\" : \"default\",\n      \"name\" : \"默认科技风\",\n      \"frontImageUrl\" : null,\n      \"backImageUrl\" : null,\n      \"titleLayout\" : null,\n      \"titles\" : [ ],\n      \"isDefault\" : true,\n      \"chOverviewUrl\" : null,\n      \"chOverviewBase64\" : null,\n      \"hkOverviewUrl\" : null,\n      \"hkOverviewBase64\" : null,\n      \"enOverviewUrl\" : null,\n      \"enOverviewBase64\" : null,\n      \"createdAt\" : null,\n      \"updatedAt\" : null\n    },\n    \"systemIdentifier\" : {\n      \"id\" : \"default\",\n      \"name\" : null,\n      \"type\" : null,\n      \"url\" : null,\n      \"logoUrl\" : null,\n      \"logoName\" : null,\n      \"iconUrl\" : null,\n      \"iconBase64\" : null,\n      \"imageUrl\" : null,\n      \"imageBase64\" : null,\n      \"textType\" : null,\n      \"titles\" : [ ],\n      \"isDefault\" : true,\n      \"createdAt\" : \"2024-05-10 12:25:51\",\n      \"updatedAt\" : \"2024-05-10 12:25:51\"\n    },\n    \"loginIdentifier\" : null,\n    \"tab\" : {\n      \"id\" : \"default\",\n      \"name\" : \"默认页签\",\n      \"title\" : \"eStack Enterprise\",\n      \"favicon\" : \"97082d9dc4aa4fe59a23d8321311d627.ico\",\n      \"createdAt\" : \"2025-02-06 17:29:45\",\n      \"updatedAt\" : \"2025-02-07 09:43:11\"\n    }\n  }\n}"
+      },
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"281deea659893840\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"id\" : \"default\",\n    \"portalId\" : \"default\",\n    \"themeType\" : \"BLUE\",\n    \"systemIdentifierId\" : \"default\",\n    \"loginIdentifierId\" : null,\n    \"tabId\" : \"default\",\n    \"portal\" : {\n      \"id\" : \"default\",\n      \"name\" : \"默认科技风\",\n      \"frontImageUrl\" : null,\n      \"backImageUrl\" : null,\n      \"titleLayout\" : null,\n      \"titles\" : [ ],\n      \"isDefault\" : true,\n      \"chOverviewUrl\" : null,\n      \"chOverviewBase64\" : null,\n      \"hkOverviewUrl\" : null,\n      \"hkOverviewBase64\" : null,\n      \"enOverviewUrl\" : null,\n      \"enOverviewBase64\" : null,\n      \"createdAt\" : null,\n      \"updatedAt\" : null\n    },\n    \"systemIdentifier\" : {\n      \"id\" : \"default\",\n      \"name\" : null,\n      \"type\" : null,\n      \"url\" : null,\n      \"logoUrl\" : null,\n      \"logoName\" : null,\n      \"iconUrl\" : null,\n      \"iconBase64\" : null,\n      \"imageUrl\" : null,\n      \"imageBase64\" : null,\n      \"textType\" : null,\n      \"titles\" : [ ],\n      \"isDefault\" : true,\n      \"createdAt\" : \"2024-05-10 12:25:51\",\n      \"updatedAt\" : \"2024-05-10 12:25:51\"\n    },\n    \"loginIdentifier\" : null,\n    \"tab\" : {\n      \"id\" : \"default\",\n      \"name\" : \"默认页签\",\n      \"title\" : \"eStack Enterprise\",\n      \"favicon\" : \"97082d9dc4aa4fe59a23d8321311d627.ico\",\n      \"createdAt\" : \"2025-02-06 17:29:45\",\n      \"updatedAt\" : \"2025-02-07 09:43:11\"\n    }\n  }\n}"
+      }
+    ],
+    "/estack/api/estack/pegasi/v1/menu/side-tree": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"f4be624e4207445b\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"nodes\" : [ {\n      \"id\" : \"public-cloud-console\",\n      \"name\" : \"云资源控制台\",\n      \"url\" : null,\n      \"parentId\" : null,\n      \"isVisible\" : null,\n      \"resourceType\" : \"public-cloud-console\",\n      \"order\" : null,\n      \"createdAt\" : null,\n      \"updatedAt\" : null,\n      \"consoleType\" : null,\n      \"isProductType\" : 1,\n      \"permission\" : true,\n      \"favorite\" : null,\n      \"userId\" : null,\n      \"userName\" : null,\n      \"icon\" : null,\n      \"description\" : null,\n      \"labels\" : null,\n      \"children\" : [ {\n        \"id\" : \"a92d9efd05da4b1db5e3ee2f630e82d7\",\n        \"name\" : \"计算\",\n        \"url\" : null,\n        \"parentId\" : \"all-resource\",\n        \"isVisible\" : 1,\n        \"resourceType\" : \"public-js\",\n        \"order\" : 1,\n        \"createdAt\" : \"2024-02-05 12:12:10\",\n        \"updatedAt\" : \"2024-02-05 12:12:10\",\n        \"consoleType\" : null,\n        \"isProductType\" : 1,\n        \"permission\" : true,\n        \"favorite\" : null,\n        \"userId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n        \"userName\" : \"ecsc-superAdmin\",\n        \"icon\" : \"a07c4522b4d144e19736527d96f04ef5.png\",\n        \"description\" : null,\n        \"labels\" : null,\n        \"children\" : [ {\n          \"id\" : \"2dbfe534b60d46189c727ab9a1613c31\",\n          \"name\" : \"云主机\",\n          \"url\" : \"/estack/web/ecm-compute-static/vm/list?productType=vm\",\n          \"parentId\" : \"a92d9efd05da4b1db5e3ee2f630e82d7\",\n          \"isVisible\" : 1,\n          \"resourceType\" : \"ECS\",\n          \"order\" : 1,\n          \"createdAt\" : \"2024-06-01 12:07:54\",\n          \"updatedAt\" : \"2024-06-01 12:07:54\",\n          \"consoleType\" : \"public-cloud-console\",\n          \"isProductType\" : 0,\n          \"permission\" : true,\n          \"favorite\" : null,\n          \"userId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n          \"userName\" : \"ecsc-superAdmin\",\n          \"icon\" : \"ba40d9c14ada49acb4266cb50b1b2ca2.svg\",\n          \"description\" : \"虚拟化技术整合计算资源，可按需开通 \",\n          \"labels\" : null,\n          \"children\" : null,\n          \"showPortal\" : 1,\n          \"orderUrl\" : null,\n          \"isBilling\" : 0\n        }, {\n          \"id\" : \"ccc0450fd0174f66b55f49c3632a4992\",\n          \"name\" : \"云服务器备份\",\n          \"url\" : \"/estack/web/ecm-compute-static/vmbackup/list??productType=vmbaks\",\n          \"parentId\" : \"a92d9efd05da4b1db5e3ee2f630e82d7\",\n          \"isVisible\" : 1,\n          \"resourceType\" : \"VMBK\",\n          \"order\" : 2,\n          \"createdAt\" : \"2024-06-01 13:18:54\",\n          \"updatedAt\" : \"2024-06-01 13:18:54\",\n          \"consoleType\" : \"public-cloud-console\",\n          \"isProductType\" : 0,\n          \"permission\" : true,\n          \"favorite\" : null,\n          \"userId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n          \"userName\" : \"ecsc-superAdmin\",\n          \"icon\" : \"8c194beafb3a42abbd0f84270508bc7e.svg\",\n          \"description\" : \"为云服务器系统盘提供备份服务\",\n          \"labels\" : null,\n          \"children\"..."
+      },
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"885bffe29212f2a9\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"nodes\" : [ {\n      \"id\" : \"public-cloud-console\",\n      \"name\" : \"云资源控制台\",\n      \"url\" : null,\n      \"parentId\" : null,\n      \"isVisible\" : null,\n      \"resourceType\" : \"public-cloud-console\",\n      \"order\" : null,\n      \"createdAt\" : null,\n      \"updatedAt\" : null,\n      \"consoleType\" : null,\n      \"isProductType\" : 1,\n      \"permission\" : true,\n      \"favorite\" : null,\n      \"userId\" : null,\n      \"userName\" : null,\n      \"icon\" : null,\n      \"description\" : null,\n      \"labels\" : null,\n      \"children\" : [ {\n        \"id\" : \"a92d9efd05da4b1db5e3ee2f630e82d7\",\n        \"name\" : \"计算\",\n        \"url\" : null,\n        \"parentId\" : \"all-resource\",\n        \"isVisible\" : 1,\n        \"resourceType\" : \"public-js\",\n        \"order\" : 1,\n        \"createdAt\" : \"2024-02-05 12:12:10\",\n        \"updatedAt\" : \"2024-02-05 12:12:10\",\n        \"consoleType\" : null,\n        \"isProductType\" : 1,\n        \"permission\" : true,\n        \"favorite\" : null,\n        \"userId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n        \"userName\" : \"ecsc-superAdmin\",\n        \"icon\" : \"a07c4522b4d144e19736527d96f04ef5.png\",\n        \"description\" : null,\n        \"labels\" : null,\n        \"children\" : [ {\n          \"id\" : \"2dbfe534b60d46189c727ab9a1613c31\",\n          \"name\" : \"云主机\",\n          \"url\" : \"/estack/web/ecm-compute-static/vm/list?productType=vm\",\n          \"parentId\" : \"a92d9efd05da4b1db5e3ee2f630e82d7\",\n          \"isVisible\" : 1,\n          \"resourceType\" : \"ECS\",\n          \"order\" : 1,\n          \"createdAt\" : \"2024-06-01 12:07:54\",\n          \"updatedAt\" : \"2024-06-01 12:07:54\",\n          \"consoleType\" : \"public-cloud-console\",\n          \"isProductType\" : 0,\n          \"permission\" : true,\n          \"favorite\" : null,\n          \"userId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n          \"userName\" : \"ecsc-superAdmin\",\n          \"icon\" : \"ba40d9c14ada49acb4266cb50b1b2ca2.svg\",\n          \"description\" : \"虚拟化技术整合计算资源，可按需开通 \",\n          \"labels\" : null,\n          \"children\" : null,\n          \"showPortal\" : 1,\n          \"orderUrl\" : null,\n          \"isBilling\" : 0\n        }, {\n          \"id\" : \"ccc0450fd0174f66b55f49c3632a4992\",\n          \"name\" : \"云服务器备份\",\n          \"url\" : \"/estack/web/ecm-compute-static/vmbackup/list??productType=vmbaks\",\n          \"parentId\" : \"a92d9efd05da4b1db5e3ee2f630e82d7\",\n          \"isVisible\" : 1,\n          \"resourceType\" : \"VMBK\",\n          \"order\" : 2,\n          \"createdAt\" : \"2024-06-01 13:18:54\",\n          \"updatedAt\" : \"2024-06-01 13:18:54\",\n          \"consoleType\" : \"public-cloud-console\",\n          \"isProductType\" : 0,\n          \"permission\" : true,\n          \"favorite\" : null,\n          \"userId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n          \"userName\" : \"ecsc-superAdmin\",\n          \"icon\" : \"8c194beafb3a42abbd0f84270508bc7e.svg\",\n          \"description\" : \"为云服务器系统盘提供备份服务\",\n          \"labels\" : null,\n          \"children\"..."
+      }
+    ],
+    "/estack/api/estack/pegasi/v1/menu/tree": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"b5b77533e5315dc9\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"nodes\" : [ {\n      \"id\" : \"all-resource\",\n      \"name\" : \"全部服务-资源类\",\n      \"url\" : null,\n      \"parentId\" : null,\n      \"isVisible\" : 1,\n      \"resourceType\" : null,\n      \"order\" : 1,\n      \"createdAt\" : \"2024-01-24 11:53:49\",\n      \"updatedAt\" : \"2024-01-24 11:53:49\",\n      \"consoleType\" : null,\n      \"isProductType\" : 1,\n      \"permission\" : null,\n      \"favorite\" : false,\n      \"userId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n      \"userName\" : \"ecsc-superAdmin\",\n      \"icon\" : null,\n      \"description\" : null,\n      \"labels\" : null,\n      \"children\" : [ {\n        \"id\" : \"a92d9efd05da4b1db5e3ee2f630e82d7\",\n        \"name\" : \"计算\",\n        \"url\" : null,\n        \"parentId\" : \"all-resource\",\n        \"isVisible\" : 1,\n        \"resourceType\" : \"public-js\",\n        \"order\" : 1,\n        \"createdAt\" : \"2024-02-05 12:12:10\",\n        \"updatedAt\" : \"2024-02-05 12:12:10\",\n        \"consoleType\" : null,\n        \"isProductType\" : 1,\n        \"permission\" : null,\n        \"favorite\" : false,\n        \"userId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n        \"userName\" : \"ecsc-superAdmin\",\n        \"icon\" : \"a07c4522b4d144e19736527d96f04ef5.png\",\n        \"description\" : null,\n        \"labels\" : null,\n        \"children\" : [ {\n          \"id\" : \"2dbfe534b60d46189c727ab9a1613c31\",\n          \"name\" : \"云主机\",\n          \"url\" : \"/estack/web/ecm-compute-static/vm/list?productType=vm\",\n          \"parentId\" : \"a92d9efd05da4b1db5e3ee2f630e82d7\",\n          \"isVisible\" : 1,\n          \"resourceType\" : \"ECS\",\n          \"order\" : 1,\n          \"createdAt\" : \"2024-06-01 12:07:54\",\n          \"updatedAt\" : \"2024-06-01 12:07:54\",\n          \"consoleType\" : \"public-cloud-console\",\n          \"isProductType\" : 0,\n          \"permission\" : null,\n          \"favorite\" : true,\n          \"userId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n          \"userName\" : \"ecsc-superAdmin\",\n          \"icon\" : \"ba40d9c14ada49acb4266cb50b1b2ca2.svg\",\n          \"description\" : \"虚拟化技术整合计算资源，可按需开通 \",\n          \"labels\" : [ \"按需购买\", \"稳定可靠\", \"快速部署\" ],\n          \"children\" : null,\n          \"showPortal\" : 1,\n          \"orderUrl\" : null,\n          \"isBilling\" : 0\n        }, {\n          \"id\" : \"ccc0450fd0174f66b55f49c3632a4992\",\n          \"name\" : \"云服务器备份\",\n          \"url\" : \"/estack/web/ecm-compute-static/vmbackup/list??productType=vmbaks\",\n          \"parentId\" : \"a92d9efd05da4b1db5e3ee2f630e82d7\",\n          \"isVisible\" : 1,\n          \"resourceType\" : \"VMBK\",\n          \"order\" : 2,\n          \"createdAt\" : \"2024-06-01 13:18:54\",\n          \"updatedAt\" : \"2024-06-01 13:18:54\",\n          \"consoleType\" : \"public-cloud-console\",\n          \"isProductType\" : 0,\n          \"permission\" : null,\n          \"favorite\" : false,\n          \"userId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n          \"userName\" : \"ecsc-superAdmin\",\n          \"icon\" : \"8c194beafb3a42abbd0f84270508bc7e.svg\",\n          \"descript..."
+      }
+    ],
+    "/estack/api/estack/pegasi/v1/menu/favorite/list": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"f7c80584cebb13fd\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : [ {\n    \"id\" : \"db97b8ea67194b8ea2efc3970574b93e\",\n    \"menuId\" : \"2dbfe534b60d46189c727ab9a1613c31\",\n    \"name\" : \"云主机\",\n    \"url\" : \"/estack/web/ecm-compute-static/vm/list?productType=vm\",\n    \"order\" : 1,\n    \"resourceType\" : \"ECS\",\n    \"icon\" : \"ba40d9c14ada49acb4266cb50b1b2ca2.svg\",\n    \"userId\" : \"93552edc908e4dadae761fff1fd0f24c\"\n  } ]\n}"
+      }
+    ],
+    "/estack/api/estack/pegasi/v1/menu/access-log": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"8f7cf4e69e53faee\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : [ {\n    \"id\" : \"dd39fe406d5e4d018d37b3cffb99adbe\",\n    \"resourceType\" : \"arkcbr\",\n    \"userId\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"accessTime\" : \"2026-08-19 18:53:45\",\n    \"name\" : \"云备份\",\n    \"url\" : \"/estack/web/sds-cbr-static/\",\n    \"icon\" : \"558b6ad10eb74fd49a9597e0f46687e7.svg\"\n  }, {\n    \"id\" : \"c9328023a80d4c9d916c5fdaafc65d17\",\n    \"resourceType\" : \"DECLOUD\",\n    \"userId\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"accessTime\" : \"2026-08-13 19:06:17\",\n    \"name\" : \"专属宿主机\",\n    \"url\" : \"/estack/web/ecm-compute-static/ddh/list?productType=decloud\",\n    \"icon\" : \"06a6db48b9ad4d669e0cf88336426009.svg\"\n  }, {\n    \"id\" : \"a76b5e4efb634fb384053d0b86b34523\",\n    \"resourceType\" : \"COMPUTER_ENT\",\n    \"userId\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"accessTime\" : \"2026-08-13 19:05:09\",\n    \"name\" : \"云电脑（办公型）\",\n    \"url\" : \"/estack/web/clouddesktopnew/ccaentorder/#/console/enterpriseOfficeEdition\",\n    \"icon\" : \"73467ff9bbe440dc89786aac7d648897.svg\"\n  }, {\n    \"id\" : \"bb7f190c8c974702853ced9ebd015a85\",\n    \"resourceType\" : \"MySQL\",\n    \"userId\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"accessTime\" : \"2026-07-30 18:07:24\",\n    \"name\" : \"MySQL\",\n    \"url\" : \"/estack/web/mysql-console/#/instance-list\",\n    \"icon\" : \"4b558905d5234825a7a198b290f0121a.svg\"\n  }, {\n    \"id\" : \"d38bb892c57546f3919bef49721d3268\",\n    \"resourceType\" : \"ECS\",\n    \"userId\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"accessTime\" : \"2026-07-30 17:20:52\",\n    \"name\" : \"云主机\",\n    \"url\" : \"/estack/web/ecm-compute-static/vm/list?productType=vm\",\n    \"icon\" : \"ba40d9c14ada49acb4266cb50b1b2ca2.svg\"\n  } ]\n}"
+      }
+    ],
+    "/estack/api/estack/draco/v1/authority": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"5c2fbef3a92c0fe0\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"userId\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"username\" : \"estack-yy\",\n    \"authoritys\" : [ \"MaxBandwidth\", \"AccessHJ\", \"NON_PRIVATE_NETWORK\", \"proejctCode\", \"LABEL\", \"Language\", \"RESOURCESET\", \"ai\", \"isOnlyUkeyLogin\", \"IsCaptcha\", \"isSecondPlatform\", \"isHideOperator\", \"AreaCode\", \"register\", \"onlyCountry\", \"Currency\", \"BILLING\", \"IsShowLanguage\", \"passCheck\", \"VM_BK_CLONE_ENABLED\", \"TC\", \"isTenantIsolation\" ]\n  }\n}"
+      }
+    ],
+    "/estack/api/estack/libra/v1/notice/new/count/all-type": [
+      {
+        "status": 200,
+        "body": "{\n  \"traceId\" : \"2e47d57a7c83e17f\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : [ {\n    \"type\" : \"ANNOUNCE\",\n    \"count\" : 0\n  }, {\n    \"type\" : \"MESSAGE\",\n    \"count\" : 2\n  }, {\n    \"type\" : \"RESOURCE\",\n    \"count\" : 5\n  }, {\n    \"type\" : \"WARNING\",\n    \"count\" : 0\n  }, {\n    \"type\" : \"APPROVE\",\n    \"count\" : 32\n  }, {\n    \"type\" : \"ALL\",\n    \"count\" : 39\n  } ]\n}"
+      }
+    ]
+  }
+}

@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pytest-api-ai-test"
+version = "0.1.0"
+description = "Pytest 插件：自动发现并执行 API AI Test 生成的测试脚本"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "API AI Test Team"}
+]
+classifiers = [
+    "Framework :: Pytest",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "pytest>=7.0.0",
+]
+
+[project.entry-points.pytest11]
+api_ai_test = "pytest_api_ai_test.plugin"
+
+[tool.setuptools.packages.find]
+include = ["pytest_api_ai_test*"]

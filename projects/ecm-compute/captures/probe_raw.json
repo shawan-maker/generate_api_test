@@ -1,0 +1,282 @@
+{
+  "entry": {
+    "requested_url": "https://10.151.37.249/estack/web/ecm-compute-static/vm/list?productType=vm",
+    "status": 200,
+    "final_url": "https://10.151.37.249/estack/web/ecm-compute-static/vm/list?productType=vm",
+    "redirected": false,
+    "server": null,
+    "content_type": null,
+    "is_spa_shell": true,
+    "title": "",
+    "js_assets": [
+      "/estack/web/ecm-compute-static/static/js/chunk-vendors.66d1339a.js",
+      "/estack/web/ecm-compute-static/static/js/app.9445fc56.js",
+      "/estack/web/ecm-compute-static/basicRemoteEntry.js",
+      "/estack/web/ecm-compute-static/static/js/env.js",
+      "/estack/web/ecm-compute-static/static/js/ecmClient.js"
+    ],
+    "css_assets": [
+      "/estack/api/estack/pegasi/export-js/theme/basic.css",
+      "/estack/web/ecm-compute-static/static/css/chunk-vendors.1fe490de.css",
+      "/estack/web/ecm-compute-static/static/css/app.59b9b7d6.css"
+    ],
+    "html_len": 1138
+  },
+  "stack": {
+    "framework": null,
+    "framework_scores": {},
+    "ui_library": "element-ui / element-plus",
+    "ui_library_scores": {
+      "element-ui / element-plus": 4764
+    }
+  },
+  "docs": [
+    {
+      "path": "/v3/api-docs",
+      "status": 503,
+      "content_type": null,
+      "looks_like_doc": false
+    },
+    {
+      "path": "/v2/api-docs",
+      "status": 503,
+      "content_type": null,
+      "looks_like_doc": false
+    },
+    {
+      "path": "/v3/api-docs/swagger-config",
+      "status": 503,
+      "content_type": null,
+      "looks_like_doc": false
+    },
+    {
+      "path": "/swagger.json",
+      "status": 503,
+      "content_type": null,
+      "looks_like_doc": false
+    },
+    {
+      "path": "/openapi.json",
+      "status": 503,
+      "content_type": null,
+      "looks_like_doc": false
+    },
+    {
+      "path": "/swagger-resources",
+      "status": 503,
+      "content_type": null,
+      "looks_like_doc": false
+    },
+    {
+      "path": "/swagger-ui.html",
+      "status": 503,
+      "content_type": null,
+      "looks_like_doc": false
+    },
+    {
+      "path": "/swagger-ui/index.html",
+      "status": 503,
+      "content_type": null,
+      "looks_like_doc": false
+    },
+    {
+      "path": "/doc.html",
+      "status": 503,
+      "content_type": null,
+      "looks_like_doc": false
+    },
+    {
+      "path": "/actuator/mappings",
+      "status": 503,
+      "content_type": null,
+      "looks_like_doc": false
+    },
+    {
+      "path": "/api/schema/",
+      "status": 503,
+      "content_type": null,
+      "looks_like_doc": false
+    },
+    {
+      "path": "/api/docs",
+      "status": 503,
+      "content_type": null,
+      "looks_like_doc": false
+    },
+    {
+      "path": "/graphql",
+      "status": 503,
+      "content_type": null,
+      "looks_like_doc": false
+    }
+  ],
+  "js": {
+    "js_fetched": [
+      {
+        "url": "https://10.151.37.249/estack/web/ecm-compute-static/static/js/chunk-vendors.66d1339a.js",
+        "size": 1474030,
+        "round": 1
+      },
+      {
+        "url": "https://10.151.37.249/estack/web/ecm-compute-static/static/js/app.9445fc56.js",
+        "size": 265062,
+        "round": 1
+      },
+      {
+        "url": "https://10.151.37.249/estack/web/ecm-compute-static/basicRemoteEntry.js",
+        "size": 3419,
+        "round": 1
+      },
+      {
+        "url": "https://10.151.37.249/estack/web/ecm-compute-static/static/js/env.js",
+        "size": 1266,
+        "round": 1
+      },
+      {
+        "url": "https://10.151.37.249/estack/web/ecm-compute-static/static/js/ecmClient.js",
+        "size": 9861,
+        "round": 1
+      }
+    ],
+    "api_path_samples": [
+      "/dist/",
+      "/unauthorized",
+      "//static.sensorsdata.cn/sdk/",
+      "/vm/list",
+      "/mark",
+      "/sa.gif$2",
+      "/bcov/integration/product/ecs",
+      "/estack/web/ecm-compute-static/",
+      "/script",
+      "/page",
+      "/config/visualized/Web.conf",
+      "/export-excel",
+      "/global-export-excel",
+      "/vpc/",
+      "/vmbackup/",
+      "/edrs/home",
+      "/template",
+      "/keypair",
+      "/group",
+      "/estack/api/estack/cancer/inner/v1/pools/list/with-region/public",
+      "/estack/api/estack/cancer/v1/pools/list/region/public",
+      "/estack/api/estack/cancer/v1/pools/list/public",
+      "/estack/api/estack/pegasi/v1/system-theme/default/tab",
+      "/estack/api/estack/pegasi/v1/system-theme/theme-type/css/${e}",
+      "/estack/api/estack/draco/v1/authority",
+      "/estack/api/estack/draco/v1/tenants/${e.tenantId}",
+      "/estack/api/estack/draco/inner/v1/basic-config/AccessHJ",
+      "/estack/api/estack/draco/v1/redirect-url/list",
+      "/estack/api/estack/draco/v1/users/detail",
+      "/estack/api/estack/draco/inner/v1/users/current-user",
+      "/estack/api/estack/draco/inner/v1/users/09790288598846cf9d420acbeb0fcea5/is-inner",
+      "/estack/api/estack/pegasi/inner/v1/service-menu/check-auth/${e.resourceType}",
+      "/estack/api/estack/pegasi/inner/v1/menu/check-auth/list",
+      "/api/web/routes/console-openstack-volume/manage/v3/volume/querySpecsNameByopType",
+      "/api/query/menu/v4/menu/tree",
+      "/api/query/",
+      "/estack/web/",
+      "/doc/category/${n}",
+      "/home",
+      "/estack/web/bcec-console-ecs/",
+      "/estack/web/bcec-console-bms/",
+      "/estack/web/bcec-console-common/",
+      "/estack/web/bcec-console-ddh/",
+      "/estack/web/bcec-console-eas/",
+      "/estack/web/bcec-console-cbs/",
+      "/estack/web/bcec-console-multihpc/",
+      "/estack/web/evn-network-console/",
+      "/estack/web/op-network-static/",
+      "/ebm/list",
+      "/ddh/list",
+      "/bcec-console-basic/libs"
+    ],
+    "storage_keys": [
+      "sensors_heatmap_id",
+      "sensors_heatmap_type",
+      "sensors-visual-mode",
+      "sawebjssdk-sendingitems",
+      "bcecLoginFlag",
+      "sensorsdata_jssdk_debug",
+      "sensors_heatmap_url",
+      "sawebjssdk-"
+    ],
+    "custom_headers": [],
+    "uses_bearer": true,
+    "uses_authz": true,
+    "api_base_consts": [],
+    "auth_signals": [
+      "verif",
+      "login",
+      "authorization",
+      "signin",
+      "slide",
+      "xpos",
+      "authenticate",
+      "estack-language",
+      "bearer",
+      "logon"
+    ],
+    "chunk_files": [],
+    "chunk_total": 0
+  },
+  "shape": {
+    "api_base": null,
+    "api_base_candidates": [
+      "/estack/api",
+      "/estack/api/estack",
+      "/estack/api/estack/draco",
+      "/estack/api/estack/pegasi",
+      "/estack/api/estack/cancer",
+      "/api/query"
+    ],
+    "service_prefixes": [
+      "draco",
+      "pegasi",
+      "cancer",
+      "manage",
+      "menu"
+    ],
+    "api_path_count": 17,
+    "api_paths_preview": [
+      "/estack/api/estack/cancer/inner/v1/pools/list/with-region/public",
+      "/estack/api/estack/cancer/v1/pools/list/region/public",
+      "/estack/api/estack/cancer/v1/pools/list/public",
+      "/estack/api/estack/pegasi/v1/system-theme/default/tab",
+      "/estack/api/estack/pegasi/v1/system-theme/theme-type/css/${e}",
+      "/estack/api/estack/draco/v1/authority",
+      "/estack/api/estack/draco/v1/tenants/${e.tenantId}",
+      "/estack/api/estack/draco/inner/v1/basic-config/AccessHJ",
+      "/estack/api/estack/draco/v1/redirect-url/list",
+      "/estack/api/estack/draco/v1/users/detail",
+      "/estack/api/estack/draco/inner/v1/users/current-user",
+      "/estack/api/estack/draco/inner/v1/users/09790288598846cf9d420acbeb0fcea5/is-inner",
+      "/estack/api/estack/pegasi/inner/v1/service-menu/check-auth/${e.resourceType}",
+      "/estack/api/estack/pegasi/inner/v1/menu/check-auth/list",
+      "/api/web/routes/console-openstack-volume/manage/v3/volume/querySpecsNameByopType",
+      "/api/query/menu/v4/menu/tree",
+      "/api/query/"
+    ]
+  },
+  "auth": {
+    "login_detected": true,
+    "login_endpoints": [],
+    "captcha_endpoints": [],
+    "captcha_type_guess": "slider",
+    "token_storage_keys": [],
+    "custom_headers": [],
+    "auth_signals": [
+      "authenticate",
+      "authorization",
+      "bearer",
+      "estack-language",
+      "login",
+      "logon",
+      "signin",
+      "slide",
+      "verif",
+      "xpos"
+    ],
+    "scheme_guess": "bearer"
+  }
+}

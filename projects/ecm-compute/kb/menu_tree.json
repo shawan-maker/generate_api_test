@@ -1,0 +1,121 @@
+[
+  {
+    "label": "启动模板",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": ""
+  },
+  {
+    "label": "云主机 ECS",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "实例与镜像"
+  },
+  {
+    "label": "裸金属服务器 BMS",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "实例与镜像"
+  },
+  {
+    "label": "专属宿主机 DDH",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "实例与镜像"
+  },
+  {
+    "label": "镜像服务 IMS",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "实例与镜像"
+  },
+  {
+    "label": "SSH密钥",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "实例与镜像"
+  },
+  {
+    "label": "云主机群组",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "实例与镜像"
+  },
+  {
+    "label": "安全组",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "网络与安全"
+  },
+  {
+    "label": "弹性公网IP",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "网络与安全"
+  },
+  {
+    "label": "VPC",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "网络与安全"
+  },
+  {
+    "label": "云硬盘 EBS",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "存储与备份"
+  },
+  {
+    "label": "云服务器备份 CBS",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "存储与备份"
+  },
+  {
+    "label": "弹性伸缩 EAS",
+    "href": "",
+    "level": 0,
+    "is_group": false,
+    "group": "运维与监控"
+  },
+  {
+    "label": "实例与镜像",
+    "href": "",
+    "level": 0,
+    "is_group": true,
+    "group": ""
+  },
+  {
+    "label": "网络与安全",
+    "href": "",
+    "level": 0,
+    "is_group": true,
+    "group": ""
+  },
+  {
+    "label": "存储与备份",
+    "href": "",
+    "level": 0,
+    "is_group": true,
+    "group": ""
+  },
+  {
+    "label": "运维与监控",
+    "href": "",
+    "level": 0,
+    "is_group": true,
+    "group": ""
+  }
+]

@@ -1,0 +1,73 @@
+# .gitignore - 排除敏感文件、运行时产物和临时文件
+
+# ============ 敏感文件 ============
+# 凭据文件（含明文密码/token）
+**/auth.json
+**/profile.yaml
+**/context.json
+
+# Cookie 文件（含会话 token）
+**/cookies.json
+**/cookies.meta.json
+/cookies.json
+/meta.json
+/context.json
+
+# ============ 运行时产物 ============
+# 整个 output 目录（含日志、报告、截图、调试脚本、缓存等）
+**/output/
+# 但保留模板/配置文件（需手动 force-add）
+!**/output/config/auth.json.example
+!**/output/config/failure_overrides.json
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# pytest 缓存
+.pytest_cache/
+
+# 根目录临时文件
+/results.xml
+/*.log
+/*.png
+
+# 临时文件
+*.tmp
+*.bak
+*.swp
+*~
+
+# .probed.yaml（运行时探测产物）
+*.probed.yaml
+
+# egg-info（pip install 产物）
+*.egg-info/
+
+# ============ 调试脚本 ============
+# 项目根目录的调试脚本（已移至 output/debug/）
+/debug_*.py
+/test_find_row*.py
+/regenerate_*.py
+
+# 子目录下的调试脚本
+**/debug_*.py
+scripts/debug/
+module_discovery/debug_*.py
+
+# ============ 开发工具配置 ============
+# Claude Code 本地配置（不上传）
+.claude/
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ============ 系统文件 ============
+.DS_Store
+Thumbs.db
+*.desktop

@@ -1,0 +1,10 @@
+{
+  "base_url": "https://console-estack-syyhb.cmecloud.cn",
+  "api_base": "/estack/api/estack",
+  "header_name": "Authorization",
+  "header_prefix": "Bearer ",
+  "fixed_headers": {
+    "SID": "bf5eadddf8eb496bb7788474f8322c6e",
+    "Estack-Language": "zh-CN"
+  }
+}

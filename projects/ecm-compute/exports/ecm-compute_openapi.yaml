@@ -1,0 +1,3425 @@
+openapi: 3.1.0
+info:
+  title: 移动云弹性计算 (ecm-compute, 10.151.37.249 环境) — discovered API catalog
+  version: 1.0.0
+  description: 'Exported from API_AI_test on 2026-08-19T06:02:07.189718+00:00
+
+    Source: 2026-08-19T04:52:42.097345+00:00
+
+    Endpoints: 50
+
+    x-kb-* 扩展字段标注了来源/信任度/CRUD 分类/service 与资源归属。'
+servers:
+- url: https://10.151.37.249/estack/api
+  description: 移动云弹性计算 (ecm-compute, 10.151.37.249 环境)
+paths:
+  /estack/api/estack/draco/v1/authority/national:
+    get:
+      summary: list:authority
+      operationId: get__estack_api_estack_draco_v1_authority_national
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 3538fe9c5846a7a8
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    userId: null
+                    username: null
+                    authoritys:
+                    - id: 0cc9f4c730234036a67171f1cb69207b
+                      authorityKey: VM_BK_CLONE_ENABLED
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: d4e358c62a1a4a96a7ef53472269104e
+                      authorityKey: IsCaptcha
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: e3eeb9e8ffbd4b85a4ab052796505773
+                      authorityKey: BILLING
+                      authorityValue: 计费
+                      authorityKeyList: null
+                    - id: 5e4682eae67846d5834726b2adf6f5ad
+                      authorityKey: MaxBandwidth
+                      authorityValue: '10240'
+                      authorityKeyList: null
+                    - id: c18effe4fece4b579bb4a9f5389f8da0
+                      authorityKey: ai
+                      authorityValue: 'false'
+                      authorityKeyList: null
+                    - id: 9967a588ff264df8a9f3cba4c732d747
+                      authorityKey: isTenantIsolation
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 18e2053ba0b641dd9e22d494a341918d
+                      authorityKey: AccessHJ
+                      authorityValue: 'false'
+                      authorityKeyList: null
+                    - id: 84343ef10be842c29be2d4472b7686bc
+                      authorityKey: isSecondPlatform
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 9e3c0d12e0d04e729b5a9a1bcb68bf0a
+                      authorityKey: IsShowLanguage
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: c00d3516cb6a4b3a92647c23be0201a7
+                      authorityKey: TC
+                      authorityValue: 天池
+                      authorityKeyList: null
+                    - id: c0a5941593a1480b81b6da379578bf7c
+                      authorityKey: NON_PRIVATE_NETWORK
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 8ece89818cb642f884a82abdcadf6c61
+                      authorityKey: Language
+                      authorityValue: en-US
+                      authorityKeyList: null
+                    - id: 7ef3610497274a47b22ba343c05a2665
+                      authorityKey: isOnlyUkeyLogin
+                      authorityValue: 'false'
+                      authorityKeyList: null
+                    - id: 33f3b9b608a349f8a84ea09480724d40
+                      authorityKey: Currency
+                      authorityValue: ￥
+                      authorityKeyList: null
+                    - id: c09831562c77457cb80504cfb8ce5da0
+                      authorityKey: LABEL
+                      authorityValue: 标签
+                      authorityKeyList: null
+                    - id: 0d5edca6918a4521b8a7f973a31c5556
+                      authorityKey: AreaCode
+                      authorityValue: '86'
+                      authorityKeyList: null
+                    - id: ab1294206698440d9251978416994011
+                      authorityKey: passCheck
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 631dbcae42d74139b1f2c332f65ff136
+                      authorityKey: isHideOperator
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 5e86bf47954a4ddd98fc0d535cbb9195
+                      authorityKey: proejctCode
+                      authorityValue: JiAn
+                      authorityKeyList: null
+                    - id: 259f4e50f6ca4caa8d9ff1f166315f0d
+                      authorityKey: RESOURCESET
+                      authorityValue: 资源集
+                      authorityKeyList: null
+                    - id: f74a55afcbea48f985b0d710ee6f025d
+                      authorityKey: register
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 86b5a4ced04045d5be66d4f2f506800a
+                      authorityKey: onlyCountry
+                      authorityValue: 49,86
+                      authorityKeyList: null
+              - summary: status=200
+                value:
+                  traceId: b6ba66ad039ac8c0
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    userId: null
+                    username: null
+                    authoritys:
+                    - id: ccf5c75dee68462582dc9f51d9e7e847
+                      authorityKey: VM_BK_CLONE_ENABLED
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 0c5534b549a446be81d363bd20065668
+                      authorityKey: IsCaptcha
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: de652021d1514921b902bfc33d149807
+                      authorityKey: BILLING
+                      authorityValue: 计费
+                      authorityKeyList: null
+                    - id: ef4e4fbf398a4c82a80ebe036403cd6f
+                      authorityKey: MaxBandwidth
+                      authorityValue: '10240'
+                      authorityKeyList: null
+                    - id: e87a863c8fd3486daa5fc29af3a7b4e9
+                      authorityKey: ai
+                      authorityValue: 'false'
+                      authorityKeyList: null
+                    - id: 53c1d0c15b7244529cc03d145e56629d
+                      authorityKey: isTenantIsolation
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 05678d5a4946442f821137107e26cf2b
+                      authorityKey: AccessHJ
+                      authorityValue: 'false'
+                      authorityKeyList: null
+                    - id: 1928a57ab07f4f8e8608c81a75e1e927
+                      authorityKey: isSecondPlatform
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: a1bb6d94c9a94bea9ca3af8bfa55bb34
+                      authorityKey: IsShowLanguage
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 1300d3a29fbc4293b9cfa2da63fe57ee
+                      authorityKey: TC
+                      authorityValue: 天池
+                      authorityKeyList: null
+                    - id: faa84d6dfb334cce8add34a477c4e945
+                      authorityKey: NON_PRIVATE_NETWORK
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 24b76097896f4a38bae67394a4ae80f2
+                      authorityKey: Language
+                      authorityValue: en-US
+                      authorityKeyList: null
+                    - id: c28e9847dd5f489cb5e920b68c6ab72c
+                      authorityKey: isOnlyUkeyLogin
+                      authorityValue: 'false'
+                      authorityKeyList: null
+                    - id: 54d9c7b4f7b848168f84e31f8381f4c4
+                      authorityKey: Currency
+                      authorityValue: ￥
+                      authorityKeyList: null
+                    - id: 17f30cdbd21149a1a0cc69389ef6fea0
+                      authorityKey: LABEL
+                      authorityValue: 标签
+                      authorityKeyList: null
+                    - id: 5d18ced9c4ee4970a435fcaa05330a7e
+                      authorityKey: AreaCode
+                      authorityValue: '86'
+                      authorityKeyList: null
+                    - id: d1a079efdb1b4309b192e2132ad0214a
+                      authorityKey: passCheck
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: d05e9994b564461da869eebb5deb9a3d
+                      authorityKey: isHideOperator
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 58e376c4b897433f992d9c1c8a79ccef
+                      authorityKey: proejctCode
+                      authorityValue: JiAn
+                      authorityKeyList: null
+                    - id: 4ad30c2854ac4308b3c9dff39d9fe839
+                      authorityKey: RESOURCESET
+                      authorityValue: 资源集
+                      authorityKeyList: null
+                    - id: 33540b2be8c24d5e9d463069e1e908d4
+                      authorityKey: register
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 4be7ed1cf3874f149dd5fe8b51240de7
+                      authorityKey: onlyCountry
+                      authorityValue: 49,86
+                      authorityKeyList: null
+              - summary: status=200
+                value:
+                  traceId: 5efb7292b7da8c53
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    userId: null
+                    username: null
+                    authoritys:
+                    - id: e1afc966baad45489170afdce1c48fd3
+                      authorityKey: VM_BK_CLONE_ENABLED
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: cc953742b7e243db8cd3ca00573b9f21
+                      authorityKey: IsCaptcha
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: bf0c82398dae4edbacea132a6b367ac0
+                      authorityKey: BILLING
+                      authorityValue: 计费
+                      authorityKeyList: null
+                    - id: ecbc7a0ad1f44340a1804ce0504a71d8
+                      authorityKey: MaxBandwidth
+                      authorityValue: '10240'
+                      authorityKeyList: null
+                    - id: a9f5b17fa17742b4900bf023722f183c
+                      authorityKey: ai
+                      authorityValue: 'false'
+                      authorityKeyList: null
+                    - id: 02da1fa283fd4ed89eb20ad6056df2ff
+                      authorityKey: isTenantIsolation
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 89521996e1c948d49fc5006846b1b500
+                      authorityKey: AccessHJ
+                      authorityValue: 'false'
+                      authorityKeyList: null
+                    - id: 1f10d286b53d4bd2bffa099b1cc60653
+                      authorityKey: isSecondPlatform
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: fe3d0140e63b4e3ead9ce5c0f0bdb883
+                      authorityKey: IsShowLanguage
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: e3c7843a11054557a37b1ebf07f1c2c7
+                      authorityKey: TC
+                      authorityValue: 天池
+                      authorityKeyList: null
+                    - id: ca57b81153664c5fa0baa0251c05014c
+                      authorityKey: NON_PRIVATE_NETWORK
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 306796a87dde47ea9bad86011e0a6065
+                      authorityKey: Language
+                      authorityValue: en-US
+                      authorityKeyList: null
+                    - id: 96ecb7b01ff344c38074923943a9e310
+                      authorityKey: isOnlyUkeyLogin
+                      authorityValue: 'false'
+                      authorityKeyList: null
+                    - id: 04f62473913b40059aaa13dab6a551bc
+                      authorityKey: Currency
+                      authorityValue: ￥
+                      authorityKeyList: null
+                    - id: 6abd1f4047954d28bd470bc09cc16bba
+                      authorityKey: LABEL
+                      authorityValue: 标签
+                      authorityKeyList: null
+                    - id: ace788b87a1443b8bda5acbe82a81894
+                      authorityKey: AreaCode
+                      authorityValue: '86'
+                      authorityKeyList: null
+                    - id: b714f9dd6a1846129d019c66026bfc63
+                      authorityKey: passCheck
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 4faadacc3cf3421a85d4d85bbf50e6f5
+                      authorityKey: isHideOperator
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 8180d7d5fd784f36b1faa125df989cdd
+                      authorityKey: proejctCode
+                      authorityValue: JiAn
+                      authorityKeyList: null
+                    - id: 3b707a9b80dd4b4cb2ec8f4824f9dcde
+                      authorityKey: RESOURCESET
+                      authorityValue: 资源集
+                      authorityKeyList: null
+                    - id: 127cdc62079d4a26858b2946bc050775
+                      authorityKey: register
+                      authorityValue: 'true'
+                      authorityKeyList: null
+                    - id: 82ce81c2f09745f0aaf3ef31024cd640
+                      authorityKey: onlyCountry
+                      authorityValue: 49,86
+                      authorityKeyList: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: authority
+  /estack/api/estack/delphini/v1/dynamic-dictionary/json:
+    post:
+      summary: action:dynamic-dictionary
+      operationId: post__estack_api_estack_delphini_v1_dynamic-dictionary_json
+      tags:
+      - null
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: action
+      x-kb-service: null
+      x-kb-resource: dynamic-dictionary
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                categories:
+                  type: string
+                  description: ''
+                languages:
+                  type: string
+                  description: ''
+  /estack/api/estack/pegasi/v1/system-theme:
+    get:
+      summary: list:system-theme
+      operationId: get__estack_api_estack_pegasi_v1_system-theme
+      tags:
+      - pegasi
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: ce98c1e79edd4d06
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    id: default
+                    portalId: default
+                    themeType: BLUE
+                    systemIdentifierId: default
+                    loginIdentifierId: null
+                    tabId: default
+                    portal:
+                      id: default
+                      name: 默认科技风
+                      frontImageUrl: null
+                      backImageUrl: null
+                      titleLayout: null
+                      titles: []
+                      isDefault: true
+                      chOverviewUrl: null
+                      chOverviewBase64: null
+                      hkOverviewUrl: null
+                      hkOverviewBase64: null
+                      enOverviewUrl: null
+                      enOverviewBase64: null
+                      createdAt: null
+                      updatedAt: null
+                    systemIdentifier:
+                      id: default
+                      name: null
+                      type: null
+                      url: null
+                      logoUrl: null
+                      logoName: null
+                      iconUrl: null
+                      iconBase64: null
+                      imageUrl: null
+                      imageBase64: null
+                      textType: null
+                      titles: []
+                      isDefault: true
+                      createdAt: '2024-05-10 12:25:51'
+                      updatedAt: '2024-05-10 12:25:51'
+                    loginIdentifier: null
+                    tab:
+                      id: default
+                      name: 默认页签
+                      title: eStack Enterprise
+                      favicon: 97082d9dc4aa4fe59a23d8321311d627.ico
+                      createdAt: '2025-02-06 17:29:45'
+                      updatedAt: '2025-02-07 09:43:11'
+              - summary: status=200
+                value:
+                  traceId: 59f68c4a9998426f
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    id: default
+                    portalId: default
+                    themeType: BLUE
+                    systemIdentifierId: default
+                    loginIdentifierId: null
+                    tabId: default
+                    portal:
+                      id: default
+                      name: 默认科技风
+                      frontImageUrl: null
+                      backImageUrl: null
+                      titleLayout: null
+                      titles: []
+                      isDefault: true
+                      chOverviewUrl: null
+                      chOverviewBase64: null
+                      hkOverviewUrl: null
+                      hkOverviewBase64: null
+                      enOverviewUrl: null
+                      enOverviewBase64: null
+                      createdAt: null
+                      updatedAt: null
+                    systemIdentifier:
+                      id: default
+                      name: null
+                      type: null
+                      url: null
+                      logoUrl: null
+                      logoName: null
+                      iconUrl: null
+                      iconBase64: null
+                      imageUrl: null
+                      imageBase64: null
+                      textType: null
+                      titles: []
+                      isDefault: true
+                      createdAt: '2024-05-10 12:25:51'
+                      updatedAt: '2024-05-10 12:25:51'
+                    loginIdentifier: null
+                    tab:
+                      id: default
+                      name: 默认页签
+                      title: eStack Enterprise
+                      favicon: 97082d9dc4aa4fe59a23d8321311d627.ico
+                      createdAt: '2025-02-06 17:29:45'
+                      updatedAt: '2025-02-07 09:43:11'
+              - summary: status=200
+                value:
+                  traceId: 026846f341dcf7c7
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    id: default
+                    portalId: default
+                    themeType: BLUE
+                    systemIdentifierId: default
+                    loginIdentifierId: null
+                    tabId: default
+                    portal:
+                      id: default
+                      name: 默认科技风
+                      frontImageUrl: null
+                      backImageUrl: null
+                      titleLayout: null
+                      titles: []
+                      isDefault: true
+                      chOverviewUrl: null
+                      chOverviewBase64: null
+                      hkOverviewUrl: null
+                      hkOverviewBase64: null
+                      enOverviewUrl: null
+                      enOverviewBase64: null
+                      createdAt: null
+                      updatedAt: null
+                    systemIdentifier:
+                      id: default
+                      name: null
+                      type: null
+                      url: null
+                      logoUrl: null
+                      logoName: null
+                      iconUrl: null
+                      iconBase64: null
+                      imageUrl: null
+                      imageBase64: null
+                      textType: null
+                      titles: []
+                      isDefault: true
+                      createdAt: '2024-05-10 12:25:51'
+                      updatedAt: '2024-05-10 12:25:51'
+                    loginIdentifier: null
+                    tab:
+                      id: default
+                      name: 默认页签
+                      title: eStack Enterprise
+                      favicon: 97082d9dc4aa4fe59a23d8321311d627.ico
+                      createdAt: '2025-02-06 17:29:45'
+                      updatedAt: '2025-02-07 09:43:11'
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: pegasi
+      x-kb-resource: system-theme
+  /estack/api/estack/draco/v1/images/pictures-verification:
+    get:
+      summary: list:images
+      operationId: get__estack_api_estack_draco_v1_images_pictures-verification
+      tags:
+      - draco
+      parameters:
+      - name: noloading
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''true'']'
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: images
+  /estack/api/estack/draco/v1/images/pictures:
+    get:
+      summary: list:images
+      operationId: get__estack_api_estack_draco_v1_images_pictures
+      tags:
+      - draco
+      parameters:
+      - name: noloading
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''true'']'
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: images
+  /estack/api/estack/draco/v1/users/current-user:
+    get:
+      summary: list:users
+      operationId: get__estack_api_estack_draco_v1_users_current-user
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=401
+                value:
+                  traceId: c79d8ceccfb8c240
+                  success: false
+                  message: invalid token
+                  errorCode: invalid token
+              - summary: status=401
+                value:
+                  traceId: 7a63fad49149b00f
+                  success: false
+                  message: invalid token
+                  errorCode: invalid token
+              - summary: status=200
+                value:
+                  traceId: 543f3d00446e36bb
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    id: c83f6e8b88bc4295bb860c3147da9107
+                    tenantId: ebc58456fb2d47e09ef258d37d2b8ee6
+                    tenantName: jcyz213
+                    adminId: 5f28642f3a2f483e988b8185a132477c
+                    ramId: c83f6e8b88bc4295bb860c3147da9107
+                    name: jcyz213-test
+                    userName: jcyz213-test
+                    email: a*****a@aa.a
+                    phone: 188***8886
+                    encryptedEmail: m1Un/kjtnu5zXLIQ97eY/g==
+                    encryptedPhone: KvtUD+0z9jrI7SVxSPniLQ==
+                    countryCode: '+86'
+                    description: ''
+                    createdAt: '2025-12-19 17:07:28'
+                    updatedAt: null
+                    deleted: false
+                    state: ENABLE
+                    isAdmin: false
+                    isProjectManager: true
+                    isAuthentication: false
+                    roleId: null
+                    roleName: null
+                    ancestorList:
+                    - jcyz213
+                    isPassword: true
+                    isEmail: true
+                    isPhone: true
+                    poolNameList: null
+                    isRootTenantUser: true
+                    isApproval: false
+                    tenantLevel: 0
+                    locked: false
+                    policyIdList:
+                    - d66aad0a182647b9bc0e59761b474490
+                    - a2f3cbf9990544f69d05495b7c1219c5
+                    - 1f8e392309fc414c9d77d45d0315fedc
+                    - 3533d543aaa04d83acc22b371eaf13a5
+                    policyList:
+                    - id: d66aad0a182647b9bc0e59761b474490
+                      tenantId: null
+                      policyName: 项目管理员
+                      policyType: SYSTEM
+                      policyCategory: PROJECT
+                      description: null
+                      released: false
+                      deleted: null
+                      originalPolicyName: RAM.POLICES.POLICY_NAME.PROJECT_ADMIN
+                    - id: a2f3cbf9990544f69d05495b7c1219c5
+                      tenantId: null
+                      policyName: 项目操作人员
+                      policyType: SYSTEM
+                      policyCategory: PROJECT
+                      description: null
+                      released: true
+                      deleted: null
+                      originalPolicyName: RAM.POLICES.POLICY_NAME.PROJECT_OPERATOR
+                    - id: 1f8e392309fc414c9d77d45d0315fedc
+                      tenantId: null
+                      policyName: 普通用户
+                      policyType: SYSTEM
+                      policyCategory: ORGANIZATION
+                      description: null
+                      released: true
+                      deleted: null
+                      originalPolicyName: RAM.POLICES.POLICY_NAME.COMMON_ROLE
+                    - id: 3533d543aaa04d83acc22b371eaf13a5
+                      tenantId: null
+                      policyName: 项目只读人员
+                      policyType: SYSTEM
+                      policyCategory: PROJECT
+                      description: null
+                      released: true
+                      deleted: null
+                      originalPolicyName: RAM.POLICES.POLICY_NAME.PROJECT_READ_ONLY_ROLE
+                    countryCodePhone: +86 188***8886
+                    password: '***MASKED***'
+                    projectIdList: null
+                    needRamIdentity: null
+                    isInnerUser: null
+                    userType: null
+                    isForceChange: false
+                    isTempPassword: false
+                    mfLoginPolicy: null
+                    enableMultiFactLoginPolicy: null
+                    maintainAt: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: users
+  /estack/api/estack/draco/v1/images/checkcap/code:
+    get:
+      summary: action:images
+      operationId: get__estack_api_estack_draco_v1_images_checkcap_code
+      tags:
+      - draco
+      parameters:
+      - name: capcode
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''5c626ca00f624ff7b8babcf504cf4ab5'', ''c7b4f892550e4e6e8d22c705d0740241'']'
+      - name: xpos
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''315'', ''72'']'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 74f354edefa63eb4
+                  success: false
+                  errorMessage: 验证失败
+                  message: 验证失败
+                  errorCode: Login.UserLoginImageCodeFailed
+                  entity: null
+              - summary: status=200
+                value:
+                  traceId: 4d78b4fd0bbe6711
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity: true
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: action
+      x-kb-service: draco
+      x-kb-resource: images
+  /estack/api/estack/draco/v1/users/login:
+    post:
+      summary: action:users
+      operationId: post__estack_api_estack_draco_v1_users_login
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 1d220601e1098994
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    scope: null
+                    authorizeUrl: null
+                    redirectUri: null
+                    access_token: 92ef7eca-116e-48fe-9ace-ebf7e839fbd9
+                    token_type: bearer
+                    refresh_token: null
+                    expires_in: '7199'
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: action
+      x-kb-service: draco
+      x-kb-resource: users
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                capcode:
+                  type: string
+                  description: ''
+                password:
+                  type: string
+                  description: ''
+                username:
+                  type: string
+                  description: ''
+                xpos:
+                  type: string
+                  description: ''
+  /estack/api/estack/draco/v1/users/password/expire-notice:
+    get:
+      summary: list:users
+      operationId: get__estack_api_estack_draco_v1_users_password_expire-notice
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: ef7a996b2a1a8931
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    username: jcyz213-test
+                    daysToExpire: 70
+                    noticeMessage: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: users
+  /estack/api/estack/pegasi/v1/menu/side-tree:
+    post:
+      summary: create:menu
+      operationId: post__estack_api_estack_pegasi_v1_menu_side-tree
+      tags:
+      - pegasi
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: create
+      x-kb-service: pegasi
+      x-kb-resource: menu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                isVisible:
+                  type: string
+                  description: ''
+                userId:
+                  type: string
+                  description: ''
+  /estack/api/estack/pegasi/v1/product-introduction/portal:
+    get:
+      summary: list:product-introduction
+      operationId: get__estack_api_estack_pegasi_v1_product-introduction_portal
+      tags:
+      - pegasi
+      parameters:
+      - name: resourceType
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''portal'']'
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: pegasi
+      x-kb-resource: product-introduction
+  /estack/api/estack/pegasi/v1/menu/portal/tree:
+    post:
+      summary: list:menu
+      operationId: post__estack_api_estack_pegasi_v1_menu_portal_tree
+      tags:
+      - pegasi
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: pegasi
+      x-kb-resource: menu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                isAll:
+                  type: string
+                  description: ''
+                rootId:
+                  type: string
+                  description: ''
+  /estack/api/estack/draco/v1/basic-config/ai:
+    get:
+      summary: list:basic-config
+      operationId: get__estack_api_estack_draco_v1_basic-config_ai
+      tags:
+      - draco
+      parameters:
+      - name: key
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''ai'']'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: d835309a2a423d1e
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    id: 7f88319c627642b7971ff8f7c2251d36
+                    authorityKey: ai
+                    authorityValue: 'true'
+                    authorityKeyList: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: basic-config
+  /estack/api/estack/taurus/v1/ai-robot/conversations:
+    post:
+      summary: create:ai-robot
+      operationId: post__estack_api_estack_taurus_v1_ai-robot_conversations
+      tags:
+      - null
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 15e38dc6202d703a
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    data: []
+                    limit: null
+                    has_more: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: create
+      x-kb-service: null
+      x-kb-resource: ai-robot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limit:
+                  type: string
+                  description: ''
+                noloading:
+                  type: string
+                  description: ''
+                userId:
+                  type: string
+                  description: ''
+  /estack/api/estack/draco/v1/redirect-url/list:
+    post:
+      summary: list:redirect-url
+      operationId: post__estack_api_estack_draco_v1_redirect-url_list
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 871395c77b6247b1
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    total: 0
+                    list: []
+                    pageNum: 1
+                    pageSize: 0
+                    size: 0
+                    startRow: 0
+                    endRow: 0
+                    pages: 0
+                    prePage: 0
+                    nextPage: 0
+                    isFirstPage: true
+                    isLastPage: true
+                    hasPreviousPage: false
+                    hasNextPage: false
+                    navigatePages: 8
+                    navigatepageNums: []
+                    navigateFirstPage: 0
+                    navigateLastPage: 0
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: redirect-url
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                resourceTypes:
+                  type: string
+                  description: ''
+  /estack/api/estack/pegasi/v1/system-theme/default/tab:
+    get:
+      summary: list:system-theme
+      operationId: get__estack_api_estack_pegasi_v1_system-theme_default_tab
+      tags:
+      - pegasi
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 304d30dcabe4e2cf
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    id: default
+                    name: 默认页签
+                    title: eStack Enterprise
+                    favicon: 97082d9dc4aa4fe59a23d8321311d627.ico
+                    createdAt: '2025-02-06 17:29:45'
+                    updatedAt: '2025-02-07 09:43:11'
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: pegasi
+      x-kb-resource: system-theme
+  /estack/api/estack/draco/inner/v1/basic-config/AccessHJ:
+    get:
+      summary: list:basic-config
+      operationId: get__estack_api_estack_draco_inner_v1_basic-config_AccessHJ
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  requestId: 7f6623e3cfb02c58
+                  state: OK
+                  body:
+                    id: 0a4ff71e555442188b560314229a1eee
+                    authorityKey: AccessHJ
+                    authorityValue: 'false'
+                    authorityKeyList: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: basic-config
+  /estack/api/estack/cancer/v1/pools/list/region/public:
+    get:
+      summary: list:pools
+      operationId: get__estack_api_estack_cancer_v1_pools_list_region_public
+      tags:
+      - cancer
+      parameters:
+      - name: component
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''NOVA'']'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 24b236b7f9dadaec
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                  - id: null
+                    poolId: CIDC-ESTACK-13
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: SZSYY
+                    name: 可用区二
+                    status: ONLINE
+                  - id: null
+                    poolId: CIDC-ESTACK-12
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: QLSYY
+                    name: 可用区一
+                    status: ONLINE
+                  - id: 2
+                    poolId: CIDC-ESTACK-10
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: RegionOne
+                    name: 可用区一
+                    status: ONLINE
+                  - id: 5
+                    poolId: CIDC-ESTACK-11
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: FHSYY
+                    name: 可用区一
+                    status: ONLINE
+                  - id: null
+                    poolId: CIDC-ESTACK-13
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: FHSYY
+                    name: 可用区一
+                    status: ONLINE
+              - summary: status=200
+                value:
+                  traceId: c6ac836f04bf33e5
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                  - id: null
+                    poolId: CIDC-ESTACK-13
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: SZSYY
+                    name: 可用区二
+                    status: ONLINE
+                  - id: null
+                    poolId: CIDC-ESTACK-12
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: QLSYY
+                    name: 可用区一
+                    status: ONLINE
+                  - id: 2
+                    poolId: CIDC-ESTACK-10
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: RegionOne
+                    name: 可用区一
+                    status: ONLINE
+                  - id: 5
+                    poolId: CIDC-ESTACK-11
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: FHSYY
+                    name: 可用区一
+                    status: ONLINE
+                  - id: null
+                    poolId: CIDC-ESTACK-13
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: FHSYY
+                    name: 可用区一
+                    status: ONLINE
+              - summary: status=200
+                value:
+                  traceId: a74d21f056271ca8
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                  - id: null
+                    poolId: CIDC-ESTACK-13
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: SZSYY
+                    name: 可用区二
+                    status: ONLINE
+                  - id: null
+                    poolId: CIDC-ESTACK-12
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: QLSYY
+                    name: 可用区一
+                    status: ONLINE
+                  - id: 2
+                    poolId: CIDC-ESTACK-10
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: RegionOne
+                    name: 可用区一
+                    status: ONLINE
+                  - id: 5
+                    poolId: CIDC-ESTACK-11
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: FHSYY
+                    name: 可用区一
+                    status: ONLINE
+                  - id: null
+                    poolId: CIDC-ESTACK-13
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: FHSYY
+                    name: 可用区一
+                    status: ONLINE
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: cancer
+      x-kb-resource: pools
+  /estack/api/estack/draco/v1/authority:
+    get:
+      summary: list:authority
+      operationId: get__estack_api_estack_draco_v1_authority
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 3c621565a4a6618a
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    userId: c83f6e8b88bc4295bb860c3147da9107
+                    username: jcyz213-test
+                    authoritys:
+                    - MaxBandwidth
+                    - AccessHJ
+                    - NON_PRIVATE_NETWORK
+                    - proejctCode
+                    - LABEL
+                    - Language
+                    - RESOURCESET
+                    - isOnlyUkeyLogin
+                    - IsCaptcha
+                    - isSecondPlatform
+                    - isHideOperator
+                    - ai
+                    - AreaCode
+                    - register
+                    - onlyCountry
+                    - Currency
+                    - BILLING
+                    - IsShowLanguage
+                    - passCheck
+                    - VM_BK_CLONE_ENABLED
+                    - TC
+                    - isTenantIsolation
+                    - onlyCountry
+              - summary: status=200
+                value:
+                  traceId: 3ddfb7b9025cad52
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    userId: c83f6e8b88bc4295bb860c3147da9107
+                    username: jcyz213-test
+                    authoritys:
+                    - MaxBandwidth
+                    - AccessHJ
+                    - NON_PRIVATE_NETWORK
+                    - proejctCode
+                    - LABEL
+                    - Language
+                    - RESOURCESET
+                    - isOnlyUkeyLogin
+                    - IsCaptcha
+                    - isSecondPlatform
+                    - isHideOperator
+                    - ai
+                    - AreaCode
+                    - register
+                    - onlyCountry
+                    - Currency
+                    - BILLING
+                    - IsShowLanguage
+                    - passCheck
+                    - VM_BK_CLONE_ENABLED
+                    - TC
+                    - isTenantIsolation
+                    - onlyCountry
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: authority
+  /estack/api/estack/pegasi/inner/v1/menu/check-auth/list:
+    post:
+      summary: action:menu
+      operationId: post__estack_api_estack_pegasi_inner_v1_menu_check-auth_list
+      tags:
+      - pegasi
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  requestId: 77b5b341829eb1a1
+                  state: OK
+                  body:
+                    authorities:
+                    - resourceType: ECS
+                      result: true
+                    - resourceType: IRONIC
+                      result: true
+                    - resourceType: DECLOUD
+                      result: true
+                    - resourceType: EAS
+                      result: true
+                    - resourceType: VMBK
+                      result: true
+                    - resourceType: EIP
+                      result: true
+                    - resourceType: VPC
+                      result: true
+                    - resourceType: VOLUME
+                      result: true
+                    - resourceType: IMS
+                      result: true
+                    - resourceType: SECURITYGROUP
+                      result: true
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: action
+      x-kb-service: pegasi
+      x-kb-resource: menu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                resourceTypes:
+                  type: string
+                  description: ''
+  /estack/api/estack/pegasi/inner/v1/service-menu/check-auth/DECLOUD:
+    get:
+      summary: action:service-menu
+      operationId: get__estack_api_estack_pegasi_inner_v1_service-menu_check-auth_DECLOUD
+      tags:
+      - pegasi
+      parameters:
+      - name: resourceType
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''DECLOUD'']'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  requestId: bec9ce502524f6d0
+                  state: OK
+                  body: true
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: action
+      x-kb-service: pegasi
+      x-kb-resource: service-menu
+  /estack/api/estack/pegasi/inner/v1/service-menu/check-auth/IRONIC:
+    get:
+      summary: action:service-menu
+      operationId: get__estack_api_estack_pegasi_inner_v1_service-menu_check-auth_IRONIC
+      tags:
+      - pegasi
+      parameters:
+      - name: resourceType
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''IRONIC'']'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  requestId: 84fec931657095ea
+                  state: OK
+                  body: true
+              - summary: status=200
+                value:
+                  requestId: 674078ba3d7d8b51
+                  state: OK
+                  body: true
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: action
+      x-kb-service: pegasi
+      x-kb-resource: service-menu
+  /estack/api/estack/pegasi/inner/v1/service-menu/check-auth/ECS:
+    get:
+      summary: action:service-menu
+      operationId: get__estack_api_estack_pegasi_inner_v1_service-menu_check-auth_ECS
+      tags:
+      - pegasi
+      parameters:
+      - name: resourceType
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''ECS'']'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  requestId: 1053e8eadb3cba4e
+                  state: OK
+                  body: true
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: action
+      x-kb-service: pegasi
+      x-kb-resource: service-menu
+  /estack/api/estack/draco/inner/v1/users/current-user:
+    get:
+      summary: list:users
+      operationId: get__estack_api_estack_draco_inner_v1_users_current-user
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  requestId: 310120857b28b8ec
+                  state: OK
+                  body:
+                    id: c83f6e8b88bc4295bb860c3147da9107
+                    tenantId: ebc58456fb2d47e09ef258d37d2b8ee6
+                    tenantName: jcyz213
+                    adminId: 5f28642f3a2f483e988b8185a132477c
+                    ramId: c83f6e8b88bc4295bb860c3147da9107
+                    name: jcyz213-test
+                    userName: jcyz213-test
+                    email: a*****a@aa.a
+                    phone: 188***8886
+                    encryptedEmail: m1Un/kjtnu5zXLIQ97eY/g==
+                    encryptedPhone: KvtUD+0z9jrI7SVxSPniLQ==
+                    countryCode: '+86'
+                    description: ''
+                    createdAt: '2025-12-19 17:07:28'
+                    updatedAt: null
+                    deleted: false
+                    state: ENABLE
+                    isAdmin: false
+                    isProjectManager: true
+                    isAuthentication: false
+                    roleId: null
+                    roleName: null
+                    ancestorList:
+                    - jcyz213
+                    isPassword: true
+                    isEmail: true
+                    isPhone: true
+                    poolNameList: null
+                    isRootTenantUser: true
+                    isApproval: false
+                    tenantLevel: 0
+                    locked: false
+                    policyIdList:
+                    - d66aad0a182647b9bc0e59761b474490
+                    - a2f3cbf9990544f69d05495b7c1219c5
+                    - 1f8e392309fc414c9d77d45d0315fedc
+                    - 3533d543aaa04d83acc22b371eaf13a5
+                    policyList:
+                    - id: d66aad0a182647b9bc0e59761b474490
+                      tenantId: null
+                      policyName: 项目管理员
+                      policyType: SYSTEM
+                      policyCategory: PROJECT
+                      description: null
+                      released: false
+                      deleted: null
+                      originalPolicyName: RAM.POLICES.POLICY_NAME.PROJECT_ADMIN
+                    - id: a2f3cbf9990544f69d05495b7c1219c5
+                      tenantId: null
+                      policyName: 项目操作人员
+                      policyType: SYSTEM
+                      policyCategory: PROJECT
+                      description: null
+                      released: true
+                      deleted: null
+                      originalPolicyName: RAM.POLICES.POLICY_NAME.PROJECT_OPERATOR
+                    - id: 1f8e392309fc414c9d77d45d0315fedc
+                      tenantId: null
+                      policyName: 普通用户
+                      policyType: SYSTEM
+                      policyCategory: ORGANIZATION
+                      description: null
+                      released: true
+                      deleted: null
+                      originalPolicyName: RAM.POLICES.POLICY_NAME.COMMON_ROLE
+                    - id: 3533d543aaa04d83acc22b371eaf13a5
+                      tenantId: null
+                      policyName: 项目只读人员
+                      policyType: SYSTEM
+                      policyCategory: PROJECT
+                      description: null
+                      released: true
+                      deleted: null
+                      originalPolicyName: RAM.POLICES.POLICY_NAME.PROJECT_READ_ONLY_ROLE
+                    countryCodePhone: +86 188***8886
+                    password: '***MASKED***'
+                    projectIdList:
+                    - a2fedd2033824f698d73d01fbf7462c3
+                    - c878a6b3841c447ebb380854f48f4e6b
+                    - 0065fe6ab3b147bb996ea8f37d8466d7
+                    - 205435af121143a1b975023a96d7959d
+                    - 29746a8146ba4489be9c7065892eb007
+                    - 7ca06d0b557c44b6badf197ab7e72751
+                    needRamIdentity: true
+                    isInnerUser: false
+                    userType: OTHER
+                    isForceChange: false
+                    isTempPassword: false
+                    mfLoginPolicy: null
+                    enableMultiFactLoginPolicy: null
+                    maintainAt: null
+              - summary: status=200
+                value:
+                  requestId: 134eb771674c4303
+                  state: OK
+                  body:
+                    id: c83f6e8b88bc4295bb860c3147da9107
+                    tenantId: ebc58456fb2d47e09ef258d37d2b8ee6
+                    tenantName: jcyz213
+                    adminId: 5f28642f3a2f483e988b8185a132477c
+                    ramId: c83f6e8b88bc4295bb860c3147da9107
+                    name: jcyz213-test
+                    userName: jcyz213-test
+                    email: a*****a@aa.a
+                    phone: 188***8886
+                    encryptedEmail: m1Un/kjtnu5zXLIQ97eY/g==
+                    encryptedPhone: KvtUD+0z9jrI7SVxSPniLQ==
+                    countryCode: '+86'
+                    description: ''
+                    createdAt: '2025-12-19 17:07:28'
+                    updatedAt: null
+                    deleted: false
+                    state: ENABLE
+                    isAdmin: false
+                    isProjectManager: true
+                    isAuthentication: false
+                    roleId: null
+                    roleName: null
+                    ancestorList:
+                    - jcyz213
+                    isPassword: true
+                    isEmail: true
+                    isPhone: true
+                    poolNameList: null
+                    isRootTenantUser: true
+                    isApproval: false
+                    tenantLevel: 0
+                    locked: false
+                    policyIdList:
+                    - d66aad0a182647b9bc0e59761b474490
+                    - a2f3cbf9990544f69d05495b7c1219c5
+                    - 1f8e392309fc414c9d77d45d0315fedc
+                    - 3533d543aaa04d83acc22b371eaf13a5
+                    policyList:
+                    - id: d66aad0a182647b9bc0e59761b474490
+                      tenantId: null
+                      policyName: 项目管理员
+                      policyType: SYSTEM
+                      policyCategory: PROJECT
+                      description: null
+                      released: false
+                      deleted: null
+                      originalPolicyName: RAM.POLICES.POLICY_NAME.PROJECT_ADMIN
+                    - id: a2f3cbf9990544f69d05495b7c1219c5
+                      tenantId: null
+                      policyName: 项目操作人员
+                      policyType: SYSTEM
+                      policyCategory: PROJECT
+                      description: null
+                      released: true
+                      deleted: null
+                      originalPolicyName: RAM.POLICES.POLICY_NAME.PROJECT_OPERATOR
+                    - id: 1f8e392309fc414c9d77d45d0315fedc
+                      tenantId: null
+                      policyName: 普通用户
+                      policyType: SYSTEM
+                      policyCategory: ORGANIZATION
+                      description: null
+                      released: true
+                      deleted: null
+                      originalPolicyName: RAM.POLICES.POLICY_NAME.COMMON_ROLE
+                    - id: 3533d543aaa04d83acc22b371eaf13a5
+                      tenantId: null
+                      policyName: 项目只读人员
+                      policyType: SYSTEM
+                      policyCategory: PROJECT
+                      description: null
+                      released: true
+                      deleted: null
+                      originalPolicyName: RAM.POLICES.POLICY_NAME.PROJECT_READ_ONLY_ROLE
+                    countryCodePhone: +86 188***8886
+                    password: '***MASKED***'
+                    projectIdList:
+                    - a2fedd2033824f698d73d01fbf7462c3
+                    - c878a6b3841c447ebb380854f48f4e6b
+                    - 0065fe6ab3b147bb996ea8f37d8466d7
+                    - 205435af121143a1b975023a96d7959d
+                    - 29746a8146ba4489be9c7065892eb007
+                    - 7ca06d0b557c44b6badf197ab7e72751
+                    needRamIdentity: true
+                    isInnerUser: false
+                    userType: OTHER
+                    isForceChange: false
+                    isTempPassword: false
+                    mfLoginPolicy: null
+                    enableMultiFactLoginPolicy: null
+                    maintainAt: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: users
+  /estack/api/estack/draco/v1/users/detail:
+    get:
+      summary: detail:users
+      operationId: get__estack_api_estack_draco_v1_users_detail
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 644dc8117d335482
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    id: c83f6e8b88bc4295bb860c3147da9107
+                    tenantId: ebc58456fb2d47e09ef258d37d2b8ee6
+                    tenantName: jcyz213
+                    adminId: 5f28642f3a2f483e988b8185a132477c
+                    ramId: c83f6e8b88bc4295bb860c3147da9107
+                    name: jcyz213-test
+                    userName: jcyz213-test
+                    email: a*****a@aa.a
+                    phone: 188***8886
+                    encryptedEmail: m1Un/kjtnu5zXLIQ97eY/g==
+                    encryptedPhone: KvtUD+0z9jrI7SVxSPniLQ==
+                    countryCode: '+86'
+                    description: ''
+                    createdAt: '2025-12-19 17:07:28'
+                    updatedAt: null
+                    deleted: false
+                    state: ENABLE
+                    isAdmin: false
+                    isProjectManager: true
+                    isAuthentication: false
+                    roleId: null
+                    roleName: null
+                    ancestorList:
+                    - jcyz213
+                    isPassword: true
+                    isEmail: true
+                    isPhone: true
+                    poolNameList: null
+                    isRootTenantUser: true
+                    isApproval: false
+                    tenantLevel: 0
+                    locked: false
+                    policyIdList:
+                    - d66aad0a182647b9bc0e59761b474490
+                    - a2f3cbf9990544f69d05495b7c1219c5
+                    - 1f8e392309fc414c9d77d45d0315fedc
+                    - 3533d543aaa04d83acc22b371eaf13a5
+                    policyList:
+                    - id: d66aad0a182647b9bc0e59761b474490
+                      tenantId: null
+                      policyName: 项目管理员
+                      policyType: SYSTEM
+                      policyCategory: PROJECT
+                      description: null
+                      released: false
+                      deleted: null
+                      originalPolicyName: RAM.POLICES.POLICY_NAME.PROJECT_ADMIN
+                    - id: a2f3cbf9990544f69d05495b7c1219c5
+                      tenantId: null
+                      policyName: 项目操作人员
+                      policyType: SYSTEM
+                      policyCategory: PROJECT
+                      description: null
+                      released: true
+                      deleted: null
+                      originalPolicyName: RAM.POLICES.POLICY_NAME.PROJECT_OPERATOR
+                    - id: 1f8e392309fc414c9d77d45d0315fedc
+                      tenantId: null
+                      policyName: 普通用户
+                      policyType: SYSTEM
+                      policyCategory: ORGANIZATION
+                      description: null
+                      released: true
+                      deleted: null
+                      originalPolicyName: RAM.POLICES.POLICY_NAME.COMMON_ROLE
+                    - id: 3533d543aaa04d83acc22b371eaf13a5
+                      tenantId: null
+                      policyName: 项目只读人员
+                      policyType: SYSTEM
+                      policyCategory: PROJECT
+                      description: null
+                      released: true
+                      deleted: null
+                      originalPolicyName: RAM.POLICES.POLICY_NAME.PROJECT_READ_ONLY_ROLE
+                    countryCodePhone: +86 188***8886
+                    password: '***MASKED***'
+                    projectIdList: null
+                    needRamIdentity: null
+                    isInnerUser: null
+                    userType: null
+                    isForceChange: false
+                    isTempPassword: false
+                    mfLoginPolicy:
+                      id: 91fa6bd08f6341bb85d943d1e1ce3dd5
+                      tenantId: cec63451f8bf4ceebb9ada0b87d829bf
+                      loginPolicyType: NO_SECONDARY_VERIFICATION
+                      enabled: true
+                    enableMultiFactLoginPolicy: false
+                    maintainAt: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: detail
+      x-kb-service: draco
+      x-kb-resource: users
+  /estack/api/estack/pegasi/v1/menu/tree:
+    post:
+      summary: list:menu
+      operationId: post__estack_api_estack_pegasi_v1_menu_tree
+      tags:
+      - pegasi
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: pegasi
+      x-kb-resource: menu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                isVisible:
+                  type: string
+                  description: ''
+                rootId:
+                  type: string
+                  description: ''
+                userId:
+                  type: string
+                  description: ''
+  /estack/api/estack/pegasi/v1/menu/favorite/list:
+    get:
+      summary: list:menu
+      operationId: get__estack_api_estack_pegasi_v1_menu_favorite_list
+      tags:
+      - pegasi
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 16506afd1b414479
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity: []
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: pegasi
+      x-kb-resource: menu
+  /estack/api/estack/pegasi/v1/menu/access-log:
+    get:
+      summary: list:menu
+      operationId: get__estack_api_estack_pegasi_v1_menu_access-log
+      tags:
+      - pegasi
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 8cc1ab0b742ae17c
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                  - id: dcb7c27253194e5fa0f182bbb3b3cf0c
+                    resourceType: VOLUME
+                    userId: c83f6e8b88bc4295bb860c3147da9107
+                    accessTime: '2026-08-19 08:57:55'
+                    name: 云硬盘
+                    url: /estack/web/sds-ebs-static/ebs
+                    icon: 29825dc482f746259802ad0e63cd4809.svg
+                  - id: fc2c14c672dd4eb481de95b5004dd20c
+                    resourceType: ECS
+                    userId: c83f6e8b88bc4295bb860c3147da9107
+                    accessTime: '2026-08-18 10:44:04'
+                    name: 云主机
+                    url: /estack/web/ecm-compute-static/vm/list?productType=vm
+                    icon: ba40d9c14ada49acb4266cb50b1b2ca2.svg
+                  - id: 42feec3689a14f1e80de7b434d662774
+                    resourceType: IRONIC
+                    userId: c83f6e8b88bc4295bb860c3147da9107
+                    accessTime: '2026-08-14 18:28:50'
+                    name: 裸金属服务器
+                    url: /estack/web/ecm-compute-static/ebm/list
+                    icon: 44ab9be240ca4bf7a8650a9ddc5eb4a9.svg
+                  - id: 8c043a06a0614687b9382a65efa04930
+                    resourceType: EOS
+                    userId: c83f6e8b88bc4295bb860c3147da9107
+                    accessTime: '2026-07-31 15:57:05'
+                    name: 对象存储
+                    url: /estack/web/eos/eos-console-web-estack/overview
+                    icon: 9cda8f0f3b2e4123ab1ca0aa3c8378d6.svg
+                  - id: 90de80b6a9e143a7b8c922474bda5115
+                    resourceType: elasticsearch
+                    userId: c83f6e8b88bc4295bb860c3147da9107
+                    accessTime: '2026-07-16 15:49:50'
+                    name: Elasticsearch
+                    url: /estack/web/elasticsearch/infiniScale/#/elasticsearch
+                    icon: 06ca16da16dc4d4594f782ea734025fc.svg
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: pegasi
+      x-kb-resource: menu
+  /estack/api/estack/cancer/v1/pools/list/public:
+    post:
+      summary: list:pools
+      operationId: post__estack_api_estack_cancer_v1_pools_list_public
+      tags:
+      - cancer
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 91bd94aaeecf6941
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    poolList:
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: CIDC-ESTACK-13
+                      poolName: 私有云多AZ容灾验证资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: CIDC-ESTACK-12
+                      poolName: 私有云AK1.0集成验证_中心资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: CIDC-ESTACK-10
+                      poolName: 私有云集成验证_中心资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: CIDC-ESTACK-11
+                      poolName: 私有云集成验证_属地资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: ESTACK-GLOBAL
+                      poolName: 私有云全局资源池
+                      poolArea: DC
+              - summary: status=200
+                value:
+                  traceId: 73d47f27b7c4d13d
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    poolList:
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: CIDC-ESTACK-13
+                      poolName: 私有云多AZ容灾验证资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: CIDC-ESTACK-12
+                      poolName: 私有云AK1.0集成验证_中心资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: CIDC-ESTACK-10
+                      poolName: 私有云集成验证_中心资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: CIDC-ESTACK-11
+                      poolName: 私有云集成验证_属地资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: ESTACK-GLOBAL
+                      poolName: 私有云全局资源池
+                      poolArea: DC
+              - summary: status=200
+                value:
+                  traceId: 75ac7a90b785b8b3
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                    poolList:
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: CIDC-ESTACK-13
+                      poolName: 私有云多AZ容灾验证资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: CIDC-ESTACK-12
+                      poolName: 私有云AK1.0集成验证_中心资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: CIDC-ESTACK-10
+                      poolName: 私有云集成验证_中心资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: CIDC-ESTACK-11
+                      poolName: 私有云集成验证_属地资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: ESTACK-GLOBAL
+                      poolName: 私有云全局资源池
+                      poolArea: DC
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: cancer
+      x-kb-resource: pools
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                productList:
+                  type: string
+                  description: ''
+  /estack/api/estack/virgo/v1/resource-quota-items/ECS:
+    get:
+      summary: list:resource-quota-items
+      operationId: get__estack_api_estack_virgo_v1_resource-quota-items_ECS
+      tags:
+      - null
+      parameters:
+      - name: quotaName
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''ECS'']'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: db346b9e2f5aa5c8
+                  success: false
+                  errorMessage: 资源池为空
+                  message: 资源池为空
+                  errorCode: INVALID_QUOTA_PARAMETER_POOL
+                  entity: null
+              - summary: status=200
+                value:
+                  traceId: 4da9da0f0024c8a9
+                  success: false
+                  errorMessage: 资源池为空
+                  message: 资源池为空
+                  errorCode: INVALID_QUOTA_PARAMETER_POOL
+                  entity: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: null
+      x-kb-resource: resource-quota-items
+  /estack/api/estack/draco/v1/projects/list/available:
+    post:
+      summary: list:projects
+      operationId: post__estack_api_estack_draco_v1_projects_list_available
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: projects
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                productList:
+                  type: string
+                  description: ''
+  /estack/api/estack/libra/v1/notice/new/count/all-type:
+    get:
+      summary: list:notice
+      operationId: get__estack_api_estack_libra_v1_notice_new_count_all-type
+      tags:
+      - null
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: 18eaeb732716239d
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                  - type: ANNOUNCE
+                    count: 0
+                  - type: MESSAGE
+                    count: 14
+                  - type: RESOURCE
+                    count: 5806
+                  - type: WARNING
+                    count: 0
+                  - type: APPROVE
+                    count: 6
+                  - type: ALL
+                    count: 5826
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: null
+      x-kb-resource: notice
+  /estack/api/estack/libra/inner/v1/tags/resources/tags:
+    post:
+      summary: create:tags
+      operationId: post__estack_api_estack_libra_inner_v1_tags_resources_tags
+      tags:
+      - null
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  requestId: 30cbaf1e979a5b20
+                  state: OK
+                  body: []
+              - summary: status=200
+                value:
+                  requestId: d45bee9d0855c7af
+                  state: OK
+                  body: []
+              - summary: status=200
+                value:
+                  requestId: cb459c2152ca694e
+                  state: OK
+                  body: []
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: create
+      x-kb-service: null
+      x-kb-resource: tags
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                resources:
+                  type: string
+                  description: ''
+  /estack/api/estack/orion/v1/order/queryInstancePriceInfoExt:
+    post:
+      summary: list:order
+      operationId: post__estack_api_estack_orion_v1_order_queryInstancePriceInfoExt
+      tags:
+      - null
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  traceId: ba79d7eccb45a41e
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                  - respCode: null
+                    instanceId: cc050add-de1a-436c-b022-1c1ea8953a5f
+                    respDesc: null
+                    priceUnit: hour
+                    endTime: null
+                    chargingMode: 2
+                    autoRenew: null
+                    autoEndTime: null
+                  - respCode: null
+                    instanceId: 762f72d6-d143-49fc-ba45-f9298e71a953
+                    respDesc: null
+                    priceUnit: hour
+                    endTime: null
+                    chargingMode: 2
+                    autoRenew: null
+                    autoEndTime: null
+                  - respCode: null
+                    instanceId: 77dc5fac-d56a-487c-949f-968ed2c29a21
+                    respDesc: null
+                    priceUnit: hour
+                    endTime: null
+                    chargingMode: 2
+                    autoRenew: null
+                    autoEndTime: null
+                  - respCode: null
+                    instanceId: b4d5304b-77f7-420c-92f8-77dea5f0c591
+                    respDesc: null
+                    priceUnit: hour
+                    endTime: null
+                    chargingMode: 2
+                    autoRenew: null
+                    autoEndTime: null
+                  - respCode: null
+                    instanceId: e83848ea-fc38-4105-b83c-fbccfe3608f4
+                    respDesc: null
+                    priceUnit: hour
+                    endTime: null
+                    chargingMode: 2
+                    autoRenew: null
+                    autoEndTime: null
+                  - respCode: null
+                    instanceId: 03cb37b8-82ec-4a72-9da3-5d7f1f7d8e5d
+                    respDesc: null
+                    priceUnit: hour
+                    endTime: null
+                    chargingMode: 2
+                    autoRenew: null
+                    autoEndTime: null
+                  - respCode: null
+                    instanceId: bd88799e-ecb4-4a8a-a343-8f91a1dd3114
+                    respDesc: null
+                    priceUnit: hour
+                    endTime: null
+                    chargingMode: 2
+                    autoRenew: null
+                    autoEndTime: null
+                  - respCode: null
+                    instanceId: 8ea99c15-479d-4d58-bfcd-a3e3298f4572
+                    respDesc: null
+                    priceUnit: hour
+                    endTime: null
+                    chargingMode: 2
+                    autoRenew: null
+                    autoEndTime: null
+                  - respCode: null
+                    instanceId: 1df29523-eda6-4336-b317-811fa60dbb97
+                    respDesc: null
+                    priceUnit: year
+                    endTime: '2027-08-17 16:28:38'
+                    chargingMode: 1
+                    autoRenew: null
+                    autoEndTime: null
+                  - respCode: null
+                    instanceId: 09ac145d-bef2-4789-bd39-91493a4853f3
+                    respDesc: null
+                    priceUnit: hour
+                    endTime: null
+                    chargingMode: 2
+                    autoRenew: null
+                    autoEndTime: null
+              - summary: status=200
+                value:
+                  traceId: dbe148bc319b68cf
+                  success: true
+                  errorMessage: null
+                  message: null
+                  errorCode: null
+                  entity:
+                  - respCode: null
+                    instanceId: cc050add-de1a-436c-b022-1c1ea8953a5f
+                    respDesc: null
+                    priceUnit: hour
+                    endTime: null
+                    chargingMode: 2
+                    autoRenew: null
+                    autoEndTime: null
+                  - respCode: null
+                    instanceId: 762f72d6-d143-49fc-ba45-f9298e71a953
+                    respDesc: null
+                    priceUnit: hour
+                    endTime: null
+                    chargingMode: 2
+                    autoRenew: null
+                    autoEndTime: null
+                  - respCode: null
+                    instanceId: 77dc5fac-d56a-487c-949f-968ed2c29a21
+                    respDesc: null
+                    priceUnit: hour
+                    endTime: null
+                    chargingMode: 2
+                    autoRenew: null
+                    autoEndTime: null
+                  - respCode: null
+                    instanceId: b4d5304b-77f7-420c-92f8-77dea5f0c591
+                    respDesc: null
+                    priceUnit: hour
+                    endTime: null
+                    chargingMode: 2
+                    autoRenew: null
+                    autoEndTime: null
+                  - respCode: null
+                    instanceId: e83848ea-fc38-4105-b83c-fbccfe3608f4
+                    respDesc: null
+                    priceUnit: hour
+                    endTime: null
+                    chargingMode: 2
+                    autoRenew: null
+                    autoEndTime: null
+                  - respCode: null
+                    instanceId: 03cb37b8-82ec-4a72-9da3-5d7f1f7d8e5d
+                    respDesc: null
+                    priceUnit: hour
+                    endTime: null
+                    chargingMode: 2
+                    autoRenew: null
+                    autoEndTime: null
+                  - respCode: null
+                    instanceId: bd88799e-ecb4-4a8a-a343-8f91a1dd3114
+                    respDesc: null
+                    priceUnit: hour
+                    endTime: null
+                    chargingMode: 2
+                    autoRenew: null
+                    autoEndTime: null
+                  - respCode: null
+                    instanceId: 8ea99c15-479d-4d58-bfcd-a3e3298f4572
+                    respDesc: null
+                    priceUnit: hour
+                    endTime: null
+                    chargingMode: 2
+                    autoRenew: null
+                    autoEndTime: null
+                  - respCode: null
+                    instanceId: 1df29523-eda6-4336-b317-811fa60dbb97
+                    respDesc: null
+                    priceUnit: year
+                    endTime: '2027-08-17 16:28:38'
+                    chargingMode: 1
+                    autoRenew: null
+                    autoEndTime: null
+                  - respCode: null
+                    instanceId: 09ac145d-bef2-4789-bd39-91493a4853f3
+                    respDesc: null
+                    priceUnit: hour
+                    endTime: null
+                    chargingMode: 2
+                    autoRenew: null
+                    autoEndTime: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: null
+      x-kb-resource: order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                instanceIds:
+                  type: string
+                  description: ''
+                userId:
+                  type: string
+                  description: ''
+  /estack/api/estack-vpc-server-console/customer/v3/port/list:
+    post:
+      summary: list:port
+      operationId: post__estack_api_estack-vpc-server-console_customer_v3_port_list
+      tags:
+      - null
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: null
+      x-kb-resource: port
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rangeInServerIds:
+                  type: string
+                  description: ''
+                types:
+                  type: string
+                  description: ''
+  /estack/api/estack/cancer/inner/v1/pools/list/with-region/public:
+    post:
+      summary: create:pools
+      operationId: post__estack_api_estack_cancer_inner_v1_pools_list_with-region_public
+      tags:
+      - cancer
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  requestId: 26895a5c0b6c58b5
+                  state: OK
+                  body:
+                    poolList:
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo:
+                      - zoneCode: CIDC-ESTACK-13-SZSYY
+                        zoneId: 01054215b6734d2583554fb5aead9747
+                        zoneType: null
+                        zoneDesc: SZSYY
+                        zoneName: 可用区二
+                        status: ONLINE
+                      - zoneCode: CIDC-ESTACK-13-FHSYY
+                        zoneId: fa590c6d1a8b4d6c87dcc35305e6c871
+                        zoneType: null
+                        zoneDesc: FHSYY
+                        zoneName: 可用区一
+                        status: ONLINE
+                      poolId: CIDC-ESTACK-13
+                      poolName: 私有云多AZ容灾验证资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo:
+                      - zoneCode: CIDC-ESTACK-12-001
+                        zoneId: 378907c6cb794f59baf8c0d6fea4faf8
+                        zoneType: null
+                        zoneDesc: QLSYY
+                        zoneName: 可用区一
+                        status: ONLINE
+                      poolId: CIDC-ESTACK-12
+                      poolName: 私有云AK1.0集成验证_中心资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo:
+                      - zoneCode: CIDC-ESTACK-10-001
+                        zoneId: c2c2a33967c74edfad2fa90e2112e828
+                        zoneType: null
+                        zoneDesc: RegionOne
+                        zoneName: 可用区一
+                        status: ONLINE
+                      poolId: CIDC-ESTACK-10
+                      poolName: 私有云集成验证_中心资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo:
+                      - zoneCode: CIDC-ESTACK-11-001
+                        zoneId: cac7f4bfac7a406f9687d09a48feb611
+                        zoneType: null
+                        zoneDesc: FHSYY
+                        zoneName: 可用区一
+                        status: ONLINE
+                      poolId: CIDC-ESTACK-11
+                      poolName: 私有云集成验证_属地资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: []
+                      poolId: ESTACK-GLOBAL
+                      poolName: 私有云全局资源池
+                      poolArea: DC
+              - summary: status=200
+                value:
+                  requestId: 8f9f2fb6ff154f0c
+                  state: OK
+                  body:
+                    poolList:
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo:
+                      - zoneCode: CIDC-ESTACK-13-SZSYY
+                        zoneId: 01054215b6734d2583554fb5aead9747
+                        zoneType: null
+                        zoneDesc: SZSYY
+                        zoneName: 可用区二
+                        status: ONLINE
+                      - zoneCode: CIDC-ESTACK-13-FHSYY
+                        zoneId: fa590c6d1a8b4d6c87dcc35305e6c871
+                        zoneType: null
+                        zoneDesc: FHSYY
+                        zoneName: 可用区一
+                        status: ONLINE
+                      poolId: CIDC-ESTACK-13
+                      poolName: 私有云多AZ容灾验证资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo:
+                      - zoneCode: CIDC-ESTACK-12-001
+                        zoneId: 378907c6cb794f59baf8c0d6fea4faf8
+                        zoneType: null
+                        zoneDesc: QLSYY
+                        zoneName: 可用区一
+                        status: ONLINE
+                      poolId: CIDC-ESTACK-12
+                      poolName: 私有云AK1.0集成验证_中心资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo:
+                      - zoneCode: CIDC-ESTACK-10-001
+                        zoneId: c2c2a33967c74edfad2fa90e2112e828
+                        zoneType: null
+                        zoneDesc: RegionOne
+                        zoneName: 可用区一
+                        status: ONLINE
+                      poolId: CIDC-ESTACK-10
+                      poolName: 私有云集成验证_中心资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo:
+                      - zoneCode: CIDC-ESTACK-11-001
+                        zoneId: cac7f4bfac7a406f9687d09a48feb611
+                        zoneType: null
+                        zoneDesc: FHSYY
+                        zoneName: 可用区一
+                        status: ONLINE
+                      poolId: CIDC-ESTACK-11
+                      poolName: 私有云集成验证_属地资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: []
+                      poolId: ESTACK-GLOBAL
+                      poolName: 私有云全局资源池
+                      poolArea: DC
+              - summary: status=200
+                value:
+                  requestId: 42f5848594b9a3b2
+                  state: OK
+                  body:
+                    poolList:
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo:
+                      - zoneCode: CIDC-ESTACK-13-SZSYY
+                        zoneId: 01054215b6734d2583554fb5aead9747
+                        zoneType: null
+                        zoneDesc: SZSYY
+                        zoneName: 可用区二
+                        status: ONLINE
+                      - zoneCode: CIDC-ESTACK-13-FHSYY
+                        zoneId: fa590c6d1a8b4d6c87dcc35305e6c871
+                        zoneType: null
+                        zoneDesc: FHSYY
+                        zoneName: 可用区一
+                        status: ONLINE
+                      poolId: CIDC-ESTACK-13
+                      poolName: 私有云多AZ容灾验证资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo:
+                      - zoneCode: CIDC-ESTACK-12-001
+                        zoneId: 378907c6cb794f59baf8c0d6fea4faf8
+                        zoneType: null
+                        zoneDesc: QLSYY
+                        zoneName: 可用区一
+                        status: ONLINE
+                      poolId: CIDC-ESTACK-12
+                      poolName: 私有云AK1.0集成验证_中心资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo:
+                      - zoneCode: CIDC-ESTACK-10-001
+                        zoneId: c2c2a33967c74edfad2fa90e2112e828
+                        zoneType: null
+                        zoneDesc: RegionOne
+                        zoneName: 可用区一
+                        status: ONLINE
+                      poolId: CIDC-ESTACK-10
+                      poolName: 私有云集成验证_中心资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo:
+                      - zoneCode: CIDC-ESTACK-11-001
+                        zoneId: cac7f4bfac7a406f9687d09a48feb611
+                        zoneType: null
+                        zoneDesc: FHSYY
+                        zoneName: 可用区一
+                        status: ONLINE
+                      poolId: CIDC-ESTACK-11
+                      poolName: 私有云集成验证_属地资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: []
+                      poolId: ESTACK-GLOBAL
+                      poolName: 私有云全局资源池
+                      poolArea: DC
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: create
+      x-kb-service: cancer
+      x-kb-resource: pools
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ignoreInvalid:
+                  type: string
+                  description: ''
+  /estack/api/estack/cancer/inner/v1/pools/list/public:
+    post:
+      summary: list:pools
+      operationId: post__estack_api_estack_cancer_inner_v1_pools_list_public
+      tags:
+      - cancer
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  requestId: 64dc5b14317896ab
+                  state: OK
+                  body:
+                    poolList:
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: CIDC-ESTACK-13
+                      poolName: 私有云多AZ容灾验证资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: CIDC-ESTACK-12
+                      poolName: 私有云AK1.0集成验证_中心资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: CIDC-ESTACK-10
+                      poolName: 私有云集成验证_中心资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: CIDC-ESTACK-11
+                      poolName: 私有云集成验证_属地资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: ESTACK-GLOBAL
+                      poolName: 私有云全局资源池
+                      poolArea: DC
+              - summary: status=200
+                value:
+                  requestId: 462ecf00ab59aad8
+                  state: OK
+                  body:
+                    poolList:
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: CIDC-ESTACK-13
+                      poolName: 私有云多AZ容灾验证资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: CIDC-ESTACK-12
+                      poolName: 私有云AK1.0集成验证_中心资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: CIDC-ESTACK-10
+                      poolName: 私有云集成验证_中心资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: CIDC-ESTACK-11
+                      poolName: 私有云集成验证_属地资源池
+                      poolArea: DC
+                    - status: ONLINE
+                      sdnType: TC
+                      zoneInfo: null
+                      poolId: ESTACK-GLOBAL
+                      poolName: 私有云全局资源池
+                      poolArea: DC
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: cancer
+      x-kb-resource: pools
+  /estack/api/estack/cancer/inner/v1/pools/list/region/public:
+    get:
+      summary: list:pools
+      operationId: get__estack_api_estack_cancer_inner_v1_pools_list_region_public
+      tags:
+      - cancer
+      parameters:
+      - name: component
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''NOVA'']'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  requestId: 83033dbfbaba7594
+                  state: OK
+                  body:
+                  - id: null
+                    poolId: CIDC-ESTACK-13
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: SZSYY
+                    name: 可用区二
+                    status: ONLINE
+                  - id: null
+                    poolId: CIDC-ESTACK-12
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: QLSYY
+                    name: 可用区一
+                    status: ONLINE
+                  - id: 2
+                    poolId: CIDC-ESTACK-10
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: RegionOne
+                    name: 可用区一
+                    status: ONLINE
+                  - id: 5
+                    poolId: CIDC-ESTACK-11
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: FHSYY
+                    name: 可用区一
+                    status: ONLINE
+                  - id: null
+                    poolId: CIDC-ESTACK-13
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: FHSYY
+                    name: 可用区一
+                    status: ONLINE
+              - summary: status=200
+                value:
+                  requestId: 8f3147f5165d3ba4
+                  state: OK
+                  body:
+                  - id: null
+                    poolId: CIDC-ESTACK-13
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: SZSYY
+                    name: 可用区二
+                    status: ONLINE
+                  - id: null
+                    poolId: CIDC-ESTACK-12
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: QLSYY
+                    name: 可用区一
+                    status: ONLINE
+                  - id: 2
+                    poolId: CIDC-ESTACK-10
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: RegionOne
+                    name: 可用区一
+                    status: ONLINE
+                  - id: 5
+                    poolId: CIDC-ESTACK-11
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: FHSYY
+                    name: 可用区一
+                    status: ONLINE
+                  - id: null
+                    poolId: CIDC-ESTACK-13
+                    deleted: false
+                    visible: true
+                    type: ESTACK
+                    component: NOVA
+                    sdnType: TC
+                    region: FHSYY
+                    name: 可用区一
+                    status: ONLINE
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: cancer
+      x-kb-resource: pools
+  /estack/api/estack/draco/inner/v1/projects/list:
+    post:
+      summary: list:projects
+      operationId: post__estack_api_estack_draco_inner_v1_projects_list
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: projects
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                productList:
+                  type: string
+                  description: ''
+  /estack/api/estack-console-backend-bms/acl/v3/BareMetal/userconfig/IRONIC_LIST_FIELDS:
+    get:
+      summary: list:BareMetal
+      operationId: get__estack_api_estack-console-backend-bms_acl_v3_BareMetal_userconfig_IRONIC_LIST_FIELDS
+      tags:
+      - null
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  requestId: reqId-64370407e6af47f8abba0086f26dbf02
+                  state: OK
+                  body: ''
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: null
+      x-kb-resource: BareMetal
+  /estack/api/estack-console-backend-bms/acl/v3/BareMetal/check/IBIronic:
+    get:
+      summary: action:BareMetal
+      operationId: get__estack_api_estack-console-backend-bms_acl_v3_BareMetal_check_IBIronic
+      tags:
+      - null
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  requestId: reqId-c52ec987ca48460fa650536a8d1924b0
+                  state: OK
+                  body: false
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: action
+      x-kb-service: null
+      x-kb-resource: BareMetal
+  /estack/api/estack-console-backend-bms/acl/v3/BareMetal/stats:
+    get:
+      summary: list:BareMetal
+      operationId: get__estack_api_estack-console-backend-bms_acl_v3_BareMetal_stats
+      tags:
+      - null
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  requestId: reqId-d5f98a5e726c4666a9240d07eac342f0
+                  state: OK
+                  body:
+                    totalCount: 0
+                    totalCpu: 0
+                    totalMemory: 0
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: null
+      x-kb-resource: BareMetal
+  /estack/api/estack-console-backend-bms/acl/v3/BareMetal/with/network:
+    get:
+      summary: list:BareMetal
+      operationId: get__estack_api_estack-console-backend-bms_acl_v3_BareMetal_with_network
+      tags:
+      - null
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''1'']'
+      - name: size
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''10'']'
+      - name: serverTypes
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''IRONIC'']'
+      - name: productTypes
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''NORMAL'']'
+      - name: createSource
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''WEB_DEFAULT'']'
+      - name: visible
+        in: query
+        schema:
+          type: string
+        description: 'sample: [''true'']'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  requestId: reqId-a7e1d95c89bf49109294d586db72f31e
+                  state: OK
+                  body:
+                    total: 0
+                    content: []
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: null
+      x-kb-resource: BareMetal
+  /estack/api/estack/pegasi/inner/v1/service-menu/service-project/pools:
+    post:
+      summary: create:service-menu
+      operationId: post__estack_api_estack_pegasi_inner_v1_service-menu_service-project_pools
+      tags:
+      - pegasi
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  requestId: 8eae78a0c0c833b8
+                  state: OK
+                  body:
+                    poolTree:
+                    - dataCenterId: 941880b8332048c3b8095adae232539f
+                      dataCenterName: DC
+                      pools:
+                      - poolId: CIDC-ESTACK-13
+                        poolName: 私有云多AZ容灾验证资源池
+                        sdnType: TC
+                        regions:
+                        - serviceId: 79414b84001d45a0a688831877377580
+                          regionId: fa590c6d1a8b4d6c87dcc35305e6c871
+                          regionName: 可用区一
+                          zoneCode: CIDC-ESTACK-13-FHSYY
+                          zoneDesc: FHSYY
+                          zoneId: fa590c6d1a8b4d6c87dcc35305e6c871
+                        - serviceId: 80414b84001d45a0a688831877377581
+                          regionId: 01054215b6734d2583554fb5aead9747
+                          regionName: 可用区二
+                          zoneCode: CIDC-ESTACK-13-SZSYY
+                          zoneDesc: SZSYY
+                          zoneId: 01054215b6734d2583554fb5aead9747
+                      - poolId: CIDC-ESTACK-10
+                        poolName: 私有云集成验证_中心资源池
+                        sdnType: TC
+                        regions:
+                        - serviceId: a11b6d46fba64cfeb819d4e517c65e16
+                          regionId: c2c2a33967c74edfad2fa90e2112e828
+                          regionName: 可用区一
+                          zoneCode: CIDC-ESTACK-10-001
+                          zoneDesc: RegionOne
+                          zoneId: c2c2a33967c74edfad2fa90e2112e828
+                      - poolId: CIDC-ESTACK-11
+                        poolName: 私有云集成验证_属地资源池
+                        sdnType: TC
+                        regions:
+                        - serviceId: a21b6d46fba64cfeb819d4e517c65e16
+                          regionId: cac7f4bfac7a406f9687d09a48feb611
+                          regionName: 可用区一
+                          zoneCode: CIDC-ESTACK-11-001
+                          zoneDesc: FHSYY
+                          zoneId: cac7f4bfac7a406f9687d09a48feb611
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: create
+      x-kb-service: pegasi
+      x-kb-resource: service-menu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                projectId:
+                  type: string
+                  description: ''
+                resourceType:
+                  type: string
+                  description: ''
+  /estack/api/estack/pegasi/inner/v1/system-theme/default/tab:
+    get:
+      summary: list:system-theme
+      operationId: get__estack_api_estack_pegasi_inner_v1_system-theme_default_tab
+      tags:
+      - pegasi
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  requestId: c11114b005265b7d
+                  state: OK
+                  body:
+                    id: default
+                    name: 默认页签
+                    title: eStack Enterprise
+                    favicon: 97082d9dc4aa4fe59a23d8321311d627.ico
+                    createdAt: '2025-02-06 17:29:45'
+                    updatedAt: '2025-02-07 09:43:11'
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: pegasi
+      x-kb-resource: system-theme
+  /estack/api/estack/pegasi/inner/v1/service-menu/check-auth/EAS:
+    get:
+      summary: action:service-menu
+      operationId: get__estack_api_estack_pegasi_inner_v1_service-menu_check-auth_EAS
+      tags:
+      - pegasi
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  requestId: 64a93c60e07462d4
+                  state: OK
+                  body: true
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: action
+      x-kb-service: pegasi
+      x-kb-resource: service-menu
+  /estack/api/estack/draco/inner/v1/authority:
+    get:
+      summary: list:authority
+      operationId: get__estack_api_estack_draco_inner_v1_authority
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  requestId: bba23e8f36ba5260
+                  state: OK
+                  body:
+                    userId: c83f6e8b88bc4295bb860c3147da9107
+                    username: jcyz213-test
+                    authoritys:
+                    - MaxBandwidth
+                    - AccessHJ
+                    - NON_PRIVATE_NETWORK
+                    - proejctCode
+                    - LABEL
+                    - Language
+                    - RESOURCESET
+                    - isOnlyUkeyLogin
+                    - IsCaptcha
+                    - isSecondPlatform
+                    - isHideOperator
+                    - ai
+                    - AreaCode
+                    - register
+                    - onlyCountry
+                    - Currency
+                    - BILLING
+                    - IsShowLanguage
+                    - passCheck
+                    - VM_BK_CLONE_ENABLED
+                    - TC
+                    - isTenantIsolation
+                    - onlyCountry
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: authority
+  /estack/api/estack/draco/inner/v1/tenants/list:
+    post:
+      summary: list:tenants
+      operationId: post__estack_api_estack_draco_inner_v1_tenants_list
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content: {}
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: tenants
+  /estack/api/estack/draco/inner/v1/basic-config/Currency:
+    get:
+      summary: list:basic-config
+      operationId: get__estack_api_estack_draco_inner_v1_basic-config_Currency
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  requestId: b573b5323668cf4c
+                  state: OK
+                  body:
+                    id: 9ea3de513ffd4ac6bc9aaf1157fd7a57
+                    authorityKey: Currency
+                    authorityValue: ￥
+                    authorityKeyList: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: basic-config
+  /estack/api/estack/draco/inner/v1/basic-config/MaxBandwidth:
+    get:
+      summary: list:basic-config
+      operationId: get__estack_api_estack_draco_inner_v1_basic-config_MaxBandwidth
+      tags:
+      - draco
+      parameters: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+              - summary: status=200
+                value:
+                  requestId: f00881587c2cb27d
+                  state: OK
+                  body:
+                    id: 025e9e3a8a4747f89f57e9a77fb15a54
+                    authorityKey: MaxBandwidth
+                    authorityValue: '10240'
+                    authorityKeyList: null
+      x-kb-source: traffic
+      x-kb-trusted: false
+      x-kb-crud: list
+      x-kb-service: draco
+      x-kb-resource: basic-config

@@ -1,0 +1,228 @@
+{
+  "version": "2.0",
+  "description": "API 探测踩坑与成功范式知识库 —— 跨模块/跨项目复用的经验沉淀（机器可读）。v2.0 基于 ecm-compute 用户管理模块【完整探测 + 生命周期脚本生成】全过程扩充：驱动层交互细节、分类规则、真实契约、生成器踩坑。",
+  "generated_from": "ecm-compute 用户管理模块 完整业务生命周期（创建→查询→修改→锁定→解锁→重置→授权→删除）端到端探测与脚本生成实战",
+  "generated_at": "2026-08-24",
+  "load_hint": "json.load(open('config/probe_lessons_kb.json', encoding='utf-8'))；module_discovery / discovery 模块可据此自动套用反模式检查与契约模板；探测新模块前先读 systems.<x> 与 anti_patterns",
+
+  "systems": {
+    "estack_draco": {
+      "description": "estack 控制台 + draco 微服务的通用约定（实测于 https://10.151.37.249，管理员账号 estack-yy 已存 profile.yaml）",
+      "api_root": "/estack/api/estack/draco/v1",
+      "match": {"url_substring": "/estack/"},
+      "auth": {
+        "cookie_key": "accessToken",
+        "bearer_token_source": "cookie.accessToken（NOT localStorage.estackToken，后者实测为空）",
+        "required_headers": ["Authorization: Bearer <accessToken>", "Estack-Language: zh-CN"],
+        "freshness_ttl_seconds": 300,
+        "ensure_client_chain": "load cookies → 新鲜度内直信 → probe_online(current-user) → 失败才滑块登录回写 cookie（AUTO_LOGIN=0 时跳过登录）"
+      },
+      "field_encryption": {
+        "encrypted_fields": ["password", "email", "phone"],
+        "method": "RSA（前端用其公钥加密后以 base64 发送）",
+        "note": "明文直接发会被后端拒绝；公钥封装在 webpack 内（无全局 JSEncrypt/独立公钥接口），纯 Python 逆向不可行 → 创建必须浏览器内填表提交（前端自动加密），纯 httpx 重放捕获密文会因『密文对应探测时的固定明文』撞唯一性（账号/邮箱已存在）而失败"
+      },
+
+      "ui_table": {
+        "row_container": ".el-table__body-wrapper tbody tr（自定义表格也可能在 .table-content）",
+        "operation_column": "操作列在 el-table fixed-right 区域（.el-table__fixed-right），主表行 DOM 内没有操作按钮 → 点击需三级策略：行内 → fixed 列同 index 行 → 页面表格区文本兜底",
+        "row_more_menu": "行内『更多』是 el-dropdown-selfdefine 指令 + 行内嵌套 ul.single-operation-menu（display:none），菜单项=['授权','冻结','启用','锁定','重置密码','迁移']",
+        "more_menu_trigger": "★ 只响应原生 el.click()：dispatchEvent(MouseEvent) 无效、Playwright locator.click() 因 fixed 列遮挡 30s 超时 → 一律 JS 原生 el.click()",
+        "sidebar_more": "侧边栏导航也有『更多』（展开模块树含 授权/冻结/启用/锁定/重置密码/迁移 等导航目标），会劫持下拉点击并跳去别的模块 → 必须限定作用域（行内菜单 / 排除 .el-menu 与 sidebar）"
+      },
+
+      "row_operations": {
+        "edit": {
+          "form": "弹窗（dialog，非跳页），字段：用户名(空/只读)、姓名、邮箱、手机号、描述",
+          "phone_input": "手机号 input 带 countryCode 前缀（+86），Playwright fill() 对其无效 → 必须 JS 原生 inp.value= + dispatchEvent(input/change) 触发 Vue v-model",
+          "submit": "按钮『确定』，dlg 作用域内 filter(has_text) 可能匹配失败 → 用全局最后一个『确定』原生 el.click()",
+          "api": "PUT /users/{id}，body: {userId, name, description, tenantId, countryCode, isEditOther:true}"
+        },
+        "lock_unlock": {
+          "lock": ["PUT /users/{id}/suspend", "POST /users/lock/{id}"],
+          "unlock": ["PUT /users/{id}/enable", "DELETE /users/unlock/{id}"],
+          "state_field": "状态字段 lock→DISABLE / unlock→ENABLE（分析器据此生成状态断言）"
+        },
+        "reset_password": {
+          "api": "POST /password-reset/generate",
+          "body_required": "body 需完整对象：userId + passwordPolicy（含 length/uppercase/digit/special 等策略项）+ tenantId；只传 id 会报『系统内部异常』"
+        },
+        "delete": {
+          "api": "DELETE /users/{id}",
+          "confirm": "el-message-box 确认弹窗，点『确定』"
+        },
+        "authorize": {
+          "entry": "整页跳转（非弹窗）→ /authority-manage/add-authority?tenantId=..&type=userList&rowId=<userId>，rowId 即被授权用户 → 可直接构造 URL 直达",
+          "page_structure": "授权用户(el-select, 从 URL rowId 预填)、授权用户组(el-select)、授权角色(radio-button+穿梭框 transfer-box)、授权范围(radio, 默认全选)",
+          "transfer_box": "左侧可选项表格『点击行本身』选中（无 checkbox），选后进入右侧『已选项』；角色选『普通用户』策略",
+          "submit": "点『确定』；真正提交 API = POST /policies/attach-to-user，body: {policies:[策略id], principleIds:[用户id], statement:{collections:'*',pools:'*',projects:'*'}, tenantId}",
+          "note": "POST /identity {action:'POLICY:BatchAttachUser'} 只是授权页初始化的动作声明，不是提交；成功提交后跳回 /authority-manage 列表"
+        },
+        "ordering": "★ 操作顺序：编辑→冻结→启用→锁定→解锁→重置密码→授权→删除。授权是整页跳转会丢行 → 必须【授权在前、删除在后】且授权提交后导航回列表再删除（删除会删掉行，若删除在前则授权永远捕获不到）；每次操作前重新按 marker 定位行（DOM 重渲染/id 漂移）"
+      },
+
+      "create_user": {
+        "entry": "点击『创建用户』 → URL 跳转到 /user-manage/user/create-user（整页跳转，非弹窗）",
+        "form_fields": ["账号", "姓名", "密码", "确认密码", "手机号(×2)", "邮箱", "描述(textarea)", "系统角色(el-select 必填)", "部门角色(el-select ×2 实测无数据可跳过)"],
+        "fill_rule": "按 label → .el-form-item 定位 → input:visible).last（★取最后一个可见 input，避免 .first 填到区号 select）；纯字母数字账号避免前端校验误报",
+        "check_endpoint": {
+          "method": "POST",
+          "path": "/estack/draco/v1/users/check",
+          "critical": "BODY 必须含 tenantId，否则任意用户名都返回 Invalid.Parameter（与账号格式无关，是缺必填字段的假象）；注入补丁后 success=True"
+        },
+        "submit_button": "//div[contains(@class,'order-submit')]//button[contains(.,'确 定')]（文本带空格『确 定』）",
+        "required_fields": ["系统角色(el-select, 必填, 映射到 policyIds)", "账号", "姓名", "密码"],
+        "optional_or_empty": ["部门角色(el-select, 实测 '无数据' 可跳过)", "描述(textarea, 非 input)", "邮箱", "手机号"],
+        "policy_ids": {"普通用户": "1f8e392309fc414c9d77d45d0315fedc"},
+        "permission_gate": "若账号 isAdmin=false（项目管理员但非租户管理员），POST /users 返回 '您没有创建用户权限，请先授权' —— 需租户管理员账号才能真正创建",
+        "flaky_submit": "★ 已观测偶发：表单填好、系统角色已选、提交按钮点中、check 通过，但 POST /users 未发出（提交后 URL 仍停 create-user）→ 前端校验/加密时序竞争；脚本需提交后检测 POST /users 是否发出，未发出则重填重提（重跑 100% 通过，非稳定 bug）"
+      },
+      "inject": {
+        "enabled": true,
+        "url_regex": "/draco/v1/users",
+        "body_fields": {
+          "tenantId": "ebc58456fb2d47e09ef258d37d2b8ee6",
+          "adminId": "5f28642f3a2f483e988b8185a132477c"
+        },
+        "source": {
+          "endpoint": "/estack/api/estack/draco/v1/users/current-user",
+          "field_map": {"tenantId": "tenantId", "adminId": "id"},
+          "note": "运行时从 current-user 接口实时取 tenantId 与 adminId(=用户自身 id)，适配任意登录账号（运营管理员/租户管理员），不再硬编码旧账号 id。注入补丁优先用实时值，仅在拉取失败时回退上面的 body_fields 静态值。★注入脚本必须在页面 goto 之后执行（先 goto 再 evaluate 安装补丁，否则 SPA 路由跳转会丢失补丁）。"
+        },
+        "note": "estack 前端发 /users/check 与 POST /users 时 body 未带 tenantId，API 报 Invalid.Parameter；在浏览器内给匹配请求自动补 tenantId/adminId，让前端自有逻辑走通以捕获真实创建请求。仅当 match.url_substring 命中当前模块时由 capture_apis.py 启用。"
+      }
+    }
+  },
+
+  "permission_gate_keywords": [
+    "您没有", "请先授权", "权限不足", "无权限",
+    "permission denied", "forbidden", "not authorized", "403"
+  ],
+
+  "classify_rules": {
+    "description": "Stage3 端点分类优先级（修正『URL 关键词与扁平资源 API 错配』的结论），新模块套用",
+    "priority": [
+      "① URL 查询/详情关键词 → query/detail（含 /list /page /search /query /find /all /select /detail /get /info /view）",
+      "② DELETE 先查 /unlock → unlock（避免被 ③ 的 DELETE→delete 抢走）",
+      "③ DELETE → delete",
+      "④ 按钮上下文写类别（create/update/lock/unlock/reset/authorize/migrate）：★仅对 POST/PUT/PATCH 生效，GET 永远不算写操作（防止 GET 数据源被 create 上下文误标）",
+      "⑤ URL 写关键词（/create /add /save /register /apply /update /edit /modify /change /lock /freeze /disable /unlock /enable /activate /reset /reset-password /delete /remove /destroy）",
+      "⑥ 校验类（/check /usability /verify /validate）→ support（降级，不进核心流程）",
+      "⑦ 兜底 other_post / other_get",
+      "★ other_post 响应含 list/entity.id → 提升为 query（而非 execute）",
+      "★ 状态字段识别：lock→DISABLE / unlock→ENABLE，用于生成『操作后状态断言』"
+    ]
+  },
+
+  "anti_patterns": [
+    {"id": "rewrite_login", "lesson": "不要重写登录逻辑，直接复用 EcsCloud 的 login.js（loginAndSaveCookies）；cookie 优先、滑块兜底", "severity": "high", "source": "用户批评"},
+    {"id": "infinite_loop", "lesson": "不要无限循环重跑脚本看日志；每次失败先定位根因，最多 1-2 次验证", "severity": "high", "source": "用户批评"},
+    {"id": "blind_screenshot", "lesson": "不要反过来让用户截图；脚本自带 page.screenshot 落盘 + 自己读 DOM/调后端接口诊断", "severity": "high", "source": "用户批评"},
+    {"id": "assume_create_path", "lesson": "不要主观认定创建 API 是 /create 或 /save；以 page.on('request') 抓到的真实 URL 为准", "severity": "high", "source": "用户批评"},
+    {"id": "model_cannot_see_images", "lesson": "当前模型通过 Read 打开 PNG 实际无法解析图片内容；诊断应依赖 DOM 状态与 API 响应，而非读图（截图仍落盘给用户看）", "severity": "medium", "source": "实测"},
+    {"id": "frontend_validation_silent", "lesson": "前端校验在字段非法时根本不发包；必须先让前端校验通过，才能看到真实 API 请求", "severity": "medium", "source": "实测"},
+    {"id": "trust_red_text", "lesson": "'账号非法'等红框文案常为缺必填字段的假象（如缺 tenantId）；要逐字段用接口验证，别直接信前端文案", "severity": "high", "source": "实测"},
+    {"id": "wrong_token_source", "lesson": "鉴权 token 存储位置要看实测（document.cookie / localStorage），别想当然用 localStorage", "severity": "medium", "source": "实测"},
+    {"id": "js_setter_on_component", "lesson": "能用 Playwright 原生 fill/select 就别手写 JS setter；尤其 select / Vue 组件值易报 illegal invocation", "severity": "medium", "source": "实测"},
+    {"id": "fstring_js_quotes", "lesson": "Python f-string 内嵌 JS 引号极易转义冲突；优先参数化传值，不在 f-string 里拼 JS", "severity": "low", "source": "实测"},
+
+    {"id": "unawaited_locator_count", "lesson": "Playwright Locator.count() 是协程必须 await；不 await 抛 TypeError 被 except 吞掉 → 行定位永远失败（本次 8 处全中，表现为『未找到行』但实际有行）", "severity": "high", "source": "实测"},
+    {"id": "dead_variable_row_btns", "lesson": "算出 row_btns 却从不遍历 = 行级操作根本没驱动；Stage2 必须先创建资源→回到列表→按行 marker 重定位→逐一点行操作，否则只有页面自发的查询被捕获", "severity": "high", "source": "实测"},
+    {"id": "sidebar_more_hijack", "lesson": "『更多』在侧边栏导航与行内按钮同时存在；全局文本匹配会点到侧边栏『更多』（展开模块树并跳页）→ 下拉点击必须限定作用域（行内菜单 / 排除 .el-menu/sidebar）", "severity": "high", "source": "实测"},
+    {"id": "dropdown_selfdefine_dispatch", "lesson": "el-dropdown-selfdefine 指令只响应原生 el.click()：dispatchEvent(MouseEvent) 无效、locator.click() 遇遮挡 30s 超时；菜单项定位限定在行内 ul.single-operation-menu（勿用 .first 全局匹配，会点到侧边栏同名项）", "severity": "high", "source": "实测"},
+    {"id": "fixed_column_ops", "lesson": "操作列在 el-table fixed-right 区域，主表行 DOM 内没有按钮 → 三级策略：行内 → fixed 同 index 行 → 页面表格区文本兜底（排除 nav）", "severity": "high", "source": "实测"},
+    {"id": "fill_countrycode_input", "lesson": "带 countryCode 前缀（+86）的手机号 input，Playwright fill() 不生效（前端校验拦下、提交不发包）→ 用 JS 原生 inp.value= + dispatchEvent(input/change) 触发 Vue v-model；或按 label→form-item 定位后取 input:visible).last", "severity": "high", "source": "实测"},
+    {"id": "dialog_submit_locator", "lesson": "dlg.locator(...).filter(has_text='确定') 在弹窗内可能匹配失败（文本含空格/嵌套）→ 用全局最后一个『确定』按钮原生 el.click()（页面唯一 primary 提交）", "severity": "medium", "source": "实测"},
+    {"id": "authorize_jumps_page", "lesson": "『授权』是整页跳转（非弹窗）→ 授权后行丢失；但『删除』会删行。正确顺序：编辑→…→重置→授权→(导航回列表)→删除——授权在前、删除在后且授权后回列表，两者才能同时捕获；删除在授权前会导致授权永远触发不了", "severity": "high", "source": "实测"},
+    {"id": "identity_not_submit", "lesson": "POST /identity {action:'POLICY:BatchAttachUser'} 只是授权页初始化动作声明；真正提交是 POST /policies/attach-to-user（policies+principleIds+statement+tenantId），抓提交体必须走完『选策略→确定』", "severity": "high", "source": "实测"},
+    {"id": "probe_row_id_drift", "lesson": "同一轮探测中每次 _find_data_row 重定位可能漂移到不同行 → 编辑/删除/锁定的 URL id 不一致；对生成脚本无影响（saved_id 统一替换），但排查时要意识到这是探测环境现象", "severity": "low", "source": "实测"},
+
+    {"id": "url_keyword_classify_mismatch", "lesson": "URL 关键词分类与 estack 扁平资源风错配（POST /users 既是创建又是列表；锁定/解锁无 /lock 子路径）→ 分类须用 按钮上下文+方法+URL 组合，且 GET 永远不算写操作", "severity": "high", "source": "实测"},
+    {"id": "delete_catches_unlock", "lesson": "method==DELETE 兜底会抢走 DELETE /users/unlock/{id}（应归 unlock）→ DELETE 分支先查 /unlock", "severity": "medium", "source": "实测"},
+    {"id": "get_classified_as_create", "lesson": "create 上下文（click:创建用户）里的 GET 数据源（current-user/display-by-role/password-policy/check/usability）被误标为 create → ③ 上下文写类别仅对 POST/PUT/PATCH 生效", "severity": "high", "source": "实测"},
+    {"id": "check_classified_as_create", "lesson": "POST /users/check 校验接口被归 create → 校验类（/check /usability /verify）单独降级 support，不进核心流程", "severity": "medium", "source": "实测"},
+
+    {"id": "plain_string_template_not_fstring", "lesson": "生成器里 lines.append('''...''') 的大块文本是普通字符串，内部 repr()/{变量} 不会被求值、原样写进产物 → 一律『占位符(__NAME__/__PASSWORD__) + 生成末尾统一 replace』或拆成独立 f-string 行", "severity": "high", "source": "实测"},
+    {"id": "fstring_brace_escape", "lesson": "f-string 模板内 JS/JSON 的 { } 必须 {{ }} 转义；转义层级一错产物即崩（IndexError/语法错），改后必须 py_compile 产物验证", "severity": "high", "source": "实测"},
+    {"id": "parents_index_path", "lesson": "生成脚本 sys.path 用 parents[2] 版本化后（flows/v1.0.0/ 变深）失效 → 动态向上搜索 lib/auth.py 定位仓库根", "severity": "medium", "source": "实测"},
+    {"id": "hardcoded_probe_user_id", "lesson": "生成脚本 URL 硬编码探测时 userId（…/users/74874a…/suspend）→ 永远操作探测用户；生成时把路径中 32 位 hex 段替换为 {id} 占位 + 调用传 saved_id", "severity": "high", "source": "实测"},
+    {"id": "fixed_test_data_username", "lesson": "test_data 用探测时捕获的固定 userName → 每次运行『用户名称已存在』；生成时把 name/userName 替换为 'AT_'+TS 表达式（保留探测前缀结构）", "severity": "high", "source": "实测"},
+    {"id": "missing_reset_body", "lesson": "reset/authorize 等操作仅传 id=saved_id 会『系统内部异常』（缺 body 参数）→ 从捕获请求体样本构造完整 payload，动态替换 userId 段", "severity": "medium", "source": "实测"},
+    {"id": "json_literal_false_null", "lesson": "生成脚本里 false/null/true 是 JSON 字面量，Python 需要 False/None/True → json.dumps 后替换或直接构造 Python 字面量", "severity": "medium", "source": "实测"},
+    {"id": "create_flaky_submit", "lesson": "浏览器创建偶发『提交后 POST /users 未发出』（前端校验/加密时序竞争，重跑即好）→ 脚本须检测提交后 POST /users 是否发出，未发出则重填重提，而不是直接放弃", "severity": "medium", "source": "实测"},
+    {"id": "empty_saved_id_silent", "lesson": "创建失败 saved_id 为空时，后续 if saved_id: 分支静默跳过、无任何提示 → 应显式打印『saved_id 为空，跳过依赖步骤』，否则报告看着像执行了", "severity": "medium", "source": "实测"},
+    {"id": "js_regex_escape_warning", "lesson": "Python 三引号字符串里写 JS 正则 /\\s+/g 会 SyntaxWarning（不影响运行，但产物看着脏）；JS 里避免正则（用 split/trim 替代）或写 \\\\s", "severity": "low", "source": "实测"}
+  ],
+
+  "success_playbook": {
+    "description": "模块级 API 发现的标准成功流程（Stage1-4），探测任意模块时套用",
+    "steps": [
+      "鉴权：cookie 优先，失效才滑块自动登录（复用 EcsCloud login.js）；登录后 localStorage 注入 currentUserInfo（SPA 列表加载依赖它，仅注入 cookie 列表不加载）",
+      "Stage1 探测：扫描按钮/下拉/输入，按 label 定位 form-item（含 textarea）；识别 toolbar 按钮 / row_actions / dropdowns（注意侧边栏『更多』与行内『更多』区分）",
+      "Stage2 捕获：page.on('request') 抓真实 URL/headers/body；用请求拦截注入前端漏发的必填字段(tenantId/adminId，实时取 current-user，注入脚本 goto 后 evaluate 安装)；创建资源后回列表按行 marker 定位，逐一驱动行操作（编辑/状态/删除，删除与跳页操作放最后）",
+      "Stage3 分析：按 classify_rules 分类（上下文+方法+URL 组合）；归纳增删改查逻辑顺序；识别状态字段",
+      "Stage4 生成脚本：占位符+replace 模板；URL 的 32 位 hex id 段 → {id}；test_data 名称唯一化；依赖 RSA 加密的创建/授权走浏览器驱动函数；运行后日志转 HTML 报告（lib/report_html.py）",
+      "权限门禁识别：若响应为'无权限/请先授权'，在报告标注该接口存在权限网关，需高权限账号，而非继续调代码"
+    ],
+    "observability": "关键步骤 page.screenshot() 落盘 + page.evaluate 读 DOM 状态断言；不依赖读图；每次操作打 context 标签（row:编辑 / dropdown:更多:冻结）供分析器映射"
+  },
+
+  "captured_contracts": {
+    "create_user": {
+      "method": "POST",
+      "path": "/estack/api/estack/draco/v1/users",
+      "headers": {"Authorization": "Bearer <accessToken>", "Estack-Language": "zh-CN", "Content-Type": "application/json"},
+      "body": {
+        "userName": "<string 账号, 纯字母数字, 无下划线>",
+        "password": "<RSA 加密 base64>",
+        "name": "<string 姓名>",
+        "email": "<RSA 加密 base64>",
+        "phone": "<RSA 加密 base64>",
+        "description": "<string 描述, textarea>",
+        "policyIds": ["1f8e392309fc414c9d77d45d0315fedc"],
+        "adminId": "<current-user.id>",
+        "countryCode": "+86",
+        "tenantId": "<current-user.tenantId>"
+      },
+      "notes": [
+        "password/email/phone 必须经前端 RSA 加密后发送，明文会被拒；纯 httpx 无法复现 → 脚本用 browser_create_user 浏览器内创建",
+        "系统角色'普通用户' → policyIds[0] = 1f8e392309fc414c9d77d45d0315fedc",
+        "POST /users/check 必须在 body 带 tenantId 才能通过校验",
+        "adminId/tenantId 运行时从 current-user 实时取（勿硬编码旧账号 id）"
+      ]
+    },
+    "update_user": {
+      "method": "PUT",
+      "path": "/estack/api/estack/draco/v1/users/{id}",
+      "body": {"userId": "{id}", "name": "<姓名>", "description": "<描述>", "tenantId": "<tenantId>", "countryCode": "+86", "isEditOther": true},
+      "note": "编辑入口=行内『编辑』按钮 → 弹窗；手机号为空时须 JS 补填后提交"
+    },
+    "lock_user": {
+      "suspend": {"method": "PUT", "path": "/estack/api/estack/draco/v1/users/{id}/suspend"},
+      "lock": {"method": "POST", "path": "/estack/api/estack/draco/v1/users/lock/{id}"},
+      "note": "状态 → DISABLE"
+    },
+    "unlock_user": {
+      "enable": {"method": "PUT", "path": "/estack/api/estack/draco/v1/users/{id}/enable"},
+      "unlock": {"method": "DELETE", "path": "/estack/api/estack/draco/v1/users/unlock/{id}"},
+      "note": "状态 → ENABLE"
+    },
+    "reset_password": {
+      "method": "POST",
+      "path": "/estack/api/estack/draco/v1/password-reset/generate",
+      "body": {"userId": "{id}", "passwordPolicy": "<完整策略对象: length/uppercase/digit/special/expireDays 等>", "tenantId": "<tenantId>"},
+      "note": "只传 id 会报『系统内部异常』"
+    },
+    "authorize_user": {
+      "method": "POST",
+      "path": "/estack/api/estack/draco/v1/policies/attach-to-user",
+      "body": {"policies": ["1f8e392309fc414c9d77d45d0315fedc"], "principleIds": ["{id}"], "statement": {"collections": "*", "pools": "*", "projects": "*"}, "tenantId": "<tenantId>"},
+      "note": "入口=行内更多→授权 → 整页跳转 /authority-manage/add-authority?rowId={id}；穿梭框点击行选策略；/identity 只是初始化动作声明"
+    },
+    "delete_user": {
+      "method": "DELETE",
+      "path": "/estack/api/estack/draco/v1/users/{id}",
+      "note": "入口=行内『删除』→ el-message-box 确认"
+    }
+  }
+}

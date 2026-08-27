@@ -1,0 +1,8 @@
+{
+  "auto_login": {
+    "user": "your_username_here",
+    "pass": "your_password_here"
+  },
+  "target": "ip",
+  "login_url": "https://10.151.37.249/estack/web/estack/login"
+}

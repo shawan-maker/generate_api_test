@@ -1,0 +1,382 @@
+{
+  "version": "2.0",
+  "description": "探针知识库 v2 - 所有 XPath 的隐藏过滤都在最终元素上",
+  "single_step": {
+    "description": "单步定位模板（按钮、输入框、链接等）",
+    "categories": {
+      "button": {
+        "name": "普通按钮",
+        "patterns": [
+          "//button[{chars_all}]",
+          "//button[contains(.,'{label}')]",
+          "//button[contains(.,'{char1}') and contains(.,'{char2}')]",
+          "//*[contains(text(),'{label}')][not(ancestor::*[contains(@class,'el-select-dropdown')])]"
+        ]
+      },
+      "search-button": {
+        "name": "搜索按钮",
+        "patterns": [
+          "//button[contains(.,'{label}')]",
+          "(//i[@class='el-icon-search'])[last()]",
+          "//i[@class='el-icon-search']",
+          "//button[contains(@class,'search') and contains(.,'{label}')]"
+        ]
+      },
+      "download-button": {
+        "name": "下载导出按钮",
+        "patterns": [
+          "//span[(contains(.,'导出') or contains(.,'下载'))]",
+          "//i[@class='el-icon-download']",
+          "//div[@role='tabpanel' and not(contains(@style,'display: none'))]//i[@class='el-icon-download']"
+        ]
+      },
+      "menu-item": {
+        "name": "侧边目录",
+        "patterns": [
+          "//*[@class='el-menu-item' and contains(.,'{label}')]"
+        ]
+      },
+      "tab": {
+        "name": "Tab标签",
+        "patterns": [
+          "//*[contains(text(),'{label}') and @role='tab']"
+        ]
+      },
+      "checkbox": {
+        "name": "勾选框",
+        "patterns": [
+          "//div[contains(@class,\"el-table__body-wrapper\")]//tbody//tr[1]//*[@class=\"el-checkbox__inner\"]"
+        ]
+      },
+      "checkbox-all": {
+        "name": "批量全选",
+        "patterns": [
+          "//div[@class='el-table__header-wrapper']//span[@class='el-checkbox__inner']"
+        ]
+      },
+      "input-generic": {
+        "name": "通用输入框",
+        "patterns": [
+          "//*[contains(text(),'{label}')]/following-sibling::*[self::div or self::span]//input[@class='el-input__inner']"
+        ]
+      },
+      "textarea-generic": {
+        "name": "通用文本框",
+        "patterns": [
+          "//*[contains(text(),'{label}')]/following-sibling::*[self::div or self::span]//textarea"
+        ]
+      },
+      "detail-link": {
+        "name": "进入详情页",
+        "patterns": [
+          "//td[not(contains(@class,'is-hidden'))]//*[contains(text(),'{label}')]",
+          "//td[not(contains(@class,'is-hidden'))]//*[contains(@class,'link-style') or contains(@class,'click-list') or contains(@class,'resource-id') or contains(@class,'name')][contains(.,'{label}')]",
+          "//td[not(contains(@class,'is-hidden'))]//*[contains(@class,'link-style') or contains(@class,'click-list') or contains(@class,'resource-id') or contains(@class,'name')][contains(.,'{label}')]/div[@class='resource-id']",
+          "//td[not(contains(@class,'is-hidden'))]//*[@class='edit-name' and contains(.,'{label}')]/preceding-sibling::div[contains(@class,'link-style')]",
+          "//*[contains(@class,'common-href') and contains(.,'{label}')]"
+        ]
+      },
+      "field-assertion": {
+        "name": "字段值断言",
+        "patterns": [
+          "//*[contains(text(),'{field_label}')]/following-sibling::*[self::div or self::span]//*[contains(.,'{keyword}')]",
+          "//tbody/tr[1]//*[contains(.,'{keyword}')]"
+        ]
+      },
+      "submit-order-button": {
+        "name": "表单页底部提交按钮(中文按钮文本常含内部空格, 如 '确 定')",
+        "patterns": [
+          "//div[contains(@class,'order-submit')]//button[contains(.,'{label}')]",
+          "//div[contains(@class,'dialog-footer')]//button[contains(.,'{label}')]",
+          "//*[contains(@class,'footer')]//button[contains(.,'{label}')]"
+        ]
+      },
+      "create-user-entry": {
+        "name": "创建/新增入口(可能是整页跳转而非弹窗, 点击后检查 URL 是否含 create-*)",
+        "patterns": [
+          "//button[contains(.,'创建用户')]",
+          "//button[contains(.,'新增')]",
+          "//span[contains(.,'创建用户')]"
+        ]
+      }
+    }
+  },
+  "multi_step": {
+    "description": "多步操作模板（下拉框、级联、日期等）",
+    "categories": {
+      "el-select": {
+        "name": "下拉框",
+        "conditional_branch": true,
+        "steps": {
+          "expand": {
+            "desc": "点击展开下拉框",
+            "patterns": [
+              "//*[contains(text(),'{label}')]/following-sibling::*[self::div or self::span]//input[@class='el-input__inner']"
+            ]
+          },
+          "fill": {
+            "desc": "输入搜索关键词",
+            "patterns": [
+              "//*[contains(text(),'{label}')]/following-sibling::*[self::div or self::span]//input[@class='el-input__inner']"
+            ]
+          },
+          "select": {
+            "desc": "选择匹配选项",
+            "patterns": [
+              "(//div[(@x-placement='bottom-start' or @x-placement='top-start')]//li[contains(.,'{option_text}')])[1]"
+            ]
+          },
+          "editable-check": {
+            "desc": "判断是否可编辑（条件分支：if_element_visible 检查 _editable）",
+            "patterns": [
+              "//*[contains(text(),'{label}')]/following-sibling::*[self::div or self::span]//input[@class='el-input__inner' and not(@readonly)]"
+            ]
+          },
+          "first-option": {
+            "desc": "readonly 时选择第一项（else_steps）",
+            "patterns": [
+              "(//div[(@x-placement='bottom-start' or @x-placement='top-start')]//li)[1]"
+            ]
+          }
+        }
+      },
+      "el-cascader": {
+        "name": "级联选择器",
+        "description": "支持带勾选框和不带勾选框两种模式，最后一级运行时自动判断",
+        "multi_level": true,
+        "steps": {
+          "expand": {
+            "desc": "点击展开级联面板",
+            "patterns": [
+              "//*[contains(text(),'{label}')]/following-sibling::*[self::div or self::span]//input[@class='el-input__inner']"
+            ]
+          },
+          "expand-level": {
+            "desc": "展开中间级（两种类型操作相同：点击文本展开下一级）",
+            "patterns": [
+              "//li[@role='menuitem']//span[contains(text(),'{option_text}')]"
+            ]
+          },
+          "select-last-checkbox": {
+            "desc": "最后一级 — 带勾选框时点击 checkbox",
+            "patterns": [
+              "//li[@role='menuitem' and contains(.,'{option_text}')]//span[@class='el-checkbox__inner']"
+            ]
+          },
+          "select-last-text": {
+            "desc": "最后一级 — 不带勾选框时点击文本",
+            "patterns": [
+              "//li[@role='menuitem']//span[contains(text(),'{option_text}')]"
+            ]
+          }
+        },
+        "conditional_branch": {
+          "desc": "最后一级运行时判断：if_element_visible 检查 checkbox 是否存在",
+          "condition_locator": "//li[@role='menuitem' and contains(.,'{last_text}')]//span[@class='el-checkbox__inner']",
+          "if_visible": "select-last-checkbox",
+          "if_not_visible": "select-last-text",
+          "timeout": 500
+        }
+      },
+      "date-picker": {
+        "name": "日期选择器",
+        "steps": {
+          "expand": {
+            "desc": "点击展开日期面板",
+            "patterns": [
+              "//*[contains(text(),'{label}')]/following-sibling::*[self::div or self::span]//input[@class='el-input__inner']"
+            ]
+          },
+          "select-today": {
+            "desc": "选择今天",
+            "patterns": [
+              "//div[@x-placement='bottom-start' or @x-placement='top-start']//table[not(contains(@style,'display: none'))]//td[contains(@class,'today')]"
+            ]
+          },
+          "select-now": {
+            "desc": "选择此刻",
+            "patterns": [
+              "//div[@x-placement='bottom-start' or @x-placement='top-start']//table[not(contains(@style,'display: none'))]//button[contains(.,'此刻')]"
+            ]
+          },
+          "select-month": {
+            "desc": "选择当月",
+            "patterns": [
+              "//table[@class='el-month-table' and not(contains(@style,'display: none'))]//td[@class='today' or @class='current']"
+            ]
+          },
+          "range-start": {
+            "desc": "选择起始时间",
+            "patterns": [
+              "(//div[contains(@class,'is-left')]//*[contains(@class,'available')])[1]"
+            ]
+          },
+          "range-end": {
+            "desc": "选择结束时间",
+            "patterns": [
+              "(//div[contains(@class,'is-right')]//*[@class='available'])[1]"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "composite": {
+    "description": "组合操作模板（表格行按钮、多tab、更多菜单等）",
+    "categories": {
+      "table-action-button": {
+        "name": "列表右侧按钮",
+        "patterns": [
+          "//div[contains(@class,'el-table__fixed-right')]//tbody/tr[1]//button[contains(.,'{label}')]",
+          "//div[contains(@class,'el-table__fixed-right')]//tbody/tr[1]//span[contains(.,'{label}')]",
+          "//div[contains(@class,'el-table__body-wrapper')]//tbody/tr[1]//button[contains(.,'{label}')]",
+          "//div[contains(@class,'el-table__body-wrapper')]//tbody/tr[1]//span[contains(.,'{label}')]",
+          "//div[contains(@class,'el-table__fixed-body-wrapper')]//tbody/tr[1]//button[contains(.,'{label}')]",
+          "//div[contains(@class,'el-table__fixed-body-wrapper')]//tbody/tr[1]//span[contains(.,'{label}')]"
+        ]
+      },
+      "dropdown-menu": {
+        "name": "更多菜单",
+        "steps": {
+          "click-more": {
+            "desc": "点击更多按钮",
+            "patterns": [
+              "//div[contains(@class,'el-table__fixed-right')]//tbody/tr[1]//span[contains(.,'更多')]",
+              "//div[contains(@class,'el-table__body-wrapper')]//tbody/tr[1]//span[contains(.,'更多')]",
+              "//div[contains(@class,'el-table__fixed-body-wrapper')]//tbody/tr[1]//span[contains(.,'更多')]",
+              "//div[@role='tabpanel' and not(contains(@style,'display: none'))]//div[@class='el-table__fixed-right']//tbody/tr[1]//span[contains(.,'更多')]"
+            ]
+          },
+          "click-action": {
+            "desc": "点击菜单项",
+            "patterns": [
+              "//*[(@x-placement='top-end' or @x-placement='bottom-end')]//*[contains(text(),'{label}')]"
+            ]
+          }
+        }
+      },
+      "section-row-link": {
+        "name": "区域内表格行链接",
+        "description": "Dashboard/总览页面，按区域标题定位表格行中的可点击链接。count>=1 表示有数据，点击取 [1]",
+        "patterns": [
+          "//*[contains(text(),'{section}')]//following-sibling::div//table//tr//*[contains(@class,'{click_class}')]"
+        ]
+      },
+      "tab-scoped": {
+        "name": "多tab作用域",
+        "steps": {
+          "get-tab-id": {
+            "desc": "获取tab的aria-controls属性",
+            "patterns": [
+              "//*[contains(text(),'{tab_name}') and @role='tab']"
+            ]
+          },
+          "scoped-button": {
+            "desc": "tab作用域内的元素（按钮、输入框、链接等均需加作用域前缀）",
+            "patterns": [
+              "//div[@id='{element_id}']//button[contains(.,'{label}')]",
+              "//div[@id='{element_id}']//span[contains(.,'{label}') and @role='button']",
+              "//div[@id='{element_id}']//div[contains(@class,'el-table__fixed-right')]//tbody/tr[1]//span[contains(.,'{label}')]",
+              "//div[@id='{element_id}']//div[contains(@class,'el-table__body-wrapper')]//tbody/tr[1]//span[contains(.,'{label}')]",
+              "//div[@id='{element_id}']//div[contains(@class,'el-table__fixed-body-wrapper')]//tbody/tr[1]//span[contains(.,'{label}')]",
+              "//div[@id='{element_id}']//div[@role='tabpanel' and not(contains(@style,'display: none'))]//div[@class='el-table__fixed-right']//tbody/tr[1]//span[contains(.,'{label}')]"
+            ]
+          },
+          "scoped-input": {
+            "desc": "tab作用域内的输入框",
+            "patterns": [
+              "//div[@id='{element_id}']//*[contains(text(),'{label}')]/following-sibling::*[self::div or self::span]//input[@class='el-input__inner']",
+              "//div[@id='{element_id}']//*[contains(text(),'{label}')]/following-sibling::*[self::div or self::span]//textarea"
+            ]
+          },
+          "scoped-detail-link": {
+            "desc": "tab作用域内的详情页链接",
+            "patterns": [
+              "//div[@id='{element_id}']//td[not(contains(@class,'is-hidden'))]//*[contains(text(),'{label}')]",
+              "//div[@id='{element_id}']//td[not(contains(@class,'is-hidden'))]//*[contains(@class,'link-style') or contains(@class,'click-list') or contains(@class,'resource-id') or contains(@class,'name')][contains(.,'{label}')]"
+            ]
+          },
+          "scoped-menu-item": {
+            "desc": "tab作用域内的侧边目录",
+            "patterns": [
+              "//div[@id='{element_id}']//*[@class='el-menu-item' and contains(.,'{label}')]"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "assertion": {
+    "description": "断言定位模板（只需要存在即可，不用精确匹配到一个元素）",
+    "categories": {
+      "success-toast": {
+        "name": "成功提示",
+        "patterns": [
+          "//*[contains(.,'{keyword}成功')]"
+        ]
+      },
+      "error-toast": {
+        "name": "失败提示",
+        "patterns": [
+          "//*[contains(.,'{keyword}失败')]"
+        ]
+      },
+      "first-row-content": {
+        "name": "第一行内容",
+        "patterns": [
+          "//tbody/tr[1]//*[contains(.,'{keyword}')]"
+        ]
+      },
+      "field-value": {
+        "name": "字段值",
+        "patterns": [
+          "//*[contains(text(),'{field_label}')]/following-sibling::*[self::div or self::span]//*[contains(.,'{keyword}')]"
+        ]
+      }
+    }
+  },
+  "fallback_strategies": {
+    "description": "知识库全部失败后的补充探测策略（不可信，需用户确认）",
+    "strategies": [
+      {
+        "name": "playwright_role",
+        "description": "Playwright ARIA role 选择器",
+        "patterns": [
+          "role=button[name='{label}']",
+          "role=textbox[name='{label}']",
+          "role=tab[name='{label}']",
+          "role=menuitem[name='{label}']"
+        ],
+        "trusted": false
+      },
+      {
+        "name": "playwright_text",
+        "description": "Playwright text 选择器",
+        "patterns": [
+          "text='{label}'",
+          "xpath=//button[contains(.,'{label}')]",
+          "xpath=//input[@placeholder='{label}']"
+        ],
+        "trusted": false
+      },
+      {
+        "name": "xpath_class",
+        "description": "XPath class 组合定位",
+        "patterns": [
+          "xpath=//button[contains(@class,'el-button') and contains(.,'{label}')]",
+          "xpath=//input[contains(@class,'el-input__inner') and @placeholder='{label}']",
+          "xpath=//div[contains(@class,'el-select')]",
+          "xpath=//div[contains(@class,'el-cascader')]"
+        ],
+        "trusted": false
+      },
+      {
+        "name": "dom_text_scan",
+        "description": "DOM 文本扫描（查找包含 label 的所有元素）",
+        "patterns": [],
+        "script": "() => { const results=[]; document.querySelectorAll('*').forEach(el=>{ if(el.textContent.trim().includes('{label}')) results.push({tag:el.tagName, class:el.className, xpath: getXPath(el)}); }); return results; }",
+        "trusted": false
+      }
+    ]
+  }
+}

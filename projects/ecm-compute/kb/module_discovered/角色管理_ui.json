@@ -1,0 +1,524 @@
+{
+  "toolbar_buttons": [
+    {
+      "text": "创建角色",
+      "tag": "BUTTON",
+      "className": "el-button el-button--primary el-button--small",
+      "rect": "87x31",
+      "location": "toolbar",
+      "source": "main"
+    },
+    {
+      "text": "GO",
+      "tag": "BUTTON",
+      "className": "el-button pagination-jumper el-button--default el-button--mi",
+      "rect": "51x28",
+      "location": "toolbar",
+      "source": "main"
+    }
+  ],
+  "row_actions": [
+    {
+      "text": "编辑",
+      "tag": "BUTTON",
+      "className": "el-button el-tooltip item el-button--text el-button--small c",
+      "rect": "26x14",
+      "location": "row_action",
+      "source": "main"
+    },
+    {
+      "text": "删除",
+      "tag": "BUTTON",
+      "className": "el-button el-tooltip item el-button--text el-button--small c",
+      "rect": "26x14",
+      "location": "row_action",
+      "source": "main"
+    }
+  ],
+  "dialog_buttons": [],
+  "menu_items": [
+    {
+      "text": "账户管理  账户信息  修改密码  AccessKey设置",
+      "tag": "LI",
+      "className": "el-submenu",
+      "rect": "179x40",
+      "location": "menu",
+      "source": "main"
+    },
+    {
+      "text": "单位管理",
+      "tag": "LI",
+      "className": "el-menu-item inner-level",
+      "rect": "179x40",
+      "location": "menu",
+      "source": "main"
+    },
+    {
+      "text": "代维管理",
+      "tag": "LI",
+      "className": "el-menu-item inner-level",
+      "rect": "179x40",
+      "location": "menu",
+      "source": "main"
+    },
+    {
+      "text": "部门管理",
+      "tag": "LI",
+      "className": "el-menu-item inner-level",
+      "rect": "179x40",
+      "location": "menu",
+      "source": "main"
+    },
+    {
+      "text": "用户管理",
+      "tag": "LI",
+      "className": "el-menu-item inner-level",
+      "rect": "179x40",
+      "location": "menu",
+      "source": "main"
+    },
+    {
+      "text": "用户组管理",
+      "tag": "LI",
+      "className": "el-menu-item inner-level",
+      "rect": "179x40",
+      "location": "menu",
+      "source": "main"
+    },
+    {
+      "text": "角色管理",
+      "tag": "LI",
+      "className": "el-menu-item inner-level is-active",
+      "rect": "179x40",
+      "location": "menu",
+      "source": "main"
+    },
+    {
+      "text": "授权管理",
+      "tag": "LI",
+      "className": "el-menu-item inner-level",
+      "rect": "179x40",
+      "location": "menu",
+      "source": "main"
+    },
+    {
+      "text": "黑白名单",
+      "tag": "LI",
+      "className": "el-menu-item inner-level",
+      "rect": "179x40",
+      "location": "menu",
+      "source": "main"
+    },
+    {
+      "text": "日志管理  日志查询  日志设置",
+      "tag": "LI",
+      "className": "el-submenu",
+      "rect": "179x40",
+      "location": "menu",
+      "source": "main"
+    }
+  ],
+  "dropdowns": [],
+  "form_fields": [
+    {
+      "label": "角色名称",
+      "placeholder": "请输入角色名称",
+      "type": "text",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "角色范畴",
+      "placeholder": "",
+      "type": "radio",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "角色范畴",
+      "placeholder": "",
+      "type": "radio",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "描述",
+      "placeholder": "请输入描述",
+      "type": "textarea",
+      "required": false,
+      "tag": "TEXTAREA"
+    },
+    {
+      "label": "配置模式",
+      "placeholder": "",
+      "type": "radio",
+      "required": false,
+      "tag": "INPUT"
+    },
+    {
+      "label": "配置模式",
+      "placeholder": "",
+      "type": "radio",
+      "required": false,
+      "tag": "INPUT"
+    },
+    {
+      "label": "效果",
+      "placeholder": "",
+      "type": "radio",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "产品/服务",
+      "placeholder": "请选择",
+      "type": "text",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "操作",
+      "placeholder": "",
+      "type": "radio",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "操作",
+      "placeholder": "",
+      "type": "radio",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "操作",
+      "placeholder": "请输入操作名称进行模糊搜索",
+      "type": "text",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "请输入菜单名称进行模糊搜索",
+      "type": "text",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    },
+    {
+      "label": "关联菜单",
+      "placeholder": "",
+      "type": "checkbox",
+      "required": true,
+      "tag": "INPUT"
+    }
+  ],
+  "summary": {
+    "total_buttons": 14,
+    "has_create": true,
+    "has_delete": true,
+    "has_form": true,
+    "categories": {
+      "create": 1,
+      "unknown": 1,
+      "update": 1,
+      "delete": 1
+    }
+  },
+  "page_structure": {
+    "hasFixedLeft": true,
+    "hasFixedRight": true,
+    "mainBodyRows": 9,
+    "fixedRightRows": 9,
+    "fixedLeftRows": 9,
+    "columnCount": 7,
+    "operationColumnIndex": 6,
+    "operationColumnLocation": "last",
+    "tableWrappers": [
+      {
+        "cls": "el-table__header-wrapper",
+        "rowCount": 0
+      },
+      {
+        "cls": "el-popover__reference-wrapper",
+        "rowCount": 0
+      },
+      {
+        "cls": "el-popover__reference-wrapper",
+        "rowCount": 0
+      },
+      {
+        "cls": "el-table__body-wrapper is-scrolling-none",
+        "rowCount": 9
+      },
+      {
+        "cls": "el-table__fixed-header-wrapper",
+        "rowCount": 0
+      },
+      {
+        "cls": "el-popover__reference-wrapper",
+        "rowCount": 0
+      },
+      {
+        "cls": "el-popover__reference-wrapper",
+        "rowCount": 0
+      },
+      {
+        "cls": "el-table__fixed-body-wrapper",
+        "rowCount": 9
+      },
+      {
+        "cls": "el-table__fixed-header-wrapper",
+        "rowCount": 0
+      },
+      {
+        "cls": "el-popover__reference-wrapper",
+        "rowCount": 0
+      }
+    ]
+  }
+}

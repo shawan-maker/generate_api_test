@@ -1,0 +1,84 @@
+# ========== 步骤字典（支持单步骤执行: python script.py create query）==========
+STEPS = {
+{% for step_name, fn_name in steps.items() %}
+    "{{ step_name }}": {{ fn_name }},
+{% endfor %}
+}
+
+# ========== 主流程 ==========
+def main():
+    # 设置 UTF-8 编码，避免 Windows 控制台 GBK 编码错误
+    import sys
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
+    print("=" * 60)
+    print("  {{ module_name }} API 测试")
+    print("=" * 60)
+
+    client = get_auth_client()
+    if client is None:
+        print("❌ 无法获取有效鉴权")
+        return
+
+    # 共享状态字典（跨步骤传递数据）
+    state = {"id": None, "uname": None, "tenantId": None, "adminId": None}
+
+    # 获取当前用户信息（运行时实时取 tenantId / adminId）
+    try:
+        me = client.request("GET", "{{ probe_url }}")
+        if me.status_code < 300:
+            me_json = me.json()
+            me_entity = me_json.get("entity", {}) or {}
+            state["tenantId"] = me_entity.get("tenantId")
+            state["adminId"] = me_entity.get("id")
+            print(f"  ✅ 当前用户: {me_entity.get('name', 'unknown')}")
+            print(f"  tenantId: {state['tenantId']}  adminId: {state['adminId']}")
+    except Exception as _me:
+        print(f"  ⚠️ 获取当前用户失败: {_me}")
+
+    # 构建实际测试数据
+    test_data_actual = dict(test_data)
+    if state["tenantId"]:
+        test_data_actual["tenantId"] = state["tenantId"]
+    if state["adminId"]:
+        test_data_actual["adminId"] = state["adminId"]
+    for key in ("name", "userName"):
+        if key in test_data_actual and isinstance(test_data_actual[key], str):
+            if test_data_actual[key].startswith("AT_"):
+                continue
+            test_data_actual[key] = test_data_actual[key].replace("AT_", f"AT_{TS}_")
+
+    # 解析命令行参数（支持单步骤执行）
+    all_steps = list(STEPS.keys())
+    if len(sys.argv) > 1:
+        steps_to_run = sys.argv[1:]
+        for name in steps_to_run:
+            if name not in STEPS:
+                print(f"❌ 未知步骤: {name}")
+                print(f"可用步骤: {', '.join(all_steps)}")
+                sys.exit(1)
+    else:
+        steps_to_run = all_steps
+
+    print(f"\n🚀 执行步骤: {', '.join(steps_to_run)} (共 {len(steps_to_run)}/{len(all_steps)})")
+
+    try:
+        for _step_name in steps_to_run:
+            print(f"\n{'='*60}")
+            print(f"步骤: {_step_name}")
+            print("=" * 60)
+            STEPS[_step_name](client, state)
+    except Exception as _main_err:
+        print(f"\n❌ 主流程异常: {_main_err}")
+        import traceback
+        traceback.print_exc()
+
+    print("\n" + "=" * 60)
+    print("  ✅ 测试完成")
+    print("=" * 60)
+
+
+if __name__ == "__main__":
+    main()
