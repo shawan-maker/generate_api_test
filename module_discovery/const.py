@@ -159,3 +159,37 @@ COMMON_ID_FIELDS = [
     "tenantId", "groupId", "roleId", "policyId",
     "instanceId", "volumeId", "networkId",
 ]
+
+
+# ============================================================
+# Stage 3: 响应约定发现 — 候选常量
+# （集中管理，避免 analyze_flow.py / test_runtime.py 各自定义）
+# ============================================================
+
+# 响应信封键候选（按常见度排序）
+ENVELOPE_KEY_CANDIDATES = [
+    "entity", "data", "result", "payload", "body", "content", "response",
+]
+
+# 成功判断相关字段
+SUCCESS_FIELD_CANDIDATES = ["success", "ok", "code", "status"]
+ERROR_FIELD_CANDIDATES = ["errorCode", "error_code", "errCode", "err_code", "error"]
+
+# 列表项键候选
+LIST_KEY_CANDIDATES = ["list", "records", "rows", "items", "data", "content", "results"]
+TOTAL_KEY_CANDIDATES = ["total", "totalCount", "totalElements", "count", "total_count"]
+
+# 名称字段标识符（字段名包含这些关键词 且 值是短字符串）
+NAME_FIELD_KEYWORDS = ["name", "title", "label", "displayname", "username", "account"]
+# 可变字段标识符
+MUTABLE_FIELD_KEYWORDS = ["description", "remark", "memo", "note", "comment", "desc"]
+
+
+# ============================================================
+# Stage 3: 信封键回退默认值
+# （当响应样本中无法自动发现时使用，不偏向任何特定项目）
+# ============================================================
+ENVELOPE_KEY_DEFAULTS = ["entity", "data", "result", "payload"]
+LIST_KEY_DEFAULTS = ["list", "records", "rows", "items"]
+TOTAL_KEY_DEFAULTS = ["total", "totalCount", "count"]
+DEFAULT_ID_FIELD = "id"

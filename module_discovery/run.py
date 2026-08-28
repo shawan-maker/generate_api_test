@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT))
 
 from module_discovery.discover_ui import discover_all
 from module_discovery.capture_apis import capture_all
-from module_discovery.analyze_flow import analyze
+from module_discovery.analyze_flow import analyze, build_manifest
 from module_discovery.gen_test import generate_script, save_script_to_file
 from module_discovery import version as ver_mod
 from module_discovery.stage_validators import validate_stage1, validate_stage2, validate_stage3, validate_stage4
@@ -441,17 +441,16 @@ def run_stage34(project_dir: Path, module_name: str,
     login_url = profile.get("login_url", "")
     _creds = profile.get("credentials", {}) or {}
     version = version or ver_mod.resolve_version(project_dir)
-    script = generate_script(
-        flow, capture_result, ui_result,
-        project_id=profile.get("name", project_dir.name),
-        module_name=module_name,
-        base_url=base_url,
-        login_url=login_url,
-        target_url=target_url,
-        username=_creds.get("username", ""),
-        password=_creds.get("password", ""),
-        version=version,
-    )
+
+    # 构建 manifest（泛化架构）
+    manifest = build_manifest(flow, capture_result, profile,
+                              module_name, target_url)
+    # 保存 manifest
+    manifest_path = project_dir / "kb" / "module_discovered" / f"{module_name}_manifest.json"
+    _save_json(manifest, manifest_path)
+    LOG.info(f"  Manifest 已保存: {manifest_path}")
+
+    script = generate_script(manifest, module_name)
 
     # 阶段门控验证
     is_valid, issues = validate_stage4(script, None)
@@ -481,8 +480,14 @@ async def main():
         sys.exit(1)
 
     profile = _load_profile(project_dir)
-    base_url = profile.get("base_url", "https://10.151.37.249")
-    login_url = profile.get("login_url", f"{base_url}/estack/web/estack/login")
+    base_url = profile.get("base_url")
+    if not base_url:
+        LOG.error("profile.yaml 缺少 base_url 配置")
+        sys.exit(1)
+    login_url = profile.get("login_url")
+    if not login_url:
+        LOG.error("profile.yaml 缺少 login_url 配置")
+        sys.exit(1)
 
     # 批量发现模式
     if args.all_modules:
@@ -545,7 +550,8 @@ async def main():
 
             if not logged_in:
                 LOG.info("  执行滑块登录...")
-                ok = await _login_with_playwright(page, context, login_url, username, password)
+                ok = await _login_with_playwright(page, context, login_url, username, password,
+                                                  project_profile=profile)
                 if not ok:
                     LOG.error("❌ 登录失败")
                     await browser.close()
@@ -618,11 +624,11 @@ async def main():
                 if cookies:
                     await context.add_cookies(cookies)
                     # 注入 token 到 localStorage（cookie 有效时也需要）
-                    token_cookie = next((c["value"] for c in cookies if c["name"] in ("accessToken", "estackToken")), None)
+                    token_key = profile.get("auth", {}).get("token_key", "accessToken")
+                    token_cookie = next((c["value"] for c in cookies if c["name"] == token_key), None)
                     if token_cookie:
                         await context.add_init_script(f"""
-                            localStorage.setItem('estackToken', '{token_cookie}');
-                            localStorage.setItem('accessToken', '{token_cookie}');
+                            localStorage.setItem('{token_key}', '{token_cookie}');
                         """)
                     try:
                         await page.goto(target_url, wait_until="load", timeout=30000)
@@ -637,7 +643,8 @@ async def main():
 
         if not logged_in:
             LOG.info("  执行滑块登录...")
-            ok = await _login_with_playwright(page, context, login_url, username, password)
+            ok = await _login_with_playwright(page, context, login_url, username, password,
+                                              project_profile=profile)
             if not ok:
                 LOG.error("❌ 登录失败")
                 await browser.close()
@@ -649,11 +656,11 @@ async def main():
             cookie_file.write_text(json.dumps(cookies, ensure_ascii=False, indent=2), encoding="utf-8")
 
             # 从 cookie 提取 token，用 addInitScript 注入到 localStorage（所有后续页面）
-            token_cookie = next((c["value"] for c in cookies if c["name"] in ("accessToken", "estackToken")), None)
+            token_key = profile.get("auth", {}).get("token_key", "accessToken")
+            token_cookie = next((c["value"] for c in cookies if c["name"] == token_key), None)
             if token_cookie:
                 await context.add_init_script(f"""
-                    localStorage.setItem('estackToken', '{token_cookie}');
-                    localStorage.setItem('accessToken', '{token_cookie}');
+                    localStorage.setItem('{token_key}', '{token_cookie}');
                 """)
                 LOG.info("  ✅ 已通过 addInitScript 注入 token 到 localStorage")
 
@@ -805,27 +812,19 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
 
 # ==================== 登录函数 ====================
 
-async def _login_with_playwright(page, context, login_url, username, password):
+async def _login_with_playwright(page, context, login_url, username, password,
+                                 project_profile: dict = None):
     """
     登录：cookie 优先 → 失效后走滑块自动登录（复用 lib/auth.py）。
+    从 project_profile 读取 auth/captcha 配置，不硬编码。
     """
     from lib import auth
 
+    p = project_profile or {}
     profile = {
         "login_url": login_url,
-        "auth": {
-            "header_name": "Authorization",
-            "header_prefix": "Bearer ",
-            "freshness_ttl_seconds": 300,
-            "fixed_headers": {"Estack-Language": "zh-CN"},
-        },
-        "captcha": {
-            "type": "slider",
-            "material_url_regex": "pictures-verification|images/checkcap/code",
-            "auth_button_text": "点击完成认证",
-            "login_button_text": "登录",
-            "success_url_keyword": "/portal",
-        },
+        "auth": p.get("auth", {}),
+        "captcha": p.get("captcha", {}),
     }
 
     sess = auth.AuthSession(profile, username, password)

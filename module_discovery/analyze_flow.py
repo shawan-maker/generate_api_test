@@ -130,9 +130,6 @@ def _filter_core_apis(classified: dict, response_samples: dict,
             p = ep["pathname"].lower()
             if any(kw in p for kw in supporting_patterns):
                 continue
-            # 过滤当前用户/授权等全局查询
-            if "/current-user" in p or "/authority/" in p:
-                continue
             # 同现频率过滤：在 60%+ 的按钮上下文中都出现的 API 是辅助 API
             if ep["pathname"] in cooccurrence_support:
                 LOG.debug(f"  同现过滤跳过: {ep['pathname']}")
@@ -160,18 +157,21 @@ def _filter_core_apis(classified: dict, response_samples: dict,
                 except Exception as e:
                     LOG.debug(f"解析响应样本 JSON 失败 ({pn}): {e}")
                     continue
-                entity = body.get("entity") or body.get("data") or {}
-                if isinstance(entity, dict) and "list" in entity:
-                    target_cat = "query"
-                    real_eps.append(ep)
-                    break
-                if isinstance(entity, dict) and "id" in entity:
-                    real_eps.append(ep)
-                    break
-                if isinstance(entity, list) and len(entity) > 0:
-                    target_cat = "query"
-                    real_eps.append(ep)
-                    break
+                entity = _extract_entity_with_fallback(body)
+                if isinstance(entity, dict):
+                    # 查找列表键（泛化：不再硬编码 "list"）
+                    for lk in _LIST_KEY_CANDIDATES:
+                        if lk in entity and isinstance(entity[lk], list):
+                            target_cat = "query"
+                            real_eps.append(ep)
+                            break
+                    else:
+                        # 查找 ID 键
+                        if "id" in entity:
+                            real_eps.append(ep)
+                        elif isinstance(entity, list) and len(entity) > 0:
+                            target_cat = "query"
+                            real_eps.append(ep)
         if real_eps:
             dest = target_cat or "execute"
             core[dest] = core.get(dest, []) + real_eps
@@ -505,7 +505,7 @@ def _derive_state_rules(core_apis: dict, response_samples: dict) -> dict:
                 except Exception as e:
                     LOG.debug(f"解析状态断言响应样本失败 ({pn}): {e}")
                     continue
-                entity = body.get("entity") or body.get("data") or {}
+                entity = _extract_entity_with_fallback(body)
                 if isinstance(entity, dict):
                     vals = _find_state_value(entity)
                     if vals:
@@ -555,3 +555,615 @@ def _find_state_value(entity: dict) -> Optional[dict]:
             if isinstance(val, bool):
                 return {"field": fname, "value": val}
     return None
+
+
+def _extract_entity_with_fallback(body: dict, fallback_keys: list = None) -> any:
+    """从响应体中提取实体数据（带信封键回退）。
+
+    优先使用发现的信封键，找不到时回退到 const.ENVELOPE_KEY_DEFAULTS。
+
+    Args:
+        body: 响应体 dict
+        fallback_keys: 回退的信封键列表
+
+    Returns:
+        提取的实体数据，或空 dict/list
+    """
+    if not isinstance(body, dict):
+        return {}
+
+    # 优先使用发现的信封键
+    keys_to_try = fallback_keys or const.ENVELOPE_KEY_DEFAULTS
+
+    for key in keys_to_try:
+        if key in body and body[key] is not None:
+            return body[key]
+
+    # 都找不到，返回空
+    return {}
+
+
+# ========== Manifest 构建（Phase 2: 泛化架构）==========
+
+# 步骤中文标签映射
+_STEP_LABELS = {
+    "create": "创建", "query": "查询", "detail": "详情",
+    "update": "修改", "lock": "锁定", "unlock": "解锁",
+    "reset": "重置", "export": "导出", "execute": "其他操作",
+    "authorize": "授权", "delete": "删除", "migrate": "迁移",
+}
+
+
+def _parse_body(ep_or_sample) -> dict:
+    """从 endpoint dict 或 body sample 解析出 body dict。
+
+    Args:
+        ep_or_sample: endpoint dict（含 request_body_sample/bodies）或直接的 body sample
+
+    Returns:
+        解析后的 dict，失败返回 {}
+    """
+    sample = None
+    if isinstance(ep_or_sample, dict):
+        sample = ep_or_sample.get("request_body_sample") or (
+            (ep_or_sample.get("bodies") or [None])[0])
+    else:
+        sample = ep_or_sample
+
+    if not sample:
+        return {}
+    try:
+        body = json.loads(sample) if isinstance(sample, str) else sample
+        return body if isinstance(body, dict) else {}
+    except Exception:
+        return {}
+
+
+def _discover_envelope_keys(response_samples: dict) -> list:
+    """从响应样本自动发现信封键。
+
+    统计各候选键在实际响应中的出现频率，按频率排序返回。
+
+    Args:
+        response_samples: {pathname: [{status, body}, ...]}
+
+    Returns:
+        按出现频率排序的信封键列表
+    """
+    hit_count = {k: 0 for k in const.ENVELOPE_KEY_CANDIDATES}
+    total = 0
+
+    for pathname, samples in response_samples.items():
+        for s in samples[:3]:
+            try:
+                body = json.loads(s["body"]) if isinstance(s["body"], str) else s["body"]
+            except Exception:
+                continue
+            if not isinstance(body, dict):
+                continue
+            total += 1
+            for key in const.ENVELOPE_KEY_CANDIDATES:
+                if key in body:
+                    hit_count[key] += 1
+
+    if total == 0:
+        return const.ENVELOPE_KEY_DEFAULTS
+
+    # 按命中数降序排列，只保留有命中的
+    found = [(k, c) for k, c in hit_count.items() if c > 0]
+    found.sort(key=lambda x: -x[1])
+
+    if found:
+        return [k for k, _ in found]
+    return const.ENVELOPE_KEY_DEFAULTS
+
+
+def _discover_success_check(response_samples: dict) -> dict:
+    """从响应样本自动发现成功判断模式。
+
+    Args:
+        response_samples: {pathname: [{status, body}, ...]}
+
+    Returns:
+        success_check 配置 dict
+    """
+    has_success = 0
+    has_error_code = 0
+    total = 0
+
+    for samples in response_samples.values():
+        for s in samples[:3]:
+            try:
+                body = json.loads(s["body"]) if isinstance(s["body"], str) else s["body"]
+            except Exception:
+                continue
+            if not isinstance(body, dict):
+                continue
+            total += 1
+            for f in const.SUCCESS_FIELD_CANDIDATES:
+                if f in body:
+                    has_success += 1
+                    break
+            for f in const.ERROR_FIELD_CANDIDATES:
+                if f in body:
+                    has_error_code += 1
+                    break
+
+    if total > 0 and has_success / total > 0.3:
+        # 找到 success 字段 → field_and_absence 模式
+        # 确定具体的 success_field 和 error_field
+        success_field = "success"
+        error_field = None
+        for samples in response_samples.values():
+            for s in samples[:1]:
+                try:
+                    body = json.loads(s["body"]) if isinstance(s["body"], str) else s["body"]
+                except Exception:
+                    continue
+                if isinstance(body, dict):
+                    for f in const.SUCCESS_FIELD_CANDIDATES:
+                        if f in body:
+                            success_field = f
+                            break
+                    for f in const.ERROR_FIELD_CANDIDATES:
+                        if f in body:
+                            error_field = f
+                            break
+                    break
+            if success_field != "success" or error_field:
+                break
+
+        return {
+            "type": "field_and_absence",
+            "success_field": success_field,
+            "error_field": error_field,
+        }
+
+    # 未找到明确的 success 字段 → 仅 HTTP 状态码
+    return {"type": "http_only"}
+
+
+def _discover_list_structure(response_samples: dict, envelope_keys: list) -> tuple:
+    """从查询类响应中发现列表结构。
+
+    Args:
+        response_samples: 响应样本
+        envelope_keys: 已发现的信封键
+
+    Returns:
+        (list_keys, total_keys) 元组
+    """
+    list_hits = {k: 0 for k in const.LIST_KEY_CANDIDATES}
+    total_hits = {k: 0 for k in const.TOTAL_KEY_CANDIDATES}
+
+    for samples in response_samples.values():
+        for s in samples[:3]:
+            try:
+                body = json.loads(s["body"]) if isinstance(s["body"], str) else s["body"]
+            except Exception:
+                continue
+            if not isinstance(body, dict):
+                continue
+
+            # 在信封内查找列表结构
+            entity = None
+            for ek in envelope_keys:
+                if ek in body:
+                    entity = body[ek]
+                    break
+            if not isinstance(entity, dict):
+                continue
+
+            for k in const.LIST_KEY_CANDIDATES:
+                if k in entity and isinstance(entity[k], list):
+                    list_hits[k] += 1
+            for k in const.TOTAL_KEY_CANDIDATES:
+                if k in entity and isinstance(entity[k], (int, float)):
+                    total_hits[k] += 1
+
+    # 按命中数排序，保留有命中的
+    found_list = [k for k, c in sorted(list_hits.items(), key=lambda x: -x[1]) if c > 0]
+    found_total = [k for k, c in sorted(total_hits.items(), key=lambda x: -x[1]) if c > 0]
+
+    return (
+        found_list or const.LIST_KEY_DEFAULTS,
+        found_total or const.TOTAL_KEY_DEFAULTS,
+    )
+
+
+def _discover_id_field(response_samples: dict, envelope_keys: list) -> str:
+    """从创建类响应中发现 ID 字段名。
+
+    Args:
+        response_samples: 响应样本
+        envelope_keys: 已发现的信封键
+
+    Returns:
+        ID 字段名（默认从 const.DEFAULT_ID_FIELD）
+    """
+    # 优先使用 COMMON_ID_FIELDS 中的顺序
+    id_hits = {}
+
+    for samples in response_samples.values():
+        for s in samples[:3]:
+            try:
+                body = json.loads(s["body"]) if isinstance(s["body"], str) else s["body"]
+            except Exception:
+                continue
+            if not isinstance(body, dict):
+                continue
+
+            # 在信封内查找 ID 字段
+            entity = None
+            for ek in envelope_keys:
+                if ek in body:
+                    entity = body[ek]
+                    break
+            if not isinstance(entity, dict):
+                continue
+
+            for fname in const.COMMON_ID_FIELDS:
+                if fname in entity:
+                    val = entity[fname]
+                    if isinstance(val, (str, int)) and val:
+                        id_hits[fname] = id_hits.get(fname, 0) + 1
+
+    if id_hits:
+        # 优先选 const.DEFAULT_ID_FIELD，其次选出现最多的
+        if const.DEFAULT_ID_FIELD in id_hits:
+            return const.DEFAULT_ID_FIELD
+        return max(id_hits, key=id_hits.get)
+
+    return const.DEFAULT_ID_FIELD
+
+
+def _discover_response_contract(response_samples: dict) -> dict:
+    """从响应样本自动发现完整的响应约定。
+
+    Args:
+        response_samples: {pathname: [{status, body}, ...]}
+
+    Returns:
+        response_contract dict
+    """
+    envelope_keys = _discover_envelope_keys(response_samples)
+    success_check = _discover_success_check(response_samples)
+    list_keys, total_keys = _discover_list_structure(response_samples, envelope_keys)
+    id_field = _discover_id_field(response_samples, envelope_keys)
+
+    return {
+        "envelope_keys": envelope_keys,
+        "success_check": success_check,
+        "list_keys": list_keys,
+        "total_keys": total_keys,
+        "id_field": id_field,
+    }
+
+
+def _classify_body_fields(body_sample: dict, id_field_details: dict,
+                          create_body_sample: dict = None) -> dict:
+    """为请求体中每个字段标注角色（role）。
+
+    替代 gen_test.py 中 _gen_payload_code() 的硬编码字段分类。
+
+    角色说明：
+    - "id_ref":    ID 引用字段，运行时从 state['id'] 获取
+    - "context":   上下文字段（tenantId 等），从 state 或 create_body 获取
+    - "name":      名称字段，运行时添加 AT_{TS}_ 前缀
+    - "mutable":   可变字段（description 等），运行时生成新值
+    - "static":    静态字段，直接复制 body_template 的值
+
+    Args:
+        body_sample: 请求体样本 dict
+        id_field_details: Stage 3 分析的 ID 字段详情
+                          {field_name: {source_crud, sample_value, path}}
+        create_body_sample: create 步骤的 body 样本（用于判断 context 字段）
+
+    Returns:
+        {field_name: {"role": ..., "source": ...}} 字典
+    """
+    if not body_sample:
+        return {}
+
+    id_field_names = set()
+    if id_field_details:
+        id_field_names = set(id_field_details.keys())
+    id_field_names.add(const.DEFAULT_ID_FIELD)  # 始终包含默认 ID 字段
+
+    create_keys = set()
+    if create_body_sample and isinstance(create_body_sample, dict):
+        create_keys = set(create_body_sample.keys())
+
+    roles = {}
+    for key, value in body_sample.items():
+        key_lower = key.lower()
+
+        # 1. ID 引用字段：在 id_field_details 中出现，或字段名匹配 ID 模式
+        if key in id_field_names:
+            roles[key] = {"role": "id_ref"}
+            continue
+
+        # 判断辅助标志
+        is_name_like = any(kw in key_lower for kw in const.NAME_FIELD_KEYWORDS)
+        is_mutable_like = any(kw in key_lower for kw in const.MUTABLE_FIELD_KEYWORDS)
+        ends_with_id = (key_lower.endswith("id") and key_lower != "id")
+
+        # 2. ID 引用字段（补充）：以 Id 结尾、不在 create body 中、非名称类
+        #    例: roleId, policyId, userId（在 delete/update body 中出现但不在 create body 中）
+        if ends_with_id and key not in create_keys and not is_name_like:
+            roles[key] = {"role": "id_ref"}
+            continue
+
+        # 3. 上下文字段：以 Id 结尾且在 create body 中出现的字段
+        #    例: tenantId, adminId（从创建时传递的上下文）
+        if ends_with_id and key in create_keys and not is_name_like:
+            roles[key] = {"role": "context", "source": f"create_body.{key}"}
+            continue
+
+        # 4. 名称字段：字段名含 name/title/label 且值是短可读字符串
+        if is_name_like and isinstance(value, str) and 1 < len(value) < 50:
+            roles[key] = {"role": "name"}
+            continue
+
+        # 4. 可变字段：description 类字段
+        if is_mutable_like:
+            roles[key] = {"role": "mutable"}
+            continue
+
+        # 5. 静态字段：其他所有
+        roles[key] = {"role": "static"}
+
+    return roles
+
+
+def _build_auth_profile(profile: dict) -> dict:
+    """从项目 profile dict 构建 manifest 中的 auth_profile。
+
+    Args:
+        profile: 项目配置 dict（来自 project.yaml 或 run.py 传入）
+
+    Returns:
+        auth_profile dict
+    """
+    auth_cfg = profile.get("auth", {})
+    captcha_cfg = profile.get("captcha", {})
+    creds_cfg = profile.get("credentials", {}) or {}
+
+    # 获取 probe_url 和 context_fields
+    probe_url = profile.get("probe_url", auth_cfg.get("probe_url", ""))
+    context_fields = profile.get("context_fields", {})
+
+    # 为 estack 类项目设置默认值（如果未显式配置）
+    base_url = profile.get("base_url", "")
+    api_base = profile.get("api_base", "")
+    is_estack_like = "estack" in base_url.lower() or "estack" in api_base.lower()
+
+    if is_estack_like:
+        if not probe_url:
+            probe_url = "/estack/api/estack/draco/v1/users/current-user"
+        if not context_fields:
+            context_fields = {
+                "tenantId": {"path": "entity.tenantId"},
+                "adminId": {"path": "entity.id"}
+            }
+
+    return {
+        "header_name": auth_cfg.get("header_name", "Authorization"),
+        "header_prefix": auth_cfg.get("header_prefix", "Bearer "),
+        "freshness_ttl_seconds": auth_cfg.get("freshness_ttl_seconds", 300),
+        "fixed_headers": auth_cfg.get("fixed_headers", {}),
+        "probe_url": probe_url,
+        "context_fields": context_fields,
+        "captcha": {
+            "auth_button_text": captcha_cfg.get("auth_button_text",
+                                                 profile.get("captcha_auth_button", "")),
+            "login_button_text": captcha_cfg.get("login_button_text",
+                                                  profile.get("captcha_login_button", "")),
+        },
+        "credentials_env": {
+            "username": profile.get("username_env", "APP_USER"),
+            "password": profile.get("password_env", "APP_PASS"),
+        },
+        "credentials_default": {
+            "username": creds_cfg.get("username", ""),
+            "password": creds_cfg.get("password", ""),
+        },
+    }
+
+
+def build_manifest(analysis: dict, capture_result: dict,
+                   profile: dict, module_name: str, target_url: str) -> dict:
+    """构建完整测试清单（manifest）。
+
+    将 Stage 3 分析结果 + 响应约定发现 + 项目配置 → 结构化的 manifest dict。
+
+    Args:
+        analysis: Stage 3 analyze() 的输出
+        capture_result: Stage 2 捕获结果
+        profile: 项目配置 dict
+        module_name: 模块名称
+        target_url: 目标页面 URL
+
+    Returns:
+        完整的 manifest dict
+    """
+    response_samples = capture_result.get("response_samples", {})
+    core_apis = analysis.get("core_apis", {})
+    crud_order = analysis.get("crud_order", [])
+
+    # 1. 发现响应约定
+    response_contract = _discover_response_contract(response_samples)
+
+    # 2. 构建 auth_profile
+    auth_profile = _build_auth_profile(profile)
+
+    # 3. 获取 create body 样本（用于字段分类）
+    create_body_sample = None
+    if "create" in core_apis:
+        create_body_sample = _parse_body(core_apis["create"][0])
+
+    # 4. 构建 steps 列表
+    id_field_details = analysis.get("dependencies", {}).get("id_field_details", {})
+
+    # 获取可用的验证端点（query / detail）
+    # 优先从 core_apis 获取；如果 query/detail 被同现过滤器误杀，
+    # 则从 capture_result 原始数据中回退查找
+    verify_endpoints = {}
+    for verify_action in ["query", "detail"]:
+        eps = core_apis.get(verify_action, [])
+        if eps:
+            ep = eps[0]
+            verify_endpoints[verify_action] = {
+                "ep": ep,
+                "body_sample": _parse_body(ep),
+            }
+        else:
+            # 回退：从 capture_result 原始分类中查找
+            raw_classified = capture_result.get("by_category", {})
+            raw_eps = raw_classified.get(verify_action, [])
+            # 过滤掉明显的辅助 API（菜单、主题等）
+            for ep in raw_eps:
+                p = ep["pathname"].lower()
+                if any(kw in p for kw in const.SUPPORTING_API_KEYWORDS):
+                    continue
+                verify_endpoints[verify_action] = {
+                    "ep": ep,
+                    "body_sample": _parse_body(ep),
+                }
+                LOG.info(f"  验证端点回退: {verify_action} ← {ep['pathname'][:60]}")
+                break
+
+    steps = []
+
+    def _make_step(action, ep, body_sample, assertion=None):
+        """构建单个步骤 dict。"""
+        field_roles = _classify_body_fields(
+            body_sample, id_field_details, create_body_sample
+        )
+
+        extract = None
+        if action == "create":
+            envelope_keys = response_contract["envelope_keys"]
+            id_field = response_contract["id_field"]
+            extract = {
+                "id": f"{envelope_keys[0]}.{id_field}" if envelope_keys else id_field,
+                "names": [k for k, v in field_roles.items() if v.get("role") == "name"],
+            }
+
+        pathname = re.sub(r"[0-9a-f]{20,}", "{id}", ep["pathname"])
+
+        step = {
+            "action": action,
+            "label": _STEP_LABELS.get(action, action),
+            "api": {
+                "method": ep["method"],
+                "pathname": pathname,
+                "query_params": ep.get("query_params", {}),
+            },
+            "body_template": body_sample,
+            "body_field_roles": field_roles,
+            "requires": ["id"] if action != "create" else [],
+        }
+        if extract:
+            step["extract"] = extract
+        if assertion:
+            step["assertion"] = assertion
+        return step
+
+    def _make_verify_step(verify_action, label, assertion):
+        """构建验证步骤（基于可用的验证端点）。"""
+        if verify_action not in verify_endpoints:
+            return None
+
+        ep = verify_endpoints[verify_action]["ep"]
+        body_sample = verify_endpoints[verify_action]["body_sample"]
+
+        field_roles = _classify_body_fields(
+            body_sample, id_field_details, create_body_sample
+        )
+        pathname = re.sub(r"[0-9a-f]{20,}", "{id}", ep["pathname"])
+
+        step = {
+            "action": ep["method"].lower(),
+            "label": label,
+            "api": {
+                "method": ep["method"],
+                "pathname": pathname,
+                "query_params": ep.get("query_params", {}),
+            },
+            "body_template": body_sample or {},
+            "body_field_roles": field_roles,
+            "requires": ["id"],
+            "assertion": assertion,
+        }
+        return step
+
+    def _plan_verify_steps(action):
+        """根据操作类型和可用端点，自动规划验证步骤。
+
+        逻辑完全数据驱动，不依赖任何特定模块：
+        - 写操作后，如果有可用的查询端点就插入验证
+        - 断言类型由响应结构决定（列表→contains/not_contains，详情→field_changed）
+
+        Args:
+            action: 当前 CRUD 操作类型
+
+        Returns:
+            [(verify_action, label, assertion), ...] 验证步骤规划列表
+        """
+        plans = []
+        action_label = _STEP_LABELS.get(action, action)
+
+        # 写操作后验证：有 query/detail 端点才插入
+        if action in ("create", "update", "delete", "lock", "unlock", "reset"):
+            # 优先用 query（列表验证），其次 detail（详情验证）
+            if "query" in verify_endpoints:
+                if action == "delete":
+                    plans.append(("query", f"查询验证（删除后）", "not_contains_id"))
+                elif action == "create":
+                    plans.append(("query", f"查询验证（创建后）", "contains_id"))
+                else:
+                    plans.append(("query", f"查询验证（{action_label}后）", "contains_id"))
+            elif "detail" in verify_endpoints:
+                if action in ("update", "lock", "unlock"):
+                    plans.append(("detail", f"详情验证（{action_label}后）", "field_changed"))
+
+        return plans
+
+    for action in crud_order:
+        eps = core_apis.get(action, [])
+        if not eps:
+            continue
+
+        ep = eps[0]
+        body_sample = _parse_body(ep)
+
+        # 主步骤
+        steps.append(_make_step(action, ep, body_sample))
+
+        # 根据可用端点自动规划验证步骤
+        for verify_action, label, assertion in _plan_verify_steps(action):
+            verify = _make_verify_step(verify_action, label, assertion)
+            if verify:
+                steps.append(verify)
+
+    # 5. 组装 manifest
+    manifest = {
+        "manifest_version": "1.0",
+        "module": {
+            "name": module_name,
+            "base_url": profile.get("base_url", ""),
+            "login_url": profile.get("login_url", ""),
+            "target_url": target_url,
+        },
+        "response_contract": response_contract,
+        "auth_profile": auth_profile,
+        "steps": steps,
+        "state_assertions": analysis.get("state_assertions", {}),
+    }
+
+    LOG.info(f"  Manifest 构建完成: {len(steps)} 个步骤, "
+             f"信封键={response_contract['envelope_keys'][:3]}, "
+             f"ID字段={response_contract['id_field']}")
+
+    return manifest

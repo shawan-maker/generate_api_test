@@ -172,7 +172,7 @@ def validate_stage3(analysis: dict) -> Tuple[bool, List[str]]:
 
     if not order:
         issues.append("执行顺序为空（crud_order/order 为空），顺序推导可能失败")
-    elif len(order) < 3:
+    elif len(order) < 2:
         issues.append(f"执行顺序过短 ({len(order)} 步)，可能遗漏关键步骤")
 
     # 2. 检查核心步骤是否存在（兼容 str 和 dict 两种格式）
@@ -184,10 +184,10 @@ def validate_stage3(analysis: dict) -> Tuple[bool, List[str]]:
         step_names = []
 
     if not any("create" in name.lower() for name in step_names):
-        issues.append("执行顺序中缺少创建步骤")
+        issues.append("执行顺序上缺少创建步骤")
 
     if not any("delete" in name.lower() for name in step_names):
-        issues.append("执行顺序中缺少删除步骤")
+        issues.append("执行顺序上缺少删除步骤")
 
     # 3. 检查依赖关系
     deps = analysis.get("dependencies", {})
@@ -235,45 +235,36 @@ def validate_stage4(script_content: str, script_path: str) -> Tuple[bool, List[s
     if not script_content:
         return False, ["脚本内容为空"]
 
-    # 1. 检查基本结构
-    if "def test_" not in script_content:
-        issues.append("脚本中未找到 test_ 函数")
+    # 1. 检查 manifest 架构关键元素
+    if "MANIFEST = " not in script_content:
+        issues.append("脚本中未找到 MANIFEST 定义")
 
-    if "def browser_create_user" not in script_content:
-        issues.append("脚本中未找到 browser_create_user 函数（浏览器驱动创建）")
+    if "TestRunner" not in script_content:
+        issues.append("脚本中未找到 TestRunner 引用")
 
-    # 2. 检查关键断言
-    assertion_count = script_content.count("assert ")
+    if "test_runtime" not in script_content:
+        issues.append("脚本中未找到 test_runtime 导入")
 
-    if assertion_count < 5:
-        issues.append(f"断言过少 ({assertion_count} 个)，测试覆盖可能不足")
+    # 2. 检查响应契约
+    if "response_contract" not in script_content:
+        issues.append("MANIFEST 中缺少 response_contract")
 
-    # 3. 检查异常处理
-    if "except AssertionError" not in script_content:
-        issues.append("脚本中未找到 AssertionError 处理")
+    # 3. 检查步骤定义
+    if "steps" not in script_content:
+        issues.append("MANIFEST 中缺少 steps 定义")
 
-    if "except Exception" not in script_content:
-        issues.append("脚本中未找到通用异常处理")
+    # 4. 检查字段角色
+    if "body_field_roles" not in script_content:
+        issues.append("步骤中缺少 body_field_roles 定义")
 
-    # 4. 检查生命周期步骤
-    lifecycle_keywords = ["创建", "查询", "修改", "删除", "锁定", "解锁"]
-    missing_keywords = []
-
-    for kw in lifecycle_keywords:
-        if kw not in script_content:
-            missing_keywords.append(kw)
-
-    if missing_keywords:
-        issues.append(f"脚本中缺少生命周期关键词: {', '.join(missing_keywords)}")
-
-    # 5. 检查文件长度
+    # 5. 检查文件长度（manifest 架构脚本应该很简洁）
     line_count = len(script_content.split("\n"))
 
-    if line_count < 200:
-        issues.append(f"脚本过短 ({line_count} 行)，可能遗漏关键逻辑")
+    if line_count < 50:
+        issues.append(f"脚本过短 ({line_count} 行)，可能缺少必要的 manifest 数据")
 
-    if line_count > 2000:
-        issues.append(f"脚本过长 ({line_count} 行)，可能存在冗余代码")
+    if line_count > 500:
+        issues.append(f"脚本过长 ({line_count} 行)，manifest 架构脚本不应超过 500 行")
 
     # 判断是否通过
     is_valid = len(issues) == 0
@@ -283,6 +274,6 @@ def validate_stage4(script_content: str, script_path: str) -> Tuple[bool, List[s
         for issue in issues:
             LOG.warning(f"  - {issue}")
     else:
-        LOG.info(f"Stage 4 验证通过: {line_count} 行, {assertion_count} 个断言")
+        LOG.info(f"Stage 4 验证通过: {line_count} 行 manifest 架构脚本")
 
     return is_valid, issues

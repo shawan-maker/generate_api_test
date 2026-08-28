@@ -1,32 +1,4 @@
-"""
-角色管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-08-28 11:30:32
-目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/role
-
-执行流程:
-  1. 创建
-  2. 查询验证（创建后）
-  3. 修改
-  4. 查询验证（修改后）
-  5. 删除
-  6. 查询验证（删除后）
-
-状态断言:
-  - 删除后数据不应出现
-"""
-
-import sys, json
-from pathlib import Path
-
-# 确保能找到 lib（向上搜索含 lib/auth.py 的仓库根）
-_root = Path(__file__).resolve()
-while _root.parent != _root and not (_root / 'lib' / 'auth.py').exists():
-    _root = _root.parent
-sys.path.insert(0, str(_root))
-
-from lib.test_runtime import TestRunner
-
-MANIFEST = {
+{
   "manifest_version": "1.0",
   "module": {
     "name": "角色管理",
@@ -206,7 +178,7 @@ MANIFEST = {
         "pageNum": 1,
         "pageSize": 10,
         "tenantId": "cf2ecc23183244d8959023943338ac98",
-        "isIncludeDefaultPolicy": True
+        "isIncludeDefaultPolicy": true
       },
       "body_field_roles": {
         "pageNum": {
@@ -273,7 +245,7 @@ MANIFEST = {
         "pageNum": 1,
         "pageSize": 10,
         "tenantId": "cf2ecc23183244d8959023943338ac98",
-        "isIncludeDefaultPolicy": True
+        "isIncludeDefaultPolicy": true
       },
       "body_field_roles": {
         "pageNum": {
@@ -334,7 +306,7 @@ MANIFEST = {
         "pageNum": 1,
         "pageSize": 10,
         "tenantId": "cf2ecc23183244d8959023943338ac98",
-        "isIncludeDefaultPolicy": True
+        "isIncludeDefaultPolicy": true
       },
       "body_field_roles": {
         "pageNum": {
@@ -358,16 +330,8 @@ MANIFEST = {
     }
   ],
   "state_assertions": {
-    "state_field": None,
+    "state_field": null,
     "values_by_crud": {},
     "after_delete": "NOT_EXIST"
   }
 }
-
-if __name__ == "__main__":
-    import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
-    runner = TestRunner(MANIFEST)
-    steps = sys.argv[1:] if len(sys.argv) > 1 else None
-    runner.run(steps_filter=steps)
