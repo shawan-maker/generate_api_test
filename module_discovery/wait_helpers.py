@@ -123,3 +123,62 @@ async def wait_for_api_response(page: Page, url_pattern: str = "",
     except PlaywrightTimeout:
         LOG.warning(f"等待 API 响应超时: {url_pattern}")
         return False
+
+
+async def wait_for_loading_complete(page: Page, timeout: int = 15000) -> bool:
+    """等待页面加载完成（浏览器状态 + 网络空闲 + loading 元素消失）。
+
+    参考 ecsCloud1/module_keywords.py:wait_for_loading_complete
+
+    流程：
+    1. 等待浏览器加载状态（覆盖 Tab 转圈阶段）
+    2. 等待网络空闲（SPA 兜底，短超时容错）
+    3. 等待 8 种 loading 元素消失（el-loading-mask, el-loading-text, ng-show loading,
+       el-loading-spinner, ant-btn-loading, ant-btn-loading-icon, ant-spin-spinning）
+    4. 稳定等待（1 秒）
+
+    Args:
+        page: Playwright Page 对象
+        timeout: 单个等待阶段的最大超时时间（ms）
+
+    Returns:
+        bool: 是否成功完成所有等待
+    """
+    try:
+        # 1. 等待浏览器加载状态（覆盖 Tab 转圈阶段）
+        await page.wait_for_load_state('load', timeout=timeout)
+
+        # 2. 等待网络空闲（SPA 兜底，短超时容错）
+        try:
+            await page.wait_for_load_state('networkidle', timeout=min(3000, timeout))
+        except PlaywrightTimeout:
+            pass  # 网络空闲超时不阻断
+
+        # 3. 等待 8 种 loading 元素消失
+        loading_selectors = [
+            '//div[contains(@class, "el-loading-mask")]',
+            '//p[@class="el-loading-text"]',
+            '//div[@ng-show="loading" and not(contains(@class, "ng-hide"))]',
+            '//div[@class="el-loading-spinner"]/p[@class="el-loading-text"]',
+            '//button[contains(@class, "ant-btn-loading")]',
+            '//button//span[contains(@class, "ant-btn-loading-icon")]',
+            '//div[contains(@class, "ant-spin-spinning")]',
+        ]
+
+        for selector in loading_selectors:
+            try:
+                await page.wait_for_selector(
+                    selector, state='hidden', timeout=timeout
+                )
+            except PlaywrightTimeout:
+                pass  # 元素不存在或已隐藏，继续
+            except Exception:
+                pass  # 其他异常也忽略
+
+        # 4. 稳定等待
+        await page.wait_for_timeout(1000)
+
+        return True
+    except Exception as e:
+        LOG.warning(f"等待加载完成失败: {e}")
+        return False

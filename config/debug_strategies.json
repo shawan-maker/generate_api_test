@@ -1,8 +1,14 @@
 {
-  "version": "1.0.0",
-  "updated_by": "用户管理",
-  "updated_at": "2026-08-27",
+  "version": "1.1.0",
+  "updated_by": "Phase 1 Feedback Loop",
+  "updated_at": "2026-08-28",
   "changelog": [
+    {
+      "version": "1.1.0",
+      "date": "2026-08-28",
+      "module": "Phase 1",
+      "changes": "Add stage1_missing_element strategy for feedback loop; add metadata fields (success_count, last_used) to all strategies"
+    },
     {
       "version": "1.0.0",
       "date": "2026-08-27",
@@ -64,7 +70,11 @@
       "fix_strategy": "add_new_selector_if_found",
       "module_source": ["用户管理"],
       "last_verified": "2026-08-27",
-      "status": "active"
+      "status": "active",
+      "metadata": {
+        "success_count": 0,
+        "last_used": null
+      }
     },
     "button_click_failed": {
       "description": "行操作按钮点击失败时的诊断流程",
@@ -114,7 +124,11 @@
       "fix_strategy": "update_fallback_chain_priority",
       "module_source": ["用户管理"],
       "last_verified": "2026-08-27",
-      "status": "active"
+      "status": "active",
+      "metadata": {
+        "success_count": 0,
+        "last_used": null
+      }
     },
     "create_failed": {
       "description": "创建操作失败时的诊断流程",
@@ -173,7 +187,11 @@
       "output_to": "output/debug/{module}/diagnostic_{timestamp}/",
       "module_source": ["用户管理"],
       "last_verified": "2026-08-27",
-      "status": "active"
+      "status": "active",
+      "metadata": {
+        "success_count": 0,
+        "last_used": null
+      }
     },
     "dropdown_not_opened": {
       "description": "下拉菜单无法打开时的诊断流程",
@@ -211,7 +229,11 @@
       "fix_strategy": "add_click_method_hint",
       "module_source": ["用户管理"],
       "last_verified": "2026-08-27",
-      "status": "active"
+      "status": "active",
+      "metadata": {
+        "success_count": 0,
+        "last_used": null
+      }
     },
     "stage2_validation_failed": {
       "description": "Stage 2 验证失败且重试耗尽时的诊断流程",
@@ -258,7 +280,67 @@
       "output_to": "output/debug/{module}/diagnostic_{timestamp}/",
       "module_source": ["用户管理"],
       "last_verified": "2026-08-27",
-      "status": "active"
+      "status": "active",
+      "metadata": {
+        "success_count": 0,
+        "last_used": null
+      }
+    },
+    "stage1_missing_element": {
+      "description": "Stage 2 发现 Stage 1 缺失必须元素时的反馈循环诊断流程",
+      "trigger": {
+        "condition": "Stage2 raises Stage1MissingError",
+        "context": "Stage 2 - missing required element from Stage 1"
+      },
+      "steps": [
+        {
+          "action": "screenshot",
+          "scope": "full_page",
+          "output": "screenshot_stage1_missing.png",
+          "description": "截取完整页面截图"
+        },
+        {
+          "action": "check_dialog_state",
+          "include": [
+            "is_open",
+            "title",
+            "buttons"
+          ],
+          "output": "dialog_state.json",
+          "description": "检查是否有弹窗/抽屉未展开"
+        },
+        {
+          "action": "search_button_by_action",
+          "action_type": "{action}",
+          "locations": ["toolbar", "dialog", "row_action"],
+          "output": "button_search_result.json",
+          "description": "按 action 类型在所有位置搜索按钮"
+        },
+        {
+          "action": "iframe_scan",
+          "scope": "all_frames",
+          "output": "iframe_scan_result.json",
+          "description": "遍历所有 iframe 查找目标元素"
+        },
+        {
+          "action": "expand_xpath_search",
+          "use_kb_templates": true,
+          "category": "button",
+          "output": "xpath_search_result.json",
+          "description": "使用 KB XPath 模板扩大搜索范围"
+        }
+      ],
+      "auto_fix": true,
+      "fix_target": "ui_result",
+      "fix_strategy": "patch_ui_result_with_found_element",
+      "feedback_to": "stage1",
+      "module_source": ["Phase 1"],
+      "last_verified": "2026-08-28",
+      "status": "active",
+      "metadata": {
+        "success_count": 0,
+        "last_used": null
+      }
     }
   }
 }

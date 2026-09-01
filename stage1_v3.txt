@@ -1,0 +1,70 @@
+13:04:43 [run] 登录...
+13:04:51 [run]   ✅ Cookie 有效，直接进入目标页
+13:04:51 [run] ==================================================
+13:04:51 [run] Stage 1: 前端按钮探测
+13:04:51 [run] ==================================================
+13:04:51 [run]   等待 SPA 渲染完成...
+13:04:51 [run]   [1/6] table=False rows=0 createBtn=False url=https://10.151.61.248/estack/web/estack/user-center/user-man
+13:04:53 [run]   [2/6] table=True rows=2 createBtn=True url=https://10.151.61.248/estack/web/estack/user-center/user-man
+13:04:53 [run]   ✅ SPA 渲染完成
+13:04:54 [discover_ui] 检测到 UI 框架: element-ui
+13:04:54 [discover_ui] 扫描到 23 个候选元素
+13:04:54 [discover_ui]   工具栏: 6  行操作: 3  弹窗: 0  菜单: 14
+13:04:55 [discover_ui]   下拉菜单子项: 18
+13:04:56 [discover_ui]   创建按钮后状态: URL变化=是, DOM检测=form_visible
+13:05:01 [wait_helpers] 等待弹窗出现超时
+13:05:01 [discover_ui]   弹窗诊断: []
+13:05:01 [discover_ui]   弹窗扫描未发现按钮 (visible containers: 0)
+13:05:01 [discover_ui]   标准弹窗容器未找到按钮，尝试扫描页面操作按钮（form_visible 模式）
+13:05:01 [discover_ui]   页面按钮扫描：找到 2 个按钮，但没有匹配关键词的
+13:05:01 [discover_ui]   表单字段: 9
+13:05:01 [stage_validators] Stage 1 验证失败: 3 个问题
+13:05:01 [stage_validators]   - [create_flow] 缺少必须元素: 确定/提交按钮（表单提交） (critical)
+13:05:01 [stage_validators]   - [delete_flow] 缺少必须元素: 确认删除按钮 (critical)
+13:05:01 [stage_validators]   - [update_flow] 缺少必须元素: 确定按钮 (critical)
+13:05:01 [run] Stage 1 质量门控失败，发现 3 个问题:
+13:05:01 [run]   - [create_flow] 缺少必须元素: 确定/提交按钮（表单提交） (critical)
+13:05:01 [run]   - [delete_flow] 缺少必须元素: 确认删除按钮 (critical)
+13:05:01 [run]   - [update_flow] 缺少必须元素: 确定按钮 (critical)
+13:05:01 [run]   Phase C: 增量扫描 2 个非弹窗元素
+13:05:01 [stage_validators] Stage 1 验证失败: 3 个问题
+13:05:01 [stage_validators]   - [create_flow] 缺少必须元素: 确定/提交按钮（表单提交） (critical)
+13:05:01 [stage_validators]   - [delete_flow] 缺少必须元素: 确认删除按钮 (critical)
+13:05:01 [stage_validators]   - [update_flow] 缺少必须元素: 确定按钮 (critical)
+13:05:01 [run]   Phase D: 前置操作检查 + 重试
+13:05:01 [run]     confirm 缺失 → 尝试打开父级弹窗
+13:05:01 [run]     尝试点击 '创建用户' 打开弹窗以发现 confirm
+13:05:01 [discover_ui]   前置操作重试: 尝试点击 '创建用户'
+13:05:05 [discover_ui]   ❌ 所有 3 种点击方式均未触发弹窗
+13:05:05 [run]     打开弹窗失败，跳过 confirm 查找
+13:05:05 [run]     confirm 缺失 → 尝试打开父级弹窗
+13:05:05 [run]     尝试点击 '创建用户' 打开弹窗以发现 confirm
+13:05:05 [discover_ui]   前置操作重试: 尝试点击 '创建用户'
+13:05:10 [discover_ui]   ❌ 所有 3 种点击方式均未触发弹窗
+13:05:10 [run]     打开弹窗失败，跳过 confirm 查找
+13:05:10 [run]     confirm 缺失 → 尝试打开父级弹窗
+13:05:10 [run]     尝试点击 '创建用户' 打开弹窗以发现 confirm
+13:05:10 [discover_ui]   前置操作重试: 尝试点击 '创建用户'
+13:05:14 [discover_ui]   ❌ 所有 3 种点击方式均未触发弹窗
+13:05:14 [run]     打开弹窗失败，跳过 confirm 查找
+13:05:14 [stage_validators] Stage 1 验证失败: 3 个问题
+13:05:14 [stage_validators]   - [create_flow] 缺少必须元素: 确定/提交按钮（表单提交） (critical)
+13:05:14 [stage_validators]   - [delete_flow] 缺少必须元素: 确认删除按钮 (critical)
+13:05:14 [stage_validators]   - [update_flow] 缺少必须元素: 确定按钮 (critical)
+13:05:14 [run]   Phase E: Vision 截图分析兜底
+13:05:15 [ai_debug_assistant]   Vision API 分析: https://10.151.61.248/estack/web/estack/user-center/user-man
+13:05:45 [ai_debug_assistant]   Vision API 调用失败: 
+13:05:45 [run]   Vision 未找到目标元素: diagnosis=error, source=api_error
+13:05:45 [stage_validators] Stage 1 验证失败: 3 个问题
+13:05:45 [stage_validators]   - [create_flow] 缺少必须元素: 确定/提交按钮（表单提交） (critical)
+13:05:45 [stage_validators]   - [delete_flow] 缺少必须元素: 确认删除按钮 (critical)
+13:05:45 [stage_validators]   - [update_flow] 缺少必须元素: 确定按钮 (critical)
+13:05:45 [run]   ❌ Phase F: Stage 1 失败，3 个关键元素缺失，终止
+13:05:45 [run]     - 确定/提交按钮（表单提交）
+13:05:45 [run]     - 确认删除按钮
+13:05:45 [run]     - 确定按钮
+13:05:45 [run] 未找到 UI 探测结果，将使用空结果
+13:05:45 [run] 
+⚠️ 浏览器保持打开供检查确认。
+13:05:45 [run] 
+⚠️ 浏览器保持打开，手动关闭后按 Ctrl+C 退出。

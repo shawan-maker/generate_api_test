@@ -972,7 +972,8 @@ def _build_auth_profile(profile: dict) -> dict:
 
 
 def build_manifest(analysis: dict, capture_result: dict,
-                   profile: dict, module_name: str, target_url: str) -> dict:
+                   profile: dict, module_name: str, target_url: str,
+                   ui_result: dict = None) -> dict:
     """构建完整测试清单（manifest）。
 
     将 Stage 3 分析结果 + 响应约定发现 + 项目配置 → 结构化的 manifest dict。
@@ -983,6 +984,7 @@ def build_manifest(analysis: dict, capture_result: dict,
         profile: 项目配置 dict
         module_name: 模块名称
         target_url: 目标页面 URL
+        ui_result: Stage 1 UI 探测结果（可选，用于动态标签提取）
 
     Returns:
         完整的 manifest dict
@@ -1054,7 +1056,8 @@ def build_manifest(analysis: dict, capture_result: dict,
 
         step = {
             "action": action,
-            "label": _STEP_LABELS.get(action, action),
+            "label": (ui_result or {}).get("button_labels", {}).get(action)
+                     or _STEP_LABELS.get(action, action),
             "api": {
                 "method": ep["method"],
                 "pathname": pathname,
@@ -1112,7 +1115,8 @@ def build_manifest(analysis: dict, capture_result: dict,
             [(verify_action, label, assertion), ...] 验证步骤规划列表
         """
         plans = []
-        action_label = _STEP_LABELS.get(action, action)
+        action_label = (ui_result or {}).get("button_labels", {}).get(action) \
+                       or _STEP_LABELS.get(action, action)
 
         # 写操作后验证：有 query/detail 端点才插入
         if action in ("create", "update", "delete", "lock", "unlock", "reset"):

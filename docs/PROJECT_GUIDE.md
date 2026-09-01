@@ -11,15 +11,16 @@ API_AI_test/
 │
 ├── module_discovery/          ★ 核心：四阶段模块级发现引擎
 │   ├── run.py                   CLI 入口
-│   ├── discover_ui.py           Stage 1: 按钮/元素探测（含固定列扫描 + 重试）
+│   ├── discover_ui.py           Stage 1: 按钮/元素探测（KB驱动 + 动态标签）
+│   ├── kb_loader.py             知识库加载器（probe_knowledge.json + XPath 模板展开）
 │   ├── capture_apis.py          Stage 2: API 拦截捕获（动态操作列表）
 │   ├── analyze_flow.py          Stage 3: 逻辑分析 + Manifest 构建（build_manifest）
 │   ├── gen_test.py              Stage 4: 脚本生成（Manifest 驱动薄脚本）
 │   ├── request_interceptor.py   HTTP 拦截 + KB 驱动注入（支持 --capture-all）
-│   ├── button_driver.py         按钮点击驱动（KB 模板 fallback 链）
-│   ├── form_filler.py           表单智能填充（type-aware 动态构建）
+│   ├── button_driver.py         按钮点击驱动（KB 模板 fallback 链 + 隐藏过滤/覆盖层定位/iframe 穿透）
+│   ├── form_filler.py           表单智能填充（type-aware 动态构建 + Multi-Step 选项自动发现）
 │   ├── endpoint_classifier.py   端点分类去重
-│   ├── wait_helpers.py          事件驱动等待
+│   ├── wait_helpers.py          事件驱动等待（表格就绪/弹窗/loading 完成/网络空闲）
 │   ├── stage_validators.py      质量门禁（含 manifest 架构检查）
 │   ├── diagnostic_mode.py       自诊断：失败时自动 DOM 分析 + 尝试修复
 │   ├── kb_merger.py             知识库合并器（跨模块去重 + 冲突检测）
@@ -46,7 +47,7 @@ API_AI_test/
 ├── plugins/                   pytest 插件
 ├── scripts/                   工具与调试脚本
 ├── projects/                  多项目隔离工作空间
-└── tests/                     框架单元测试（106 tests）
+└── tests/                     框架单元测试（122 tests）
 ```
 
 ### 数据流
@@ -74,16 +75,37 @@ test_report.py          → output/reports/<模块>/  Postman/Newman 风格 HTML
 
 ### 2.1 Stage 1：按钮探测（discover_ui.py）
 
-用 CSS 选择器地毯式扫描页面所有可见按钮/链接/菜单项：
+`discover_all(page, max_retries=2)` 执行发现 → 产出两阶段流水线，输出 `<模块>_ui.json`。
 
-- **按 DOM 位置分类**：工具栏 / 行操作 / 弹窗 / 菜单
-- **固定列扫描**：自动检测 `.el-table__fixed-right` 和 `.el-table__fixed-left`，行操作按钮标记 `source` 字段（`main`/`fixed-right`/`fixed-left`）
-- **页面结构快照**：`_snapshot_page_structure()` 在扫描前获取表格结构（是否含固定列、操作列索引、表格 wrapper 数量），Stage 2 据此选择正确的 wrapper
-- **下拉菜单动态发现**：硬编码触发词（"更多"/"操作"等 5 个）+ DOM 扫描 `.el-dropdown` 元素动态补充
-- **重试机制**：`discover_all(max_retries=2)`，验证不通过则等待 2 秒后重试
-- 扫描「更多」「操作」等下拉菜单子项
-- 点击「创建」按钮扫描表单字段（label / type / required / placeholder）
-- 输出 `<模块>_ui.json`（含 `page_structure` 元数据）
+**UI 框架检测**：流程开始时 `_detect_ui_framework()` 通过 DOM 类名检测 `element-ui` 或 `ant-design`，结果贯穿后续所有步骤（KB 模板变体选择、CSS 选择器、表单类型识别）。
+
+**发现阶段（步骤 1-4）**：
+
+| 步骤 | 方法 | 作用 | 依赖 |
+|------|------|------|------|
+| 1. CSS 地毯扫描 | `_scan_candidates()` | 用 20+ CSS 选择器一次 `evaluate` 扫描所有可见元素，按 DOM 位置分类（工具栏/行操作/弹窗/菜单），行操作按钮标记 `source`（`main`/`fixed-right`/`fixed-left`），按 `text+tagName` 去重 | 无 |
+| 2. KB 增强扫描 | `_kb_enrichment_scan()` | 用 `probe_knowledge.json` 的 XPath 模板 + `ACTION_KEYWORDS` 关键词查找 CSS 漏掉的按钮（特别是中文空格问题：`"确 定"` → XPath `contains(.,'确') and contains(.,'定')` 仍可命中），与步骤 1 去重后合并 | 步骤 1 |
+| 3. 下拉菜单发现 | `_discover_dropdowns()` | 展开下拉触发器（硬编码 5 个 + DOM `.el-dropdown` 动态补充）读取子项文本——子项是点击后动态渲染的，CSS 和 KB 都看不到 | 步骤 1-2 |
+| 4. 创建表单扫描 | `_scan_create_dialog()` | 点击创建按钮后扫描表单字段，支持弹窗模式和页面跳转模式，遍历主页面 + 所有 iframe，输出统一 schema `{label, type, kb_category, required}` | 步骤 1-2 |
+
+**产出阶段**：
+
+| 步骤 | 方法 | 作用 | 依赖 |
+|------|------|------|------|
+| 5. 标签构建 | `_build_button_labels()` | 汇总步骤 1-3 的所有按钮，构建 `{action: label}` 映射（如 `{"create": "新增"}`），供 manifest 生成使用 | 步骤 1-3 |
+| 6. 质量门禁 + 结构快照 | `validate_stage1()` + `_snapshot_page_structure()` | 验证按钮数量/创建删除覆盖，不通过等待 2 秒重试（最多 2 次）；获取表格 DOM 骨架供 Stage 2 使用 | 步骤 1-5 |
+
+**页面结构快照字段**（`_snapshot_page_structure()` 输出）：
+
+| 字段 | 含义 | Stage 2 用途 |
+|------|------|-------------|
+| `hasFixedLeft` / `hasFixedRight` | 是否有固定列 | 决定搜索哪个 wrapper |
+| `mainBodyRows` / `fixedRightRows` | 各 wrapper 行数 | 判断行数据在哪个区域 |
+| `operationColumnIndex` | 操作列索引 | 定位行操作按钮所在列 |
+| `operationColumnLocation` | `last` / `first` / `middle` | 选择 fallback 链起点 |
+| `tableWrappers` | 所有 wrapper 的 class + 行数 | `find_data_row()` 多 wrapper 搜索 |
+
+**输出**：`<模块>_ui.json`（含 `page_structure`、`framework`、`button_labels` 元数据）
 
 ### 2.2 Stage 2：API 捕获（capture_apis.py）
 
@@ -92,11 +114,23 @@ test_report.py          → output/reports/<模块>/  Postman/Newman 风格 HTML
 | 子模块 | 职责 |
 |--------|------|
 | `request_interceptor.py` | Playwright 请求/响应监听，过滤 API，收集调用记录和响应样本。支持 `--capture-all` 模式捕获全部 XHR/fetch |
-| `button_driver.py` | 驱动按钮点击（KB 模板 fallback 链：`base_nav_kb.json` → 硬编码选择器）。`click_row_button_v2` 从 KB 加载 `table-action-button` XPath 模板，按 fixed-right → body-wrapper → fixed-body-wrapper 顺序尝试。`find_data_row` 支持分页感知（自动翻页最多 3 页查找目标行） |
-| `form_filler.py` | 表单字段扫描与智能填充（type-aware 动态构建：text→`AT_test_{ts}`，number→1，未匹配字段按 inputType 生成默认值） |
+| `button_driver.py` | 驱动按钮点击（KB 模板 fallback 链 + **Locator 增强**：隐藏过滤器 `HIDDEN_FILTERS` 排除不可见/禁用元素、覆盖层定位 `OVERLAY_SELECTORS` 优先在弹窗/抽屉内查找、iframe 自动穿透） |
+| `form_filler.py` | 表单字段扫描与智能填充（type-aware 动态构建 + **Multi-Step 自动发现**：el-select 展开后自动读取首个可见选项、el-cascader 逐级发现+选择，最大深度 10 级） |
 | `endpoint_classifier.py` | 六级优先级端点分类与去重 |
 
 **动态操作列表**：`_build_operations_from_ui(ui_result)` 从 Stage 1 结果动态构建行操作列表，按 CRUD 优先级排序。仅在动态构建为空时 fallback 到硬编码默认列表。
+
+**Locator 增强系统**：按钮点击操作（`click_row_button_v2`、`click_row_more_item`、`confirm_dialog` 等）集成三大增强机制：
+- **隐藏过滤器**：`const.HIDDEN_FILTERS` 定义三套 XPath 过滤谓词（`element-ui` / `ant-design` / `_universal`），通过 `_append_hidden_filter()` 自动追加到按钮 XPath，排除 `is-hidden`、`display: none`、`disabled`、`is-disabled` 等不可见/禁用元素
+- **覆盖层定位**：`detect_active_overlay_js()` 检测当前活跃的弹窗/抽屉/消息框，`apply_overlay_scope()` 为 XPath 追加覆盖层容器前缀（如 `//div[contains(@class,'el-dialog')]`），优先在弹窗内查找按钮，失败时降级到全局定位
+- **iframe 穿透**：`_try_click_frame()` 遍历 `page.frames` 在主框架和所有 iframe 中查找目标元素，支持 Element UI 弹窗内容渲染在 iframe 中的场景
+
+**Multi-Step 选项自动发现**：`form_filler.py` 的 `MultiStepExecutor` 在填充 el-select / el-cascader 时自动发现选项：
+- `_execute_select()`：展开下拉框后调用 `_discover_first_option()` 读取首个可见选项文本，通过 `option_text` 参数传递给 KB 模板
+- `_execute_cascader()`：当 `options` 为 None 时调用 `_cascader_discover_and_select()`，逐级展开并选择第一个有子级的项，到叶子级时选择，最大深度 10 级
+- `_read_cascader_current_items()`：读取级联选择器当前面板的菜单项（Element UI: `.el-cascader-menu li[role="menuitem"]`，Ant Design: `.ant-cascader-menu .ant-cascader-menu-item`）
+
+**事件驱动等待**：所有按钮点击后调用 `wait_helpers.wait_for_loading_complete()` 替代固定 `wait_for_timeout(3000~5000)`，流程：等待浏览器加载状态 → 等待网络空闲（短超时容错） → 等待 7 种 loading 元素消失（`el-loading-mask`、`el-loading-text`、`ng-show loading`、`el-loading-spinner`、`ant-btn-loading`、`ant-btn-loading-icon`、`ant-spin-spinning`） → 稳定等待 1 秒。
 
 **KB 驱动注入**：从 `config/probe_lessons_kb.json` 加载系统级配置，monkey-patch 浏览器的 `XMLHttpRequest.send` 和 `fetch`，对匹配请求自动补全缺失字段（如 `tenantId`/`adminId`）。代码零硬编码。
 
@@ -625,7 +659,7 @@ playwright install chromium
 ### 单元测试
 
 ```bash
-python -m pytest tests/ -v     # 106 个测试
+python -m pytest tests/ -v     # 122 个测试
 ```
 
 ---
@@ -647,6 +681,10 @@ python -m pytest tests/ -v     # 106 个测试
 | KB 模板 fallback 链定位按钮 | `base_nav_kb.json` XPath 模板按 fixed-right → body-wrapper 顺序尝试，适配 Element UI 固定列 |
 | Worker AUTO_LOGIN=0 | 避免多进程并发抢登覆盖同一份 cookies.json |
 | 版本化 flows 目录 | 不同版本脚本互不影响，重跑不覆盖历史 |
+| 隐藏过滤器仅作用于按钮点击 | 表单输入字段需要填充不可见元素（如隐藏域），过滤会导致填值失败 |
+| 覆盖层定位优先 + 全局降级 | 弹窗内按钮优先在弹窗容器内查找，失败时降级到全局避免误报 |
+| Multi-Step 选项内嵌自动发现 | 展开面板后直接读取选项文本，避免"打开→读取→关闭→重新打开→选择"的额外开销 |
+| 事件驱动等待替代固定等待 | `wait_for_loading_complete` 监听 7 种 loading 元素消失，比固定 `wait_for_timeout(3000~5000)` 更快更稳定 |
 
 ---
 

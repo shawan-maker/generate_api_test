@@ -13,20 +13,28 @@ from typing import Tuple, List
 LOG = logging.getLogger("stage_validators")
 
 
-def validate_stage1(ui_result: dict) -> Tuple[bool, List[str]]:
+def validate_stage1(
+    ui_result: dict,
+    required_flows: list = None
+) -> Tuple[bool, List[str], list]:
     """验证 Stage 1 UI 探测结果质量。
 
     Args:
         ui_result: Stage 1 输出 (buttons.json)
+        required_flows: 需要验证的流程列表（如 ["create_flow", "delete_flow"]）
+                       默认验证所有 CRUD 流程。设为 [] 则跳过必须元素检查。
 
     Returns:
-        (is_valid, issues) — 是否通过验证 + 问题列表
+        (is_valid, issues, missing_elements)
+        - is_valid: 是否通过验证（仅检查 critical 元素）
+        - issues: 问题描述列表
+        - missing_elements: 缺失的必须元素列表（含 critical 标记）
     """
     issues = []
 
     # 1. 检查基本结构
     if not isinstance(ui_result, dict):
-        return False, ["ui_result 不是字典"]
+        return False, ["ui_result 不是字典"], []
 
     # 2. 检查按钮分类
     toolbar = ui_result.get("toolbar_buttons", [])
@@ -64,8 +72,59 @@ def validate_stage1(ui_result: dict) -> Tuple[bool, List[str]]:
     if not categories:
         issues.append("分类统计为空（categories），按钮分类可能失败")
 
-    # 判断是否通过
-    is_valid = len(issues) == 0
+    # 6. 检查必须元素（新增）
+    all_missing = []
+    if required_flows is None:
+        # 默认验证所有 CRUD 流程
+        from .required_elements import REQUIRED_ELEMENTS
+        required_flows = list(REQUIRED_ELEMENTS.keys())
+
+    if required_flows:
+        from .required_elements import check_required_elements
+        for flow in required_flows:
+            present, missing = check_required_elements(ui_result, flow)
+            if not present:
+                all_missing.extend(missing)
+                for m in missing:
+                    if m.get("critical"):
+                        issues.append(
+                            f"[{flow}] 缺少必须元素: {m['desc']} (critical)"
+                        )
+                    else:
+                        issues.append(
+                            f"[{flow}] 缺少元素: {m['desc']} (可降级)"
+                        )
+
+    # 7. 检查业务闭环验证结果（validated_operations）
+    validated_ops = ui_result.get("validated_operations", {})
+    if not validated_ops:
+        issues.append("未执行业务闭环验证（validated_operations 为空）")
+    else:
+        # 检查关键操作是否已验证
+        critical_ops = ["create", "delete"]
+        for op in critical_ops:
+            if op not in validated_ops:
+                issues.append(f"关键操作未验证: {op}")
+            else:
+                op_result = validated_ops[op]
+                if not op_result.get("success"):
+                    error = op_result.get("error", "未知错误")
+                    issues.append(f"关键操作验证失败: {op} - {error}")
+                else:
+                    # 检查是否有选择器
+                    if not op_result.get("selectors"):
+                        issues.append(f"操作 {op} 缺少 selectors")
+                    # 只有需要表单填充的操作才检查 fill_data
+                    if op in ["create", "update"] and not op_result.get("fill_data"):
+                        issues.append(f"操作 {op} 缺少 fill_data")
+
+        # 统计已验证的操作数
+        validated_count = sum(1 for op in validated_ops.values() if op.get("success"))
+        LOG.info(f"业务闭环验证: {validated_count}/{len(validated_ops)} 个操作成功")
+
+    # 判断是否通过（只检查 critical 元素）
+    critical_missing = [m for m in all_missing if m.get("critical")]
+    is_valid = len(critical_missing) == 0 and len(issues) == 0
 
     if not is_valid:
         LOG.warning(f"Stage 1 验证失败: {len(issues)} 个问题")
@@ -74,7 +133,7 @@ def validate_stage1(ui_result: dict) -> Tuple[bool, List[str]]:
     else:
         LOG.info(f"Stage 1 验证通过: 发现 {total} 个按钮")
 
-    return is_valid, issues
+    return is_valid, issues, all_missing
 
 
 def validate_stage2(capture_result: dict) -> Tuple[bool, List[str]]:
@@ -265,6 +324,15 @@ def validate_stage4(script_content: str, script_path: str) -> Tuple[bool, List[s
 
     if line_count > 500:
         issues.append(f"脚本过长 ({line_count} 行)，manifest 架构脚本不应超过 500 行")
+
+    # 6. 检查 test_ 函数
+    if "def test_" not in script_content:
+        issues.append("脚本中未找到 test_ 函数")
+
+    # 7. 检查断言数量
+    assert_count = script_content.count("assert ")
+    if assert_count < 3 and line_count >= 10:
+        issues.append(f"断言过少 ({assert_count} 个)，测试覆盖可能不足")
 
     # 判断是否通过
     is_valid = len(issues) == 0

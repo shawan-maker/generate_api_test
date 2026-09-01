@@ -151,16 +151,22 @@ class TestValidateStage1:
     def test_valid_result(self):
         """有效的 Stage 1 结果"""
         result = {
-            "toolbar_buttons": [{"text": "新增"}],
+            "toolbar_buttons": [{"text": "新增"}, {"text": "确定"}],
             "row_actions": [{"text": "编辑"}, {"text": "删除"}],
+            "dialog_buttons": [{"text": "确定"}],
+            "form_fields": [{"name": "name", "required": True}],
             "summary": {
                 "total": 10,
                 "has_create": True,
                 "has_delete": True,
-                "categories": {"create": 1, "delete": 1}
+                "categories": {"create": 1, "delete": 1, "confirm": 2, "update": 1}
+            },
+            "validated_operations": {
+                "create": {"success": True, "fill_data": {"name": "test"}, "selectors": {"trigger": "新增"}},
+                "delete": {"success": True, "fill_data": {}, "selectors": {"trigger": "删除"}}
             }
         }
-        is_valid, issues = validate_stage1(result)
+        is_valid, issues, missing = validate_stage1(result)
         assert is_valid is True
         assert len(issues) == 0
 
@@ -171,7 +177,7 @@ class TestValidateStage1:
             "row_actions": [],
             "summary": {"total": 0}
         }
-        is_valid, issues = validate_stage1(result)
+        is_valid, issues, missing = validate_stage1(result)
         assert is_valid is False
         assert any("工具栏按钮" in i or "行操作按钮" in i for i in issues)
 
@@ -182,7 +188,7 @@ class TestValidateStage1:
             "row_actions": [],
             "summary": {"total": 2}
         }
-        is_valid, issues = validate_stage1(result)
+        is_valid, issues, missing = validate_stage1(result)
         assert is_valid is False
         assert any("按钮总数过少" in i for i in issues)
 
@@ -193,13 +199,13 @@ class TestValidateStage1:
             "row_actions": [{"text": "删除"}],
             "summary": {"total": 5, "has_create": False}
         }
-        is_valid, issues = validate_stage1(result)
+        is_valid, issues, missing = validate_stage1(result)
         assert is_valid is False
         assert any("创建" in i for i in issues)
 
     def test_not_dict(self):
         """输入不是字典"""
-        is_valid, issues = validate_stage1("not a dict")
+        is_valid, issues, missing = validate_stage1("not a dict")
         assert is_valid is False
         assert "不是字典" in issues[0]
 
@@ -210,7 +216,7 @@ class TestValidateStage1:
             "row_actions": [{"text": f"row{i}"} for i in range(60)],
             "summary": {"total": 110}
         }
-        is_valid, issues = validate_stage1(result)
+        is_valid, issues, missing = validate_stage1(result)
         assert is_valid is False
         assert any("按钮总数过多" in i for i in issues)
 
@@ -381,8 +387,45 @@ class TestValidateStage4:
     def test_valid_script(self):
         """有效的生成脚本"""
         script = """
-def test_user_lifecycle():
-    pass
+MANIFEST = {
+    "module": "用户管理",
+    "target_url": "/user-manage",
+    "response_contract": {
+        "create": {"path": "data.id", "assert_not_none": True},
+        "list": {"path": "data.records", "assert_is_list": True}
+    },
+    "body_field_roles": {
+        "username": "identity",
+        "password": "credential",
+        "role": "enum"
+    },
+    "steps": [
+        {"crud": "create", "button": "新增"},
+        {"crud": "list", "button": "查询"},
+        {"crud": "update", "button": "编辑"},
+        {"crud": "delete", "button": "删除"}
+    ]
+}
+
+from lib.test_runtime import TestRunner
+
+class TestUserLifecycle(TestRunner):
+    def test_create_user(self):
+        resp = self.run_step("create")
+        assert resp.status == 200
+        assert resp.success
+
+    def test_list_user(self):
+        resp = self.run_step("list")
+        assert resp.status == 200
+
+    def test_update_user(self):
+        resp = self.run_step("update")
+        assert resp.status == 200
+
+    def test_delete_user(self):
+        resp = self.run_step("delete")
+        assert resp.status == 200
 
 def browser_create_user():
     pass
@@ -393,24 +436,11 @@ assert entity['state'] == 'ENABLE'
 assert entity['id']
 assert 'name' in entity
 
-# 创建
-create_resp = api_create()
-# 查询
-list_resp = api_list()
-# 修改
-update_resp = api_update()
-# 删除
-delete_resp = api_delete()
-# 锁定
-lock_resp = api_lock()
-# 解锁
-unlock_resp = api_unlock()
-
 except AssertionError as e:
     print(e)
 except Exception as e:
     print(e)
-""" + "\n" * 200  # 确保行数 > 200
+""" + "\n" * 60  # 确保行数在 50-500 之间
 
         is_valid, issues = validate_stage4(script, "test.py")
         assert is_valid is True
@@ -423,7 +453,16 @@ except Exception as e:
 
     def test_missing_test_function(self):
         """缺少 test_ 函数"""
-        script = "def main():\n    pass\n" + "\n" * 200
+        script = """
+MANIFEST = {
+    "module": "用户管理",
+    "steps": []
+}
+from lib.test_runtime import TestRunner
+
+def main():
+    pass
+""" + "\n" * 60
         is_valid, issues = validate_stage4(script, "test.py")
         assert is_valid is False
         assert any("test_" in i for i in issues)
@@ -431,19 +470,22 @@ except Exception as e:
     def test_few_assertions(self):
         """断言过少"""
         script = """
-def test_lifecycle():
-    assert True
+MANIFEST = {
+    "module": "用户管理",
+    "steps": [{"crud": "create"}]
+}
+from lib.test_runtime import TestRunner
+
+class TestUser(TestRunner):
+    def test_create(self):
+        resp = self.run_step("create")
+
 def browser_create_user():
     pass
-# 创建 查询 修改 删除 锁定 解锁
-except AssertionError:
-    pass
-except Exception:
-    pass
-""" + "\n" * 200
+""" + "\n" * 60
         is_valid, issues = validate_stage4(script, "test.py")
         assert is_valid is False
-        assert any("断言过少" in i for i in issues)
+        assert any("断言" in i for i in issues)
 
     def test_short_script(self):
         """脚本过短"""

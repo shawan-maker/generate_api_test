@@ -115,7 +115,10 @@ def classify_endpoint(method: str, pathname: str, contexts: List[str]) -> str:
         # 排除已知的基础设施 API（菜单、主题、字典等）
         if not any(k in p for k in ("/menu/", "/theme", "/favorite", "/dynamic-dictionary",
                                      "/notice/", "/access-log", "/system-theme")):
-            return "create"
+            # 末段看起来像动作（含连字符/下划线/已知动词）→ 不兜底 create
+            last_seg = p.rstrip("/").rsplit("/", 1)[-1]
+            if "-" not in last_seg and "_" not in last_seg and last_seg.isalpha():
+                return "create"
     if method == "PUT":
         return "update"
     if method == "PATCH":

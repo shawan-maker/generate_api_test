@@ -45,7 +45,7 @@
 | 阶段 | 原始问题数 | 已解决 | 状态 |
 |------|-----------|--------|------|
 | Stage 1 | 4 | 4 | ✅ 完成 |
-| Stage 2 | 7 | 7 | ✅ 完成 |
+| Stage 2 | 12 | 12 | ✅ 完成 |
 | Stage 3 | 5 | 5 | ✅ 完成 |
 | Stage 4 | 5 | 5 | ✅ 完成 |
 | 跨阶段 | 4 | 4 | ✅ 完成 |
@@ -88,6 +88,11 @@
 | S2-5 | 授权页导航URL硬编码 | 从 `target_url` 推导回列表 URL | ✅ |
 | S2-6 | `close_dialog` 30秒超时 | 3 秒超时检测关闭按钮 + Escape 兜底 | ✅ |
 | S2-7 | 请求拦截只匹配 `/estack/api` | `--capture-all` 参数，默认仍使用过滤模式 | ✅ |
+| S2-8 | 按钮点击误命中隐藏/禁用元素 | `const.HIDDEN_FILTERS` 三套 XPath 过滤谓词（element-ui/ant-design/universal），`_append_hidden_filter()` 自动处理三种 XPath 模式 | ✅ |
+| S2-9 | 弹窗内按钮与主页面同名按钮冲突 | `detect_active_overlay_js()` + `apply_overlay_scope()` 优先在弹窗/抽屉容器内定位，失败降级全局 | ✅ |
+| S2-10 | iframe 内按钮不可达 | `_try_click_frame()` 遍历 `page.frames` 在主框架和所有 iframe 中查找 | ✅ |
+| S2-11 | 按钮点击后固定等待 3-5 秒 | `wait_for_loading_complete()` 事件驱动等待 7 种 loading 元素消失 | ✅ |
+| S2-12 | el-select/el-cascader 无法选择具体选项 | `_discover_first_option()` 自动读取首个可见选项 + `_cascader_discover_and_select()` 逐级发现 | ✅ |
 
 ### 3.2 KB 驱动注入
 
@@ -355,7 +360,7 @@ python lib/test_report.py "projects/ecm-compute/flows/v1.0.0/角色管理_API测
 
 ---
 
-## 九、已解决的问题汇总（23 项）
+## 九、已解决的问题汇总（28 项）
 
 ### 基础设施问题 (1-4)
 1. ✅ 拦截器 `_calls` vs `calls` 属性名
@@ -390,6 +395,13 @@ python lib/test_report.py "projects/ecm-compute/flows/v1.0.0/角色管理_API测
 22. ✅ run.py 移除硬编码 URL + 登录配置数据化
 23. ✅ stage_validators.py 适配新架构
 
+### Locator 增强 (24-28)
+24. ✅ 按钮点击误命中隐藏/禁用元素 (`HIDDEN_FILTERS` + `_append_hidden_filter()` 三套 XPath 过滤谓词)
+25. ✅ 弹窗内按钮与主页面同名按钮冲突 (`detect_active_overlay_js()` + `apply_overlay_scope()` 覆盖层优先定位)
+26. ✅ iframe 内按钮不可达 (`_try_click_frame()` 遍历主框架和所有 iframe)
+27. ✅ 按钮点击后固定等待 3-5 秒 (`wait_for_loading_complete()` 事件驱动等待 7 种 loading 元素)
+28. ✅ el-select/el-cascader 无法选择具体选项 (`_discover_first_option()` + `_cascader_discover_and_select()` 自动发现)
+
 ---
 
 ## 十、关键文件清单
@@ -402,7 +414,11 @@ python lib/test_report.py "projects/ecm-compute/flows/v1.0.0/角色管理_API测
 | `module_discovery/gen_test.py` | **重写** | 仅 manifest 模式（107 行），旧代码完全删除 |
 | `module_discovery/run.py` | **改造** | `run_stage34()` 调用 `build_manifest()` 并传给 `generate_script()` |
 | `module_discovery/stage_validators.py` | **适配** | 新架构检查项 |
-| `module_discovery/const.py` | **新增** | 集中管理所有发现常量 |
+| `module_discovery/const.py` | **新增** | 集中管理所有发现常量 + `HIDDEN_FILTERS` / `OVERLAY_SELECTORS` |
+| `module_discovery/kb_loader.py` | **新增函数** | `_append_hidden_filter()` / `apply_overlay_scope()` / `detect_active_overlay_js()` / `get_overlay_prefix()` / `expand_step(apply_hidden=True)` |
+| `module_discovery/button_driver.py` | **增强** | `click_row_button_v2` / `click_row_more_item` 集成隐藏过滤 + 覆盖层定位 + iframe 穿透 |
+| `module_discovery/form_filler.py` | **增强** | `MultiStepExecutor._discover_first_option()` / `_cascader_discover_and_select()` / `_read_cascader_current_items()` 自动发现选项 |
+| `module_discovery/wait_helpers.py` | **新增函数** | `wait_for_loading_complete()` 事件驱动等待（7 种 loading 元素） |
 | `module_discovery/diagnostic_mode.py` | **新建** | 自诊断模式 |
 | `module_discovery/kb_merger.py` | **新建** | 知识库合并器 |
 | `run_suite.py` | **新建** | 测试套件运行器 |

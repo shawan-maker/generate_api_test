@@ -1,0 +1,235 @@
+{
+  "toolbar_buttons": [
+    {
+      "text": "创建用户",
+      "tag": "BUTTON",
+      "className": "el-button el-button--primary el-button--small",
+      "rect": "90x31",
+      "location": "toolbar"
+    },
+    {
+      "text": "批量导入",
+      "tag": "BUTTON",
+      "className": "el-button el-button--default el-button--small",
+      "rect": "70x31",
+      "location": "toolbar"
+    },
+    {
+      "text": "批量删除",
+      "tag": "BUTTON",
+      "className": "el-button el-tooltip el-button--default el-button--small is-",
+      "rect": "70x31",
+      "location": "toolbar"
+    },
+    {
+      "text": "批量迁移",
+      "tag": "BUTTON",
+      "className": "el-button el-tooltip el-button--default el-button--small is-",
+      "rect": "70x31",
+      "location": "toolbar"
+    },
+    {
+      "text": "GO",
+      "tag": "BUTTON",
+      "className": "el-button pagination-jumper el-button--default el-button--mi",
+      "rect": "51x28",
+      "location": "toolbar"
+    }
+  ],
+  "row_actions": [
+    {
+      "text": "编辑",
+      "tag": "BUTTON",
+      "className": "el-button el-button--text el-button--small",
+      "rect": "26x14",
+      "location": "row_action"
+    },
+    {
+      "text": "删除",
+      "tag": "BUTTON",
+      "className": "el-button el-tooltip el-button--text el-button--small",
+      "rect": "26x14",
+      "location": "row_action"
+    },
+    {
+      "text": "更多",
+      "tag": "SPAN",
+      "className": "el-dropdown-link el-dropdown-selfdefine",
+      "rect": "44x14",
+      "location": "row_action"
+    }
+  ],
+  "dialog_buttons": [],
+  "menu_items": [
+    {
+      "text": "账户管理  账户信息  AccessKey设置",
+      "tag": "LI",
+      "className": "el-submenu",
+      "rect": "179x40",
+      "location": "menu"
+    },
+    {
+      "text": "单位管理",
+      "tag": "LI",
+      "className": "el-menu-item inner-level",
+      "rect": "179x40",
+      "location": "menu"
+    },
+    {
+      "text": "部门管理",
+      "tag": "LI",
+      "className": "el-menu-item inner-level",
+      "rect": "179x40",
+      "location": "menu"
+    },
+    {
+      "text": "用户管理",
+      "tag": "LI",
+      "className": "el-menu-item inner-level is-active",
+      "rect": "179x40",
+      "location": "menu"
+    },
+    {
+      "text": "用户组管理",
+      "tag": "LI",
+      "className": "el-menu-item inner-level",
+      "rect": "179x40",
+      "location": "menu"
+    },
+    {
+      "text": "角色管理",
+      "tag": "LI",
+      "className": "el-menu-item inner-level",
+      "rect": "179x40",
+      "location": "menu"
+    },
+    {
+      "text": "授权管理",
+      "tag": "LI",
+      "className": "el-menu-item inner-level",
+      "rect": "179x40",
+      "location": "menu"
+    },
+    {
+      "text": "黑白名单",
+      "tag": "LI",
+      "className": "el-menu-item inner-level",
+      "rect": "179x40",
+      "location": "menu"
+    },
+    {
+      "text": "日志管理  日志查询  日志设置",
+      "tag": "LI",
+      "className": "el-submenu",
+      "rect": "179x40",
+      "location": "menu"
+    }
+  ],
+  "dropdowns": [
+    {
+      "text": "账户管理  账户信息  AccessKey设置",
+      "parent": "更多",
+      "tag": "DROPDOWN_ITEM"
+    },
+    {
+      "text": "访问控制  单位管理  部门管理  用户管理  用户组管理  角色管理  授权管理  黑白名单",
+      "parent": "更多",
+      "tag": "DROPDOWN_ITEM"
+    },
+    {
+      "text": "单位管理",
+      "parent": "更多",
+      "tag": "DROPDOWN_ITEM"
+    },
+    {
+      "text": "部门管理",
+      "parent": "更多",
+      "tag": "DROPDOWN_ITEM"
+    },
+    {
+      "text": "用户管理",
+      "parent": "更多",
+      "tag": "DROPDOWN_ITEM"
+    },
+    {
+      "text": "用户组管理",
+      "parent": "更多",
+      "tag": "DROPDOWN_ITEM"
+    },
+    {
+      "text": "角色管理",
+      "parent": "更多",
+      "tag": "DROPDOWN_ITEM"
+    },
+    {
+      "text": "授权管理",
+      "parent": "更多",
+      "tag": "DROPDOWN_ITEM"
+    },
+    {
+      "text": "黑白名单",
+      "parent": "更多",
+      "tag": "DROPDOWN_ITEM"
+    },
+    {
+      "text": "项目管理  项目中心  部门项目  我的项目  配额管理  全局单位配额  全局项目配额  项目配额  配额申请历史  容量管理  资源池容量  资源管理  资源清单",
+      "parent": "更多",
+      "tag": "DROPDOWN_ITEM"
+    },
+    {
+      "text": "日志管理  日志查询  日志设置",
+      "parent": "更多",
+      "tag": "DROPDOWN_ITEM"
+    },
+    {
+      "text": "授权",
+      "parent": "更多",
+      "tag": "DROPDOWN_ITEM"
+    },
+    {
+      "text": "冻结",
+      "parent": "更多",
+      "tag": "DROPDOWN_ITEM"
+    },
+    {
+      "text": "启用",
+      "parent": "更多",
+      "tag": "DROPDOWN_ITEM"
+    },
+    {
+      "text": "锁定",
+      "parent": "更多",
+      "tag": "DROPDOWN_ITEM"
+    },
+    {
+      "text": "重置密码",
+      "parent": "更多",
+      "tag": "DROPDOWN_ITEM"
+    },
+    {
+      "text": "迁移",
+      "parent": "更多",
+      "tag": "DROPDOWN_ITEM"
+    }
+  ],
+  "form_fields": [],
+  "summary": {
+    "total_buttons": 34,
+    "has_create": true,
+    "has_delete": true,
+    "has_form": false,
+    "categories": {
+      "create": 2,
+      "import": 1,
+      "delete": 2,
+      "migrate": 2,
+      "unknown": 7,
+      "update": 3,
+      "execute": 1,
+      "authorize": 3,
+      "lock": 2,
+      "unlock": 1,
+      "reset": 1
+    }
+  }
+}

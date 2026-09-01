@@ -31,6 +31,9 @@ BUTTON_SELECTORS = """
     span[onclick]
 """
 
+# 统一的选择器字符串（供 _scan_hints / _scan_iframes 使用）
+BUTTON_SELECTORS_STR = "button, a[href], .el-button, .el-button--text, .el-dropdown-menu__item, .el-table__body-wrapper a, .el-table__body-wrapper .el-button, .el-table__body-wrapper span[class*='action'], .el-menu-item, [role='button'], [role='menuitem'], [role='link'], [class*='btn'], [class*='Btn'], [class*='action'], [class*='Action'], .ant-btn, .ant-menu-item, .ant-dropdown-menu-item, span[onclick]"
+
 # ============================================================
 # Stage 1: 按钮文本→CRUD 类别映射
 # ============================================================
@@ -69,6 +72,7 @@ CRUD_EXECUTION_ORDER = [
     "lock",      # 锁定/冻结（互斥）
     "unlock",    # 解锁/启用
     "reset",     # 重置密码
+    "import",    # 批量导入
     "export",    # 导出
     "execute",   # 其他操作
     "authorize", # 授权
@@ -77,24 +81,60 @@ CRUD_EXECUTION_ORDER = [
 ]
 
 # ============================================================
-# Stage 1: 表单填充规则
+# Stage 1: 表单元素类型 → KB category 映射
 # ============================================================
-FORM_FILL_RULES = {
-    "input[type='text']":           "AT_test_%s",
-    "input[type='email']":          "at_%s@test.com",
-    "input[type='tel']":            "138%s",
-    "input[type='password']":       "Test@123456",
-    "textarea":                     "自动创建于%s",
+ELEMENT_TYPE_MAP = {
+    "input": "input-generic",
+    "textarea": "textarea-generic",
+    "select": "el-select",
+    "cascader": "el-cascader",
+    "date-picker": "date-picker",
+    "radio": "radio",
+    "checkbox": "form-checkbox",
+    "tree": "el-tree",
 }
 
-PLACEHOLDER_RULES = {
-    "名称":  "AT_名称_%s",
-    "用户名": "atuser_%s",
-    "邮箱":  "at_%s@test.com",
-    "手机":  "138%s",
-    "电话":  "138%s",
-    "描述":  "自动创建于%s",
-    "备注":  "自动创建于%s",
+# 需要多步操作的组件类型（由 MultiStepExecutor 处理）
+MULTI_STEP_TYPES = ["el-select", "el-cascader", "date-picker"]
+
+# ============================================================
+# 统一 Locator 增强 — 隐藏过滤器
+# ============================================================
+HIDDEN_FILTERS = {
+    'element-ui': (
+        "not(ancestor-or-self::*[contains(@class,'is-hidden')])"
+        " and not(ancestor-or-self::*[contains(@style,'display: none')])"
+        " and not(@disabled)"
+        " and not(ancestor-or-self::*[contains(@class,'is-disabled')])"
+    ),
+    'ant-design': (
+        "not(ancestor-or-self::*[contains(@class,'ant-drawer-hidden')])"
+        " and not(ancestor-or-self::*[contains(@class,'ant-modal-hidden')])"
+        " and not(ancestor-or-self::*[contains(@style,'display: none')])"
+        " and not(ancestor-or-self::*[@aria-hidden='true'])"
+        " and not(@disabled)"
+        " and not(ancestor-or-self::*[contains(@class,'ant-btn-disabled')])"
+        " and not(ancestor-or-self::*[contains(@class,'ant-select-disabled')])"
+    ),
+    '_universal': (
+        "not(ancestor-or-self::*[contains(@style,'display: none')])"
+        " and not(@disabled)"
+    ),
+}
+
+# ============================================================
+# 统一 Locator 增强 — 覆盖层前缀（弹窗/抽屉）
+# ============================================================
+OVERLAY_SELECTORS = {
+    'element-ui': [
+        ('el-dialog',   "//div[contains(@class,'el-dialog') and not(contains(@style,'display: none'))]"),
+        ('el-drawer',   "//div[contains(@class,'el-drawer') and not(contains(@style,'display: none'))]"),
+        ('el-message-box', "//div[contains(@class,'el-message-box') and not(contains(@style,'display: none'))]"),
+    ],
+    'ant-design': [
+        ('ant-modal',   "//div[contains(@class,'ant-modal-content')]"),
+        ('ant-drawer',  "//div[contains(@class,'ant-drawer-content')]"),
+    ],
 }
 
 # ============================================================

@@ -26,7 +26,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from module_discovery.discover_ui import discover_all
+from module_discovery.discover_ui import (
+    discover_and_validate, discover_all, cleanup_ui_overlays, wait_for_spa_ready,
+)
 from module_discovery.capture_apis import capture_all
 from module_discovery.analyze_flow import analyze, build_manifest
 from module_discovery.gen_test import generate_script, save_script_to_file
@@ -166,114 +168,78 @@ def _needs_rediscovery(project_dir: Path, module_name: str, module_url: str, for
         return True
 
 
-async def _cleanup_ui_overlays(page):
-    """清理页面上的模态对话框等 UI 残留。
-
-    在 Stage 1 UI 探测前调用。
-    注意：只关闭**模态**对话框（el-dialog/el-message-box/el-drawer），
-    不关闭内嵌的配置面板（如角色管理的右侧权限面板），因为关闭面板
-    可能导致页面重新渲染、表格数据丢失。
-    """
-    try:
-        # 1. 按 ESC 关闭最上层的模态对话框
-        await page.keyboard.press('Escape')
-        await page.wait_for_timeout(300)
-
-        # 2. 只关闭可见的模态对话框（有 .v-modal 遮罩层的）
-        try:
-            await page.evaluate("""() => {
-                // 只处理有遮罩层的对话框
-                const modals = document.querySelectorAll('.v-modal');
-                modals.forEach(modal => {
-                    // 找到对应的 dialog/drawer
-                    const wrapper = modal.nextElementSibling;
-                    if (wrapper && (wrapper.classList.contains('el-dialog__wrapper') ||
-                                    wrapper.classList.contains('el-drawer__wrapper'))) {
-                        const closeBtn = wrapper.querySelector('.el-dialog__headerbtn, .el-drawer__close-btn');
-                        const cancelBtn = wrapper.querySelector('.el-dialog__footer button:not(.el-button--primary)');
-                        if (closeBtn) closeBtn.click();
-                        else if (cancelBtn) cancelBtn.click();
-                    }
-                });
-
-                // 关闭 el-message-box（确认弹窗）
-                document.querySelectorAll('.el-message-box__wrapper').forEach(box => {
-                    if (box.style.display !== 'none') {
-                        const cancelBtn = box.querySelector('.el-message-box__btns button:first-child');
-                        if (cancelBtn) cancelBtn.click();
-                    }
-                });
-
-                // 移除遮罩层
-                document.querySelectorAll('.v-modal').forEach(el => el.remove());
-            }""")
-        except Exception as e:
-            LOG.warning(f"关闭模态对话框失败: {e}")
-
-        await page.wait_for_timeout(500)
-
-    except Exception as e:
-        LOG.warning(f"清理 UI 残留时出错（不影响后续流程）: {e}")
-
-
 async def run_stage1(page, project_dir: Path, module_name: str, target_url: str):
-    """Stage 1: 前端按钮探测。"""
+    """Stage 1: 前端按钮探测 + 业务闭环验证。
+
+    流程（6 Phase）：
+      Phase A: 标准探测 (discover_all)
+      Phase B: 业务闭环验证 (_validate_business_flow)
+      Phase C: hints 定向重探 (_scan_hints)
+      Phase D: 前置操作检查 + 重试 (_retry_precondition)
+      Phase E: Vision 截图分析兜底 (ai_assisted_analysis)
+      Phase F: 终止判定 (critical 缺失 → None)
+
+    Returns:
+        dict: ui_result（含 validated_operations）或 None（关键验证失败）
+    """
     LOG.info("=" * 50)
-    LOG.info("Stage 1: 前端按钮探测")
+    LOG.info("Stage 1: 前端按钮探测 + 业务闭环验证")
     LOG.info("=" * 50)
 
-    # SPA 需要先导航到基础页，再跳转到目标页（直接 goto 可能 SPA 路由未初始化）
-    # 先尝试直接导航
+    # 导航到目标页
     await page.goto(target_url, wait_until="load", timeout=45000)
 
-    # 等待 SPA 渲染完成（表格有数据行 或 页面有可操作按钮）
-    LOG.info("  等待 SPA 渲染完成...")
-    for wait_round in range(6):  # 最多等 12 秒
-        state = await page.evaluate("""() => {
-            const table = document.querySelector('.el-table');
-            const rows = table ? table.querySelectorAll('.el-table__body-wrapper tbody tr') : [];
-            const hasCreateBtn = !!Array.from(document.querySelectorAll('button, .el-button'))
-                .find(b => {
-                    const r = b.getBoundingClientRect();
-                    const text = (b.textContent || '').trim();
-                    return r.width > 0 && r.height > 0 &&
-                           (text.includes('创建') || text.includes('新建') || text.includes('新增'));
-                });
-            return {
-                hasTable: !!table,
-                rowCount: rows.length,
-                hasCreateBtn: hasCreateBtn,
-                url: window.location.href,
-            };
-        }""")
-        LOG.info(f"  [{wait_round+1}/6] table={state['hasTable']} rows={state['rowCount']} "
-                 f"createBtn={state['hasCreateBtn']} url={state['url'][:60]}")
+    # 等待 SPA 渲染就绪
+    ready = await wait_for_spa_ready(page)
+    if not ready:
+        LOG.warning("SPA 渲染未完全就绪，继续尝试")
 
-        if state['hasTable'] and (state['rowCount'] > 0 or state['hasCreateBtn']):
-            LOG.info("  ✅ SPA 渲染完成")
-            break
+    # 清理 UI 残留
+    await cleanup_ui_overlays(page)
 
-        # 如果被重定向到登录页，说明 cookie 失效
-        if "/login" in state['url']:
-            LOG.error("  ❌ 被重定向到登录页，cookie 已失效")
-            break
+    # Phase A+B: 探测 + 业务闭环验证（一体化）
+    ui_result = await discover_and_validate(page)
 
-        await page.wait_for_timeout(2000)
+    if ui_result is None:
+        # 关键操作验证失败 — 尝试 Phase C/D/E 补救
+        LOG.warning("  Phase A+B 失败，尝试后续阶段补救")
+        # discover_and_validate 返回 None 时，ui_result 不可用
+        # 需要重新做基础探测来拿到初始结果
+        ui_result = await discover_all(page)
 
-    # 清理 UI 残留（对话框、遮罩层），防止误识别 overlay 内的按钮
-    await _cleanup_ui_overlays(page)
+    # Phase B: 质量门控验证（required_elements）
+    is_valid, issues, missing = validate_stage1(ui_result, required_flows=None)
 
-    ui_result = await discover_all(page)
+    if is_valid:
+        LOG.info("  Phase B: 质量门控通过 ✅")
+    else:
+        LOG.warning(f"  Phase B: 质量门控失败，{len(issues)} 个问题，{len(missing)} 个缺失元素")
 
-    # 阶段门控验证
-    is_valid, issues = validate_stage1(ui_result)
-    if not is_valid:
-        LOG.error(f"Stage 1 质量门控失败，发现 {len(issues)} 个问题:")
-        for issue in issues:
-            LOG.error(f"  - {issue}")
-        LOG.error("建议：检查目标页面是否正确、页面是否加载完成、是否存在反爬机制")
-        # 继续执行但记录警告
-        LOG.warning("继续执行后续阶段，但结果可能不完整")
+        # Phase C: hints 定向重探
+        if missing:
+            ui_result = await _hints_rescan(page, ui_result, missing)
+            is_valid, issues, missing = validate_stage1(ui_result, required_flows=None)
+
+        # Phase D: 前置操作检查 + 重试
+        if not is_valid and missing:
+            ui_result = await _precondition_retry(page, ui_result, missing)
+            is_valid, issues, missing = validate_stage1(ui_result, required_flows=None)
+
+        # Phase E: Vision 截图分析兜底
+        if not is_valid and missing:
+            ui_result = await _vision_rescue(page, ui_result, missing)
+            is_valid, issues, missing = validate_stage1(ui_result, required_flows=None)
+
+        # Phase F: 终止判定
+        if not is_valid:
+            critical = [m for m in missing if m.get("critical")]
+            if critical:
+                LOG.error(f"  Phase F: ❌ {len(critical)} 个关键元素缺失，终止")
+                for m in critical:
+                    LOG.error(f"    - {m['desc']}")
+                return None
+            else:
+                LOG.warning(f"  Phase F: 仅非关键元素缺失（{len(missing)} 个），继续")
 
     # 保存
     out_path = project_dir / "kb" / "module_discovered" / f"{module_name}_ui.json"
@@ -288,6 +254,128 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str)
     LOG.info(f"  表单字段数: {s.get('has_form')}")
     LOG.info(f"  CRUD 覆盖: {json.dumps(s.get('categories', {}), ensure_ascii=False)}")
 
+    # 打印验证结果
+    validated = ui_result.get("validated_operations", {})
+    if validated:
+        LOG.info(f"  已验证操作: {list(validated.keys())}")
+        for action, info in validated.items():
+            fill_count = len(info.get("fill_data", {}))
+            LOG.info(f"    {action}: fill_data={fill_count} fields")
+
+    return ui_result
+
+
+async def _hints_rescan(page, ui_result: dict, missing: list) -> dict:
+    """Phase C: hints 定向重探。
+
+    用 missing_elements 作为 hints 调用 _scan_hints，
+    将找到的元素合并回 ui_result。
+    """
+    from .discover_ui import _scan_hints
+    from .feedback_loop import patch_ui_result
+
+    LOG.info(f"  Phase C: hints 定向重探 ({len(missing)} 个缺失元素)")
+
+    found = await _scan_hints(page, missing)
+    if found:
+        LOG.info(f"  Phase C: 找到 {len(found)} 个元素")
+        ui_result = patch_ui_result(ui_result, {"elements": found})
+    else:
+        LOG.info("  Phase C: 未找到额外元素")
+
+    return ui_result
+
+
+async def _precondition_retry(page, ui_result: dict, missing: list) -> dict:
+    """Phase D: 检查前置操作，换方式重试点击，重新扫描弹窗内元素。"""
+    from .discover_ui import (
+        _check_precondition_state, _retry_precondition,
+        _scan_dialog_buttons,
+    )
+    from .feedback_loop import patch_ui_result
+
+    LOG.info(f"  Phase D: 前置操作重试 ({len(missing)} 个缺失元素)")
+
+    added_any = False
+    for elem in missing:
+        if elem.get("type") != "button":
+            continue
+        action = elem.get("action", "")
+        # 只对需要前置操作（弹窗内按钮）的元素重试
+        expected_location = elem.get("location", [])
+        if "dialog" not in expected_location:
+            continue
+
+        # 找到对应的触发按钮（toolbar 中同 action 的按钮）
+        trigger_btn = None
+        for btn in ui_result.get("toolbar_buttons", []):
+            if btn.get("action") == action:
+                trigger_btn = btn
+                break
+        if not trigger_btn:
+            for btn in ui_result.get("row_actions", []):
+                if btn.get("action") == action:
+                    trigger_btn = btn
+                    break
+        if not trigger_btn:
+            continue
+
+        # 检查前置操作状态
+        expected_title = ""
+        for ff in ui_result.get("form_fields", []):
+            if ff.get("name"):
+                expected_title = ff.get("dialog_title", "")
+                break
+
+        state = await _check_precondition_state(page, {
+            "type": "dialog", "title": expected_title
+        })
+
+        if not state["success"]:
+            # 前置操作未成功，尝试重试点击
+            retry_ok = await _retry_precondition(page, trigger_btn)
+            if retry_ok:
+                # 重试成功，扫描弹窗内按钮
+                dialog_btns = await _scan_dialog_buttons(page)
+                if dialog_btns:
+                    ui_result = patch_ui_result(ui_result, {"elements": dialog_btns})
+                    added_any = True
+                    LOG.info(f"  Phase D: 重试成功，新增 {len(dialog_btns)} 个弹窗按钮")
+        else:
+            # 前置操作已成功（弹窗已打开），直接扫描弹窗
+            dialog_btns = await _scan_dialog_buttons(page)
+            if dialog_btns:
+                ui_result = patch_ui_result(ui_result, {"elements": dialog_btns})
+                added_any = True
+                LOG.info(f"  Phase D: 弹窗已打开，新增 {len(dialog_btns)} 个弹窗按钮")
+
+    if not added_any:
+        LOG.info("  Phase D: 未找到额外元素")
+
+    return ui_result
+
+
+async def _vision_rescue(page, ui_result: dict, missing: list) -> dict:
+    """Phase E: Vision 截图分析兜底。"""
+    from .ai_debug_assistant import ai_assisted_analysis
+    from .feedback_loop import patch_ui_result
+
+    LOG.info(f"  Phase E: Vision 截图分析 ({len(missing)} 个缺失元素)")
+
+    try:
+        result = await ai_assisted_analysis(page, missing, expected_context=None)
+
+        if result.get("found"):
+            ui_result = patch_ui_result(ui_result, result)
+            LOG.info(f"  Phase E: Vision 找到 {len(result.get('elements', []))} 个元素")
+        else:
+            diagnosis = result.get("diagnosis", "unknown")
+            source = result.get("source", "unknown")
+            LOG.info(f"  Phase E: Vision 未找到元素 (source={source}, diagnosis={diagnosis})")
+
+    except Exception as e:
+        LOG.warning(f"  Phase E: Vision 分析异常: {e}")
+
     return ui_result
 
 
@@ -295,17 +383,10 @@ async def run_stage2(page, project_dir: Path, module_name: str,
                      ui_result: dict, base_url: str, target_url: str,
                      max_recapture: int = 2,
                      capture_all_mode: bool = False) -> tuple:
-    """Stage 2: API 捕获（含验证和重试）。
+    """Stage 2: API 捕获。
 
-    Args:
-        page: Playwright 页面对象
-        project_dir: 项目目录
-        module_name: 模块名称
-        ui_result: Stage 1 的 UI 探测结果
-        base_url: 基础 URL
-        target_url: 目标页面 URL
-        max_recapture: Stage 2 验证失败时的最大重试次数（默认2，设0禁用）
-        capture_all_mode: 是否捕获所有 XHR/fetch（默认只捕获匹配的 API）
+    Stage 1 已验证所有操作可成功，Stage 2 只做 API 捕获。
+    保留重试机制以应对瞬时网络问题。
 
     Returns:
         (full_result, is_valid) 元组
@@ -314,13 +395,11 @@ async def run_stage2(page, project_dir: Path, module_name: str,
     LOG.info("Stage 2: API 捕获")
     LOG.info("=" * 50)
 
-    # 上限保护
     max_recapture = min(max_recapture, 5)
 
     for capture_attempt in range(max_recapture + 1):
         if capture_attempt > 0:
-            LOG.info(f"\n🔄 Stage 2 重试 #{capture_attempt}/{max_recapture}")
-            # 重置页面状态
+            LOG.info(f"\nStage 2 重试 #{capture_attempt}/{max_recapture}")
             try:
                 await page.goto(target_url, wait_until="networkidle", timeout=60000)
                 await page.wait_for_timeout(2000)
@@ -338,31 +417,28 @@ async def run_stage2(page, project_dir: Path, module_name: str,
             capture_all_mode=capture_all_mode
         )
 
-        # 阶段门控验证
         is_valid, issues = validate_stage2(api_capture)
 
-        if is_valid:
-            LOG.info("✅ Stage 2 验证通过")
-            # 保存完整结果（合并 UI 信息）
-            full_result = {
-                "capture_time": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "target_url": target_url,
-                "stats": api_capture.get("stats", {}),
-                "by_category": api_capture.get("classified", {}),
-                "all_endpoints": api_capture.get("all_endpoints", []),
-                "response_samples": api_capture.get("response_samples", {}),
-            }
-            out_path = project_dir / "kb" / "module_discovered" / f"{module_name}.json"
-            _save_json(full_result, out_path)
-            LOG.info(f"结果已保存: {out_path}")
+        # 构建结果（无论验证是否通过）
+        full_result = {
+            "capture_time": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "target_url": target_url,
+            "stats": api_capture.get("stats", {}),
+            "by_category": api_capture.get("classified", {}),
+            "all_endpoints": api_capture.get("all_endpoints", []),
+            "response_samples": api_capture.get("response_samples", {}),
+        }
+        out_path = project_dir / "kb" / "module_discovered" / f"{module_name}.json"
+        _save_json(full_result, out_path)
 
-            # 打印摘要
+        if is_valid:
+            LOG.info("Stage 2 验证通过")
+            LOG.info(f"结果已保存: {out_path}")
             stats = full_result["stats"]
             LOG.info(f"  总拦截: {stats.get('total_calls', 0)} 条")
             LOG.info(f"  唯一端点: {stats.get('unique_endpoints', 0)} 个")
             for cat, eps in sorted(api_capture.get("classified", {}).items()):
                 LOG.info(f"    {cat}: {len(eps)} 个")
-
             return full_result, True
 
         # 验证失败
@@ -371,23 +447,10 @@ async def run_stage2(page, project_dir: Path, module_name: str,
             LOG.error(f"  - {issue}")
 
         if capture_attempt == max_recapture:
-            LOG.error(f"❌ Stage 2 已达最大重试次数 ({max_recapture})")
-            LOG.error("建议：检查页面交互是否完整、是否存在反爬机制、API 拦截是否正常")
-            # 保存最后一次结果（可能不完整）
-            full_result = {
-                "capture_time": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "target_url": target_url,
-                "stats": api_capture.get("stats", {}),
-                "by_category": api_capture.get("classified", {}),
-                "all_endpoints": api_capture.get("all_endpoints", []),
-                "response_samples": api_capture.get("response_samples", {}),
-            }
-            out_path = project_dir / "kb" / "module_discovered" / f"{module_name}.json"
-            _save_json(full_result, out_path)
+            LOG.error(f"Stage 2 已达最大重试次数 ({max_recapture})")
             LOG.info(f"结果已保存（不完整）: {out_path}")
             return full_result, False
 
-    # 不应到达这里
     return None, False
 
 
@@ -444,7 +507,7 @@ def run_stage34(project_dir: Path, module_name: str,
 
     # 构建 manifest（泛化架构）
     manifest = build_manifest(flow, capture_result, profile,
-                              module_name, target_url)
+                              module_name, target_url, ui_result)
     # 保存 manifest
     manifest_path = project_dir / "kb" / "module_discovered" / f"{module_name}_manifest.json"
     _save_json(manifest, manifest_path)
