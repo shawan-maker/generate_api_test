@@ -149,6 +149,7 @@ SUPPORTING_API_KEYWORDS = [
     "/menu/", "/theme", "/favorite", "/dynamic-dictionary",
     "/notice/", "/access-log", "/system-theme",
     "/current-user", "/authority/",
+    "/dictionary", "/role/", "/permission/",
 ]
 
 # ============================================================

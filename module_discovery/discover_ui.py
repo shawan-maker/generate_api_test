@@ -1660,30 +1660,40 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
                 validated[action] = result
 
         elif action == "update":
-            result = await _error_driven_retry(
-                page, _do_edit, {
-                    "btn": btn, "marker": created_marker,
-                    "form_filler": form_filler, "framework": framework,
-                }
-            )
-            if result and result.get("success"):
-                validated[action] = result
-            elif result:
-                validated[action] = result
+            if not created_marker:
+                LOG.warning(f"  update 跳过: create 失败且无可用 marker")
+                validated[action] = {"success": False, "error_type": "skipped",
+                                    "error_text": "create 失败且无可用 marker"}
+            else:
+                result = await _error_driven_retry(
+                    page, _do_edit, {
+                        "btn": btn, "marker": created_marker,
+                        "form_filler": form_filler, "framework": framework,
+                    }
+                )
+                if result and result.get("success"):
+                    validated[action] = result
+                elif result:
+                    validated[action] = result
 
         elif action == "delete":
-            result = await _error_driven_retry(
-                page, _do_delete, {
-                    "btn": btn, "marker": created_marker,
-                }
-            )
-            if result and result.get("success"):
-                validated[action] = result
-                created_marker = None  # 已删除
-            elif result:
-                validated[action] = result
-            elif result:
-                validated[action] = result
+            if not created_marker:
+                LOG.warning(f"  delete 跳过: create 失败且无可用 marker")
+                validated[action] = {"success": False, "error_type": "skipped",
+                                    "error_text": "create 失败且无可用 marker"}
+            else:
+                result = await _error_driven_retry(
+                    page, _do_delete, {
+                        "btn": btn, "marker": created_marker,
+                    }
+                )
+                if result and result.get("success"):
+                    validated[action] = result
+                    created_marker = None  # 已删除
+                elif result:
+                    validated[action] = result
+                elif result:
+                    validated[action] = result
 
         elif action in ("lock", "unlock", "reset", "authorize", "migrate",
                         "export", "import", "batch", "approve", "execute"):
@@ -1879,6 +1889,11 @@ async def _do_create(page, context: dict) -> dict:
     # 6. 处理多步组件
     ms_filled, ms_details = await form_filler.fill_multi_step_fields(fields, framework)
 
+    # 跟踪因无选项被跳过的字段
+    skipped_no_options = [d["label"] for d in ms_details if d.get("skipped_reason") == "no_options"]
+    if skipped_no_options:
+        LOG.info(f"    以下字段因无选项被跳过: {skipped_no_options}")
+
     # 更新 multi_step_field_details 中的实际执行结果
     for detail in ms_details:
         label = detail["label"]
@@ -1908,6 +1923,14 @@ async def _do_create(page, context: dict) -> dict:
     errors = await read_form_errors(page)
     if errors:
         field_errors = [e for e in errors if e.get("severity") == "field"]
+
+        # 过滤掉因无选项被跳过的字段的验证错误
+        if skipped_no_options:
+            field_errors = [e for e in field_errors
+                          if e.get("field_label") not in skipped_no_options]
+            if not field_errors:
+                LOG.info(f"    所有字段验证错误均来自无选项字段，已忽略")
+
         if field_errors:
             first_err = field_errors[0]
             return {"success": False, "error_type": "form_validation",
@@ -2036,9 +2059,16 @@ async def _do_query(page, context: dict) -> dict:
         "() => !!document.querySelector('.el-table__body-wrapper tbody tr')"
     )
 
-    result = {"success": True, "selectors": {"trigger": btn_text}}
-    if has_table:
-        result["has_data"] = True
+    trigger_text_normalized = " ".join(btn_text.split())
+    trigger_tag = btn_click_result.get("tag", "button")
+    trigger_locator = f"{trigger_tag}:has-text('{trigger_text_normalized}')"
+
+    result = {
+        "success": True,
+        "selectors": {"trigger": btn_text},
+        "trigger_locator_verified": trigger_locator,
+        "has_table": has_table,
+    }
     return result
 
 
@@ -2095,9 +2125,12 @@ async def _extract_fallback_marker(page) -> str | None:
 
     当 create 失败时，行操作可以用已存在的数据行。
     """
+    # 操作列相关文本，不应作为 marker
+    _skip_texts = {"操作", "编辑", "删除", "修改", "查看", "详情", "更多",
+                   "冻结", "解冻", "启用", "禁用", "锁定", "解锁", "重置密码",
+                   "批量删除", "导入", "导出", "授权", "迁移"}
     try:
-        marker = await page.evaluate("""() => {
-            // 从表格第一行提取名称类文本（通常是第一列或第二列）
+        marker = await page.evaluate("""(skipTexts) => {
             const table = document.querySelector('.el-table__body, table tbody');
             if (!table) return null;
             const rows = table.querySelectorAll('tr');
@@ -2105,17 +2138,20 @@ async def _extract_fallback_marker(page) -> str | None:
             const cells = rows[0].querySelectorAll('td .cell, td');
             for (const cell of cells) {
                 const text = (cell.textContent || '').trim();
-                // 跳过 checkbox 列、序号列、操作列
-                if (!text || text.length > 30 || text.length < 1) continue;
+                if (!text || text.length > 30 || text.length < 2) continue;
                 if (/^\\d+$/.test(text)) continue;
                 if (cell.querySelector('.el-checkbox, .el-radio')) continue;
-                if (cell.querySelector('button, .el-button')) continue;
+                if (cell.querySelector('button, .el-button, .el-dropdown')) continue;
+                if (skipTexts.includes(text)) continue;
                 return text;
             }
             return null;
-        }""")
+        }""", list(_skip_texts))
+        if marker:
+            LOG.debug(f"    Fallback marker: '{marker}'")
         return marker
-    except Exception:
+    except Exception as e:
+        LOG.debug(f"    Fallback marker 提取失败: {e}")
         return None
 
 
@@ -2441,8 +2477,13 @@ async def _do_generic_operation(page, context: dict) -> dict:
                     "error_text": f"未找到数据行: {marker}"}
         clicked = await driver.click_row_button_v2(row, btn_text)
         row_selector = btn_text
-    elif btn_location == "dropdown" and marker:
+    elif btn_location == "dropdown":
         # 两步点击：先找到行 → 展开"更多" → 点击子项
+        if not marker:
+            LOG.warning(f"  {action} 跳过: dropdown 操作需要 marker")
+            return {"success": False, "error_type": "skipped",
+                    "error_text": "dropdown 操作需要 marker"}
+
         from .button_driver import ButtonDriver
         driver = ButtonDriver(page)
         row = await driver.find_data_row(marker)
@@ -3208,6 +3249,8 @@ def build_playbook(ui_result: dict) -> dict:
             op_steps.extend(_build_delete_steps(op_data))
         elif action in ("update", "edit"):
             op_steps.extend(_build_update_steps(op_data))
+        elif action == "query":
+            op_steps.extend(_build_query_steps(op_data))
         else:
             # 通用操作（含导入、授权等失败操作）
             op_steps.extend(_build_generic_steps(op_data))
@@ -3457,10 +3500,12 @@ def _build_update_steps(op_data: dict) -> list:
     if is_row_action:
         # 行级操作：先定位行，再在行内点击按钮
         button_text = op_data.get("button_text") or trigger
+        trigger_locator = op_data.get("trigger_locator_verified")
         if button_text:
             steps.append({
                 "action": "click_row_button",
                 "button_text": button_text,
+                "playwright_locator": trigger_locator,
                 "description": f"点击行内{trigger}按钮"
             })
     else:
@@ -3571,6 +3616,30 @@ def _build_update_steps(op_data: dict) -> list:
         "action": "assert_success",
         "playwright_locator": success_locator,
         "description": "验证更新成功"
+    })
+
+    return steps
+
+
+def _build_query_steps(op_data: dict) -> list:
+    """构建 query 操作步骤"""
+    steps = []
+
+    trigger_locator = op_data.get("trigger_locator_verified")
+    if not trigger_locator:
+        trigger_text = op_data.get("selectors", {}).get("trigger", "")
+        trigger_locator = f"button:has-text('{trigger_text}')"
+
+    steps.append({
+        "action": "click_button",
+        "playwright_locator": trigger_locator,
+        "description": "点击查询按钮"
+    })
+
+    # 等待表格刷新（不检查成功消息）
+    steps.append({
+        "action": "wait_for_table_ready",
+        "description": "等待表格数据刷新"
     })
 
     return steps

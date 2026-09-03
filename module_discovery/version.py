@@ -36,15 +36,6 @@ def write_version_file(project_dir, version: str):
     (project_dir / ".api_version").write_text(version + "\n", encoding="utf-8")
 
 
-def flows_dir_for(project_dir, version: Optional[str] = None) -> Path:
-    """返回指定版本的 flows 目录（自动创建）。已废弃，请使用 scripts_dir_for。"""
-    project_dir = Path(project_dir)
-    version = version or resolve_version(project_dir)
-    d = project_dir / "flows" / version
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
 def scripts_dir_for(project_dir, version: Optional[str] = None) -> Path:
     """返回指定版本的 scripts 目录（自动创建）。"""
     project_dir = Path(project_dir)

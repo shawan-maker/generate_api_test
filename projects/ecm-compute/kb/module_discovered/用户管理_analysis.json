@@ -1,12 +1,11 @@
 {
   "crud_order": [
     "create",
+    "reset",
+    "execute",
     "query",
     "update",
-    "lock",
     "unlock",
-    "reset",
-    "authorize",
     "delete"
   ],
   "core_apis": {
@@ -15,56 +14,15 @@
         "method": "POST",
         "pathname": "/estack/api/estack/draco/v1/policies/list",
         "contexts": [
-          "click:创建用户",
-          "dropdown:更多:授权"
+          "replay:create"
         ],
         "bodies": [
-          "{\"policyType\":\"SYSTEM\",\"policyCategory\":\"ORGANIZATION\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\"}",
-          "{\"policyType\":\"CUSTOM\",\"policyCategory\":\"ORGANIZATION\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\"}",
-          "{\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\",\"policyCategory\":\"ORGANIZATION\"}"
+          "{\"policyType\":\"SYSTEM\",\"policyCategory\":\"ORGANIZATION\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\"}",
+          "{\"policyType\":\"CUSTOM\",\"policyCategory\":\"ORGANIZATION\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\"}"
         ],
-        "request_body_sample": "{\"policyType\":\"SYSTEM\",\"policyCategory\":\"ORGANIZATION\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\"}"
-      },
-      {
-        "method": "POST",
-        "pathname": "/estack/api/estack/draco/v1/projects/list",
-        "contexts": [
-          "dropdown:更多:授权"
-        ],
-        "bodies": [
-          "{\"isDisplayChildren\":true,\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\"}"
-        ],
-        "request_body_sample": "{\"isDisplayChildren\":true,\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\"}"
-      },
-      {
-        "method": "POST",
-        "pathname": "/estack/api/estack/draco/v1/projects/list-by-user/userList",
-        "contexts": [
-          "dropdown:更多:授权"
-        ],
-        "bodies": [
-          "[\"3903efebcb9c4bf2b845508d4d6c6dda\"]"
-        ],
-        "request_body_sample": "[\"3903efebcb9c4bf2b845508d4d6c6dda\"]"
-      },
-      {
-        "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/password-policy",
-        "contexts": [
-          "click:创建用户",
-          "dropdown:更多:重置密码"
-        ],
-        "bodies": [],
-        "request_body_sample": null
-      },
-      {
-        "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/groups",
-        "contexts": [
-          "dropdown:更多:授权"
-        ],
-        "bodies": [],
-        "request_body_sample": null
+        "request_body_sample": "{\"policyType\":\"SYSTEM\",\"policyCategory\":\"ORGANIZATION\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\"}",
+        "query_params": {},
+        "query_params_samples": []
       }
     ],
     "create": [
@@ -72,247 +30,409 @@
         "method": "POST",
         "pathname": "/estack/api/estack/draco/v1/users",
         "contexts": [
-          "click:创建用户"
+          "replay:create"
         ],
         "bodies": [
-          "{\"userName\":\"autotest87553337\",\"password\":\"C2gehJJbJ756TuXQ9H0tcyvCnHAhaa/o8IpNFbnyMQAxNbDXQz9gZfZGKcPpWrXnGxpJ4lmAIrvEpDGIvDwztfkb+EaxlkBMrt+4B7oUV3wdP8/NcpFc32VuzXLGbgrHRUWMB9mQyJO/KreZLuM26Ex8fO3JNxN4rym+LpbYzlI=\",\"name\":\"自动化测试\",\"email\":\"DOZiy10PpTPdDZ6ECUSkT6QTjxHz1z8Rf9mfGfte6lETHk9+n/vKhR0a0CvZhGEafC4d4SrKHRZNdrAnUgmNz9JvWG26xnNZWcHlVyGaUrArRE3+rXSH5fz3HcmVUdDZJOp062yP19o9RioFt6VVAGbqlxp8iBYU5YZU0+jt0kg=\",\"phone\":\"cabhe/F1lWf9eJfZXJ6VG29ySlQiX1tEiWibJyLfcRDyOOG39ueCMAozoaNMrhvDv80nhiH+Y6fAYHpRnZSS7LCwNhaxoMeYEt04TU6xrpSPiUWjI/QR1G1Ojyxp6SCAErFqfSYDUfqZRqSmUeFkmUvwIVrvRc/7jg2Owg4L53Q=\",\"description\":\"自动创建测试用户\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\",\"countryCode\":\"+86\"}"
+          "{\"userName\":\"autotest417387\",\"password\":\"cEskk3LJ4WEVoTVYb7p31s9fEhvHxE2xfJDgaCI8Lwcm6Sm+EXyVwFq4CsGS+KBPsIBJYBdWl87x0ZfwTgwARz7KZqhhRimWfbOMTIwJdvcAwSBX8MfaM/nmwXnlAJfCOaHoViDs4O/Cz5zhXVBAhyjUynCtNreq3BuCLIOVFCg=\",\"name\":\"test_417387\",\"email\":\"bL5qXNYbieDntjIX4DHCURVf7DdpMRkbrGTKTr6OXq2tP6UbZWVICTftyEsFkL93YZ1fHIaECBG11z5jjcbI8BlYgd9MzAgNin56v6Ta+ZsIUXZWxpVqvVVIEyqw+U+dLoTVI21r5AVcfFDVeQuO9GBOXlhUNDfz4lScJsqBhbQ=\",\"phone\":\"bO25ofhDb2gtVRRFro6/7OeSp3udnsRzfFNoh0zDmbQKpnJ34nm1LeZsl1drPLsnMXVfind0n9GmV4C8j1bMTQ0eJBT5XkRxvEZzFtnlLWzULZ8etgQye5wjexM3oi4PVE4HapvNbyRjg/m2FWiatsxUa4w0bIpdXzROtpxjVXc=\",\"description\":\"auto_desc_417387\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\"}"
         ],
-        "request_body_sample": "{\"userName\":\"autotest87553337\",\"password\":\"C2gehJJbJ756TuXQ9H0tcyvCnHAhaa/o8IpNFbnyMQAxNbDXQz9gZfZGKcPpWrXnGxpJ4lmAIrvEpDGIvDwztfkb+EaxlkBMrt+4B7oUV3wdP8/NcpFc32VuzXLGbgrHRUWMB9mQyJO/KreZLuM26Ex8fO3JNxN4rym+LpbYzlI=\",\"name\":\"自动化测试\",\"email\":\"DOZiy10PpTPdDZ6ECUSkT6QTjxHz1z8Rf9mfGfte6lETHk9+n/vKhR0a0CvZhGEafC4d4SrKHRZNdrAnUgmNz9JvWG26xnNZWcHlVyGaUrArRE3+rXSH5fz3HcmVUdDZJOp062yP19o9RioFt6VVAGbqlxp8iBYU5YZU0+jt0kg=\",\"phone\":\"cabhe/F1lWf9eJfZXJ6VG29ySlQiX1tEiWibJyLfcRDyOOG39ueCMAozoaNMrhvDv80nhiH+Y6fAYHpRnZSS7LCwNhaxoMeYEt04TU6xrpSPiUWjI/QR1G1Ojyxp6SCAErFqfSYDUfqZRqSmUeFkmUvwIVrvRc/7jg2Owg4L53Q=\",\"description\":\"自动创建测试用户\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\",\"countryCode\":\"+86\"}"
+        "request_body_sample": "{\"userName\":\"autotest417387\",\"password\":\"cEskk3LJ4WEVoTVYb7p31s9fEhvHxE2xfJDgaCI8Lwcm6Sm+EXyVwFq4CsGS+KBPsIBJYBdWl87x0ZfwTgwARz7KZqhhRimWfbOMTIwJdvcAwSBX8MfaM/nmwXnlAJfCOaHoViDs4O/Cz5zhXVBAhyjUynCtNreq3BuCLIOVFCg=\",\"name\":\"test_417387\",\"email\":\"bL5qXNYbieDntjIX4DHCURVf7DdpMRkbrGTKTr6OXq2tP6UbZWVICTftyEsFkL93YZ1fHIaECBG11z5jjcbI8BlYgd9MzAgNin56v6Ta+ZsIUXZWxpVqvVVIEyqw+U+dLoTVI21r5AVcfFDVeQuO9GBOXlhUNDfz4lScJsqBhbQ=\",\"phone\":\"bO25ofhDb2gtVRRFro6/7OeSp3udnsRzfFNoh0zDmbQKpnJ34nm1LeZsl1drPLsnMXVfind0n9GmV4C8j1bMTQ0eJBT5XkRxvEZzFtnlLWzULZ8etgQye5wjexM3oi4PVE4HapvNbyRjg/m2FWiatsxUa4w0bIpdXzROtpxjVXc=\",\"description\":\"auto_desc_417387\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\"}",
+        "query_params": {},
+        "query_params_samples": []
+      },
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/password-reset/generate",
+        "contexts": [
+          "replay:reset"
+        ],
+        "bodies": [
+          "{\"userId\":\"0f8e1b534a8f4d31a8839c157b993aca\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}"
+        ],
+        "request_body_sample": "{\"userId\":\"0f8e1b534a8f4d31a8839c157b993aca\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}",
+        "query_params": {},
+        "query_params_samples": []
       }
     ],
     "update": [
       {
         "method": "PUT",
-        "pathname": "/estack/api/estack/draco/v1/users/e7fc8fdd2e4e4b2a9acde911bb0d15e4",
+        "pathname": "/estack/api/estack/draco/v1/users/0f8e1b534a8f4d31a8839c157b993aca",
         "contexts": [
-          "row:编辑"
+          "replay:update"
         ],
         "bodies": [
-          "{\"userId\":\"e7fc8fdd2e4e4b2a9acde911bb0d15e4\",\"name\":\"自动化测试\",\"description\":\"自动创建测试用户\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\",\"countryCode\":\"+86\",\"isEditOther\":true,\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+          "{\"userId\":\"0f8e1b534a8f4d31a8839c157b993aca\",\"name\":\"test_417409\",\"description\":\"auto_desc_417409\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\",\"phone\":\"JYiGkawxmqRrnnW0xNnT9tnoNjRuKnKFW8qAvmocNdZ6hHx/F6KE3pnaMtR/veXLHuEsJPMx2Po9Axcxci6iG8t8DO006YVHNlVf37xkKZrbtzEm/uzRJgn+rmF4jExkuVhVDCcXIS21k9n5DcGi71INz5BsoWgTpG6umRZK4/g=\",\"email\":\"dkCU75JkQGoLusxN8HF2TSAKed/jps+Xn7vZuMNWLNKR8cuX8BIGMunFcBpxMvWec/NWJFXYCiZ//0DKoAhlLBlXYgiBAQd6RpG5gwCIg6CUJl3sO5SExmc0nCWrugwODL/TCGzv3BR2shS3VjTktJDp7kMhw/Zg92byef+toqQ=\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
         ],
-        "request_body_sample": "{\"userId\":\"e7fc8fdd2e4e4b2a9acde911bb0d15e4\",\"name\":\"自动化测试\",\"description\":\"自动创建测试用户\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\",\"countryCode\":\"+86\",\"isEditOther\":true,\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
-      }
-    ],
-    "lock": [
-      {
-        "method": "PUT",
-        "pathname": "/estack/api/estack/draco/v1/users/3903efebcb9c4bf2b845508d4d6c6dda/suspend",
-        "contexts": [
-          "dropdown:更多:冻结"
-        ],
-        "bodies": [
-          "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
-        ],
-        "request_body_sample": "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+        "request_body_sample": "{\"userId\":\"0f8e1b534a8f4d31a8839c157b993aca\",\"name\":\"test_417409\",\"description\":\"auto_desc_417409\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\",\"phone\":\"JYiGkawxmqRrnnW0xNnT9tnoNjRuKnKFW8qAvmocNdZ6hHx/F6KE3pnaMtR/veXLHuEsJPMx2Po9Axcxci6iG8t8DO006YVHNlVf37xkKZrbtzEm/uzRJgn+rmF4jExkuVhVDCcXIS21k9n5DcGi71INz5BsoWgTpG6umRZK4/g=\",\"email\":\"dkCU75JkQGoLusxN8HF2TSAKed/jps+Xn7vZuMNWLNKR8cuX8BIGMunFcBpxMvWec/NWJFXYCiZ//0DKoAhlLBlXYgiBAQd6RpG5gwCIg6CUJl3sO5SExmc0nCWrugwODL/TCGzv3BR2shS3VjTktJDp7kMhw/Zg92byef+toqQ=\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
+        "query_params": {},
+        "query_params_samples": []
       },
       {
-        "method": "POST",
-        "pathname": "/estack/api/estack/draco/v1/users/lock/3903efebcb9c4bf2b845508d4d6c6dda",
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/users/0f8e1b534a8f4d31a8839c157b993aca/suspend",
         "contexts": [
-          "dropdown:更多:锁定"
+          "replay:lock"
         ],
         "bodies": [
-          "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+          "{\"userId\":\"0f8e1b534a8f4d31a8839c157b993aca\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
         ],
-        "request_body_sample": "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+        "request_body_sample": "{\"userId\":\"0f8e1b534a8f4d31a8839c157b993aca\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
+        "query_params": {},
+        "query_params_samples": []
       }
     ],
     "unlock": [
       {
         "method": "PUT",
-        "pathname": "/estack/api/estack/draco/v1/users/3903efebcb9c4bf2b845508d4d6c6dda/enable",
+        "pathname": "/estack/api/estack/draco/v1/users/0f8e1b534a8f4d31a8839c157b993aca/enable",
         "contexts": [
-          "dropdown:更多:启用"
+          "replay:unlock"
         ],
         "bodies": [
           "{\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
         ],
-        "request_body_sample": "{\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
-      },
-      {
-        "method": "DELETE",
-        "pathname": "/estack/api/estack/draco/v1/users/unlock/3903efebcb9c4bf2b845508d4d6c6dda",
-        "contexts": [
-          "dropdown:更多:解锁"
-        ],
-        "bodies": [
-          "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
-        ],
-        "request_body_sample": "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+        "request_body_sample": "{\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
+        "query_params": {},
+        "query_params_samples": []
       }
     ],
     "reset": [
       {
         "method": "POST",
-        "pathname": "/estack/api/estack/draco/v1/password-reset/generate",
+        "pathname": "/estack/api/estack/draco/v1/password-reset/reset",
         "contexts": [
-          "dropdown:更多:重置密码"
+          "replay:reset"
         ],
         "bodies": [
-          "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}"
+          "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"TJDzBB0yux2AHhinEcJ+YNeoi6+c8kc6IlZaJbsfsT8Plc2bC6LTXjQzKBiLStJ/OJOsRns7H+KGyNuUfcx3wlMXNEewj1spoQZOQNcuIGiWW7OIVpnDX1s3FzdlOZtOzvI9X3LWCUEtVmmfWBHxZ9mSpxwVUUiOr/aaHoM0OAY=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"0f8e1b534a8f4d31a8839c157b993aca\",\"noticeType\":[]}"
         ],
-        "request_body_sample": "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}"
-      }
-    ],
-    "authorize": [
-      {
-        "method": "POST",
-        "pathname": "/estack/api/estack/draco/v1/identity",
-        "contexts": [
-          "dropdown:更多:授权"
-        ],
-        "bodies": [
-          "{\"action\":\"POLICY:BatchAttachUser\"}"
-        ],
-        "request_body_sample": "{\"action\":\"POLICY:BatchAttachUser\"}"
+        "request_body_sample": "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"TJDzBB0yux2AHhinEcJ+YNeoi6+c8kc6IlZaJbsfsT8Plc2bC6LTXjQzKBiLStJ/OJOsRns7H+KGyNuUfcx3wlMXNEewj1spoQZOQNcuIGiWW7OIVpnDX1s3FzdlOZtOzvI9X3LWCUEtVmmfWBHxZ9mSpxwVUUiOr/aaHoM0OAY=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"0f8e1b534a8f4d31a8839c157b993aca\",\"noticeType\":[]}",
+        "query_params": {},
+        "query_params_samples": []
       }
     ],
     "delete": [
       {
         "method": "DELETE",
-        "pathname": "/estack/api/estack/draco/v1/users/e7fc8fdd2e4e4b2a9acde911bb0d15e4",
+        "pathname": "/estack/api/estack/draco/v1/users/batch/delete",
         "contexts": [
-          "row:删除"
+          "replay:delete"
         ],
         "bodies": [
-          "{\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+          "[\"0f8e1b534a8f4d31a8839c157b993aca\"]"
         ],
-        "request_body_sample": "{\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+        "request_body_sample": "[\"0f8e1b534a8f4d31a8839c157b993aca\"]",
+        "query_params": {},
+        "query_params_samples": []
+      }
+    ],
+    "execute": [
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/display-by-role",
+        "contexts": [
+          "init",
+          "replay:create"
+        ],
+        "bodies": [],
+        "request_body_sample": null,
+        "query_params": {},
+        "query_params_samples": []
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/password-policy",
+        "contexts": [
+          "replay:create",
+          "replay:reset"
+        ],
+        "bodies": [],
+        "request_body_sample": null,
+        "query_params": {},
+        "query_params_samples": []
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/password-policy",
+        "contexts": [
+          "replay:create",
+          "replay:reset"
+        ],
+        "bodies": [],
+        "request_body_sample": null,
+        "query_params": {},
+        "query_params_samples": []
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/users/phone/usability",
+        "contexts": [
+          "replay:create"
+        ],
+        "bodies": [],
+        "request_body_sample": null,
+        "query_params": {},
+        "query_params_samples": [
+          {
+            "phone": "IQLTVv33X92LQglDilchrVY5/jWRKbeOIRcYvtDqsK9OSe7M9lvP2npQhC/0rQKY3CSL+7py1jMF/t9Sva3GUc6pw6xbaz5XfKgUCQ9jH2R+WBiBFJ8LwaidHJ0Fm/jdjzg0fYtKduGhGYRg1lDjP61tnsVcKNtAM7+vf3aOHTo=",
+            "noloading": "true",
+            "countryCode": "86"
+          },
+          {
+            "phone": "hZx6dbFdcbuPU64ngrgD/i0ep0pgIaQRN3gJSBKZ7u1ug4n7SN/HLo9inNpBNW3wsg9dHPs9JWfapR9A/8DC5W/4NdBZI0Ed1uMkkvimkY9RhiNsdl2v5D0mxfDNNjd1ld8x40pclwrwxQKPiQSKe5Y6Jteq0r9Hvs2G3hRhBic=",
+            "noloading": "true",
+            "countryCode": "86"
+          }
+        ]
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/users/email/usability",
+        "contexts": [
+          "replay:create"
+        ],
+        "bodies": [],
+        "request_body_sample": null,
+        "query_params": {},
+        "query_params_samples": [
+          {
+            "email": "ei3DytjvQzHmzm/TLbJFmq/mlAKWbi77wcS+il8k8bhKse/IMxJoQMnUV9JmcHTibWg6Q8uZA4jroCVgRJqX/Ht1g3Js3KQ6a/LvIj/yt8A69AgS3KAjKADAebVd5JensSBZZboLrTu4HwRPJk8ngFyk7Yeu9mm/7E5alpW+GsM=",
+            "noloading": "true"
+          },
+          {
+            "email": "DoUMICpa5EHkjU0/w7Ymdifm2Oi4fQHxHQpNYUklhiMkpdRlsGbugW7739sn1hZMGHkNX4l9AhGrMV31Kv11HiENHDTNzaMwnkoOtJsLB7RYPuisURAIYr+nzgtH5mwqXriz9TTPSLdmX7Xaa9P3a5yT9vDP8WransshQ17puiM=",
+            "noloading": "true"
+          }
+        ]
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/users/0f8e1b534a8f4d31a8839c157b993aca/email/usability",
+        "contexts": [
+          "replay:update"
+        ],
+        "bodies": [],
+        "request_body_sample": null,
+        "query_params": {},
+        "query_params_samples": [
+          {
+            "email": "TD3Kx5xgPzH8AOfARhAHM/ycJWrSM/ZuM9z80DiKlJ43Uzee/VVCszR389ylBqEwC6PuzL8KHE8HPHcDS8QRsSqQ+UBRwu16v3uDd8sKgrlaHCl2kgMpJi1pksOaBXWxgZbFOQnpztUVF7VthsbVpAb+cBvr4EyumrGPvGic4ns=",
+            "userId": "0f8e1b534a8f4d31a8839c157b993aca",
+            "noloading": "true"
+          },
+          {
+            "email": "UxWZSPYwhSH2VJXgYHxx6UfkIxIsZrL4ng8VMXcAPdqp+lR7rchhhfDkGSu+S8XIxw4HEhEaTfPfF/jicanjG9ScWWOQsY4Ix9MIrf0ecP3TS8XESei7us1Q9nD8FwZX0Y7yKnOn5qNR/GkPv1MxD8vbIUXa41Y2jCTwXa7aH/Q=",
+            "userId": "0f8e1b534a8f4d31a8839c157b993aca",
+            "noloading": "true"
+          }
+        ]
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/users/0f8e1b534a8f4d31a8839c157b993aca/phone/usability",
+        "contexts": [
+          "replay:update"
+        ],
+        "bodies": [],
+        "request_body_sample": null,
+        "query_params": {},
+        "query_params_samples": [
+          {
+            "phone": "TVIdLAt2EPzEQKWiYQT2bxeq3CxJV7TH3vKpri1kGb8wO8QqklkwwJJQ32JurbbUmxxT1UgvsRTuKxMk+ID1W94aF2gNWrBD42KqhutFfKPYzFQmoG8RpUkrI8GeM0M+qLtyXiiNKZhHuWxcggDMyeYr3IAF4HpILSoP4y+c6NY=",
+            "noloading": "true",
+            "countryCode": "86",
+            "userId": "0f8e1b534a8f4d31a8839c157b993aca"
+          },
+          {
+            "phone": "F4QpiTCUO7V/MVoSZb/A+9YOi9V6iRGjhXFKQiPvrlrlkFVXHoFWtofTC7dYlyuzk4IOass/fN3AswHkJfqHr3aUNGify927OYRjBlE9tLAdxi0csAvJ/yN3DEqzNdQ6E+n3r/PXhvJpnKnZsHPBkdhUnCJj+K32XorT85zbh7E=",
+            "noloading": "true",
+            "countryCode": "86",
+            "userId": "0f8e1b534a8f4d31a8839c157b993aca"
+          }
+        ]
       }
     ]
   },
   "api_by_button": {
-    "创建用户": [
+    "create": [
       {
         "category": "query",
         "method": "POST",
         "pathname": "/estack/api/estack/draco/v1/policies/list",
-        "body_sample": "{\"policyType\":\"SYSTEM\",\"policyCategory\":\"ORGANIZATION\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\"}"
-      },
-      {
-        "category": "query",
-        "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/password-policy",
-        "body_sample": null
+        "body_sample": "{\"policyType\":\"SYSTEM\",\"policyCategory\":\"ORGANIZATION\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\"}",
+        "query_params": {}
       },
       {
         "category": "create",
         "method": "POST",
         "pathname": "/estack/api/estack/draco/v1/users",
-        "body_sample": "{\"userName\":\"autotest87553337\",\"password\":\"C2gehJJbJ756TuXQ9H0tcyvCnHAhaa/o8IpNFbnyMQAxNbDXQz9gZfZGKcPpWrXnGxpJ4lmAIrvEpDGIvDwztfkb+EaxlkBMrt+4B7oUV3wdP8/NcpFc32VuzXLGbgrHRUWMB9mQyJO/KreZLuM26Ex8fO3JNxN4rym+LpbYzlI=\",\"name\":\"自动化测试\",\"email\":\"DOZiy10PpTPdDZ6ECUSkT6QTjxHz1z8Rf9mfGfte6lETHk9+n/vKhR0a0CvZhGEafC4d4SrKHRZNdrAnUgmNz9JvWG26xnNZWcHlVyGaUrArRE3+rXSH5fz3HcmVUdDZJOp062yP19o9RioFt6VVAGbqlxp8iBYU5YZU0+jt0kg=\",\"phone\":\"cabhe/F1lWf9eJfZXJ6VG29ySlQiX1tEiWibJyLfcRDyOOG39ueCMAozoaNMrhvDv80nhiH+Y6fAYHpRnZSS7LCwNhaxoMeYEt04TU6xrpSPiUWjI/QR1G1Ojyxp6SCAErFqfSYDUfqZRqSmUeFkmUvwIVrvRc/7jg2Owg4L53Q=\",\"description\":\"自动创建测试用户\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\",\"countryCode\":\"+86\"}"
-      }
-    ],
-    "更多": [
-      {
-        "category": "query",
-        "method": "POST",
-        "pathname": "/estack/api/estack/draco/v1/policies/list",
-        "body_sample": "{\"policyType\":\"SYSTEM\",\"policyCategory\":\"ORGANIZATION\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\"}"
+        "body_sample": "{\"userName\":\"autotest417387\",\"password\":\"cEskk3LJ4WEVoTVYb7p31s9fEhvHxE2xfJDgaCI8Lwcm6Sm+EXyVwFq4CsGS+KBPsIBJYBdWl87x0ZfwTgwARz7KZqhhRimWfbOMTIwJdvcAwSBX8MfaM/nmwXnlAJfCOaHoViDs4O/Cz5zhXVBAhyjUynCtNreq3BuCLIOVFCg=\",\"name\":\"test_417387\",\"email\":\"bL5qXNYbieDntjIX4DHCURVf7DdpMRkbrGTKTr6OXq2tP6UbZWVICTftyEsFkL93YZ1fHIaECBG11z5jjcbI8BlYgd9MzAgNin56v6Ta+ZsIUXZWxpVqvVVIEyqw+U+dLoTVI21r5AVcfFDVeQuO9GBOXlhUNDfz4lScJsqBhbQ=\",\"phone\":\"bO25ofhDb2gtVRRFro6/7OeSp3udnsRzfFNoh0zDmbQKpnJ34nm1LeZsl1drPLsnMXVfind0n9GmV4C8j1bMTQ0eJBT5XkRxvEZzFtnlLWzULZ8etgQye5wjexM3oi4PVE4HapvNbyRjg/m2FWiatsxUa4w0bIpdXzROtpxjVXc=\",\"description\":\"auto_desc_417387\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\"}",
+        "query_params": {}
       },
       {
-        "category": "query",
-        "method": "POST",
-        "pathname": "/estack/api/estack/draco/v1/projects/list",
-        "body_sample": "{\"isDisplayChildren\":true,\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\"}"
+        "category": "execute",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/display-by-role",
+        "body_sample": null,
+        "query_params": {}
       },
       {
-        "category": "query",
-        "method": "POST",
-        "pathname": "/estack/api/estack/draco/v1/projects/list-by-user/userList",
-        "body_sample": "[\"3903efebcb9c4bf2b845508d4d6c6dda\"]"
-      },
-      {
-        "category": "query",
+        "category": "execute",
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/password-policy",
-        "body_sample": null
+        "body_sample": null,
+        "query_params": {}
       },
       {
-        "category": "query",
+        "category": "execute",
         "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/groups",
-        "body_sample": null
+        "pathname": "/estack/api/estack/draco/v1/password-policy",
+        "body_sample": null,
+        "query_params": {}
       },
       {
-        "category": "lock",
-        "method": "PUT",
-        "pathname": "/estack/api/estack/draco/v1/users/3903efebcb9c4bf2b845508d4d6c6dda/suspend",
-        "body_sample": "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+        "category": "execute",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/users/phone/usability",
+        "body_sample": null,
+        "query_params": {}
       },
       {
-        "category": "lock",
+        "category": "execute",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/users/email/usability",
+        "body_sample": null,
+        "query_params": {}
+      }
+    ],
+    "reset": [
+      {
+        "category": "create",
         "method": "POST",
-        "pathname": "/estack/api/estack/draco/v1/users/lock/3903efebcb9c4bf2b845508d4d6c6dda",
-        "body_sample": "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
-      },
-      {
-        "category": "unlock",
-        "method": "PUT",
-        "pathname": "/estack/api/estack/draco/v1/users/3903efebcb9c4bf2b845508d4d6c6dda/enable",
-        "body_sample": "{\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
-      },
-      {
-        "category": "unlock",
-        "method": "DELETE",
-        "pathname": "/estack/api/estack/draco/v1/users/unlock/3903efebcb9c4bf2b845508d4d6c6dda",
-        "body_sample": "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+        "pathname": "/estack/api/estack/draco/v1/password-reset/generate",
+        "body_sample": "{\"userId\":\"0f8e1b534a8f4d31a8839c157b993aca\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}",
+        "query_params": {}
       },
       {
         "category": "reset",
         "method": "POST",
-        "pathname": "/estack/api/estack/draco/v1/password-reset/generate",
-        "body_sample": "{\"userId\":\"3903efebcb9c4bf2b845508d4d6c6dda\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}"
+        "pathname": "/estack/api/estack/draco/v1/password-reset/reset",
+        "body_sample": "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"TJDzBB0yux2AHhinEcJ+YNeoi6+c8kc6IlZaJbsfsT8Plc2bC6LTXjQzKBiLStJ/OJOsRns7H+KGyNuUfcx3wlMXNEewj1spoQZOQNcuIGiWW7OIVpnDX1s3FzdlOZtOzvI9X3LWCUEtVmmfWBHxZ9mSpxwVUUiOr/aaHoM0OAY=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"0f8e1b534a8f4d31a8839c157b993aca\",\"noticeType\":[]}",
+        "query_params": {}
       },
       {
-        "category": "authorize",
-        "method": "POST",
-        "pathname": "/estack/api/estack/draco/v1/identity",
-        "body_sample": "{\"action\":\"POLICY:BatchAttachUser\"}"
+        "category": "execute",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/password-policy",
+        "body_sample": null,
+        "query_params": {}
+      },
+      {
+        "category": "execute",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/password-policy",
+        "body_sample": null,
+        "query_params": {}
       }
     ],
-    "编辑": [
+    "update": [
       {
         "category": "update",
         "method": "PUT",
-        "pathname": "/estack/api/estack/draco/v1/users/e7fc8fdd2e4e4b2a9acde911bb0d15e4",
-        "body_sample": "{\"userId\":\"e7fc8fdd2e4e4b2a9acde911bb0d15e4\",\"name\":\"自动化测试\",\"description\":\"自动创建测试用户\",\"tenantId\":\"18ae53b0745143e0b6ca9ee1f9513c64\",\"countryCode\":\"+86\",\"isEditOther\":true,\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+        "pathname": "/estack/api/estack/draco/v1/users/0f8e1b534a8f4d31a8839c157b993aca",
+        "body_sample": "{\"userId\":\"0f8e1b534a8f4d31a8839c157b993aca\",\"name\":\"test_417409\",\"description\":\"auto_desc_417409\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\",\"phone\":\"JYiGkawxmqRrnnW0xNnT9tnoNjRuKnKFW8qAvmocNdZ6hHx/F6KE3pnaMtR/veXLHuEsJPMx2Po9Axcxci6iG8t8DO006YVHNlVf37xkKZrbtzEm/uzRJgn+rmF4jExkuVhVDCcXIS21k9n5DcGi71INz5BsoWgTpG6umRZK4/g=\",\"email\":\"dkCU75JkQGoLusxN8HF2TSAKed/jps+Xn7vZuMNWLNKR8cuX8BIGMunFcBpxMvWec/NWJFXYCiZ//0DKoAhlLBlXYgiBAQd6RpG5gwCIg6CUJl3sO5SExmc0nCWrugwODL/TCGzv3BR2shS3VjTktJDp7kMhw/Zg92byef+toqQ=\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
+        "query_params": {}
+      },
+      {
+        "category": "execute",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/users/0f8e1b534a8f4d31a8839c157b993aca/email/usability",
+        "body_sample": null,
+        "query_params": {}
+      },
+      {
+        "category": "execute",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/users/0f8e1b534a8f4d31a8839c157b993aca/phone/usability",
+        "body_sample": null,
+        "query_params": {}
       }
     ],
-    "删除": [
+    "lock": [
+      {
+        "category": "update",
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/users/0f8e1b534a8f4d31a8839c157b993aca/suspend",
+        "body_sample": "{\"userId\":\"0f8e1b534a8f4d31a8839c157b993aca\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
+        "query_params": {}
+      }
+    ],
+    "unlock": [
+      {
+        "category": "unlock",
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/users/0f8e1b534a8f4d31a8839c157b993aca/enable",
+        "body_sample": "{\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
+        "query_params": {}
+      }
+    ],
+    "delete": [
       {
         "category": "delete",
         "method": "DELETE",
-        "pathname": "/estack/api/estack/draco/v1/users/e7fc8fdd2e4e4b2a9acde911bb0d15e4",
-        "body_sample": "{\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+        "pathname": "/estack/api/estack/draco/v1/users/batch/delete",
+        "body_sample": "[\"0f8e1b534a8f4d31a8839c157b993aca\"]",
+        "query_params": {}
       }
     ]
   },
   "dependencies": {
     "injections": {
       "tenantId": {
-        "source": "create"
+        "source": "query",
+        "source_path": "entity.list[0].tenantId"
       },
       "userId": {
-        "source": "create"
+        "source": "reset",
+        "source_path": "entity.userId"
+      },
+      "__array_items__": {
+        "source": "create",
+        "source_path": "entity.id"
       }
     },
     "id_fields_found": [
       "id",
       "tenantId",
-      "roleId",
       "userId"
-    ]
+    ],
+    "id_field_details": {
+      "id": {
+        "source_crud": "query",
+        "sample_value": "1f8e392309fc414c9d77d45d0315fedc",
+        "path": "entity.list[0].id"
+      },
+      "tenantId": {
+        "source_crud": "query",
+        "sample_value": "34e2594fca9e44cd9e23b25474838c7f",
+        "path": "entity.list[0].tenantId"
+      },
+      "userId": {
+        "source_crud": "reset",
+        "sample_value": "0f8e1b534a8f4d31a8839c157b993aca",
+        "path": "entity.userId"
+      }
+    }
   },
   "state_assertions": {
     "state_field": "state",
     "values_by_crud": {
       "create": "ENABLE",
       "update": "ENABLE",
-      "lock": "DISABLE",
-      "delete": "ENABLE"
+      "unlock": "ENABLE"
     },
     "after_create": "ENABLE",
-    "after_lock": "DISABLE",
+    "after_unlock": "ENABLE",
     "after_delete": "NOT_EXIST"
   }
 }

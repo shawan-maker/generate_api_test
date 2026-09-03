@@ -157,7 +157,8 @@
           "select": {
             "desc": "选择匹配选项",
             "patterns": [
-              "(//div[@x-placement and not(@x-placement='')]//li[contains(@class,'el-select-dropdown__item') and contains(.,'{option_text}') and not(ancestor-or-self::*[contains(@class,'is-hidden')]) and not(ancestor-or-self::*[contains(@style,'display: none')])])[1]"
+              "(//div[@x-placement and not(@x-placement='')]//li[contains(@class,'el-select-dropdown__item') and contains(.,'{option_text}') and not(ancestor-or-self::*[contains(@class,'is-hidden')]) and not(ancestor-or-self::*[contains(@style,'display: none')])])[1]",
+              "(//div[contains(@class,'el-select-dropdown') and not(contains(@style,'display: none'))]//li[contains(@class,'el-select-dropdown__item') and contains(.,'{option_text}') and not(ancestor-or-self::*[contains(@class,'is-hidden')]) and not(ancestor-or-self::*[contains(@style,'display: none')])])[1]"
             ]
           },
           "editable-check": {
@@ -169,7 +170,8 @@
           "first-option": {
             "desc": "readonly 时选择第一个可见项（else_steps，带 hidden filter）",
             "patterns": [
-              "(//div[@x-placement and not(@x-placement='')]//li[contains(@class,'el-select-dropdown__item') and not(ancestor-or-self::*[contains(@class,'is-hidden')]) and not(ancestor-or-self::*[contains(@style,'display: none')])])[1]"
+              "(//div[@x-placement and not(@x-placement='')]//li[contains(@class,'el-select-dropdown__item') and not(ancestor-or-self::*[contains(@class,'is-hidden')]) and not(ancestor-or-self::*[contains(@style,'display: none')])])[1]",
+              "(//div[contains(@class,'el-select-dropdown') and not(contains(@style,'display: none'))]//li[contains(@class,'el-select-dropdown__item') and not(ancestor-or-self::*[contains(@class,'is-hidden')]) and not(ancestor-or-self::*[contains(@style,'display: none')])])[1]"
             ]
           }
         },

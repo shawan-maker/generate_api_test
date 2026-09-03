@@ -325,14 +325,32 @@ def validate_stage4(script_content: str, script_path: str) -> Tuple[bool, List[s
     if line_count > 500:
         issues.append(f"脚本过长 ({line_count} 行)，manifest 架构脚本不应超过 500 行")
 
-    # 6. 检查 test_ 函数
-    if "def test_" not in script_content:
-        issues.append("脚本中未找到 test_ 函数")
+    # 6/7. 根据脚本架构分流检查
+    # manifest 纯模式：有 MANIFEST + TestRunner，但无 def test_（由 TestRunner 驱动步骤）
+    is_manifest_mode = (
+        "MANIFEST" in script_content
+        and "TestRunner" in script_content
+        and "def test_" not in script_content
+    )
 
-    # 7. 检查断言数量
-    assert_count = script_content.count("assert ")
-    if assert_count < 3 and line_count >= 10:
-        issues.append(f"断言过少 ({assert_count} 个)，测试覆盖可能不足")
+    if not is_manifest_mode:
+        # 旧架构或混合格式：检查 test_ 函数和 assert 数量
+        if "def test_" not in script_content:
+            issues.append("脚本中未找到 test_ 函数")
+
+        assert_count = script_content.count("assert ")
+        if assert_count < 3 and line_count >= 10:
+            issues.append(f"断言过少 ({assert_count} 个)，测试覆盖可能不足")
+    else:
+        # manifest 纯模式的专用检查
+        steps_count = script_content.count('"action":')
+        if steps_count < 3:
+            issues.append(f"manifest 步骤过少 ({steps_count} 个)")
+
+        if '"action": "create"' not in script_content:
+            issues.append("manifest 缺少 create 步骤")
+        if '"action": "delete"' not in script_content:
+            issues.append("manifest 缺少 delete 步骤")
 
     # 判断是否通过
     is_valid = len(issues) == 0

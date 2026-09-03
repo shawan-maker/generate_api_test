@@ -2,7 +2,7 @@
 """
 用户管理 - UI 自动化测试脚本
 
-生成时间: 2026-09-03 09:09:01
+生成时间: 2026-09-03 14:38:19
 生成工具: API AI Test Framework - Stage 2
 
 用法:
@@ -185,6 +185,7 @@ PLAYBOOK_OPERATIONS = {
             {
                 "action": "click_row_button",
                 "button_text": "编辑",
+                "playwright_locator": "button:has-text('编辑')",
                 "description": "点击行内编辑按钮"
             },
             {

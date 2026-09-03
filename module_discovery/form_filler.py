@@ -1357,7 +1357,7 @@ class MultiStepExecutor:
             LOG.warning(f"    el-select {label} 未发现可选项，下拉框状态: {json.dumps(dd_state, ensure_ascii=False)}")
             return False, detail
 
-        # Step 4: 根据是否可编辑选择不同策略
+        # Step 5: 根据是否可编辑选择不同策略
         LOG.info(f"    el-select {label}: proceeding with is_editable={is_editable}, option_text='{option_text}'")
         if is_editable:
             # 可编辑：先输入搜索，再选择
@@ -1365,7 +1365,11 @@ class MultiStepExecutor:
             LOG.info(f"    el-select {label}: fill result={filled}")
             if not filled:
                 return False, detail
-            await self.page.wait_for_timeout(500)
+
+            # 关键修复：fill 只 click 了输入框，需要实际输入搜索文本
+            typed = await self._type_search_text(label, option_text, selector)
+            LOG.info(f"    el-select {label}: type search result={typed}")
+            await self.page.wait_for_timeout(500)  # 等待搜索过滤完成
 
             # 检查 fill 后下拉是否仍然展开
             post_fill = await self.page.evaluate("""() => {
@@ -1712,6 +1716,71 @@ class MultiStepExecutor:
         except Exception as e:
             LOG.info(f"    _discover_first_option exception: {e}")
             return ""
+
+    async def _type_search_text(self, label: str, text: str, selector: str = "") -> bool:
+        """在 el-select 输入框中输入搜索文本。
+
+        Args:
+            label: 字段标签
+            text: 要输入的搜索文本
+            selector: el-select 的 CSS selector（用于 fallback）
+
+        Returns:
+            是否成功输入
+        """
+        # 方案 A：通过 label-relative XPath 定位输入框
+        xpaths = [
+            f"//*[contains(text(),'{label}')]/following-sibling::*[self::div or self::span]//input[@class='el-input__inner']",
+            f"//label[contains(.,'{label}')]//following-sibling::*[self::div or self::span]//input[@class='el-input__inner']",
+        ]
+        for xpath in xpaths:
+            try:
+                input_el = self.page.locator(f"xpath={xpath}").first
+                # 检查是否为 readonly
+                is_readonly = await input_el.get_attribute("readonly")
+                if is_readonly is not None:
+                    LOG.debug(f"    输入框为 readonly，跳过输入搜索文本")
+                    return False
+                await input_el.fill("")  # 清空
+                await input_el.type(text, delay=50)  # 逐字符输入，触发搜索
+                LOG.debug(f"    已输入搜索文本: {text}")
+                return True
+            except Exception:
+                continue
+
+        # 方案 B：fallback 到 selector 对应的输入框
+        if selector:
+            try:
+                # selector 是 el-select 容器，需要找到其中的 input
+                input_selector = f"{selector} input.el-input__inner"
+                input_el = self.page.locator(input_selector).first
+                # 检查是否为 readonly
+                is_readonly = await input_el.get_attribute("readonly")
+                if is_readonly is not None:
+                    LOG.debug(f"    输入框为 readonly，跳过输入搜索文本")
+                    return False
+                await input_el.fill("")
+                await input_el.type(text, delay=50)
+                LOG.debug(f"    已输入搜索文本 (selector fallback): {text}")
+                return True
+            except Exception as e:
+                LOG.warning(f"    无法输入搜索文本 (selector): {e}")
+
+        # 方案 C：fallback 到最近展开的 dropdown 对应的输入框
+        try:
+            input_el = self.page.locator(".el-select-dropdown:not([style*='display: none']) + * input.el-input__inner").first
+            # 检查是否为 readonly
+            is_readonly = await input_el.get_attribute("readonly")
+            if is_readonly is not None:
+                LOG.debug(f"    输入框为 readonly，跳过输入搜索文本")
+                return False
+            await input_el.fill("")
+            await input_el.type(text, delay=50)
+            LOG.debug(f"    已输入搜索文本 (CSS fallback): {text}")
+            return True
+        except Exception as e:
+            LOG.warning(f"    无法输入搜索文本: {e}")
+            return False
 
     async def _click_visible_option(self, option_text: str = "") -> bool:
         """直接点击可见的下拉选项（KB XPath 失败时的回退）。

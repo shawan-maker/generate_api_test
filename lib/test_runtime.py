@@ -263,11 +263,20 @@ class StepExecutor:
                 url = url + "?" + query_str
         return url
 
-    def _build_body(self, step_def: dict) -> dict:
+    def _build_body(self, step_def: dict):
         body_template = step_def.get("body_template", {})
         field_roles = step_def.get("body_field_roles", {})
         if not body_template:
             return {}
+
+        # 数组格式请求体（如 batch delete ["id1", "id2"]）
+        if isinstance(body_template, list):
+            arr_role = field_roles.get("__array_items__", {})
+            if arr_role.get("role") == "id_ref":
+                # 将数组中每个元素替换为 create 返回的 ID
+                return [self.state.get("id", "")] * len(body_template)
+            return list(body_template)
+
         body = {}
         for key, value in body_template.items():
             role_config = field_roles.get(key, {"role": "static"})

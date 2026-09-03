@@ -262,6 +262,9 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver, m
             elif action == "select_row_checkbox":
                 await _step_select_row_checkbox(page, step, button_driver, marker)
 
+            elif action == "wait_for_table_ready":
+                await _step_wait_for_table_ready(page, step)
+
             # Legacy step types (backward compat — will be removed)
             elif action == "hover_dropdown":
                 LOG.warning("    hover_dropdown 已废弃，请重新运行 Stage 1 生成新 playbook")
@@ -486,10 +489,11 @@ async def _step_find_row(page, step: dict, button_driver: ButtonDriver, marker: 
 
 
 async def _step_click_row_button(page, step: dict, button_driver: ButtonDriver, marker: str):
-    """步骤：在数据行内点击按钮
+    """步骤：在数据行内点击按钮（JS click，兼容 Element UI 固定列）
 
     先通过 marker 定位数据行，再在行内查找并点击指定文本的按钮。
-    避免全局匹配到不可见的同名按钮。
+    Element UI 固定列表格中，按钮可能在固定列 wrapper 中，Playwright click
+    要求元素可见，因此使用 JS click 直接触发事件。
     """
     button_text = step.get("button_text")
     if not button_text:
@@ -501,17 +505,27 @@ async def _step_click_row_button(page, step: dict, button_driver: ButtonDriver, 
     if not row:
         raise Exception(f"未找到数据行: {marker}")
 
-    # 在行内查找按钮
-    btn = await row.query_selector(f'button:has-text("{button_text}")')
-    if not btn:
-        raise Exception(f"在数据行内未找到按钮: {button_text}")
+    # 使用 JS click：兼容 Element UI 固定列
+    clicked = await page.evaluate("""(args) => {
+        const [text, marker] = args;
+        const rows = document.querySelectorAll('.el-table__body tr');
+        for (const row of rows) {
+            if ((row.textContent || '').includes(marker)) {
+                const buttons = row.querySelectorAll('button');
+                for (const btn of buttons) {
+                    if ((btn.textContent || '').trim().includes(text)) {
+                        btn.click();
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }""", [button_text, marker])
 
-    # 检查按钮是否可见
-    is_visible = await btn.is_visible()
-    if not is_visible:
-        raise Exception(f"数据行内的按钮不可见: {button_text}")
+    if not clicked:
+        raise Exception(f"未找到行内按钮: {button_text}")
 
-    await btn.click()
     LOG.info(f"点击行内按钮: {button_text}")
 
 
@@ -605,6 +619,13 @@ async def _step_assert_row_disappeared(page, step: dict, button_driver: ButtonDr
     row = await button_driver.find_data_row(marker)
     if row:
         LOG.warning(f"    数据行仍然存在: {marker}")
+
+
+async def _step_wait_for_table_ready(page, step: dict):
+    """步骤：等待表格数据刷新"""
+    timeout = step.get("timeout_ms", 10000)
+    await wait_for_table_ready(page, timeout=timeout)
+    LOG.debug("    表格数据已刷新")
 
 
 async def _step_select_row_checkbox(page, step: dict, button_driver: ButtonDriver, marker: str):

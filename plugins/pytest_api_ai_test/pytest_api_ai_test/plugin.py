@@ -14,18 +14,18 @@ def pytest_addoption(parser):
     """添加命令行选项"""
     group = parser.getgroup('api_ai_test', 'API AI Test 插件选项')
     group.addoption(
-        '--api-ai-flows',
+        '--api-ai-scripts',
         action='store',
         default=None,
         metavar='PATH',
-        help='指定 flows 目录路径（支持通配符，如 projects/*/flows）'
+        help='指定 scripts 目录路径（支持通配符，如 projects/*/scripts/v1.0.0/api）'
     )
     group.addoption(
         '--api-ai-project',
         action='store',
         default=None,
         metavar='PROJECT',
-        help='指定项目名称（如 ecm-compute），自动查找对应 flows 目录'
+        help='指定项目名称（如 ecm-compute），自动查找对应 scripts 目录'
     )
 
 
@@ -38,20 +38,20 @@ def pytest_configure(config):
 
 def pytest_collect_file(parent, file_path: Path) -> Optional['ApiAiTestFile']:
     """收集测试文件"""
-    # 检查是否在 flows 目录下
-    flows_dirs = _get_flows_dirs(parent.config)
+    # 检查是否在 scripts 目录下
+    scripts_dirs = _get_scripts_dirs(parent.config)
 
-    if not flows_dirs:
+    if not scripts_dirs:
         return None
 
-    # 检查文件是否在 flows 目录下且为 Python 测试脚本
-    for flows_dir in flows_dirs:
+    # 检查文件是否在 scripts 目录下且为 Python 测试脚本
+    for scripts_dir in scripts_dirs:
         try:
-            flows_path = Path(flows_dir).resolve()
+            scripts_path = Path(scripts_dir).resolve()
             file_resolved = file_path.resolve()
 
-            # 检查是否在 flows 目录下
-            if flows_path in file_resolved.parents or flows_path == file_resolved.parent:
+            # 检查是否在 scripts 目录下
+            if scripts_path in file_resolved.parents or scripts_path == file_resolved.parent:
                 # 检查是否为 API 测试脚本
                 if file_path.suffix == '.py' and 'API测试' in file_path.stem:
                     return ApiAiTestFile.from_parent(parent, path=file_path)
@@ -61,22 +61,22 @@ def pytest_collect_file(parent, file_path: Path) -> Optional['ApiAiTestFile']:
     return None
 
 
-def _get_flows_dirs(config) -> list:
-    """获取 flows 目录列表"""
-    flows_option = config.getoption('--api-ai-flows', default=None)
+def _get_scripts_dirs(config) -> list:
+    """获取 scripts 目录列表"""
+    scripts_option = config.getoption('--api-ai-scripts', default=None)
     project_option = config.getoption('--api-ai-project', default=None)
 
     dirs = []
 
-    # 优先使用 --api-ai-flows
-    if flows_option:
+    # 优先使用 --api-ai-scripts
+    if scripts_option:
         import glob
-        matched = glob.glob(flows_option)
+        matched = glob.glob(scripts_option)
         dirs.extend([Path(p).resolve() for p in matched if Path(p).is_dir()])
 
     # 其次使用 --api-ai-project
     elif project_option:
-        project_dir = Path.cwd() / 'projects' / project_option / 'flows'
+        project_dir = Path.cwd() / 'projects' / project_option / 'scripts'
         if project_dir.exists():
             dirs.append(project_dir)
 

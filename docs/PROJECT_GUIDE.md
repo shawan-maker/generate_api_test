@@ -62,7 +62,7 @@ Stage 2: capture_apis   → <模块>.json             API 端点 + 请求/响应
 Stage 3: analyze_flow   → <模块>_analysis.json    CRUD 顺序 + 依赖链 + 状态断言
          build_manifest → <模块>_manifest.json    完整测试清单（含响应约定）
        ↓
-Stage 4: gen_test       → flows/<ver>/<模块>_API测试.py  薄脚本（~100 行，嵌入 manifest）
+Stage 4: gen_test       → scripts/<ver>/<模块>_API测试.py  薄脚本（~100 行，嵌入 manifest）
        ↓
 执行脚本                  → output/logs/<模块>_API测试.jsonl  结构化 JSONL 日志
        ↓
@@ -177,9 +177,9 @@ test_report.py          → output/reports/<模块>/  Postman/Newman 风格 HTML
 **生成流程**：
 1. `run.py` 调用 `analyze_flow.build_manifest()` 构建完整测试清单
 2. `gen_test.generate_script(manifest, module_name)` 生成嵌入 manifest 的薄脚本
-3. `save_script_to_file()` 保存到 `flows/<version>/` 目录
+3. `save_script_to_file()` 保存到 `scripts/<version>/` 目录
 
-**输出**：`flows/<version>/<模块>_API测试.py`
+**输出**：`scripts/<version>/<模块>_API测试.py`
 
 ### 2.5 测试运行时（lib/test_runtime.py）
 
@@ -212,7 +212,7 @@ Manifest 驱动的通用测试执行引擎，替代旧的硬编码脚本逻辑�
 **用法**：
 ```bash
 # 运行脚本 + 生成报告（一体化）
-python lib/test_report.py projects/ecm-compute/flows/v1.0.0/角色管理_API测试.py
+python lib/test_report.py projects/ecm-compute/scripts/v1.0.0/角色管理_API测试.py
 
 # 报告输出到
 output/reports/<模块>/<模块>_report_<timestamp>.html
@@ -343,7 +343,7 @@ modules:
 ### 4.4 运行生成的测试脚本
 
 ```bash
-python projects/ecm-compute/flows/v1.0.0/角色管理_API测试.py
+python projects/ecm-compute/scripts/v1.0.0/角色管理_API测试.py
 ```
 
 脚本自动完成：鉴权 → 上下文获取 → create → 查询验证 → update → 查询验证 → delete → 查询验证。
@@ -353,7 +353,7 @@ python projects/ecm-compute/flows/v1.0.0/角色管理_API测试.py
 
 ```bash
 # 运行脚本 + 生成报告（一体化）
-python lib/test_report.py projects/ecm-compute/flows/v1.0.0/角色管理_API测试.py
+python lib/test_report.py projects/ecm-compute/scripts/v1.0.0/角色管理_API测试.py
 
 # 报告输出到
 output/reports/<模块>/<模块>_report_<timestamp>.html
@@ -398,13 +398,13 @@ python run_suite.py --project ecm-compute --modules 角色管理 用户管理
 
 ```bash
 # 只执行创建步骤
-python projects/ecm-compute/flows/v1.0.0/角色管理_API测试.py create
+python projects/ecm-compute/scripts/v1.0.0/角色管理_API测试.py create
 
 # 执行创建+删除
-python projects/ecm-compute/flows/v1.0.0/角色管理_API测试.py create delete
+python projects/ecm-compute/scripts/v1.0.0/角色管理_API测试.py create delete
 
 # 不传参数则执行全部步骤
-python projects/ecm-compute/flows/v1.0.0/角色管理_API测试.py
+python projects/ecm-compute/scripts/v1.0.0/角色管理_API测试.py
 ```
 
 ---
@@ -416,7 +416,7 @@ python projects/ecm-compute/flows/v1.0.0/角色管理_API测试.py
 ```
 projects/ecm-compute/
 ├── .api_version            # 当前版本（v1.0.0）
-└── flows/
+└── scripts/
     ├── v1.0.0/角色管理_API测试.py
     ├── v2.1.0/角色管理_API测试.py   # 升级后重跑，不覆盖 v1.0.0
     └── v3.1.0/...
@@ -602,7 +602,7 @@ projects/<id>/
 ├── captures/                 # 原始抓包数据
 ├── exports/                  # OpenAPI 3.1 + Postman Collection
 │
-├── flows/                    # 版本化测试脚本
+├── scripts/                    # 版本化测试脚本
 │   └── v1.0.0/
 │       └── 角色管理_API测试.py
 │

@@ -8,8 +8,8 @@ pytest_api_ai_test - Pytest 插件，自动发现 scripts/ 下的 API 测试脚�
 - 支持并行执行（通过 pytest-xdist）
 
 用法：
-  pytest --api-ai-flows=projects/ecm-compute/flows
-  pytest --api-ai-flows=projects/*/flows --junit-xml=report.xml
+  pytest --api-ai-scripts=projects/ecm-compute/scripts
+  pytest --api-ai-scripts=projects/*/scripts --junit-xml=report.xml
 """
 
 from .plugin import pytest_configure, pytest_collect_file

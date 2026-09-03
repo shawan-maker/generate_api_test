@@ -352,11 +352,14 @@ class ButtonDriver:
                 const items = document.querySelectorAll('.el-dropdown-menu__item');
                 return Array.from(items).some(el => el.offsetWidth > 0);
             }""")
+            if expanded:
+                LOG.debug(f"    ✓ hover 展开成功 (行索引={row_index})")
         except Exception as e:
             LOG.debug(f"hover + dispatch on more button failed: {e}")
 
         if not expanded:
             # hover 未展开，尝试 click（某些 dropdown 配置 trigger="click"）
+            LOG.debug(f"    ✗ hover 未展开，尝试 click (行索引={row_index})")
             try:
                 await more_btn.click()
                 await self.page.wait_for_timeout(600)
@@ -364,10 +367,13 @@ class ButtonDriver:
                     const items = document.querySelectorAll('.el-dropdown-menu__item');
                     return Array.from(items).some(el => el.offsetWidth > 0);
                 }""")
+                if expanded:
+                    LOG.debug(f"    ✓ click 展开成功 (行索引={row_index})")
             except Exception as e:
                 LOG.debug(f"click on more button failed: {e}")
 
         if not expanded:
+            LOG.debug(f"    ✗ click 未展开，尝试 Vue 实例 (行索引={row_index})")
             # 最后兜底：JS 直接调用 Vue 实例的 show/handleMouseEnter
             try:
                 expanded = await self.page.evaluate("""(el) => {
@@ -387,9 +393,15 @@ class ButtonDriver:
                     return false;
                 }""", await more_btn.element_handle())
                 if expanded:
+                    LOG.debug(f"    ✓ Vue 实例展开成功 (行索引={row_index})")
                     await self.page.wait_for_timeout(600)
+                else:
+                    LOG.debug(f"    ✗ Vue 实例未找到 (行索引={row_index})")
             except Exception as e:
                 LOG.debug(f"Vue instance show() fallback failed: {e}")
+
+        if not expanded:
+            LOG.warning(f"    ✗ 所有展开策略均失败 (行索引={row_index})")
 
         # 查找并点击菜单项（按钮类型，需要等待加载）
         clicked = await click_dropdown_option(self.page, item_text)

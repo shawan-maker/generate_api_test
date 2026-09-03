@@ -452,7 +452,44 @@ except Exception as e:
         assert is_valid is False
 
     def test_missing_test_function(self):
-        """缺少 test_ 函数"""
+        """旧架构缺少 test_ 函数应报错"""
+        # 旧架构脚本（无 MANIFEST），缺少 test_ 函数
+        script = """
+def main():
+    pass
+
+def browser_create_user():
+    pass
+""" + "\n" * 60
+        is_valid, issues = validate_stage4(script, "test.py")
+        assert is_valid is False
+        assert any("test_" in i for i in issues)
+
+    def test_manifest_pure_mode_valid(self):
+        """manifest 纯模式（无 test_ 函数）应通过验证"""
+        script = """
+MANIFEST = {
+    "module": "用户管理",
+    "response_contract": {"envelope_keys": ["entity"]},
+    "body_field_roles": {"userId": "id_ref"},
+    "steps": [
+        {"action": "create", "api": {"method": "POST", "pathname": "/users"}},
+        {"action": "query", "api": {"method": "GET", "pathname": "/users"}},
+        {"action": "update", "api": {"method": "PUT", "pathname": "/users/1"}},
+        {"action": "delete", "api": {"method": "DELETE", "pathname": "/users/1"}}
+    ]
+}
+from lib.test_runtime import TestRunner
+
+runner = TestRunner(MANIFEST)
+runner.run()
+""" + "\n" * 60
+        is_valid, issues = validate_stage4(script, "test.py")
+        assert is_valid is True
+        assert len(issues) == 0
+
+    def test_manifest_pure_mode_missing_steps(self):
+        """manifest 纯模式缺少步骤应报错"""
         script = """
 MANIFEST = {
     "module": "用户管理",
@@ -465,7 +502,7 @@ def main():
 """ + "\n" * 60
         is_valid, issues = validate_stage4(script, "test.py")
         assert is_valid is False
-        assert any("test_" in i for i in issues)
+        assert any("步骤过少" in i for i in issues)
 
     def test_few_assertions(self):
         """断言过少"""

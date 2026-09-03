@@ -141,16 +141,18 @@ def _filter_core_apis(classified: dict, response_samples: dict,
 
     # 如果 "other_post" 和 "other_get" 中有真正的业务 API，
     # 尝试通过响应体判断（列表→query；含单条 id→execute）
+    # 修复：每个端点独立分类，避免 target_cat 跨端点共享
+    from collections import defaultdict
     for cat in ("other_post", "other_get"):
         if cat not in core:
             continue
-        real_eps = []
-        target_cat = None
+        reclassified = defaultdict(list)
         for ep in core[cat]:
             pn = ep["pathname"]
             samples = response_samples.get(pn, [])
             if not samples:
                 continue
+            ep_cat = None  # 每个端点独立的目标分类
             for s in samples:
                 try:
                     body = json.loads(s["body"]) if isinstance(s["body"], str) else {}
@@ -160,21 +162,24 @@ def _filter_core_apis(classified: dict, response_samples: dict,
                 entity = _extract_entity_with_fallback(body)
                 if isinstance(entity, dict):
                     # 查找列表键（泛化：不再硬编码 "list"）
-                    for lk in _LIST_KEY_CANDIDATES:
+                    for lk in const.LIST_KEY_CANDIDATES:
                         if lk in entity and isinstance(entity[lk], list):
-                            target_cat = "query"
-                            real_eps.append(ep)
+                            ep_cat = "query"
+                            reclassified[ep_cat].append(ep)
                             break
                     else:
                         # 查找 ID 键
                         if "id" in entity:
-                            real_eps.append(ep)
+                            reclassified["execute"].append(ep)
                         elif isinstance(entity, list) and len(entity) > 0:
-                            target_cat = "query"
-                            real_eps.append(ep)
-        if real_eps:
-            dest = target_cat or "execute"
-            core[dest] = core.get(dest, []) + real_eps
+                            reclassified["query"].append(ep)
+                    break  # 只用第一个有效响应样本
+            if ep_cat is None:
+                # 无响应样本或无法分类 → 默认为 execute
+                reclassified["execute"].append(ep)
+
+        for dest_cat, eps in reclassified.items():
+            core[dest_cat] = core.get(dest_cat, []) + eps
         del core[cat]
 
     return core
@@ -417,9 +422,17 @@ def _derive_dependencies(core_apis: dict, response_samples: dict) -> dict:
             if not body_sample:
                 continue
             try:
-                req_body = json.loads(body_sample) if isinstance(body_sample, str) else {}
+                req_body = json.loads(body_sample) if isinstance(body_sample, str) else body_sample
             except Exception as e:
                 LOG.debug(f"解析请求体 JSON 失败: {e}")
+                continue
+            if isinstance(req_body, list):
+                # 数组格式（如 batch delete ["id1", "id2"]）：记录 ID 注入点
+                if req_body and isinstance(req_body[0], str) and len(req_body[0]) >= 8:
+                    injections["__array_items__"] = {
+                        "source": "create",
+                        "source_path": "entity.id",
+                    }
                 continue
             if not isinstance(req_body, dict):
                 continue
@@ -594,14 +607,14 @@ _STEP_LABELS = {
 }
 
 
-def _parse_body(ep_or_sample) -> dict:
-    """从 endpoint dict 或 body sample 解析出 body dict。
+def _parse_body(ep_or_sample) -> dict | list:
+    """从 endpoint dict 或 body sample 解析出 body dict 或 list。
 
     Args:
         ep_or_sample: endpoint dict（含 request_body_sample/bodies）或直接的 body sample
 
     Returns:
-        解析后的 dict，失败返回 {}
+        解析后的 dict 或 list，失败返回 {}
     """
     sample = None
     if isinstance(ep_or_sample, dict):
@@ -614,7 +627,10 @@ def _parse_body(ep_or_sample) -> dict:
         return {}
     try:
         body = json.loads(sample) if isinstance(sample, str) else sample
-        return body if isinstance(body, dict) else {}
+        # 支持 dict 和 list
+        if isinstance(body, (dict, list)):
+            return body
+        return {}
     except Exception:
         return {}
 
@@ -841,7 +857,8 @@ def _discover_response_contract(response_samples: dict) -> dict:
 
 
 def _classify_body_fields(body_sample: dict, id_field_details: dict,
-                          create_body_sample: dict = None) -> dict:
+                          create_body_sample: dict = None,
+                          context_field_names: set = None) -> dict:
     """为请求体中每个字段标注角色（role）。
 
     替代 gen_test.py 中 _gen_payload_code() 的硬编码字段分类。
@@ -858,6 +875,7 @@ def _classify_body_fields(body_sample: dict, id_field_details: dict,
         id_field_details: Stage 3 分析的 ID 字段详情
                           {field_name: {source_crud, sample_value, path}}
         create_body_sample: create 步骤的 body 样本（用于判断 context 字段）
+        context_field_names: auth_profile.context_fields 中声明的字段名集合
 
     Returns:
         {field_name: {"role": ..., "source": ...}} 字典
@@ -865,10 +883,16 @@ def _classify_body_fields(body_sample: dict, id_field_details: dict,
     if not body_sample:
         return {}
 
+    context_field_names = context_field_names or set()
+
     id_field_names = set()
     if id_field_details:
         id_field_names = set(id_field_details.keys())
     id_field_names.add(const.DEFAULT_ID_FIELD)  # 始终包含默认 ID 字段
+
+    # context 字段优先级高于 id_ref：在 context_fields 中声明的字段，
+    # 即使名称出现在 id_field_details 中，也标记为 context
+    effective_id_fields = id_field_names - context_field_names
 
     create_keys = set()
     if create_body_sample and isinstance(create_body_sample, dict):
@@ -878,8 +902,13 @@ def _classify_body_fields(body_sample: dict, id_field_details: dict,
     for key, value in body_sample.items():
         key_lower = key.lower()
 
-        # 1. ID 引用字段：在 id_field_details 中出现，或字段名匹配 ID 模式
-        if key in id_field_names:
+        # 0. 上下文字段优先：在 auth_profile.context_fields 中声明
+        if key in context_field_names:
+            roles[key] = {"role": "context", "source": f"context.{key}"}
+            continue
+
+        # 1. ID 引用字段：在 id_field_details 中出现（排除 context 字段），或字段名匹配 ID 模式
+        if key in effective_id_fields:
             roles[key] = {"role": "id_ref"}
             continue
 
@@ -1007,41 +1036,90 @@ def build_manifest(analysis: dict, capture_result: dict,
     # 4. 构建 steps 列表
     id_field_details = analysis.get("dependencies", {}).get("id_field_details", {})
 
+    # 5. 获取 context_fields 字段名（用于优先标记 context 角色）
+    context_fields = auth_profile.get("context_fields", {})
+    context_field_names = set(context_fields.keys())
+
     # 获取可用的验证端点（query / detail）
     # 优先从 core_apis 获取；如果 query/detail 被同现过滤器误杀，
     # 则从 capture_result 原始数据中回退查找
+    #
+    # 关键校验：验证端点的响应样本必须包含 entity ID，否则 contains_id 断言无意义
+    create_id_sample = None
+    if create_body_sample and isinstance(create_body_sample, dict):
+        # 从 create 响应样本中提取 ID（用于验证 verify endpoint 是否返回同类数据）
+        create_eps = core_apis.get("create", [])
+        if create_eps:
+            create_resp_samples = response_samples.get(create_eps[0]["pathname"], [])
+            for s in create_resp_samples:
+                try:
+                    body = json.loads(s["body"]) if isinstance(s["body"], str) else s["body"]
+                    entity = body.get("entity", {})
+                    if isinstance(entity, dict) and "id" in entity:
+                        create_id_sample = entity["id"]
+                        break
+                except Exception:
+                    pass
+
+    def _endpoint_returns_entity_id(ep) -> bool:
+        """检查端点的响应样本是否包含 create 提取的 entity ID。"""
+        if not create_id_sample:
+            return True  # 无法校验时默认通过
+        samples = response_samples.get(ep["pathname"], [])
+        for s in samples:
+            try:
+                body_text = s["body"] if isinstance(s["body"], str) else json.dumps(s["body"])
+                if create_id_sample in body_text:
+                    return True
+            except Exception:
+                pass
+        return False
+
     verify_endpoints = {}
     for verify_action in ["query", "detail"]:
         eps = core_apis.get(verify_action, [])
-        if eps:
-            ep = eps[0]
-            verify_endpoints[verify_action] = {
-                "ep": ep,
-                "body_sample": _parse_body(ep),
-            }
-        else:
-            # 回退：从 capture_result 原始分类中查找
-            raw_classified = capture_result.get("by_category", {})
-            raw_eps = raw_classified.get(verify_action, [])
-            # 过滤掉明显的辅助 API（菜单、主题等）
-            for ep in raw_eps:
-                p = ep["pathname"].lower()
-                if any(kw in p for kw in const.SUPPORTING_API_KEYWORDS):
-                    continue
+        selected = False
+        for ep in eps:
+            if _endpoint_returns_entity_id(ep):
+                verify_endpoints[verify_action] = {
+                    "ep": ep,
+                    "body_sample": _parse_body(ep),
+                }
+                selected = True
+                break
+        if selected:
+            continue
+        # 回退：从 capture_result 原始分类中查找
+        raw_classified = capture_result.get("by_category", {})
+        raw_eps = raw_classified.get(verify_action, [])
+        # 过滤掉明显的辅助 API（菜单、主题等）
+        for ep in raw_eps:
+            p = ep["pathname"].lower()
+            if any(kw in p for kw in const.SUPPORTING_API_KEYWORDS):
+                continue
+            if _endpoint_returns_entity_id(ep):
                 verify_endpoints[verify_action] = {
                     "ep": ep,
                     "body_sample": _parse_body(ep),
                 }
                 LOG.info(f"  验证端点回退: {verify_action} ← {ep['pathname'][:60]}")
                 break
+        if verify_action not in verify_endpoints and eps:
+            LOG.warning(f"  验证端点 {verify_action} 的响应不含 entity ID，跳过自动验证")
 
     steps = []
 
     def _make_step(action, ep, body_sample, assertion=None):
         """构建单个步骤 dict。"""
-        field_roles = _classify_body_fields(
-            body_sample, id_field_details, create_body_sample
-        )
+        # 处理数组格式请求体（如 batch delete ["id1", "id2"]）
+        if isinstance(body_sample, list):
+            field_roles = {
+                "__array_items__": {"role": "id_ref", "source": "create.id"}
+            }
+        else:
+            field_roles = _classify_body_fields(
+                body_sample, id_field_details, create_body_sample, context_field_names
+            )
 
         extract = None
         if action == "create":
@@ -1063,7 +1141,7 @@ def build_manifest(analysis: dict, capture_result: dict,
                 "pathname": pathname,
                 "query_params": ep.get("query_params", {}),
             },
-            "body_template": body_sample,
+            "body_template": body_sample if isinstance(body_sample, list) else (body_sample or {}),
             "body_field_roles": field_roles,
             "requires": ["id"] if action != "create" else [],
         }
@@ -1082,7 +1160,7 @@ def build_manifest(analysis: dict, capture_result: dict,
         body_sample = verify_endpoints[verify_action]["body_sample"]
 
         field_roles = _classify_body_fields(
-            body_sample, id_field_details, create_body_sample
+            body_sample, id_field_details, create_body_sample, context_field_names
         )
         pathname = re.sub(r"[0-9a-f]{20,}", "{id}", ep["pathname"])
 
