@@ -94,14 +94,14 @@ def generate_manifest_script(manifest: dict, module_name: str) -> str:
 
 
 def save_script_to_file(script: str, project_dir: str, module_name: str, version: str = ""):
-    """将生成的脚本保存到文件。version 非空时写入 flows/<version>/。"""
+    """将生成的脚本保存到文件。version 非空时写入 scripts/<version>/api/。"""
     from . import version as _ver
     if version:
-        flows_dir = _ver.flows_dir_for(project_dir, version)
+        scripts_dir = _ver.scripts_dir_for(project_dir, version) / "api"
     else:
-        flows_dir = Path(project_dir) / "flows"
-        flows_dir.mkdir(parents=True, exist_ok=True)
-    output_path = flows_dir / f"{module_name}_API测试.py"
+        scripts_dir = Path(project_dir) / "scripts" / "v1.0.0" / "api"
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+    output_path = scripts_dir / f"{module_name}_API测试.py"
     output_path.write_text(script, encoding="utf-8")
     LOG.info(f"  脚本已生成: {output_path}")
     return str(output_path)

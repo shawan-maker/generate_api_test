@@ -142,10 +142,10 @@
           "expand": {
             "desc": "点击展开下拉框",
             "patterns": [
-              "//*[contains(text(),'{label}')]/following-sibling::*[self::div or self::span]//input[@class='el-input__inner']",
-              "//label[contains(.,'{label}')]//following-sibling::*[self::div or self::span]//input[@class='el-input__inner']",
-              "//input[@class='el-input__inner' and contains(@placeholder,'{label}')]",
-              "//input[@class='el-input__inner' and contains(@placeholder,'请选择')]"
+              "//*[contains(text(),'{label}')]/following-sibling::*[self::div or self::span]//div[contains(@class,'el-select') and not(contains(@class,'el-select-dropdown'))]",
+              "//label[contains(.,'{label}')]//following-sibling::*[self::div or self::span]//div[contains(@class,'el-select') and not(contains(@class,'el-select-dropdown'))]",
+              "//div[contains(@class,'el-select') and not(contains(@class,'el-select-dropdown')) and contains(@placeholder,'{label}')]",
+              "//div[contains(@class,'el-select') and not(contains(@class,'el-select-dropdown')) and contains(@placeholder,'请选择')]"
             ]
           },
           "fill": {

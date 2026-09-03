@@ -8,6 +8,7 @@ form_filler.py - 表单填充与验证
 - 表单提交与验证
 """
 
+import json
 import logging
 import time
 from playwright.async_api import Page, Locator
@@ -152,10 +153,11 @@ class FormFiller:
 
         return filled
 
-    async def fill_multi_step_fields(self, fields: List[Dict], framework: str = "element-ui") -> int:
+    async def fill_multi_step_fields(self, fields: List[Dict], framework: str = "element-ui") -> Tuple[int, List[Dict]]:
         """处理 multi_step 类型的表单字段。
 
         遍历 fields，对 kb_category 在 MULTI_STEP_TYPES 中的字段调用 MultiStepExecutor。
+        优先使用 field 中的 selector（来自 Stage 1），KB XPath 作为回退。
         旧版 select_dropdowns() 作为兜底保留。
 
         Args:
@@ -163,12 +165,14 @@ class FormFiller:
             framework: UI 框架
 
         Returns:
-            成功处理的字段数
+            (成功处理的字段数, 详细信息列表)
+            详细信息列表包含每个字段的 label, kb_category, selector, is_editable, option_text
         """
         from . import const
 
         executor = self._get_executor(framework)
         filled = 0
+        details = []
 
         for field in fields:
             kb_cat = field.get("kb_category", "")
@@ -176,15 +180,89 @@ class FormFiller:
                 continue
 
             label = field.get("label", "")
-            # 默认策略：select 选第一项，date-picker 选今天，cascader 需要外部传入 options
-            success = await executor.execute(kb_cat, label, option_text="")
+            selector = field.get("selector") or field.get("playwright_locator", "")
+
+            # 传入 selector，优先使用
+            success, detail = await executor.execute_with_details(kb_cat, label, option_text="", selector=selector)
+
             if success:
                 filled += 1
+                details.append({
+                    "label": label,
+                    "kb_category": kb_cat,
+                    "selector": selector,
+                    "is_editable": detail.get("is_editable", False),
+                    "option_text": detail.get("option_text", ""),
+                })
                 LOG.info(f"    ✅ multi_step: {label} ({kb_cat})")
+            elif detail.get("skipped_reason") == "no_options":
+                # 非必填且无可选选项，跳过但不算失败
+                details.append({
+                    "label": label,
+                    "kb_category": kb_cat,
+                    "selector": selector,
+                    "is_editable": detail.get("is_editable", False),
+                    "option_text": "",
+                    "skipped_reason": "no_options",
+                })
+                LOG.info(f"    ⏭️ multi_step 跳过(无选项): {label} ({kb_cat})")
             else:
                 LOG.warning(f"    ⚠️ multi_step 失败: {label} ({kb_cat})")
 
-        return filled
+        return filled, details
+
+    async def _select_by_css_selector(self, selector: str, label: str) -> bool:
+        """CSS selector 回退：直接点击 el-select input 展开 + 选择第一项。
+
+        用于 page-nav 上下文（创建页面），KB XPath 模式无法匹配 DOM 结构时。
+
+        Args:
+            selector: CSS 选择器（来自 playbook）
+            label: 字段标签（用于日志）
+
+        Returns:
+            bool: 是否成功
+        """
+        try:
+            # 取第一个 selector（可能有多个逗号分隔的备选）
+            primary_selector = selector.split(",")[0].strip()
+
+            # 点击 el-select 内部的 input 展开下拉框
+            input_selector = f"{primary_selector} input.el-input__inner"
+            input_el = self.page.locator(input_selector).first
+            if await input_el.count() == 0:
+                # 回退：直接点击 .el-select
+                input_el = self.page.locator(primary_selector).first
+            if await input_el.count() == 0:
+                LOG.debug(f"    CSS selector 回退: 未找到元素 {primary_selector}")
+                return False
+
+            await input_el.click(timeout=3000)
+            await self.page.wait_for_timeout(500)
+
+            # 选择第一个可见的下拉选项
+            first_option = self.page.locator(
+                '.el-select-dropdown:visible .el-select-dropdown__item:not(.is-disabled):visible'
+            ).first
+            if await first_option.count() > 0:
+                await first_option.click(timeout=2000)
+                LOG.debug(f"    CSS selector 回退成功: {label}")
+                return True
+
+            # 兜底：任何可见的 dropdown item
+            any_option = self.page.locator(
+                '.el-select-dropdown__item:visible'
+            ).first
+            if await any_option.count() > 0:
+                await any_option.click(timeout=2000)
+                LOG.debug(f"    CSS selector 回退成功(兜底): {label}")
+                return True
+
+            LOG.debug(f"    CSS selector 回退: 未找到下拉选项")
+            return False
+        except Exception as e:
+            LOG.debug(f"    CSS selector 回退失败: {label}: {e}")
+            return False
 
     async def fill_edit_form(self, fields: List[Dict],
                               modifications: Dict[str, str] = None) -> int:
@@ -466,11 +544,14 @@ class FormFiller:
         中文按钮文本常含空格（如 "确 定"、"保 存"），使用 JavaScript
         去掉空格后匹配，避免 Playwright has-text 匹配失败。
 
+        返回格式: "submitted:{original_text}" 其中 original_text 是按钮原始文本（保留空格），
+        供 build_playbook 生成精确的 playwright_locator。
+
         点击提交按钮后等待加载完成（可能触发页面刷新/跳转）。
         """
         from .wait_helpers import wait_for_loading_complete
 
-        # JavaScript 方式：去掉空格后匹配常见提交按钮文本
+        # JavaScript 方式：去掉空格后匹配常见提交按钮文本，返回原始文本
         try:
             clicked = await self.page.evaluate("""() => {
                 const submitTexts = ['确定', '保存', '提交', '确认', '立即创建',
@@ -479,17 +560,19 @@ class FormFiller:
                 // 优先找可见的按钮
                 const visible = buttons.filter(b => b.offsetWidth > 0 && b.offsetHeight > 0);
                 for (const btn of visible) {
-                    const text = btn.textContent.trim().replace(/\\s+/g, '');
-                    if (submitTexts.some(t => text === t || text.includes(t))) {
+                    const originalText = btn.textContent.trim();
+                    const normalized = originalText.replace(/\\s+/g, '');
+                    if (submitTexts.some(t => normalized === t || normalized.includes(t))) {
                         btn.click();
-                        return text;
+                        return {normalized: normalized, original: originalText};
                     }
                 }
                 return null;
             }""")
             if clicked:
                 await wait_for_loading_complete(self.page)
-                return f"submitted:{clicked}"
+                # 使用原始文本（保留空格），供 build_playbook 生成精确 locator
+                return f"submitted:{clicked['original']}"
         except Exception as e:
             LOG.debug(f"JavaScript 提交按钮匹配失败: {e}")
 
@@ -564,8 +647,9 @@ async def scan_form_fields(page: Page) -> List[Dict]:
 
             if (selectEl && independentInputs.length > 0) {
                 // 复合组件：先添加 select，再添加独立 input
+                const selectIdx = fields.length;
                 fields.push({ label: label + '(下拉)', type: 'select', kb_category: 'el-select',
-                             selector: null, required });
+                             selector: _buildComponentSelector(fi, '.el-select', selectIdx), required });
                 independentInputs.forEach(inp => {
                     fields.push({ label, type: 'input', kb_category: 'input-generic',
                                  selector: _buildSelector(inp),
@@ -573,26 +657,31 @@ async def scan_form_fields(page: Page) -> List[Dict]:
                 });
             }
             else if (fi.querySelector('.el-cascader')) {
+                const cascaderIdx = fields.length;
                 fields.push({ label, type: 'cascader', kb_category: 'el-cascader',
-                             selector: null, required });
+                             selector: _buildComponentSelector(fi, '.el-cascader', cascaderIdx), required });
             }
             else if (fi.querySelector('.el-date-editor, .ant-picker')) {
+                const datePickerIdx = fields.length;
                 fields.push({ label, type: 'date-picker', kb_category: 'date-picker',
-                             selector: null, required });
+                             selector: _buildComponentSelector(fi, '.el-date-editor, .ant-picker', datePickerIdx), required });
             }
             else if (selectEl) {
+                const selectIdx = fields.length;
                 fields.push({ label, type: 'select', kb_category: 'el-select',
-                             selector: null, required });
+                             selector: _buildComponentSelector(fi, '.el-select', selectIdx), required });
             }
             else if (fi.querySelector('.el-radio-group')) {
+                const radioIdx = fields.length;
                 const firstRadio = fi.querySelector('.el-radio-button__inner, .el-radio__label');
                 fields.push({ label, type: 'radio', kb_category: 'radio',
-                             selector: null, required,
+                             selector: _buildComponentSelector(fi, '.el-radio-group', radioIdx), required,
                              firstOptionText: firstRadio ? firstRadio.textContent.trim() : '' });
             }
             else if (fi.querySelector('.el-checkbox') && !fi.closest('.el-table')) {
+                const checkboxIdx = fields.length;
                 fields.push({ label, type: 'checkbox', kb_category: 'form-checkbox',
-                             selector: null, required });
+                             selector: _buildComponentSelector(fi, '.el-checkbox', checkboxIdx), required });
             }
             else {
                 // 通用 input / textarea
@@ -665,6 +754,25 @@ async def scan_form_fields(page: Page) -> List[Dict]:
                 current = current.parentElement;
             }
             return path.join(' > ');
+        }
+
+        function _buildComponentSelector(formItem, componentSelector, fieldIndex) {
+            // 为复杂组件（select/cascader/date-picker/radio/checkbox）生成 CSS selector
+            const component = formItem.querySelector(componentSelector);
+            if (!component) return null;
+
+            // 使用 formItem 在直接子元素中的位置定位（避免 :has() 伪类，Playwright 不支持）
+            // 注意：children 只返回直接子元素，querySelectorAll 会递归搜索所有后代
+            // 对于多卡片表单（.el-card 包裹），必须用 children 而非 querySelectorAll
+            const directChildren = formItem.parentElement.children;
+            let nth = 1;
+            for (let i = 0; i < directChildren.length; i++) {
+                if (directChildren[i] === formItem) {
+                    nth = i + 1;
+                    break;
+                }
+            }
+            return `.el-form-item:nth-child(${nth}) ${componentSelector}`;
         }
     }
     """
@@ -1100,7 +1208,8 @@ class MultiStepExecutor:
         self.framework = framework
 
     async def execute(self, kb_category: str, label: str,
-                     option_text: str = "", options: list = None) -> bool:
+                     option_text: str = "", options: list = None,
+                     selector: str = "") -> bool:
         """根据 kb_category 分发到对应的执行方法。
 
         Args:
@@ -1108,6 +1217,7 @@ class MultiStepExecutor:
             label: 字段标签（用于定位组件）
             option_text: 要选择的选项文本
             options: 级联选择的多级选项列表（如 ["uiautotest", "uiautotest"]）
+            selector: CSS selector（来自 playbook，直接定位元素）
 
         Returns:
             bool: 是否成功完成交互
@@ -1124,19 +1234,188 @@ class MultiStepExecutor:
             return False
 
         try:
-            return await handler(label, option_text, options)
+            return await handler(label, option_text, options, selector)
         except Exception as e:
             LOG.warning(f"MultiStepExecutor: {kb_category}({label}) 失败: {e}")
             return False
 
-    async def _execute_select(self, label: str, option_text: str, _options) -> bool:
-        """el-select 多步交互：expand → editable-check → fill+select 或 first-option"""
+    async def execute_with_details(self, kb_category: str, label: str,
+                                   option_text: str = "", options: list = None,
+                                   selector: str = "") -> Tuple[bool, Dict]:
+        """根据 kb_category 分发到对应的执行方法，并返回详细执行信息。
+
+        与 execute() 类似，但返回元组 (成功标志, 详情字典)。
+        详情字典包含 is_editable 和 option_text 等运行时信息。
+
+        Args:
+            kb_category: KB 类别名（如 "el-select", "el-cascader", "date-picker"）
+            label: 字段标签（用于定位组件）
+            option_text: 要选择的选项文本
+            options: 级联选择的多级选项列表（如 ["uiautotest", "uiautotest"]）
+            selector: CSS selector（来自 playbook，直接定位元素）
+
+        Returns:
+            Tuple[bool, Dict]: (是否成功完成交互, 详情字典)
+        """
+        handlers = {
+            "el-select": self._execute_select_with_details,
+            "el-cascader": self._execute_cascader,  # 暂未实现详情版本
+            "date-picker": self._execute_date_picker,  # 暂未实现详情版本
+            "form-checkbox": self._execute_form_checkbox,  # 暂未实现详情版本
+        }
+        handler = handlers.get(kb_category)
+        if not handler:
+            LOG.warning(f"MultiStepExecutor: 无处理器 {kb_category}")
+            return False, {}
+
+        try:
+            if kb_category == "el-select":
+                return await handler(label, option_text, options, selector)
+            else:
+                # 其他类型暂时只返回成功标志，详情为空字典
+                success = await handler(label, option_text, options, selector)
+                return success, {}
+        except Exception as e:
+            LOG.warning(f"MultiStepExecutor: {kb_category}({label}) 失败: {e}")
+            return False, {}
+
+    async def _execute_select_with_details(self, label: str, option_text: str,
+                                           _options, selector: str = "") -> Tuple[bool, Dict]:
+        """el-select 多步交互，并返回详细的执行信息。
+
+        Returns:
+            Tuple[bool, Dict]: (是否成功, {"is_editable": bool, "option_text": str})
+        """
+        steps = self.kb.get_steps("el-select", self.framework)
+        if not steps:
+            return False, {}
+
+        # Step 1: expand（必须使用 selector，不做 KB XPath 回退）
+        if not selector:
+            LOG.warning(f"    el-select {label} 缺少 selector（Stage 1 未提供）")
+            return False, {}
+
+        expanded = await self._expand_by_selector(selector, label)
+        if not expanded:
+            LOG.debug(f"    el-select {label}: expand failed")
+            return False, {}
+        await self.page.wait_for_timeout(500)
+
+        # Step 2: editable-check
+        editable_patterns = steps.get("editable-check", {}).get("patterns", [])
+        is_editable = await self._check_element_visible(editable_patterns, label=label)
+        LOG.debug(f"    el-select {label}: is_editable={is_editable}")
+
+        # Step 3: 等待选项加载
+        await self._wait_for_options_loaded()
+
+        # Step 4: 自动发现选项
+        if not option_text:
+            option_text = await self._discover_first_option()
+            LOG.debug(f"    el-select {label}: first discovery option_text={repr(option_text)}")
+            # 重试一次：Element UI 下拉面板可能需要额外渲染时间
+            if not option_text:
+                await self.page.wait_for_timeout(500)
+                option_text = await self._discover_first_option(timeout=2000)
+                LOG.debug(f"    el-select {label}: retry discovery option_text={repr(option_text)}")
+
+        detail = {
+            "is_editable": is_editable,
+            "option_text": option_text or "",
+        }
+
+        if not option_text:
+            # 记录详细的下拉框状态以便调试
+            dd_state = await self.page.evaluate("""() => {
+                const dds = document.querySelectorAll('.el-select-dropdown');
+                const result = [];
+                for (const dd of dds) {
+                    const items = dd.querySelectorAll('.el-select-dropdown__item');
+                    const visibleItems = Array.from(items).filter(it =>
+                        it.offsetWidth > 0 && it.offsetHeight > 0
+                    );
+                    result.push({
+                        visible: dd.offsetWidth > 0 && dd.offsetHeight > 0,
+                        display: window.getComputedStyle(dd).display,
+                        totalItems: items.length,
+                        visibleItems: visibleItems.length,
+                        firstItemText: items.length > 0 ? items[0].textContent.trim() : null,
+                        firstVisibleText: visibleItems.length > 0 ? visibleItems[0].textContent.trim() : null
+                    });
+                }
+                return result;
+            }""")
+            # 判断是否真的无选项（而非加载慢）
+            has_visible_dropdown = any(d.get('visible') for d in dd_state)
+            has_any_visible_items = any(
+                d.get('visible') and d.get('totalItems', 0) > 0 for d in dd_state
+            )
+            if has_visible_dropdown and not has_any_visible_items:
+                LOG.info(f"    el-select {label}: 下拉框已展开但无选项，跳过（非必填或暂无可选项）")
+                detail["skipped_reason"] = "no_options"
+                return False, detail
+            LOG.warning(f"    el-select {label} 未发现可选项，下拉框状态: {json.dumps(dd_state, ensure_ascii=False)}")
+            return False, detail
+
+        # Step 4: 根据是否可编辑选择不同策略
+        LOG.info(f"    el-select {label}: proceeding with is_editable={is_editable}, option_text='{option_text}'")
+        if is_editable:
+            # 可编辑：先输入搜索，再选择
+            filled = await self._try_step_patterns(steps.get("fill", {}), label=label, option_text=option_text)
+            LOG.info(f"    el-select {label}: fill result={filled}")
+            if not filled:
+                return False, detail
+            await self.page.wait_for_timeout(500)
+
+            # 检查 fill 后下拉是否仍然展开
+            post_fill = await self.page.evaluate("""() => {
+                const dds = document.querySelectorAll('.el-select-dropdown');
+                const visible = Array.from(dds).filter(dd => dd.offsetWidth > 0 && dd.offsetHeight > 0);
+                return visible.length;
+            }""")
+            LOG.info(f"    el-select {label}: visible dropdowns after fill={post_fill}")
+
+            # 如果 fill 导致下拉关闭，重新展开
+            if post_fill == 0:
+                LOG.info(f"    el-select {label}: fill closed dropdown, re-expanding")
+                re_expanded = await self._expand_by_selector(selector, label)
+                if re_expanded:
+                    await self.page.wait_for_timeout(500)
+                    # 等待选项加载
+                    await self._wait_for_options_loaded()
+
+            selected = await self._try_step_patterns(
+                steps.get("select", {}), label=label, option_text=option_text)
+            LOG.info(f"    el-select {label}: select result={selected}")
+            # KB XPath 失败时回退：直接点击可见选项
+            if not selected:
+                selected = await self._click_visible_option(option_text)
+                LOG.info(f"    el-select {label}: direct click result={selected}")
+            return selected, detail
+        else:
+            # 不可编辑：等待选项加载，再选择第一个选项
+            await self._wait_for_options_loaded()
+            selected = await self._try_step_patterns(
+                steps.get("first-option", {}), label=label, option_text=option_text)
+            LOG.info(f"    el-select {label}: first-option result={selected}")
+            # KB XPath 失败时回退：直接点击可见选项
+            if not selected:
+                selected = await self._click_visible_option(option_text)
+                LOG.info(f"    el-select {label}: direct click result={selected}")
+            return selected, detail
+
+    async def _execute_select(self, label: str, option_text: str, _options, selector: str = "") -> bool:
+        """el-select 多步交互：使用 Stage 1 提供的 selector 展开"""
         steps = self.kb.get_steps("el-select", self.framework)
         if not steps:
             return False
 
-        # Step 1: expand — 点击展开下拉框
-        expanded = await self._try_step_patterns(steps.get("expand", {}), label=label)
+        # Step 1: expand（必须使用 selector，不做 KB XPath 回退）
+        if not selector:
+            LOG.warning(f"    el-select {label} 缺少 selector（Stage 1 未提供）")
+            return False
+
+        expanded = await self._expand_by_selector(selector, label)
         if not expanded:
             return False
         await self.page.wait_for_timeout(500)
@@ -1162,7 +1441,30 @@ class MultiStepExecutor:
                 steps.get("first-option", {}), label=label)
             return selected
 
-    async def _execute_cascader(self, label: str, _option_text, options: list) -> bool:
+    async def _expand_by_selector(self, selector: str, label: str) -> bool:
+        """用 CSS selector 点击展开 el-select 下拉框。
+
+        selector 来自 Stage 1 playbook，可能是 .el-select 或 input 的选择器。
+        """
+        try:
+            # 取第一个 selector（可能有逗号分隔的备选）
+            primary = selector.split(",")[0].strip()
+
+            # 尝试点击 .el-select 的 input 区域来展开
+            el = self.page.locator(primary).first
+            el_count = await el.count()
+            if el_count == 0:
+                LOG.info(f"    el-select {label}: selector 未匹配 ({primary})")
+                return False
+
+            await el.click(timeout=3000)
+            LOG.info(f"    el-select {label}: selector 展开成功 ({primary})")
+            return True
+        except Exception as e:
+            LOG.info(f"    el-select {label}: selector 展开失败: {e}")
+            return False
+
+    async def _execute_cascader(self, label: str, _option_text, options: list, selector: str = "") -> bool:
         """el-cascader 多步交互：expand → expand-level(逐级) → conditional-branch → select-last"""
         steps = self.kb.get_steps("el-cascader", self.framework)
         if not steps:
@@ -1182,7 +1484,7 @@ class MultiStepExecutor:
             # 无路径：逐级发现+选择
             return await self._cascader_discover_and_select(steps, label)
 
-    async def _execute_date_picker(self, label: str, option_text: str, _options) -> bool:
+    async def _execute_date_picker(self, label: str, option_text: str, _options, selector: str = "") -> bool:
         """date-picker 多步交互：expand → select-today/select-now"""
         steps = self.kb.get_steps("date-picker", self.framework)
         if not steps:
@@ -1201,7 +1503,7 @@ class MultiStepExecutor:
             selected = await self._try_step_patterns(steps.get("select-now", {}), label=label)
         return selected
 
-    async def _execute_form_checkbox(self, label: str, option_text: str, _options) -> bool:
+    async def _execute_form_checkbox(self, label: str, option_text: str, _options, selector: str = "") -> bool:
         """form-checkbox：勾选指定选项"""
         patterns = self.kb.get_patterns("form-checkbox", self.framework)
         for p in patterns:
@@ -1245,6 +1547,9 @@ class MultiStepExecutor:
                 **placeholder_kwargs
             )
 
+            # Debug: log the generated XPath
+            LOG.debug(f"    XPath pattern: {xpath[:120]}...")
+
             # 如果有活跃覆盖层，先尝试在覆盖层内定位
             if overlay_prefix:
                 from .kb_loader import apply_overlay_scope
@@ -1254,8 +1559,10 @@ class MultiStepExecutor:
 
             # 回退：在全局范围定位
             if await self._click_by_xpath(xpath):
+                LOG.debug(f"    ✓ XPath matched")
                 return True
 
+        LOG.debug(f"    ✗ All XPath patterns failed")
         return False
 
     async def _click_by_xpath(self, xpath: str, timeout: int = 2000) -> bool:
@@ -1324,15 +1631,30 @@ class MultiStepExecutor:
 
     # ---- 选项自动发现 ----
 
-    async def _discover_first_option(self) -> str:
+    async def _discover_first_option(self, timeout: int = 3000) -> str:
         """展开下拉框后，读取第一个可见选项的文本。
 
         支持 Element UI 和 Ant Design 两种框架。
+        Element UI 的下拉面板会被 teleport 到 <body>，需要等待异步渲染。
+
+        Args:
+            timeout: 等待下拉面板出现的超时时间（毫秒）
 
         Returns:
             第一个可见选项的文本，无选项时返回空串
         """
         if self.framework == "ant-design":
+            # 等待 Ant Design 下拉选项出现
+            try:
+                await self.page.wait_for_selector(
+                    '.ant-select-dropdown:not(.ant-select-dropdown-hidden) '
+                    '.ant-select-item-option:not(.ant-select-item-option-disabled)',
+                    state='visible',
+                    timeout=timeout
+                )
+            except Exception:
+                pass  # 继续尝试读取，可能已经出现
+
             js = """() => {
                 const item = document.querySelector(
                     '.ant-select-dropdown:not(.ant-select-dropdown-hidden) '
@@ -1340,20 +1662,132 @@ class MultiStepExecutor:
                 return item ? item.textContent.trim() : '';
             }"""
         else:
+            # 等待 Element UI 下拉选项出现（teleport 到 <body>）
+            try:
+                await self.page.wait_for_selector(
+                    '.el-select-dropdown .el-select-dropdown__item:not(.is-disabled)',
+                    state='visible',
+                    timeout=timeout
+                )
+            except Exception:
+                pass  # 继续尝试读取，可能已经出现
+
             js = """() => {
-                const items = document.querySelectorAll(
-                    '.el-select-dropdown__item:not(.is-disabled)');
-                for (const item of items) {
-                    if (item.offsetWidth > 0 && item.offsetHeight > 0) {
-                        return item.textContent.trim();
+                const result = {found: false, text: '', debug: {dropdowns: []}};
+                const dropdowns = document.querySelectorAll('.el-select-dropdown');
+                for (const dd of dropdowns) {
+                    const ddInfo = {
+                        visible: dd.offsetWidth > 0 && dd.offsetHeight > 0,
+                        width: dd.offsetWidth,
+                        height: dd.offsetHeight,
+                        items: []
+                    };
+                    const items = dd.querySelectorAll('.el-select-dropdown__item:not(.is-disabled)');
+                    for (const item of items) {
+                        const itemInfo = {
+                            text: item.textContent.trim(),
+                            visible: item.offsetWidth > 0 && item.offsetHeight > 0
+                        };
+                        ddInfo.items.push(itemInfo);
+                        if (!result.found && item.offsetWidth > 0 && item.offsetHeight > 0) {
+                            result.found = true;
+                            result.text = item.textContent.trim();
+                        }
                     }
+                    result.debug.dropdowns.push(ddInfo);
                 }
-                return '';
+                return result;
             }"""
         try:
-            return await self.page.evaluate(js)
-        except Exception:
+            result = await self.page.evaluate(js)
+            if isinstance(result, dict):
+                if result.get('found'):
+                    LOG.info(f"    _discover_first_option: found option '{result['text']}'")
+                    return result['text']
+                else:
+                    LOG.info(f"    _discover_first_option: no visible option, debug={result.get('debug')}")
+                    return ""
+            else:
+                return result if result else ""
+        except Exception as e:
+            LOG.info(f"    _discover_first_option exception: {e}")
             return ""
+
+    async def _click_visible_option(self, option_text: str = "") -> bool:
+        """直接点击可见的下拉选项（KB XPath 失败时的回退）。
+
+        Args:
+            option_text: 要选择的选项文本，为空则选择第一个可见选项
+
+        Returns:
+            是否成功点击
+        """
+        try:
+            if option_text:
+                # 点击指定文本的选项
+                clicked = await self.page.evaluate("""(text) => {
+                    const dds = document.querySelectorAll('.el-select-dropdown');
+                    for (const dd of dds) {
+                        if (dd.offsetWidth === 0 || dd.offsetHeight === 0) continue;
+                        const items = dd.querySelectorAll('.el-select-dropdown__item');
+                        for (const item of items) {
+                            if (item.textContent.trim() === text) {
+                                item.click();
+                                return true;
+                            }
+                        }
+                    }
+                    return false;
+                }""", option_text)
+            else:
+                # 点击第一个可见选项
+                clicked = await self.page.evaluate("""() => {
+                    const dds = document.querySelectorAll('.el-select-dropdown');
+                    for (const dd of dds) {
+                        if (dd.offsetWidth === 0 || dd.offsetHeight === 0) continue;
+                        const items = dd.querySelectorAll('.el-select-dropdown__item:not(.is-disabled)');
+                        for (const item of items) {
+                            if (item.offsetWidth > 0 && item.offsetHeight > 0) {
+                                item.click();
+                                return true;
+                            }
+                        }
+                    }
+                    return false;
+                }""")
+            return bool(clicked)
+        except Exception as e:
+            LOG.debug(f"    _click_visible_option exception: {e}")
+            return False
+
+    async def _wait_for_options_loaded(self) -> bool:
+        """等待下拉选项加载完成（最多 4 秒）。
+
+        Returns:
+            bool: 是否成功加载选项
+        """
+        for i in range(8):  # 8 * 500ms = 4 秒
+            state = await self.page.evaluate("""() => {
+                const dds = document.querySelectorAll('.el-select-dropdown');
+                for (const dd of dds) {
+                    if (dd.offsetWidth === 0 || dd.offsetHeight === 0) continue;
+                    const items = dd.querySelectorAll('.el-select-dropdown__item');
+                    return {
+                        found: true,
+                        visible: true,
+                        itemCount: items.length,
+                        firstItemText: items.length > 0 ? items[0].textContent.trim() : null
+                    };
+                }
+                return {found: false, visible: false, itemCount: 0, firstItemText: null};
+            }""")
+            if state['found'] and state['itemCount'] > 0:
+                LOG.debug(f"    选项加载完成: {state['itemCount']} 个选项, 第一个: '{state['firstItemText']}'")
+                return True
+            LOG.debug(f"    等待选项加载... 第 {i+1}/8 次检查, 当前状态: {state}")
+            await self.page.wait_for_timeout(500)
+        LOG.warning(f"    等待选项加载超时 (4 秒)")
+        return False
 
     async def _read_cascader_current_items(self) -> list:
         """读取级联选择器当前（最后）面板的菜单项。

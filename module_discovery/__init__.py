@@ -14,5 +14,5 @@ module_discovery — 模块级 API 自动化发现与测试脚本生成引擎。
 
 产出:
     projects/<id>/kb/module_discovered/<模块名>.json   (Stage 1-2 结果)
-    projects/<id>/flows/<模块名>_API测试.py              (Stage 4 生成脚本)
+    projects/<id>/scripts/<version>/api/<模块名>_API测试.py              (Stage 4 生成脚本)
 """

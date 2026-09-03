@@ -68,8 +68,8 @@ def parse_args():
                     help="仅发现指定标签的模块（逗号分隔）")
     ap.add_argument("--force-gen", action="store_true", default=False,
                     help="即使 Stage 2 验证失败也强制生成脚本")
-    ap.add_argument("--max-recapture", type=int, default=2,
-                    help="Stage 2 验证失败时的最大重试捕获次数（默认2，设0禁用）")
+    ap.add_argument("--max-recapture", type=int, default=0,
+                    help="Stage 2 验证失败时的最大重试捕获次数（默认0禁用，重跑对 playbook 问题无用）")
     ap.add_argument("--capture-all", action="store_true", default=False,
                     help="捕获所有 XHR/fetch 请求（不限于 /estack/api）")
     return ap.parse_args()
@@ -245,6 +245,17 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str)
     out_path = project_dir / "kb" / "module_discovered" / f"{module_name}_ui.json"
     _save_json(ui_result, out_path)
     LOG.info(f"结果已保存: {out_path}")
+
+    # 注入 meta 信息到 ui_result（供 build_playbook 使用）
+    ui_result["module_name"] = module_name
+    ui_result["target_url"] = target_url
+
+    # 生成并保存 playbook
+    from .discover_ui import build_playbook
+    playbook = build_playbook(ui_result)
+    playbook_path = project_dir / "kb" / "module_discovered" / f"{module_name}_playbook.json"
+    _save_json(playbook, playbook_path)
+    LOG.info(f"Playbook 已保存: {playbook_path}")
 
     # 打印摘要
     s = ui_result.get("summary", {})
@@ -439,6 +450,22 @@ async def run_stage2(page, project_dir: Path, module_name: str,
             LOG.info(f"  唯一端点: {stats.get('unique_endpoints', 0)} 个")
             for cat, eps in sorted(api_capture.get("classified", {}).items()):
                 LOG.info(f"    {cat}: {len(eps)} 个")
+
+            # 生成 UI 自动化脚本
+            from .generate_ui_script import generate_ui_script
+            playbook_path = project_dir / "kb" / "module_discovered" / f"{module_name}_playbook.json"
+            if playbook_path.exists():
+                try:
+                    with open(playbook_path, 'r', encoding='utf-8') as f:
+                        playbook_data = json.load(f)
+                    script_path, data_path = generate_ui_script(playbook_data, module_name, project_dir)
+                    LOG.info(f"  UI 脚本已生成: {script_path}")
+                    LOG.info(f"  UI 数据已生成: {data_path}")
+                except Exception as e:
+                    LOG.warning(f"  UI 脚本生成失败: {e}")
+            else:
+                LOG.warning(f"  Playbook 文件不存在，跳过 UI 脚本生成: {playbook_path}")
+
             return full_result, True
 
         # 验证失败

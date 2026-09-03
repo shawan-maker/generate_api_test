@@ -1,0 +1,362 @@
+{
+  "meta": {
+    "module_name": "用户管理",
+    "target_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/user",
+    "base_url": "",
+    "login_url": "",
+    "framework": "element-ui",
+    "generated_at": "2026-09-03 09:02:44",
+    "version": "1.0"
+  },
+  "page_structure": {},
+  "operations": {
+    "create": {
+      "description": "create",
+      "steps": [
+        {
+          "action": "click_button",
+          "playwright_locator": "button:has-text('创建用户')",
+          "description": "点击创建按钮"
+        },
+        {
+          "action": "wait_for_dialog",
+          "playwright_locator": ".el-dialog__wrapper",
+          "interaction_mode": "page-nav",
+          "description": "等待创建对话框"
+        },
+        {
+          "action": "fill_form",
+          "fields": [
+            {
+              "label": "账号",
+              "playwright_locator": "div > div:nth-of-type(2) > div > div > input",
+              "type": "input",
+              "kb_category": "input-generic",
+              "fill_rule": {
+                "rule": "username_pattern",
+                "params": {
+                  "prefix": "autotest"
+                }
+              },
+              "is_marker": true
+            },
+            {
+              "label": "姓名",
+              "playwright_locator": "div > div:nth-of-type(3) > div > div > input",
+              "type": "input",
+              "kb_category": "input-generic",
+              "fill_rule": {
+                "rule": "name_pattern",
+                "params": {
+                  "prefix": "test"
+                }
+              }
+            },
+            {
+              "label": "密码",
+              "playwright_locator": "div > div:nth-of-type(4) > div > div > input",
+              "type": "input",
+              "kb_category": "input-generic",
+              "fill_rule": {
+                "rule": "password_fixed",
+                "params": {
+                  "value": "Test@123456"
+                }
+              }
+            },
+            {
+              "label": "确认密码",
+              "playwright_locator": "div > div:nth-of-type(5) > div > div > input",
+              "type": "input",
+              "kb_category": "input-generic",
+              "fill_rule": {
+                "rule": "password_fixed",
+                "params": {
+                  "value": "Test@123456"
+                }
+              }
+            },
+            {
+              "label": "手机号",
+              "playwright_locator": "div > div:nth-of-type(6) > div > div > input",
+              "type": "input",
+              "kb_category": "input-generic",
+              "fill_rule": {
+                "rule": "phone_pattern",
+                "params": {
+                  "prefix": "138"
+                }
+              }
+            },
+            {
+              "label": "邮箱",
+              "playwright_locator": "div > div:nth-of-type(7) > div > div > input",
+              "type": "input",
+              "kb_category": "input-generic",
+              "fill_rule": {
+                "rule": "email_pattern",
+                "params": {
+                  "domain": "test.com"
+                }
+              }
+            },
+            {
+              "label": "描述",
+              "playwright_locator": "div > div:nth-of-type(8) > div > div > textarea",
+              "type": "textarea",
+              "kb_category": "textarea-generic",
+              "fill_rule": {
+                "rule": "description_pattern",
+                "params": {
+                  "prefix": "auto"
+                }
+              }
+            },
+            {
+              "label": "系统角色",
+              "playwright_locator": ".el-form-item:nth-child(2) .el-select",
+              "type": "select",
+              "kb_category": "el-select",
+              "fill_rule": {},
+              "is_editable": true,
+              "option_text": "普通用户"
+            },
+            {
+              "label": "部门角色",
+              "playwright_locator": ".el-form-item:nth-child(3) .el-select",
+              "type": "select",
+              "kb_category": "el-select",
+              "fill_rule": {},
+              "is_editable": false,
+              "option_text": ""
+            }
+          ],
+          "description": "填充表单字段"
+        },
+        {
+          "action": "click_button",
+          "playwright_locator": "button:has-text('确 定')",
+          "text": "确 定",
+          "description": "点击提交按钮"
+        },
+        {
+          "action": "assert_success",
+          "playwright_locator": ".el-message--success",
+          "description": "验证创建成功"
+        }
+      ],
+      "marker": "test",
+      "status": "success"
+    },
+    "update": {
+      "description": "update",
+      "steps": [
+        {
+          "action": "find_row",
+          "description": "定位目标数据行"
+        },
+        {
+          "action": "click_row_button",
+          "button_text": "编辑",
+          "description": "点击行内编辑按钮"
+        },
+        {
+          "action": "wait_for_dialog",
+          "playwright_locator": ".el-dialog__wrapper",
+          "interaction_mode": "page-nav",
+          "description": "等待编辑对话框"
+        },
+        {
+          "action": "fill_form",
+          "fields": [
+            {
+              "label": "姓名",
+              "playwright_locator": "#app > div > section > section > main > div > div > div:nth-of-type(2) > div > div:nth-of-type(3) > div > div:nth-of-type(2) > form > div:nth-of-type(2) > div > div > input",
+              "type": "input",
+              "kb_category": "input-generic",
+              "fill_rule": {
+                "rule": "name_pattern",
+                "params": {
+                  "prefix": "test"
+                }
+              }
+            },
+            {
+              "label": "邮箱",
+              "playwright_locator": "#app > div > section > section > main > div > div > div:nth-of-type(2) > div > div:nth-of-type(3) > div > div:nth-of-type(2) > form > div:nth-of-type(3) > div > div > input",
+              "type": "input",
+              "kb_category": "input-generic",
+              "fill_rule": {
+                "rule": "email_pattern",
+                "params": {
+                  "domain": "test.com"
+                }
+              }
+            },
+            {
+              "label": "手机号",
+              "playwright_locator": "#app > div > section > section > main > div > div > div:nth-of-type(2) > div > div:nth-of-type(3) > div > div:nth-of-type(2) > form > div:nth-of-type(4) > div > div > input",
+              "type": "input",
+              "kb_category": "input-generic",
+              "fill_rule": {
+                "rule": "phone_pattern",
+                "params": {
+                  "prefix": "138"
+                }
+              }
+            },
+            {
+              "label": "描述",
+              "playwright_locator": "#app > div > section > section > main > div > div > div:nth-of-type(2) > div > div:nth-of-type(3) > div > div:nth-of-type(2) > form > div:nth-of-type(5) > div > div > textarea:nth-of-type(1)",
+              "type": "textarea",
+              "kb_category": "textarea-generic",
+              "fill_rule": {
+                "rule": "description_pattern",
+                "params": {
+                  "prefix": "auto"
+                }
+              }
+            }
+          ],
+          "description": "填充编辑表单"
+        },
+        {
+          "action": "click_button",
+          "playwright_locator": "button:has-text('确 定')",
+          "text": "确 定",
+          "description": "点击提交按钮"
+        },
+        {
+          "action": "assert_success",
+          "playwright_locator": ".el-message--success",
+          "description": "验证更新成功"
+        }
+      ],
+      "marker": null,
+      "status": "success"
+    },
+    "lock": {
+      "description": "lock",
+      "steps": [
+        {
+          "action": "find_row",
+          "description": "定位目标数据行"
+        },
+        {
+          "action": "click_row_more",
+          "item_text": "冻结",
+          "description": "点击更多菜单项: 冻结"
+        },
+        {
+          "action": "confirm_dialog",
+          "description": "点击确认对话框"
+        },
+        {
+          "action": "assert_success",
+          "playwright_locator": ".el-message--success",
+          "description": "验证操作成功"
+        }
+      ],
+      "marker": null,
+      "status": "success"
+    },
+    "unlock": {
+      "description": "unlock",
+      "steps": [
+        {
+          "action": "find_row",
+          "description": "定位目标数据行"
+        },
+        {
+          "action": "click_row_more",
+          "item_text": "启用",
+          "description": "点击更多菜单项: 启用"
+        },
+        {
+          "action": "confirm_dialog",
+          "description": "点击确认对话框"
+        },
+        {
+          "action": "assert_success",
+          "playwright_locator": ".el-message--success",
+          "description": "验证操作成功"
+        }
+      ],
+      "marker": null,
+      "status": "success"
+    },
+    "reset": {
+      "description": "reset",
+      "steps": [
+        {
+          "action": "find_row",
+          "description": "定位目标数据行"
+        },
+        {
+          "action": "click_row_more",
+          "item_text": "重置密码",
+          "description": "点击更多菜单项: 重置密码"
+        },
+        {
+          "action": "confirm_dialog",
+          "description": "点击确认对话框"
+        },
+        {
+          "action": "assert_success",
+          "playwright_locator": ".el-message--success",
+          "description": "验证操作成功"
+        }
+      ],
+      "marker": null,
+      "status": "success"
+    },
+    "migrate": {
+      "description": "migrate",
+      "steps": [
+        {
+          "action": "click_button",
+          "text": "批量迁移",
+          "playwright_locator": "button:has-text('批量迁移')",
+          "description": "点击操作按钮"
+        },
+        {
+          "action": "assert_success",
+          "playwright_locator": ".el-message--success",
+          "description": "验证操作成功"
+        }
+      ],
+      "marker": null,
+      "status": "success"
+    },
+    "delete": {
+      "description": "delete",
+      "steps": [
+        {
+          "action": "find_row",
+          "description": "定位目标数据行"
+        },
+        {
+          "action": "select_row_checkbox",
+          "checkbox_locator": ".el-checkbox__input",
+          "description": "勾选行 checkbox"
+        },
+        {
+          "action": "click_button",
+          "text": "批量删除",
+          "playwright_locator": "button:has-text('批量删除')",
+          "description": "点击删除按钮"
+        },
+        {
+          "action": "confirm_dialog",
+          "description": "点击确认对话框"
+        },
+        {
+          "action": "assert_row_disappeared",
+          "description": "验证数据行已消失"
+        }
+      ],
+      "marker": null,
+      "status": "success"
+    }
+  }
+}

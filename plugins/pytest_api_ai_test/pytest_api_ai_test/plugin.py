@@ -1,7 +1,7 @@
 """
 pytest_api_ai_test plugin - 核心插件实现
 
-自动发现 flows/ 下的 API 测试脚本并转为 pytest 用例
+自动发现 scripts/ 下的 API 测试脚本并转为 pytest 用例
 """
 
 import pytest

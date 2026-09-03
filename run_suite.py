@@ -39,9 +39,9 @@ def find_all_test_scripts(project_name: str = None) -> list:
     scripts = []
 
     if project_name:
-        pattern = PROJECT_ROOT / "projects" / project_name / "flows" / "*" / "*_API测试.py"
+        pattern = PROJECT_ROOT / "projects" / project_name / "scripts" / "*" / "api" / "*_API测试.py"
     else:
-        pattern = PROJECT_ROOT / "projects" / "*" / "flows" / "*" / "*_API测试.py"
+        pattern = PROJECT_ROOT / "projects" / "*" / "scripts" / "*" / "api" / "*_API测试.py"
 
     for script_path in sorted(glob.glob(str(pattern))):
         path = Path(script_path)

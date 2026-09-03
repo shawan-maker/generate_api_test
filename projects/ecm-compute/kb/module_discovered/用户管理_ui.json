@@ -22,7 +22,7 @@
       "text": "批量导入",
       "tag": "BUTTON",
       "className": "el-button el-button--default el-button--small",
-      "rect": "69x30",
+      "rect": "70x31",
       "location": "toolbar",
       "source": "main",
       "action": "import"
@@ -31,7 +31,7 @@
       "text": "批量删除",
       "tag": "BUTTON",
       "className": "el-button el-tooltip el-button--default el-button--small is-",
-      "rect": "69x30",
+      "rect": "70x31",
       "location": "toolbar",
       "source": "main",
       "action": "delete"
@@ -40,7 +40,7 @@
       "text": "批量迁移",
       "tag": "BUTTON",
       "className": "el-button el-tooltip el-button--default el-button--small is-",
-      "rect": "69x30",
+      "rect": "70x31",
       "location": "toolbar",
       "source": "main",
       "action": "migrate"
@@ -49,7 +49,7 @@
       "text": "GO",
       "tag": "BUTTON",
       "className": "el-button pagination-jumper el-button--default el-button--mi",
-      "rect": "50x27",
+      "rect": "51x28",
       "location": "toolbar",
       "source": "main",
       "action": "unknown"
@@ -60,7 +60,7 @@
       "text": "编辑",
       "tag": "BUTTON",
       "className": "el-button el-button--text el-button--small",
-      "rect": "25x13",
+      "rect": "26x14",
       "location": "row_action",
       "source": "main",
       "action": "update"
@@ -68,8 +68,8 @@
     {
       "text": "删除",
       "tag": "BUTTON",
-      "className": "el-button el-tooltip el-button--text el-button--small cmss-d",
-      "rect": "25x13",
+      "className": "el-button el-tooltip el-button--text el-button--small",
+      "rect": "26x14",
       "location": "row_action",
       "source": "main",
       "action": "delete"
@@ -78,7 +78,7 @@
       "text": "更多",
       "tag": "SPAN",
       "className": "el-dropdown-link el-dropdown-selfdefine",
-      "rect": "44x13",
+      "rect": "44x14",
       "location": "row_action",
       "source": "main",
       "action": "execute"
@@ -90,10 +90,10 @@
       "tag": "button",
       "className": "el-button el-button--default el-button--small",
       "rect": {
-        "x": 1792.6458740234375,
-        "y": 1025,
-        "width": 48.677085876464844,
-        "height": 29.33333396911621
+        "x": 1471.3125,
+        "y": 945,
+        "width": 49.34375,
+        "height": 30
       },
       "location": "dialog",
       "source": "create_page_scan",
@@ -104,10 +104,10 @@
       "tag": "button",
       "className": "el-button el-button--primary el-button--small",
       "rect": {
-        "x": 1851.322998046875,
-        "y": 1025,
-        "width": 48.677085876464844,
-        "height": 29.33333396911621
+        "x": 1530.65625,
+        "y": 945,
+        "width": 49.34375,
+        "height": 30
       },
       "location": "dialog",
       "source": "create_page_scan",
@@ -277,7 +277,7 @@
       "label": "账号",
       "type": "input",
       "kb_category": "input-generic",
-      "selector": null,
+      "selector": "div > div:nth-of-type(2) > div > div > input",
       "inputType": "text",
       "required": true
     },
@@ -285,7 +285,7 @@
       "label": "姓名",
       "type": "input",
       "kb_category": "input-generic",
-      "selector": null,
+      "selector": "div > div:nth-of-type(3) > div > div > input",
       "inputType": "text",
       "required": true
     },
@@ -293,7 +293,7 @@
       "label": "密码",
       "type": "input",
       "kb_category": "input-generic",
-      "selector": null,
+      "selector": "div > div:nth-of-type(4) > div > div > input",
       "inputType": "password",
       "required": true
     },
@@ -301,7 +301,7 @@
       "label": "确认密码",
       "type": "input",
       "kb_category": "input-generic",
-      "selector": null,
+      "selector": "div > div:nth-of-type(5) > div > div > input",
       "inputType": "password",
       "required": true
     },
@@ -309,7 +309,7 @@
       "label": "手机号",
       "type": "input",
       "kb_category": "input-generic",
-      "selector": null,
+      "selector": "div > div:nth-of-type(6) > div > div > input",
       "inputType": "text",
       "required": true
     },
@@ -317,7 +317,7 @@
       "label": "邮箱",
       "type": "input",
       "kb_category": "input-generic",
-      "selector": null,
+      "selector": "div > div:nth-of-type(7) > div > div > input",
       "inputType": "text",
       "required": true
     },
@@ -325,21 +325,21 @@
       "label": "描述",
       "type": "textarea",
       "kb_category": "textarea-generic",
-      "selector": null,
+      "selector": "div > div:nth-of-type(8) > div > div > textarea",
       "required": false
     },
     {
       "label": "系统角色",
       "type": "select",
       "kb_category": "el-select",
-      "selector": null,
+      "selector": ".el-form-item:nth-child(2) .el-select",
       "required": true
     },
     {
       "label": "部门角色",
       "type": "select",
       "kb_category": "el-select",
-      "selector": null,
+      "selector": ".el-form-item:nth-child(3) .el-select",
       "required": false
     }
   ],
@@ -381,30 +381,30 @@
       "success": true,
       "fill_data": {
         "名称": "test",
-        "编码": "code_242986",
-        "描述": "自动测试创建于242986",
-        "备注": "自动创建于242986",
-        "说明": "自动测试创建于242986",
+        "编码": "code_397240",
+        "描述": "自动测试创建于397240",
+        "备注": "自动创建于397240",
+        "说明": "自动测试创建于397240",
         "用户名": "test",
         "姓名": "test",
-        "邮箱": "at_242986@test.com",
-        "手机": "13828088012",
+        "邮箱": "at_397240@test.com",
+        "手机": "13877051041",
         "密码": "Test@123456",
         "确认密码": "Test@123456",
         "角色名称": "test",
-        "角色编码": "role_code_242986",
-        "角色描述": "自动测试角色创建于242986",
+        "角色编码": "role_code_397240",
+        "角色描述": "自动测试角色创建于397240",
         "username": "test",
         "name": "test",
-        "email": "at_242986@test.com",
-        "phone": "13828088012",
+        "email": "at_397240@test.com",
+        "phone": "13877051041",
         "password": "Test@123456",
-        "description": "自动测试创建于242986",
-        "code": "code_242986",
-        "remark": "自动创建于242986",
-        "账号": "AT_test_242986",
-        "系统角色": "AT_test_242986",
-        "部门角色": "AT_test_242986"
+        "description": "自动测试创建于397240",
+        "code": "code_397240",
+        "remark": "自动创建于397240",
+        "账号": "AT_test_397240",
+        "系统角色": "AT_test_397240",
+        "部门角色": "AT_test_397240"
       },
       "fill_rules": {
         "账号": {
@@ -467,7 +467,7 @@
           "label": "账号",
           "type": "input",
           "kb_category": "input-generic",
-          "selector": null,
+          "selector": "div > div:nth-of-type(2) > div > div > input",
           "inputType": "text",
           "required": true
         },
@@ -475,7 +475,7 @@
           "label": "姓名",
           "type": "input",
           "kb_category": "input-generic",
-          "selector": null,
+          "selector": "div > div:nth-of-type(3) > div > div > input",
           "inputType": "text",
           "required": true
         },
@@ -483,7 +483,7 @@
           "label": "密码",
           "type": "input",
           "kb_category": "input-generic",
-          "selector": null,
+          "selector": "div > div:nth-of-type(4) > div > div > input",
           "inputType": "password",
           "required": true
         },
@@ -491,7 +491,7 @@
           "label": "确认密码",
           "type": "input",
           "kb_category": "input-generic",
-          "selector": null,
+          "selector": "div > div:nth-of-type(5) > div > div > input",
           "inputType": "password",
           "required": true
         },
@@ -499,7 +499,7 @@
           "label": "手机号",
           "type": "input",
           "kb_category": "input-generic",
-          "selector": null,
+          "selector": "div > div:nth-of-type(6) > div > div > input",
           "inputType": "text",
           "required": true
         },
@@ -507,7 +507,7 @@
           "label": "邮箱",
           "type": "input",
           "kb_category": "input-generic",
-          "selector": null,
+          "selector": "div > div:nth-of-type(7) > div > div > input",
           "inputType": "text",
           "required": true
         },
@@ -515,29 +515,59 @@
           "label": "描述",
           "type": "textarea",
           "kb_category": "textarea-generic",
-          "selector": null,
+          "selector": "div > div:nth-of-type(8) > div > div > textarea",
           "required": false
         },
         {
           "label": "系统角色",
           "type": "select",
           "kb_category": "el-select",
-          "selector": null,
+          "selector": ".el-form-item:nth-child(2) .el-select",
           "required": true
         },
         {
           "label": "部门角色",
           "type": "select",
           "kb_category": "el-select",
-          "selector": null,
+          "selector": ".el-form-item:nth-child(3) .el-select",
           "required": false
         }
       ],
       "marker": "test",
       "selectors": {
         "trigger": "创建用户",
-        "submit": "确定"
-      }
+        "submit": "确 定"
+      },
+      "trigger_locator": "button:has-text('创建用户')",
+      "trigger_locator_verified": "button:has-text('创建用户')",
+      "trigger_text": "创建用户",
+      "submit_locator": "button:has-text('确 定')",
+      "submit_locator_verified": "button:has-text('确 定')",
+      "submit_text": "确 定",
+      "dialog_detected": false,
+      "interaction_mode": "page-nav",
+      "dialog_locator": ".el-dialog__wrapper",
+      "success_detected": true,
+      "success_locator": ".el-message--success",
+      "multi_step_field_details": [
+        {
+          "label": "系统角色",
+          "kb_category": "el-select",
+          "selector": ".el-form-item:nth-child(2) .el-select",
+          "fill_rule": {},
+          "is_editable": true,
+          "option_text": "普通用户"
+        },
+        {
+          "label": "部门角色",
+          "kb_category": "el-select",
+          "selector": ".el-form-item:nth-child(3) .el-select",
+          "fill_rule": {},
+          "is_editable": false,
+          "option_text": ""
+        }
+      ],
+      "radio_field_details": []
     },
     "update": {
       "success": true,
@@ -546,9 +576,79 @@
       },
       "selectors": {
         "trigger": "编辑",
-        "submit": "确定",
+        "submit": "确 定",
         "row_selector": "编辑"
-      }
+      },
+      "is_row_action": true,
+      "button_text": "编辑",
+      "form_fields": [
+        {
+          "label": "姓名",
+          "type": "input",
+          "kb_category": "input-generic",
+          "selector": "#app > div > section > section > main > div > div > div:nth-of-type(2) > div > div:nth-of-type(3) > div > div:nth-of-type(2) > form > div:nth-of-type(2) > div > div > input",
+          "inputType": "text",
+          "required": true
+        },
+        {
+          "label": "邮箱",
+          "type": "input",
+          "kb_category": "input-generic",
+          "selector": "#app > div > section > section > main > div > div > div:nth-of-type(2) > div > div:nth-of-type(3) > div > div:nth-of-type(2) > form > div:nth-of-type(3) > div > div > input",
+          "inputType": "text",
+          "required": true
+        },
+        {
+          "label": "手机号",
+          "type": "input",
+          "kb_category": "input-generic",
+          "selector": "#app > div > section > section > main > div > div > div:nth-of-type(2) > div > div:nth-of-type(3) > div > div:nth-of-type(2) > form > div:nth-of-type(4) > div > div > input",
+          "inputType": "text",
+          "required": true
+        },
+        {
+          "label": "描述",
+          "type": "textarea",
+          "kb_category": "textarea-generic",
+          "selector": "#app > div > section > section > main > div > div > div:nth-of-type(2) > div > div:nth-of-type(3) > div > div:nth-of-type(2) > form > div:nth-of-type(5) > div > div > textarea:nth-of-type(1)",
+          "inputType": "text",
+          "required": false
+        }
+      ],
+      "fill_rules": {
+        "姓名": {
+          "rule": "name_pattern",
+          "params": {
+            "prefix": "test"
+          }
+        },
+        "邮箱": {
+          "rule": "email_pattern",
+          "params": {
+            "domain": "test.com"
+          }
+        },
+        "手机号": {
+          "rule": "phone_pattern",
+          "params": {
+            "prefix": "138"
+          }
+        },
+        "描述": {
+          "rule": "description_pattern",
+          "params": {
+            "prefix": "auto"
+          }
+        }
+      },
+      "trigger_locator_verified": "button:has-text('编辑')",
+      "submit_locator_verified": "button:has-text('确 定')",
+      "submit_text": "确 定",
+      "interaction_mode": "page-nav",
+      "dialog_locator": ".el-dialog__wrapper",
+      "success_locator": ".el-message--success",
+      "multi_step_field_details": [],
+      "radio_field_details": []
     },
     "lock": {
       "success": true,
@@ -556,7 +656,14 @@
         "trigger": "冻结",
         "row_selector": "更多 > 冻结",
         "confirm": "确定"
-      }
+      },
+      "confirmed": "确定",
+      "is_dropdown_operation": true,
+      "dropdown_parent_selector": ".el-dropdown",
+      "dropdown_item_locator": ".el-dropdown-menu__item:has-text('冻结')",
+      "dropdown_item_text": "冻结",
+      "dropdown_trigger_method": "hover",
+      "checkbox_locator": ".el-checkbox__input"
     },
     "unlock": {
       "success": true,
@@ -564,7 +671,14 @@
         "trigger": "启用",
         "row_selector": "更多 > 启用",
         "confirm": "确定"
-      }
+      },
+      "confirmed": "确定",
+      "is_dropdown_operation": true,
+      "dropdown_parent_selector": ".el-dropdown",
+      "dropdown_item_locator": ".el-dropdown-menu__item:has-text('启用')",
+      "dropdown_item_text": "启用",
+      "dropdown_trigger_method": "hover",
+      "checkbox_locator": ".el-checkbox__input"
     },
     "reset": {
       "success": true,
@@ -572,34 +686,36 @@
         "trigger": "重置密码",
         "row_selector": "更多 > 重置密码",
         "confirm": "确认"
-      }
-    },
-    "import": {
-      "success": true,
-      "selectors": {
-        "trigger": "批量导入"
-      }
-    },
-    "authorize": {
-      "success": true,
-      "navigation_occurred": true,
-      "selectors": {
-        "trigger": "授权",
-        "row_selector": "更多 > 授权"
-      }
+      },
+      "confirmed": "确认",
+      "is_dropdown_operation": true,
+      "dropdown_parent_selector": ".el-dropdown",
+      "dropdown_item_locator": ".el-dropdown-menu__item:has-text('重置密码')",
+      "dropdown_item_text": "重置密码",
+      "dropdown_trigger_method": "hover",
+      "checkbox_locator": ".el-checkbox__input"
     },
     "migrate": {
       "success": true,
       "selectors": {
         "trigger": "批量迁移"
-      }
+      },
+      "confirmed": "",
+      "trigger_locator_verified": "button:has-text('批量迁移')",
+      "needs_checkbox": true,
+      "checkbox_locator": ".el-checkbox__input"
     },
     "delete": {
       "success": true,
       "selectors": {
         "trigger": "批量删除",
         "confirm": "确认"
-      }
+      },
+      "confirmed": "确认",
+      "trigger_locator_verified": "button:has-text('批量删除')",
+      "success_locator": ".el-message--success",
+      "needs_checkbox": true,
+      "checkbox_locator": ".el-checkbox__input"
     }
   }
 }

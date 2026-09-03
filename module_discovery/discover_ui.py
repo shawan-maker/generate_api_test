@@ -362,29 +362,29 @@ async def _scan_create_dialog(page, kb: ProbeKB = None, framework: str = "elemen
             if (selectEl && independentInputs.length > 0) {
                 // 复合组件：el-select + 独立 input
                 fields.push({ label: label + '(下拉)', type: 'select', kb_category: 'el-select',
-                             selector: null, required });
+                             selector: _buildComponentSelector(fi, '.el-select'), required });
                 independentInputs.forEach(inp => {
                     fields.push({ label, type: 'input', kb_category: 'input-generic',
-                                 selector: null, inputType: inp.type || 'text', required });
+                                 selector: _buildSelector(inp), inputType: inp.type || 'text', required });
                 });
             }
             else if (fi.querySelector('.el-cascader')) {
                 fields.push({ label, type: 'cascader', kb_category: 'el-cascader',
-                             selector: null, required });
+                             selector: _buildComponentSelector(fi, '.el-cascader'), required });
             } else if (fi.querySelector('.el-date-editor, .ant-picker')) {
                 fields.push({ label, type: 'date-picker', kb_category: 'date-picker',
-                             selector: null, required });
+                             selector: _buildComponentSelector(fi, '.el-date-editor, .ant-picker'), required });
             } else if (selectEl) {
                 fields.push({ label, type: 'select', kb_category: 'el-select',
-                             selector: null, required });
+                             selector: _buildComponentSelector(fi, '.el-select'), required });
             } else if (fi.querySelector('.el-radio-group')) {
                 const firstRadio = fi.querySelector('.el-radio-button__inner, .el-radio__label');
                 fields.push({ label, type: 'radio', kb_category: 'radio',
-                             selector: null, required,
+                             selector: _buildComponentSelector(fi, '.el-radio-group'), required,
                              firstOptionText: firstRadio ? firstRadio.textContent.trim() : '' });
             } else if (fi.querySelector('.el-checkbox') && !fi.closest('.el-table')) {
                 fields.push({ label, type: 'checkbox', kb_category: 'form-checkbox',
-                             selector: null, required });
+                             selector: _buildComponentSelector(fi, '.el-checkbox'), required });
             } else {
                 // 通用 input / textarea
                 const ta = fi.querySelector('textarea');
@@ -401,18 +401,74 @@ async def _scan_create_dialog(page, kb: ProbeKB = None, framework: str = "elemen
                     ) || allInputs.reduce((max, inp) => inp.offsetWidth > max.offsetWidth ? inp : max, allInputs[0]);
 
                     fields.push({ label, type: 'input', kb_category: 'input-generic',
-                                 selector: null, inputType: mainInput.type || 'text', required });
+                                 selector: _buildSelector(mainInput), inputType: mainInput.type || 'text', required });
                 } else if (allInputs.length === 1) {
                     // 单个 input
                     const inp = allInputs[0];
                     fields.push({ label, type: 'input', kb_category: 'input-generic',
-                                 selector: null, inputType: inp.type || 'text', required });
+                                 selector: _buildSelector(inp), inputType: inp.type || 'text', required });
                 } else if (ta) {
                     fields.push({ label, type: 'textarea', kb_category: 'textarea-generic',
-                                 selector: null, required });
+                                 selector: _buildSelector(ta), required });
                 }
             }
         });
+
+        // 辅助函数：为 input/textarea 生成 selector（基于 DOM 路径）
+        function _buildSelector(el) {
+            if (!el) return null;
+            // 优先使用 id
+            if (el.id) return `#${el.id}`;
+            // 优先使用 name
+            if (el.getAttribute('name')) return `[name="${el.getAttribute('name')}"]`;
+            // 回退：使用 DOM 路径
+            return _buildCssPath(el);
+        }
+
+        // 辅助函数：为复杂组件生成 selector（基于 label + 同级定位）
+        function _buildComponentSelector(formItem, selector) {
+            // 使用 formItem 在直接父元素中的位置定位（children 只返回直接子元素）
+            // 注意：不能用 document.querySelectorAll 全局计数，因为 nth-of-type 是相对于直接父元素的
+            const parent = formItem.parentElement;
+            if (parent) {
+                const directChildren = Array.from(parent.children);
+                const idx = directChildren.indexOf(formItem);
+                if (idx >= 0) {
+                    // 使用 nth-child 而非 nth-of-type，因为我们计算的是所有直接子元素的位置
+                    return `.el-form-item:nth-child(${idx + 1}) ${selector}`;
+                }
+            }
+            // 最后回退：用组件自身属性
+            const comp = formItem.querySelector(selector);
+            if (comp) return _buildCssPath(comp);
+            return null;
+        }
+
+        // 辅助函数：基于 DOM 路径生成 CSS selector
+        function _buildCssPath(el) {
+            const parts = [];
+            let current = el;
+            while (current && current.nodeType === 1) {
+                let tag = current.tagName.toLowerCase();
+                if (current.id) {
+                    parts.unshift(`#${current.id}`);
+                    break;
+                }
+                const parent = current.parentElement;
+                if (parent) {
+                    const siblings = Array.from(parent.children).filter(c => c.tagName === current.tagName);
+                    if (siblings.length > 1) {
+                        const idx = siblings.indexOf(current) + 1;
+                        tag += `:nth-of-type(${idx})`;
+                    }
+                }
+                parts.unshift(tag);
+                if (parts.length >= 5) break;  // 限制深度
+                current = current.parentElement;
+            }
+            return parts.join(' > ');
+        }
+
         return {fields, debugInfo};
     }"""
 
@@ -1583,6 +1639,9 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
                 if fallback:
                     created_marker = fallback
                     LOG.info(f"  create 失败，使用 fallback marker: {fallback}")
+                # 记录失败的 create 结果
+                if result:
+                    validated[action] = result
 
         elif action == "query":
             result = await _error_driven_retry(
@@ -1609,6 +1668,8 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
             )
             if result and result.get("success"):
                 validated[action] = result
+            elif result:
+                validated[action] = result
 
         elif action == "delete":
             result = await _error_driven_retry(
@@ -1619,6 +1680,10 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
             if result and result.get("success"):
                 validated[action] = result
                 created_marker = None  # 已删除
+            elif result:
+                validated[action] = result
+            elif result:
+                validated[action] = result
 
         elif action in ("lock", "unlock", "reset", "authorize", "migrate",
                         "export", "import", "batch", "approve", "execute"):
@@ -1636,14 +1701,25 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
             )
             if result and result.get("success"):
                 validated[action] = result
+            elif result:
+                # 失败的操作也记录（含部分步骤），供 playbook 生成和 Stage 2 尝试
+                validated[action] = result
 
         # 操作后确保回到列表页
-        await _ensure_on_list_page(page)
+        try:
+            await _ensure_on_list_page(page)
+        except Exception as e:
+            LOG.error(f"    _ensure_on_list_page 异常: {e}")
+            # 浏览器可能已关闭，停止后续操作验证
+            if "has been closed" in str(e):
+                LOG.error(f"    浏览器已关闭，停止后续操作验证")
+                break
 
-    # 判断是否有关键操作失败
+    # 判断是否有关键操作失败（未出现在 validated 中，或 success=False）
     critical_actions = {"create", "delete"}
     failed_critical = [a for a in critical_actions
-                       if a in buttons_by_action and a not in validated]
+                       if a in buttons_by_action and
+                       (a not in validated or not validated[a].get("success"))]
     if failed_critical:
         LOG.error(f"  Stage 1 关键操作验证失败: {failed_critical}")
         return None
@@ -1735,8 +1811,8 @@ async def _do_create(page, context: dict) -> dict:
     btn_text = btn.get("text", "")
 
     # 1. 点击创建按钮
-    clicked = await _click_button_escalating(page, btn_text)
-    if not clicked:
+    btn_click_result = await _click_button_escalating(page, btn_text)
+    if not btn_click_result["clicked"]:
         return {"success": False, "error_type": "click_failed",
                 "error_text": f"无法点击按钮: {btn_text}"}
 
@@ -1759,6 +1835,21 @@ async def _do_create(page, context: dict) -> dict:
     if context.get("fill_overrides"):
         fill_data.update(context["fill_overrides"])
 
+    # 4.5 初始化 multi_step_field_details（供 step 6 更新）
+    from . import const as _const
+    multi_step_field_details = []
+    for field in fields:
+        kb_cat = field.get("kb_category", "")
+        if kb_cat in _const.MULTI_STEP_TYPES or kb_cat == "form-checkbox":
+            multi_step_field_details.append({
+                "label": field.get("label"),
+                "kb_category": kb_cat,
+                "selector": field.get("selector"),
+                "fill_rule": field.get("fill_rule", {}),
+                "is_editable": False,
+                "option_text": "",
+            })
+
     # 5. 填充表单（传入预生成的 fill_data）
     filled = await form_filler.fill_create_form(fields, username, fill_data)
     # 重新扫描以获取最新字段状态
@@ -1767,24 +1858,36 @@ async def _do_create(page, context: dict) -> dict:
             try:
                 # 深度扫描：识别复合组件结构，精确定位目标 input
                 deep_info = await _deep_scan_form_item(page, label)
-                if deep_info.get("is_composite"):
+                if deep_info.get("found"):
                     # 复合组件：取最后一个可见 input（避开 el-select 内部的）
-                    input_count = sum(1 for e in deep_info["elements"] if e["type"] == "input")
-                    if input_count > 0:
-                        # 使用 nth-of-type 选择最后一个 input
-                        css = f'.el-form-item:has(.el-form-item__label:has-text("{label}")) input:not([readonly]):nth-of-type({input_count})'
-                        await page.fill(css, value, timeout=3000)
-                        LOG.info(f"    复合组件填充: {label} → {value[:20]}...")
-                        continue
-
-                # 非复合组件：使用通用选择器
-                css = f'.el-form-item:has(.el-form-item__label:has-text("{label}")) input:not([readonly])'
-                await page.fill(css, value, timeout=3000)
+                    input_elements = [e for e in deep_info.get("elements", []) if e["type"] == "input"]
+                    if input_elements:
+                        # 优先使用深度扫描返回的 selector
+                        target = input_elements[-1]
+                        selector = target.get("selector")
+                        if selector:
+                            await page.fill(selector, value, timeout=3000)
+                            LOG.info(f"    复合组件填充 (via deep selector): {label} → {value[:20]}...")
+                            continue
+                # 回退：按位置索引在同级中定位 form-item
+                css = await _resolve_label_selector(page, label)
+                if css:
+                    await page.fill(css, value, timeout=3000)
             except Exception as e:
                 LOG.debug(f"    填充 override {label} 失败: {e}")
 
     # 6. 处理多步组件
-    ms_filled = await form_filler.fill_multi_step_fields(fields, framework)
+    ms_filled, ms_details = await form_filler.fill_multi_step_fields(fields, framework)
+
+    # 更新 multi_step_field_details 中的实际执行结果
+    for detail in ms_details:
+        label = detail["label"]
+        for ms_field in multi_step_field_details:
+            if ms_field["label"] == label:
+                ms_field["is_editable"] = detail.get("is_editable", False)
+                ms_field["option_text"] = detail.get("option_text", "")
+                break
+
     if ms_filled == 0:
         # 兜底：尝试 select_dropdowns()
         select_count = await form_filler.select_dropdowns()
@@ -1837,16 +1940,67 @@ async def _do_create(page, context: dict) -> dict:
     # 确保回到列表页
     await _ensure_on_list_page(page)
 
+    # 构建 locator 信息（供 build_playbook 使用）
+    submit_text = submit_result.replace("submitted:", "").strip()
+    # submit_text 现在是原始文本（保留空格），直接用于 locator 构造
+    # submit_text_normalized 仅用于 display/日志
+    submit_text_normalized = " ".join(submit_text.split())
+    trigger_text_normalized = " ".join(btn_text.split())
+
+    # 使用实际点击成功的标签构造 locator（Gap 6: 可能是 span/a 而非 button）
+    trigger_tag = btn_click_result.get("tag", "button")
+    trigger_locator = f"{trigger_tag}:has-text('{trigger_text_normalized}')"
+
+    dialog_detected = await page.evaluate("""() => {
+        const dialog = document.querySelector('.el-dialog__wrapper:not([style*="display: none"]), .el-dialog:not([style*="display: none"])');
+        return dialog && dialog.offsetWidth > 0;
+    }""")
+
+    # 根据交互模式生成正确的 submit_locator
+    # 使用 submit_text（原始文本，保留空格）构造 locator，避免 Gap 1 问题
+    if dialog_detected:
+        # Dialog 模式：按钮在 .el-dialog__footer 内
+        submit_locator = f".el-dialog__footer button:has-text('{submit_text}')"
+    else:
+        # Page-nav 模式：按钮在页面表单底部
+        submit_locator = f"button:has-text('{submit_text}')"
+
+    # Phase 1.1: 收集 radio 字段详情
+    radio_field_details = []
+    for field in fields:
+        if field.get("kb_category") == "radio":
+            radio_field_details.append({
+                "label": field.get("label"),
+                "kb_category": "radio",
+                "option_locator": field.get("selector"),
+                "option_text": "",
+                "fill_rule": field.get("fill_rule", {}),
+            })
+
     return {
         "success": True,
         "fill_data": fill_data,
         "fill_rules": fill_rules,
-        "form_fields": fields,  # 添加扫描到的表单字段信息
+        "form_fields": fields,
         "marker": marker,
         "selectors": {
             "trigger": btn_text,
-            "submit": submit_result.replace("submitted:", ""),
+            "submit": submit_text,
         },
+        # Playbook 增强字段
+        "trigger_locator": trigger_locator,
+        "trigger_locator_verified": trigger_locator,  # Phase 1.1: 已验证的 locator
+        "trigger_text": trigger_text_normalized,
+        "submit_locator": submit_locator,
+        "submit_locator_verified": submit_locator,  # Phase 1.1: 已验证的 locator
+        "submit_text": submit_text_normalized,
+        "dialog_detected": bool(dialog_detected),
+        "interaction_mode": "dialog" if dialog_detected else "page-nav",  # Phase 1.1
+        "dialog_locator": ".el-dialog__wrapper",
+        "success_detected": True,
+        "success_locator": ".el-message--success",
+        "multi_step_field_details": multi_step_field_details,  # Phase 1.1
+        "radio_field_details": radio_field_details,  # Phase 1.1
     }
 
 
@@ -1869,8 +2023,8 @@ async def _do_query(page, context: dict) -> dict:
         pass
 
     # 点击搜索按钮
-    clicked = await _click_button_escalating(page, btn_text)
-    if not clicked:
+    btn_click_result = await _click_button_escalating(page, btn_text)
+    if not btn_click_result["clicked"]:
         return {"success": False, "error_type": "click_failed",
                 "error_text": f"无法点击搜索按钮: {btn_text}"}
 
@@ -1907,7 +2061,8 @@ async def _do_detail(page, context: dict) -> dict:
         clicked = await driver.click_row_button_v2(row, btn_text)
         row_selector = btn_text
     else:
-        clicked = await _click_button_escalating(page, btn_text)
+        btn_click_result = await _click_button_escalating(page, btn_text)
+        clicked = btn_click_result["clicked"]
 
     if not clicked:
         return {"success": False, "error_type": "click_failed",
@@ -2021,6 +2176,7 @@ async def _do_edit(page, context: dict) -> dict:
     # 找到行并点击编辑（带重试）
     max_locate_retries = 2
     row_selector = None
+    btn_click_result = {"clicked": False, "strategy": "", "tag": "button", "text": btn_text}
     for attempt in range(max_locate_retries):
         if btn_location == "row_action" and marker:
             from .button_driver import ButtonDriver
@@ -2036,7 +2192,8 @@ async def _do_edit(page, context: dict) -> dict:
             clicked = await driver.click_row_button_v2(row, btn_text)
             row_selector = btn_text
         else:
-            clicked = await _click_button_escalating(page, btn_text)
+            btn_click_result = await _click_button_escalating(page, btn_text)
+            clicked = btn_click_result["clicked"]
 
         if clicked:
             break
@@ -2094,7 +2251,69 @@ async def _do_edit(page, context: dict) -> dict:
     if row_selector:
         selectors["row_selector"] = row_selector
 
-    return {"success": True, "edit_fill_data": {"modified_fields": filled}, "selectors": selectors}
+    # Phase 1: 增强字段（与 _do_create 对齐，供 build_playbook 使用）
+    submit_text = submit_result.replace("submitted:", "").strip()
+    submit_text_normalized = " ".join(submit_text.split())
+    trigger_text_normalized = " ".join(btn_text.split())
+
+    dialog_detected = await page.evaluate("""() => {
+        const dialog = document.querySelector('.el-dialog__wrapper:not([style*="display: none"]), .el-dialog:not([style*="display: none"])');
+        return dialog && dialog.offsetWidth > 0;
+    }""")
+
+    if dialog_detected:
+        submit_locator = f".el-dialog__footer button:has-text('{submit_text}')"
+    else:
+        submit_locator = f"button:has-text('{submit_text}')"
+
+    trigger_tag = btn_click_result.get("tag", "button")
+    trigger_locator = f"{trigger_tag}:has-text('{trigger_text_normalized}')"
+
+    # Phase 1: 记录是否为行级操作（编辑按钮在行内，Stage 2 需先定位行再点击）
+    is_row_action = btn_location == "row_action" and row_selector is not None
+
+    # 收集 multi_step 和 radio 字段详情
+    from . import const as _const
+    multi_step_field_details = []
+    radio_field_details = []
+    for field in fields:
+        kb_cat = field.get("kb_category", "")
+        if kb_cat in _const.MULTI_STEP_TYPES or kb_cat == "form-checkbox":
+            multi_step_field_details.append({
+                "label": field.get("label"),
+                "kb_category": kb_cat,
+                "selector": field.get("selector"),
+                "fill_rule": field.get("fill_rule", {}),
+                "is_editable": False,
+                "option_text": "",
+            })
+        elif kb_cat == "radio":
+            radio_field_details.append({
+                "label": field.get("label"),
+                "kb_category": "radio",
+                "option_locator": field.get("selector"),
+                "option_text": "",
+                "fill_rule": field.get("fill_rule", {}),
+            })
+
+    return {
+        "success": True,
+        "edit_fill_data": {"modified_fields": filled},
+        "selectors": selectors,
+        # Phase 1: 增强字段
+        "is_row_action": is_row_action,
+        "button_text": btn_text,
+        "form_fields": fields,
+        "fill_rules": generate_fill_rules(fields),
+        "trigger_locator_verified": trigger_locator,
+        "submit_locator_verified": submit_locator,
+        "submit_text": submit_text_normalized,
+        "interaction_mode": "dialog" if dialog_detected else "page-nav",
+        "dialog_locator": ".el-dialog__wrapper",
+        "success_locator": ".el-message--success",
+        "multi_step_field_details": multi_step_field_details,
+        "radio_field_details": radio_field_details,
+    }
 
 
 async def _do_delete(page, context: dict) -> dict:
@@ -2119,6 +2338,7 @@ async def _do_delete(page, context: dict) -> dict:
     # 找到行并点击删除（带重试）
     max_locate_retries = 2
     row_selector = None
+    btn_click_result = {"clicked": False, "strategy": "", "tag": "button", "text": btn_text}
     for attempt in range(max_locate_retries):
         if btn_location == "row_action" and marker:
             from .button_driver import ButtonDriver
@@ -2134,7 +2354,8 @@ async def _do_delete(page, context: dict) -> dict:
             clicked = await driver.click_row_button_v2(row, btn_text)
             row_selector = btn_text
         else:
-            clicked = await _click_button_escalating(page, btn_text)
+            btn_click_result = await _click_button_escalating(page, btn_text)
+            clicked = btn_click_result["clicked"]
 
         if clicked:
             break
@@ -2173,10 +2394,29 @@ async def _do_delete(page, context: dict) -> dict:
     if row_selector:
         selectors["row_selector"] = row_selector
 
-    return {"success": True, "selectors": selectors} if success else {
+    # Phase 1: 增强字段
+    trigger_text_normalized = " ".join(btn_text.split())
+    trigger_tag = btn_click_result.get("tag", "button")
+    trigger_locator_verified = f"{trigger_tag}:has-text('{trigger_text_normalized}')"
+
+    # 如果是 toolbar 删除，标记需要先勾选 checkbox
+    needs_checkbox = btn_location == "toolbar"
+    checkbox_locator = ".el-checkbox__input" if needs_checkbox else None
+
+    result = {
+        "success": True,
+        "selectors": selectors,
+        "confirmed": confirmed,
+        "trigger_locator_verified": trigger_locator_verified,
+        "success_locator": ".el-message--success",
+        "needs_checkbox": needs_checkbox,
+        "checkbox_locator": checkbox_locator,
+    } if success else {
         "success": False, "error_type": "no_success_signal",
         "error_text": "删除后未检测到成功信号"
     }
+
+    return result
 
 
 async def _do_generic_operation(page, context: dict) -> dict:
@@ -2212,7 +2452,11 @@ async def _do_generic_operation(page, context: dict) -> dict:
         clicked = await driver.click_row_more_item(row, btn_text)
         row_selector = f"{btn.get('parent', '更多')} > {btn_text}"
     else:
-        clicked = await _click_button_escalating(page, btn_text)
+        # toolbar 按钮：先勾选 checkbox（如果需要）
+        if btn_location == "toolbar" and marker:
+            await _ensure_row_selected(page, marker)
+        btn_click_result = await _click_button_escalating(page, btn_text)
+        clicked = btn_click_result["clicked"]
 
     if not clicked:
         return {"success": False, "error_type": "click_failed",
@@ -2220,13 +2464,13 @@ async def _do_generic_operation(page, context: dict) -> dict:
 
     await page.wait_for_timeout(1500)
 
-    # 导航保护：检查是否触发了页面跳转（从 Stage 2 移入）
+    # 导航保护：检查是否触发了页面跳转
     url_after = page.url
     if url_before != url_after:
         LOG.info(f"    检测到页面跳转: {url_before[:40]} → {url_after[:40]}")
-        # 如果是跳转类操作（如 authorize），等待加载完成后返回
-        await wait_for_loading_complete(page)
-        # 尝试导航回原始页面
+        # 探索新页面（如授权页面），记录能收集到的信息
+        nav_info = await _explore_navigated_page(page, action, url_after)
+        # 导航回原始页面
         try:
             await page.goto(url_before, wait_until="domcontentloaded", timeout=30000)
             await wait_for_table_ready(page, timeout=15000)
@@ -2236,14 +2480,16 @@ async def _do_generic_operation(page, context: dict) -> dict:
         selectors = {"trigger": btn_text}
         if row_selector:
             selectors["row_selector"] = row_selector
-        return {"success": True, "navigation_occurred": True, "selectors": selectors}
+        # 导航类操作标记为未探索完成（success: False），但记录已探索的步骤
+        return {"success": False, "error_type": "navigation_unexplored",
+                "error_text": f"操作触发了页面跳转，已探索目标页面但未完成完整流程",
+                "nav_info": nav_info, "selectors": selectors}
 
     await wait_for_loading_complete(page)
 
-    # Fix 4: 特殊处理 import 操作 - 检测文件上传对话框
+    # 特殊处理 import 操作 - 检测文件上传对话框
     if action == "import":
         has_upload_dialog = await page.evaluate("""() => {
-            // 检测文件上传对话框
             const fileInput = document.querySelector('input[type="file"]');
             const uploadComponent = document.querySelector('.el-upload, .ant-upload');
             const uploadDialog = document.querySelector('.el-dialog, .ant-modal');
@@ -2254,7 +2500,6 @@ async def _do_generic_operation(page, context: dict) -> dict:
             if (uploadComponent && uploadComponent.offsetParent !== null) {
                 return true;
             }
-            // 检查对话框中是否包含上传组件
             if (uploadDialog && uploadDialog.offsetParent !== null) {
                 const dialogUpload = uploadDialog.querySelector('.el-upload, .ant-upload, input[type="file"]');
                 if (dialogUpload) return true;
@@ -2263,13 +2508,15 @@ async def _do_generic_operation(page, context: dict) -> dict:
         }""")
 
         if has_upload_dialog:
-            LOG.info(f"    检测到文件上传对话框（{action} 操作）")
-            # 关闭对话框
+            LOG.info(f"    检测到文件上传对话框（{action} 操作），无法自动完成")
             await _close_dialog(page)
             selectors = {"trigger": btn_text}
             if row_selector:
                 selectors["row_selector"] = row_selector
-            return {"success": True, "selectors": selectors}
+            # 导入操作无法自动完成（需要文件），标记为失败
+            return {"success": False, "error_type": "env_dependency",
+                    "error_text": "导入操作需要上传文件，无法自动完成",
+                    "selectors": selectors}
 
     # 如果有确认弹窗，点击确认
     state = await _check_precondition_state(page, {"type": "dialog"})
@@ -2312,17 +2559,52 @@ async def _do_generic_operation(page, context: dict) -> dict:
     if confirmed:
         selectors["confirm"] = confirmed
 
-    return {"success": True, "selectors": selectors}
+    # Playbook 增强字段
+    result = {"success": True, "selectors": selectors, "confirmed": confirmed}
+
+    # 记录 trigger_locator_verified（使用实际点击成功的标签）
+    trigger_text_normalized = " ".join(btn_text.split())
+    if btn_location not in ("dropdown",):
+        trigger_tag = btn_click_result.get("tag", "button")
+        result["trigger_locator_verified"] = f"{trigger_tag}:has-text('{trigger_text_normalized}')"
+
+    # 记录是否需要先勾选 checkbox（toolbar 按钮需要先选中行）
+    if btn_location == "toolbar":
+        result["needs_checkbox"] = True
+        result["checkbox_locator"] = ".el-checkbox__input"
+
+    # 记录是否为 dropdown 操作
+    if btn_location == "dropdown":
+        result["is_dropdown_operation"] = True
+        result["dropdown_parent_selector"] = ".el-dropdown"
+        result["dropdown_item_locator"] = f".el-dropdown-menu__item:has-text('{btn_text}')"
+        result["dropdown_item_text"] = btn_text
+        result["dropdown_trigger_method"] = "hover"
+        result["checkbox_locator"] = ".el-checkbox__input"
+
+    # 记录确认弹窗（只需标记 confirmed=True，Stage 2 用 confirm_dialog() 自动检测）
+    # confirm_locator / confirm_dialog_type 已废弃
+
+    return result
 
 
 # ============================================================
 # 辅助函数
 # ============================================================
 
-async def _click_button_escalating(page, btn_text: str) -> bool:
-    """降级策略点击按钮：Playwright → force → JS → 坐标。"""
+async def _click_button_escalating(page, btn_text: str) -> dict:
+    """降级策略点击按钮：Playwright → force → JS → 坐标。
+
+    Returns:
+        dict: {"clicked": bool, "strategy": str, "tag": str, "text": str}
+        - clicked: 是否成功点击
+        - strategy: 使用的策略 (playwright/force/js/coord)
+        - tag: 成功点击的元素标签
+        - text: 按钮原始文本
+    """
+    result = {"clicked": False, "strategy": "", "tag": "", "text": btn_text}
     if not btn_text:
-        return False
+        return result
 
     # 策略 1: Playwright 原生点击
     try:
@@ -2332,7 +2614,8 @@ async def _click_button_escalating(page, btn_text: str) -> bool:
         ).first
         if await locator.count() > 0:
             await locator.click(timeout=3000)
-            return True
+            result.update({"clicked": True, "strategy": "playwright", "tag": "button"})
+            return result
     except Exception:
         pass
 
@@ -2342,24 +2625,26 @@ async def _click_button_escalating(page, btn_text: str) -> bool:
             f'button:has-text("{btn_text}"), span:has-text("{btn_text}")',
             force=True, timeout=3000
         )
-        return True
+        result.update({"clicked": True, "strategy": "force", "tag": "button"})
+        return result
     except Exception:
         pass
 
     # 策略 3: JS click
     try:
-        clicked = await page.evaluate(f"""(text) => {{
+        clicked_info = await page.evaluate(f"""(text) => {{
             const elements = document.querySelectorAll('button, span, a, .el-button');
             for (const el of elements) {{
                 if (el.textContent.trim().includes(text) && el.offsetWidth > 0) {{
                     el.click();
-                    return true;
+                    return {{clicked: true, tag: el.tagName.toLowerCase()}};
                 }}
             }}
-            return false;
+            return null;
         }}""", btn_text)
-        if clicked:
-            return True
+        if clicked_info:
+            result.update({"clicked": True, "strategy": "js", "tag": clicked_info["tag"]})
+            return result
     except Exception:
         pass
 
@@ -2370,18 +2655,19 @@ async def _click_button_escalating(page, btn_text: str) -> bool:
             for (const el of elements) {{
                 if (el.textContent.trim().includes(text) && el.offsetWidth > 0) {{
                     const r = el.getBoundingClientRect();
-                    return {{x: r.x + r.width / 2, y: r.y + r.height / 2}};
+                    return {{x: r.x + r.width / 2, y: r.y + r.height / 2, tag: el.tagName.toLowerCase()}};
                 }}
             }}
             return null;
         }}""", btn_text)
         if rect:
             await page.mouse.click(rect["x"], rect["y"])
-            return True
+            result.update({"clicked": True, "strategy": "coord", "tag": rect["tag"]})
+            return result
     except Exception:
         pass
 
-    return False
+    return result
 
 
 async def _verify_operation_success(page, operation_type: str) -> bool:
@@ -2448,15 +2734,80 @@ async def _verify_operation_success(page, operation_type: str) -> bool:
 
 async def _ensure_on_list_page(page):
     """确保当前在列表页（如果不在，导航回去）。"""
-    url = page.url
-    # 检查是否在创建/编辑页面
-    if any(kw in url for kw in ("/create", "/add", "/edit", "/detail")):
-        # 回退到上一页
-        await page.go_back()
-        await wait_for_navigation_complete(page)
+    try:
+        url = page.url
+        # 检查是否在创建/编辑页面
+        if any(kw in url for kw in ("/create", "/add", "/edit", "/detail")):
+            # 回退到上一页
+            await page.go_back()
+            await wait_for_navigation_complete(page)
 
-    # 关闭可能残留的弹窗
-    await _close_dialog(page)
+        # 关闭可能残留的弹窗
+        await _close_dialog(page)
+    except Exception as e:
+        # 浏览器可能已关闭（如 Target page, context or browser has been closed）
+        LOG.debug(f"    _ensure_on_list_page: {e}")
+
+
+async def _explore_navigated_page(page, action: str, new_url: str) -> dict:
+    """探索导航后的新页面，收集可用于生成 playbook 的信息。
+
+    Args:
+        page: Playwright Page 对象
+        action: 操作类型（如 'authorize'）
+        new_url: 导航后的新 URL
+
+    Returns:
+        dict: 包含新页面的按钮、表单等信息
+    """
+    nav_info = {
+        "navigated_url": new_url,
+        "page_title": "",
+        "buttons": [],
+        "has_form": False,
+        "explored_steps": []
+    }
+
+    try:
+        # 等待新页面加载
+        await page.wait_for_load_state("networkidle", timeout=10000)
+        await page.wait_for_timeout(1000)
+
+        # 获取页面标题和基本信息
+        page_info = await page.evaluate("""() => {
+            const title = document.title || '';
+            const buttons = Array.from(document.querySelectorAll('button'))
+                .filter(b => b.offsetParent !== null)
+                .map(b => b.textContent.trim())
+                .filter(t => t);
+            const hasForm = document.querySelector('form, .el-form, .ant-form') !== null;
+            return { title, buttons, hasForm };
+        }""")
+
+        nav_info["page_title"] = page_info.get("title", "")
+        nav_info["buttons"] = page_info.get("buttons", [])
+        nav_info["has_form"] = page_info.get("hasForm", False)
+
+        LOG.info(f"    新页面信息: title='{nav_info['page_title']}', "
+                f"buttons={len(nav_info['buttons'])}, has_form={nav_info['has_form']}")
+
+        # 记录已探索的步骤：点击按钮 + 等待页面加载
+        nav_info["explored_steps"] = [
+            {
+                "action": "click_button",
+                "description": f"点击{action}按钮触发页面跳转",
+                "playwright_locator": f"button:has-text('{action}')"  # 简化，实际应使用 Stage 1 的 locator
+            },
+            {
+                "action": "wait_for_page_load",
+                "description": "等待新页面加载"
+            }
+        ]
+
+    except Exception as e:
+        LOG.warning(f"    探索新页面失败: {e}")
+
+    return nav_info
 
 
 async def _get_page_state_key(page) -> str:
@@ -2611,15 +2962,42 @@ async def _deep_scan_form_item(page, field_label: str) -> dict:
                 const elements = [];
                 const independentInputs = [];
 
+                // 辅助函数：基于 DOM 路径生成 selector
+                function buildSelector(el) {{
+                    if (el.id) return `#${{el.id}}`;
+                    if (el.getAttribute('name')) return `[name="${{el.getAttribute('name')}}"]`;
+                    const path = [];
+                    let current = el;
+                    while (current && current.nodeType === 1) {{
+                        let tag = current.tagName.toLowerCase();
+                        if (current.id) {{
+                            path.unshift(`#${{current.id}}`);
+                            break;
+                        }}
+                        const parent = current.parentElement;
+                        if (parent) {{
+                            const siblings = Array.from(parent.children).filter(c => c.tagName === current.tagName);
+                            if (siblings.length > 1) {{
+                                const idx = siblings.indexOf(current) + 1;
+                                tag += `:nth-of-type(${{idx}})`;
+                            }}
+                        }}
+                        path.unshift(tag);
+                        if (path.length >= 5) break;
+                        current = current.parentElement;
+                    }}
+                    return path.join(' > ');
+                }}
+
                 if (selectEl) {{
                     // 有 select 组件
-                    elements.push({{ type: 'select', index: 0 }});
+                    elements.push({{ type: 'select', index: 0, selector: buildSelector(selectEl) }});
 
                     // 查找不在 select 内部的独立 input
                     allInputs.forEach((inp, idx) => {{
                         if (!selectEl.contains(inp) && !inp.readOnly && inp.offsetWidth > 0) {{
                             independentInputs.push(inp);
-                            elements.push({{ type: 'input', index: elements.length }});
+                            elements.push({{ type: 'input', index: elements.length, selector: buildSelector(inp) }});
                         }}
                     }});
 
@@ -2632,7 +3010,7 @@ async def _deep_scan_form_item(page, field_label: str) -> dict:
                     // 没有 select，只有普通 input
                     allInputs.forEach((inp, idx) => {{
                         if (!inp.readOnly && inp.offsetWidth > 0) {{
-                            elements.push({{ type: 'input', index: elements.length }});
+                            elements.push({{ type: 'input', index: elements.length, selector: buildSelector(inp) }});
                         }}
                     }});
 
@@ -2649,6 +3027,55 @@ async def _deep_scan_form_item(page, field_label: str) -> dict:
     except Exception as e:
         LOG.warning(f"    深度扫描 {field_label} 失败: {e}")
         return {"found": False, "is_composite": False, "elements": []}
+
+
+async def _resolve_label_selector(page, label: str) -> str | None:
+    """根据 label 文本找到对应 input，返回基于 DOM 路径的 selector（无 :has() 伪类）。"""
+    try:
+        return await page.evaluate(f"""(label) => {{
+            const formItems = document.querySelectorAll('.el-form-item, .ant-form-item');
+            for (const fi of formItems) {{
+                const labelEl = fi.querySelector('.el-form-item__label, .ant-form-item-label label');
+                if (!labelEl) continue;
+                const labelText = labelEl.textContent.trim().replace(/[：:]/g, '');
+                if (labelText !== label) continue;
+
+                // 找到目标 form-item，获取可见 input
+                const allInputs = Array.from(fi.querySelectorAll(
+                    'input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"])'
+                )).filter(inp => !inp.readOnly && inp.offsetWidth > 0);
+
+                const target = allInputs.length > 0 ? allInputs[allInputs.length - 1] : fi.querySelector('input, textarea');
+                if (!target) return null;
+
+                // 基于 DOM 路径生成 selector
+                const parts = [];
+                let current = target;
+                while (current && current.nodeType === 1) {{
+                    let tag = current.tagName.toLowerCase();
+                    if (current.id) {{
+                        parts.unshift(`#${{current.id}}`);
+                        break;
+                    }}
+                    const parent = current.parentElement;
+                    if (parent) {{
+                        const siblings = Array.from(parent.children).filter(c => c.tagName === current.tagName);
+                        if (siblings.length > 1) {{
+                            const idx = siblings.indexOf(current) + 1;
+                            tag += `:nth-of-type(${{idx}})`;
+                        }}
+                    }}
+                    parts.unshift(tag);
+                    if (parts.length >= 5) break;
+                    current = current.parentElement;
+                }}
+                return parts.join(' > ');
+            }}
+            return null;
+        }}""", label)
+    except Exception as e:
+        LOG.debug(f"    _resolve_label_selector({label}) 失败: {e}")
+        return None
 
 
 def _guess_format(field_label: str, error_text: str) -> str:
@@ -2730,3 +3157,474 @@ def _extract_field_names(error_text: str) -> list:
         return [match.group(1).strip()]
 
     return []
+
+
+def build_playbook(ui_result: dict) -> dict:
+    """从 Stage 1 的 ui_result 构建完整的 playbook.json
+
+    Playbook 是一个可执行的 UI 自动化操作手册，包含：
+    - meta: 模块元信息（URL、框架等）
+    - page_structure: 页面结构信息
+    - operations: 所有验证通过的操作步骤（含 locator、fill_rules 等）
+
+    Args:
+        ui_result: Stage 1 的 ui_result 字典
+
+    Returns:
+        dict: 完整的 playbook 结构
+    """
+    import time
+
+    # 提取基础元信息
+    meta = {
+        "module_name": ui_result.get("module_name", ""),
+        "target_url": ui_result.get("target_url", ""),
+        "base_url": ui_result.get("base_url", ""),
+        "login_url": ui_result.get("login_url", ""),
+        "framework": ui_result.get("framework", "element-ui"),
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "version": "1.0"
+    }
+
+    # 提取页面结构
+    page_structure = ui_result.get("page_structure", {})
+
+    # 构建操作列表
+    validated_operations = ui_result.get("validated_operations", {})
+    operations = {}
+
+    for action, op_data in validated_operations.items():
+        is_success = op_data.get("success", False)
+        error_type = op_data.get("error_type", "")
+
+        op_steps = []
+
+        # 根据操作类型构建步骤
+        if action == "create":
+            op_steps.extend(_build_create_steps(op_data))
+        elif action in ("lock", "unlock", "reset", "freeze", "thaw"):
+            op_steps.extend(_build_dropdown_steps(op_data))
+        elif action in ("delete", "remove"):
+            op_steps.extend(_build_delete_steps(op_data))
+        elif action in ("update", "edit"):
+            op_steps.extend(_build_update_steps(op_data))
+        else:
+            # 通用操作（含导入、授权等失败操作）
+            op_steps.extend(_build_generic_steps(op_data))
+
+        if op_steps:
+            entry = {
+                "description": op_data.get("description", action),
+                "steps": op_steps,
+                "marker": op_data.get("marker"),
+                "status": "success" if is_success else "failed",
+            }
+            if not is_success and error_type:
+                entry["error_type"] = error_type
+                entry["error_text"] = op_data.get("error_text", "")
+            # 导航类失败操作记录探索信息
+            nav_info = op_data.get("nav_info")
+            if nav_info:
+                entry["nav_info"] = nav_info
+            operations[action] = entry
+
+    return {
+        "meta": meta,
+        "page_structure": page_structure,
+        "operations": operations
+    }
+
+
+def _build_create_steps(op_data: dict) -> list:
+    """构建 create 操作步骤"""
+    from . import const as _const
+    steps = []
+
+    # Step 1: 点击创建按钮（使用已验证的 locator）
+    trigger_locator = op_data.get("trigger_locator_verified") or op_data.get("trigger_locator")
+    if trigger_locator:
+        steps.append({
+            "action": "click_button",
+            "playwright_locator": trigger_locator,
+            "description": "点击创建按钮"
+        })
+
+    # Step 2: 等待对话框（添加 interaction_mode）
+    interaction_mode = op_data.get("interaction_mode", "dialog")
+    dialog_locator = op_data.get("dialog_locator", ".el-dialog__wrapper")
+    steps.append({
+        "action": "wait_for_dialog",
+        "playwright_locator": dialog_locator,
+        "interaction_mode": interaction_mode,
+        "description": "等待创建对话框"
+    })
+
+    # Step 3: 填充表单
+    form_fields = op_data.get("form_fields", [])
+    fill_rules = op_data.get("fill_rules", {})
+    multi_step_details = op_data.get("multi_step_field_details", [])
+    radio_details = op_data.get("radio_field_details", [])
+
+    if form_fields and fill_rules:
+        fields_info = []
+
+        # 处理普通字段（input/textarea）—— 跳过 multi_step 和 radio（单独处理）
+        for field in form_fields:
+            label = field.get("label", "")
+            selector = field.get("selector")
+            field_type = field.get("type", "input")
+            kb_category = field.get("kb_category", "")
+
+            if not selector:
+                continue
+
+            # 跳过 multi_step 和 radio（单独处理）
+            if kb_category in ("el-select", "el-cascader", "date-picker", "form-checkbox", "radio"):
+                continue
+
+            rule = fill_rules.get(label, {})
+            field_info = {
+                "label": label,
+                "playwright_locator": selector,
+                "type": field_type,
+                "kb_category": kb_category,
+                "fill_rule": rule
+            }
+
+            # 标记 marker 字段
+            if label in ("名称", "账号", "name", "username", "userName"):
+                field_info["is_marker"] = True
+
+            fields_info.append(field_info)
+
+        # 添加 multi_step 字段（带完整属性）
+        for ms_field in multi_step_details:
+            fields_info.append({
+                "label": ms_field["label"],
+                "playwright_locator": ms_field.get("selector", ""),
+                "type": ms_field["kb_category"].replace("el-", "") if ms_field["kb_category"].startswith("el-") else ms_field["kb_category"],
+                "kb_category": ms_field["kb_category"],
+                "fill_rule": ms_field.get("fill_rule", {}),
+                "is_editable": ms_field.get("is_editable", False),
+                "option_text": ms_field.get("option_text", ""),
+            })
+
+        # 添加 radio 字段（带已验证的选项 locator）
+        for radio_field in radio_details:
+            fields_info.append({
+                "label": radio_field["label"],
+                "playwright_locator": radio_field.get("option_locator", ""),
+                "type": "radio",
+                "kb_category": "radio",
+                "fill_rule": radio_field.get("fill_rule", {}),
+                "option_text": radio_field.get("option_text", ""),
+            })
+
+        if fields_info:
+            steps.append({
+                "action": "fill_form",
+                "fields": fields_info,
+                "description": "填充表单字段"
+            })
+
+    # Step 4: 点击提交按钮（使用已验证的 locator）
+    submit_locator = op_data.get("submit_locator_verified") or op_data.get("submit_locator")
+    submit_text = op_data.get("submit_text") or op_data.get("selectors", {}).get("submit")
+    if submit_locator:
+        steps.append({
+            "action": "click_button",
+            "playwright_locator": submit_locator,
+            "text": submit_text,
+            "description": "点击提交按钮"
+        })
+
+    # Step 5: 验证成功
+    success_locator = op_data.get("success_locator", ".el-message--success")
+    steps.append({
+        "action": "assert_success",
+        "playwright_locator": success_locator,
+        "description": "验证创建成功"
+    })
+
+    return steps
+
+
+def _build_dropdown_steps(op_data: dict) -> list:
+    """构建下拉菜单操作步骤（lock/unlock/reset 等）"""
+    steps = []
+
+    # Step 1: 定位数据行
+    steps.append({
+        "action": "find_row",
+        "description": "定位目标数据行"
+    })
+
+    # Step 2: 点击更多菜单项（KB 驱动的 row-level 操作）
+    if op_data.get("is_dropdown_operation"):
+        item_text = op_data.get("dropdown_item_text")
+        if item_text:
+            steps.append({
+                "action": "click_row_more",
+                "item_text": item_text,
+                "description": f"点击更多菜单项: {item_text}"
+            })
+
+    # Step 3: 处理确认对话框（仅当 Stage 1 记录 confirmed=True 时生成）
+    confirmed = op_data.get("confirmed") or op_data.get("selectors", {}).get("confirm")
+    if confirmed:
+        steps.append({
+            "action": "confirm_dialog",
+            "description": "点击确认对话框"
+        })
+
+    # Step 4: 验证成功
+    success_locator = op_data.get("success_locator", ".el-message--success")
+    steps.append({
+        "action": "assert_success",
+        "playwright_locator": success_locator,
+        "description": "验证操作成功"
+    })
+
+    return steps
+
+
+def _build_delete_steps(op_data: dict) -> list:
+    """构建删除操作步骤"""
+    steps = []
+
+    # Step 1: 定位数据行
+    steps.append({
+        "action": "find_row",
+        "description": "定位目标数据行"
+    })
+
+    # Step 2: 勾选 checkbox（如果需要）
+    needs_checkbox = op_data.get("needs_checkbox", False)
+    if needs_checkbox:
+        checkbox_locator = op_data.get("checkbox_locator", ".el-checkbox__input")
+        steps.append({
+            "action": "select_row_checkbox",
+            "checkbox_locator": checkbox_locator,
+            "description": "勾选行 checkbox"
+        })
+
+    # Step 3: 点击删除按钮（使用已验证的 locator）
+    selectors = op_data.get("selectors", {})
+    trigger = selectors.get("trigger")
+    trigger_locator = op_data.get("trigger_locator_verified")
+    if not trigger_locator and trigger:
+        trigger_locator = f"button:has-text('{trigger}')"
+    if trigger_locator:
+        steps.append({
+            "action": "click_button",
+            "text": trigger,
+            "playwright_locator": trigger_locator,
+            "description": "点击删除按钮"
+        })
+
+    # Step 4: 处理确认对话框（仅当 Stage 1 记录 confirmed=True 时生成）
+    confirmed = op_data.get("confirmed") or op_data.get("selectors", {}).get("confirm")
+    if confirmed:
+        steps.append({
+            "action": "confirm_dialog",
+            "description": "点击确认对话框"
+        })
+
+    # Step 5: 验证行消失
+    steps.append({
+        "action": "assert_row_disappeared",
+        "description": "验证数据行已消失"
+    })
+
+    return steps
+
+
+def _build_update_steps(op_data: dict) -> list:
+    """构建更新操作步骤"""
+    steps = []
+
+    # Step 1: 定位数据行
+    steps.append({
+        "action": "find_row",
+        "description": "定位目标数据行"
+    })
+
+    # Step 2: 点击编辑按钮
+    selectors = op_data.get("selectors", {})
+    trigger = selectors.get("trigger")
+    is_row_action = op_data.get("is_row_action", False)
+
+    if is_row_action:
+        # 行级操作：先定位行，再在行内点击按钮
+        button_text = op_data.get("button_text") or trigger
+        if button_text:
+            steps.append({
+                "action": "click_row_button",
+                "button_text": button_text,
+                "description": f"点击行内{trigger}按钮"
+            })
+    else:
+        # 全局按钮
+        trigger_locator = op_data.get("trigger_locator_verified")
+        if not trigger_locator and trigger:
+            trigger_locator = f"button:has-text('{trigger}')"
+        if trigger_locator:
+            steps.append({
+                "action": "click_button",
+                "text": trigger,
+                "playwright_locator": trigger_locator,
+                "description": "点击编辑按钮"
+            })
+
+    # Step 3: 等待对话框（添加 interaction_mode）
+    interaction_mode = op_data.get("interaction_mode", "dialog")
+    dialog_locator = op_data.get("dialog_locator", ".el-dialog__wrapper")
+    steps.append({
+        "action": "wait_for_dialog",
+        "playwright_locator": dialog_locator,
+        "interaction_mode": interaction_mode,
+        "description": "等待编辑对话框"
+    })
+
+    # Step 4: 填充表单
+    form_fields = op_data.get("form_fields", [])
+    fill_rules = op_data.get("fill_rules", {})
+    multi_step_details = op_data.get("multi_step_field_details", [])
+    radio_details = op_data.get("radio_field_details", [])
+
+    if form_fields and fill_rules:
+        fields_info = []
+
+        # 处理普通字段（input/textarea）—— 跳过 multi_step 和 radio
+        for field in form_fields:
+            label = field.get("label", "")
+            selector = field.get("selector")
+            field_type = field.get("type", "input")
+            kb_category = field.get("kb_category", "")
+
+            if not selector:
+                continue
+
+            # 跳过 multi_step 和 radio（单独处理）
+            if kb_category in ("el-select", "el-cascader", "date-picker", "form-checkbox", "radio"):
+                continue
+
+            rule = fill_rules.get(label, {})
+            field_info = {
+                "label": label,
+                "playwright_locator": selector,
+                "type": field_type,
+                "kb_category": kb_category,
+                "fill_rule": rule
+            }
+
+            # 标记 marker 字段
+            if label in ("名称", "账号", "name", "username", "userName"):
+                field_info["is_marker"] = True
+
+            fields_info.append(field_info)
+
+        # 添加 multi_step 字段（带完整属性）
+        for ms_field in multi_step_details:
+            fields_info.append({
+                "label": ms_field["label"],
+                "playwright_locator": ms_field.get("selector", ""),
+                "type": ms_field["kb_category"].replace("el-", "") if ms_field["kb_category"].startswith("el-") else ms_field["kb_category"],
+                "kb_category": ms_field["kb_category"],
+                "fill_rule": ms_field.get("fill_rule", {}),
+                "is_editable": ms_field.get("is_editable", False),
+                "option_text": ms_field.get("option_text", ""),
+            })
+
+        # 添加 radio 字段（带已验证的选项 locator）
+        for radio_field in radio_details:
+            fields_info.append({
+                "label": radio_field["label"],
+                "playwright_locator": radio_field.get("option_locator", ""),
+                "type": "radio",
+                "kb_category": "radio",
+                "fill_rule": radio_field.get("fill_rule", {}),
+                "option_text": radio_field.get("option_text", ""),
+            })
+
+        if fields_info:
+            steps.append({
+                "action": "fill_form",
+                "fields": fields_info,
+                "description": "填充编辑表单"
+            })
+
+    # Step 5: 点击提交（使用已验证的 locator）
+    submit_locator = op_data.get("submit_locator_verified") or op_data.get("submit_locator")
+    submit_text = op_data.get("submit_text") or op_data.get("selectors", {}).get("submit")
+    if submit_locator:
+        steps.append({
+            "action": "click_button",
+            "playwright_locator": submit_locator,
+            "text": submit_text,
+            "description": "点击提交按钮"
+        })
+
+    # Step 6: 验证成功
+    success_locator = op_data.get("success_locator", ".el-message--success")
+    steps.append({
+        "action": "assert_success",
+        "playwright_locator": success_locator,
+        "description": "验证更新成功"
+    })
+
+    return steps
+
+
+def _build_generic_steps(op_data: dict) -> list:
+    """构建通用操作步骤"""
+    steps = []
+
+    selectors = op_data.get("selectors", {})
+
+    # 如果有行选择器，先定位行
+    if selectors.get("row_selector"):
+        steps.append({
+            "action": "find_row",
+            "description": "定位目标数据行"
+        })
+
+    # 点击触发按钮（使用已验证的 locator）
+    trigger = selectors.get("trigger")
+    trigger_locator = op_data.get("trigger_locator_verified")
+    if not trigger_locator and trigger:
+        trigger_locator = f"button:has-text('{trigger}')"
+    if trigger_locator:
+        steps.append({
+            "action": "click_button",
+            "text": trigger,
+            "playwright_locator": trigger_locator,
+            "description": "点击操作按钮"
+        })
+
+    # 处理确认对话框（仅当 Stage 1 记录 confirmed=True 时生成）
+    confirmed = op_data.get("confirmed") or op_data.get("selectors", {}).get("confirm")
+    if confirmed:
+        steps.append({
+            "action": "confirm_dialog",
+            "description": "点击确认对话框"
+        })
+
+    # 如果有导航返回，添加 navigate_back 步骤
+    navigate_back_url = op_data.get("navigate_back_url")
+    if navigate_back_url:
+        steps.append({
+            "action": "navigate_back",
+            "url": navigate_back_url,
+            "description": "导航回原页面"
+        })
+
+    # 验证成功
+    success_locator = op_data.get("success_locator", ".el-message--success")
+    steps.append({
+        "action": "assert_success",
+        "playwright_locator": success_locator,
+        "description": "验证操作成功"
+    })
+
+    return steps

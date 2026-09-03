@@ -296,7 +296,7 @@ def main():
 
     if len(sys.argv) < 2:
         print("用法: python test_report.py <script_path>")
-        print("示例: python test_report.py projects/ecm-compute/flows/v1.0.0/角色管理_API测试.py")
+        print("示例: python test_report.py projects/ecm-compute/scripts/v1.0.0/api/角色管理_API测试.py")
         sys.exit(1)
 
     script_path = sys.argv[1]

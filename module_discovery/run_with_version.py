@@ -9,7 +9,7 @@ run_with_version.py — 版本入口转发器（复用 EcsCloud run_with_version
 规则：
   1) 第一个位置参数若形如 vX.Y.Z 则视为版本号（覆盖 .api_version / API_VERSION 环境变量）
   2) 设置 os.environ["API_VERSION"] 后，将剩余参数转发给 module_discovery.run
-  3) 生成的脚本写入 projects/<id>/flows/<version>/，不同版本互不覆盖
+  3) 生成的脚本写入 projects/<id>/scripts/<version>/api/，不同版本互不覆盖
 """
 import os
 import sys

@@ -2,7 +2,7 @@
 run_parallel.py — 分模块并行执行生成的 API 测试脚本（复用 EcsCloud run_all24_parallel.js 思路）。
 
 设计（与 EcsCloud 对齐）：
-  * 按 flows/<version>/ 下「每个模块一个脚本」作为最小执行单元（模块级并行，组内即单脚本）。
+  * 按 scripts/<version>/api/ 下「每个模块一个脚本」作为最小执行单元（模块级并行，组内即单脚本）。
   * 主进程先确保 cookie 有效（失效则单线程滑块登录一次），再 fan-out 给 Worker 子进程。
   * 每个 Worker 是独立子进程，并发数受 --parallel 控制；Worker 设 AUTO_LOGIN=0（只读 cookie，
     避免多进程并发抢登覆盖同一份 cookies.json）。
@@ -47,7 +47,7 @@ def parse_args():
     ap.add_argument("--version", default=None, help="脚本版本（默认读 .api_version）")
     ap.add_argument("--parallel", type=int, default=4, help="并发 Worker 数（默认 4）")
     ap.add_argument("--module", default=None, help="只运行指定模块（模糊匹配文件名）")
-    ap.add_argument("--flows-dir", default=None, help="覆盖 flows 目录（绝对/相对）")
+    ap.add_argument("--scripts-dir", default=None, help="覆盖 scripts 目录（绝对/相对）")
     return ap.parse_args()
 
 
@@ -91,8 +91,8 @@ def ensure_cookie_valid(project_dir: Path, base_url: str, login_url: str) -> boo
     return False
 
 
-def scan_scripts(flows_dir: Path, module_filter: str = None) -> list:
-    scripts = sorted(flows_dir.glob("*_API测试.py"))
+def scan_scripts(scripts_dir: Path, module_filter: str = None) -> list:
+    scripts = sorted(scripts_dir.glob("*_API测试.py"))
     out = []
     for s in scripts:
         name = s.stem.replace("_API测试", "")
@@ -218,12 +218,12 @@ async def main_async():
     login_url = profile.get("login_url", f"{base_url}/estack/web/estack/login")
 
     version = args.version or ver_mod.resolve_version(project_dir)
-    if args.flows_dir:
-        flows_dir = Path(args.flows_dir)
+    if args.scripts_dir:
+        scripts_dir = Path(args.scripts_dir)
     else:
-        flows_dir = ver_mod.flows_dir_for(project_dir, version)
-    if not flows_dir.exists():
-        print(f"❌ flows 目录不存在: {flows_dir}")
+        scripts_dir = ver_mod.scripts_dir_for(project_dir, version)
+    if not scripts_dir.exists():
+        print(f"❌ scripts 目录不存在: {scripts_dir}")
         sys.exit(1)
 
     # Session ID
@@ -242,9 +242,9 @@ async def main_async():
     print("✅ cookie 有效，开始并行执行\n")
 
     # ---- 2. 扫描脚本 ----
-    scripts = scan_scripts(flows_dir, args.module)
+    scripts = scan_scripts(scripts_dir, args.module)
     if not scripts:
-        print(f"⚠️ 未找到可执行的测试脚本（{flows_dir}）")
+        print(f"⚠️ 未找到可执行的测试脚本（{scripts_dir}）")
         sys.exit(0)
     print(f"共 {len(scripts)} 个模块脚本，并行 Worker = {args.parallel}\n")
 
