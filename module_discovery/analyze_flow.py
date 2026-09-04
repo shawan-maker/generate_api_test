@@ -19,15 +19,18 @@ from . import const
 LOG = logging.getLogger("analyze_flow")
 
 
-def _filter_by_cooccurrence(all_endpoints: list, threshold: float = 0.6) -> set:
+def _filter_by_cooccurrence(all_endpoints: list, threshold: float = 0.6,
+                            response_samples: dict = None) -> set:
     """
     同现频率过滤：统计每个 API 出现在多少个不同按钮上下文中。
 
     如果一个 API 在 60%+ 的按钮点击后都出现，说明它是辅助 API（菜单加载、字典、通知等）。
+    例外：响应含 list+total 结构的列表查询 API 不会被过滤（即使同现频率高）。
 
     Args:
         all_endpoints: 所有去重端点列表，每个包含 contexts 字段
         threshold: 同现比例阈值，默认 0.6
+        response_samples: 响应样本（用于列表查询保护判断）
 
     Returns:
         set: 被判定为辅助 API 的 pathname 集合
@@ -55,10 +58,37 @@ def _filter_by_cooccurrence(all_endpoints: list, threshold: float = 0.6) -> set:
         for pathname, contexts in api_contexts.items():
             ratio = len(contexts) / total_buttons
             if ratio >= threshold:
+                # 列表查询保护：响应含 list+total 结构的 API 不应被过滤
+                if _is_list_query(pathname, response_samples):
+                    LOG.debug(f"同现过滤保护: {pathname} 是列表查询，保留")
+                    continue
                 LOG.debug(f"同现过滤: {pathname} 出现在 {len(contexts)}/{total_buttons} ({ratio:.2f}) 个按钮上下文")
                 supporting_apis.add(pathname)
 
     return supporting_apis
+
+
+def _is_list_query(pathname: str, response_samples: dict) -> bool:
+    """判断 API 是否为列表查询（响应含 list+total 结构）。
+
+    列表查询 API 即使出现在多个按钮上下文中也不应被同现过滤器排除，
+    因为页面操作后刷新列表是常见行为。
+    """
+    if not response_samples:
+        return False
+    samples = response_samples.get(pathname, [])
+    for s in samples[:1]:
+        try:
+            body = json.loads(s["body"]) if isinstance(s["body"], str) else s["body"]
+            entity = body.get("entity", body)
+            if isinstance(entity, dict):
+                has_list = any(k in entity for k in const.LIST_KEY_CANDIDATES)
+                has_total = any(k in entity for k in const.TOTAL_KEY_CANDIDATES)
+                if has_list and has_total:
+                    return True
+        except Exception:
+            pass
+    return False
 
 
 def analyze(classified_apis: dict, all_endpoints: list,
@@ -73,8 +103,14 @@ def analyze(classified_apis: dict, all_endpoints: list,
     """
     LOG.info("开始逻辑分析...")
 
+    # Step -1: 用当前分类器重新分类所有端点
+    # 原因：分类器逻辑可能已修复（如 replay context 匹配），但 Stage 2 输出中
+    # 的分类结果仍是旧分类器的输出。重新分类确保使用最新逻辑。
+    classified_apis = _reclassify_all_endpoints(classified_apis, all_endpoints)
+
     # Step 0: 同现频率过滤（识别在多个按钮上下文中都出现的辅助 API）
-    cooccurrence_support = _filter_by_cooccurrence(all_endpoints, threshold=0.6)
+    cooccurrence_support = _filter_by_cooccurrence(all_endpoints, threshold=0.6,
+                                                   response_samples=response_samples)
     if cooccurrence_support:
         LOG.info(f"  Step 0: 同现频率过滤: {len(cooccurrence_support)} 个 API 被标记为辅助")
 
@@ -105,6 +141,52 @@ def analyze(classified_apis: dict, all_endpoints: list,
         "dependencies": dep_chain,
         "state_assertions": state_rules,
     }
+
+
+def _reclassify_all_endpoints(classified_apis: dict, all_endpoints: list) -> dict:
+    """用当前分类器重新分类所有端点。
+
+    Stage 2 保存的 by_category 可能由旧版分类器生成。在 analyze() 入口
+    重新分类，确保分类逻辑修复（如 replay context 匹配）立即生效。
+
+    Args:
+        classified_apis: Stage 2 保存的 by_category
+        all_endpoints: 所有去重端点列表（含 method/pathname/contexts）
+
+    Returns:
+        重新分类后的 by_category dict
+    """
+    from .endpoint_classifier import classify_endpoint
+
+    reclassified = {}
+    for ep in all_endpoints:
+        method = ep.get("method", "GET")
+        pathname = ep.get("pathname", "")
+        contexts = ep.get("contexts", [])
+        new_cat = classify_endpoint(method, pathname, contexts)
+        if new_cat not in reclassified:
+            reclassified[new_cat] = []
+        # 从原分类中找到完整的 endpoint dict（保留 bodies 等字段）
+        found = False
+        for old_cat, old_eps in classified_apis.items():
+            for old_ep in old_eps:
+                if old_ep["pathname"] == pathname and old_ep["method"] == method:
+                    reclassified[new_cat].append(old_ep)
+                    found = True
+                    break
+            if found:
+                break
+        if not found:
+            # 端点不在原始分类中（理论上不应发生），构造最小 dict
+            reclassified[new_cat].append({
+                "method": method,
+                "pathname": pathname,
+                "contexts": contexts,
+                "bodies": ep.get("bodies", []),
+                "request_body_sample": None,
+                "query_params": {},
+            })
+    return reclassified
 
 
 def _filter_core_apis(classified: dict, response_samples: dict,
@@ -234,10 +316,16 @@ def _derive_order(core_apis: dict, all_endpoints: list = None) -> list:
     2. 时序验证（interceptor 时间戳）调整顺序
     3. 依赖约束（拓扑排序）确保前置步骤先执行
 
+    注意：query/detail/execute 仅用于验证步骤，不作为独立业务步骤出现在排序中。
+
     Returns:
         排序后的 CRUD 类别列表
     """
     available = set(core_apis.keys())
+
+    # query/detail/execute 仅用于验证步骤，不进入 crud_order
+    _VERIFY_ONLY = {"query", "detail", "execute"}
+    available -= _VERIFY_ONLY
 
     # 1. 静态优先级（基础顺序）
     base_order = [step for step in const.CRUD_EXECUTION_ORDER if step in available]
@@ -323,21 +411,27 @@ def _build_dependency_graph(core_apis: dict) -> dict:
     构建 CRUD 依赖图。
 
     规则：
-    - query/detail/update/lock/unlock/delete 依赖 create（需要 id）
+    - query/detail/update/lock/unlock/reset 依赖 create（需要 id）
     - unlock 依赖 lock（必须先锁定才能解锁）
-    - delete 依赖 create（必须先创建才能删除）
+    - delete 依赖所有其他写操作（必须先完成所有业务操作再删除）
     """
     graph = {cat: set() for cat in core_apis}
 
     # 通用规则：大部分操作依赖 create
     if "create" in core_apis:
-        for cat in ("query", "detail", "update", "lock", "unlock", "delete"):
+        for cat in ("query", "detail", "update", "lock", "unlock", "reset"):
             if cat in graph:
                 graph[cat].add("create")
 
     # 特殊规则：unlock 依赖 lock
     if "unlock" in graph and "lock" in core_apis:
         graph["unlock"].add("lock")
+
+    # 关键规则：delete 依赖所有其他写操作
+    if "delete" in graph:
+        for cat in ("update", "lock", "unlock", "reset"):
+            if cat in core_apis:
+                graph["delete"].add(cat)
 
     return graph
 
@@ -391,7 +485,16 @@ def _derive_dependencies(core_apis: dict, response_samples: dict) -> dict:
     id_field_candidates = {}
 
     # 从所有响应中找 ID 字段（递归提取）
-    for category, endpoints in core_apis.items():
+    # create 优先遍历：确保 ID 字段来源绑定到 create 操作，而非 reset 等其他操作
+    ordered_categories = []
+    if "create" in core_apis:
+        ordered_categories.append("create")
+    for cat in core_apis:
+        if cat != "create":
+            ordered_categories.append(cat)
+
+    for category in ordered_categories:
+        endpoints = core_apis[category]
         for ep in endpoints:
             pn = ep["pathname"]
             samples = response_samples.get(pn, [])
@@ -983,6 +1086,9 @@ def _build_auth_profile(profile: dict) -> dict:
         "fixed_headers": auth_cfg.get("fixed_headers", {}),
         "probe_url": probe_url,
         "context_fields": context_fields,
+        "token_key": auth_cfg.get("token_key", "estackToken"),
+        "token_storage": auth_cfg.get("token_storage", "localStorage"),
+        "cookie_token_key": auth_cfg.get("cookie_token_key", "accessToken"),
         "captcha": {
             "auth_button_text": captcha_cfg.get("auth_button_text",
                                                  profile.get("captcha_auth_button", "")),
@@ -1076,6 +1182,7 @@ def build_manifest(analysis: dict, capture_result: dict,
         return False
 
     verify_endpoints = {}
+    raw_classified = capture_result.get("by_category", {})
     for verify_action in ["query", "detail"]:
         eps = core_apis.get(verify_action, [])
         selected = False
@@ -1089,8 +1196,7 @@ def build_manifest(analysis: dict, capture_result: dict,
                 break
         if selected:
             continue
-        # 回退：从 capture_result 原始分类中查找
-        raw_classified = capture_result.get("by_category", {})
+        # 回退 1：从 capture_result 原始分类中查找
         raw_eps = raw_classified.get(verify_action, [])
         # 过滤掉明显的辅助 API（菜单、主题等）
         for ep in raw_eps:
@@ -1102,7 +1208,28 @@ def build_manifest(analysis: dict, capture_result: dict,
                     "ep": ep,
                     "body_sample": _parse_body(ep),
                 }
-                LOG.info(f"  验证端点回退: {verify_action} ← {ep['pathname'][:60]}")
+                LOG.info(f"  验证端点回退1: {verify_action} ← {ep['pathname'][:60]}")
+                selected = True
+                break
+        if selected:
+            continue
+        # 回退 2：从 other_get/other_post 中搜索列表查询端点
+        for fallback_cat in ("other_get", "other_post"):
+            fallback_eps = raw_classified.get(fallback_cat, [])
+            for ep in fallback_eps:
+                p = ep["pathname"].lower()
+                if any(kw in p for kw in const.SUPPORTING_API_KEYWORDS):
+                    continue
+                if _endpoint_returns_entity_id(ep):
+                    verify_endpoints[verify_action] = {
+                        "ep": ep,
+                        "body_sample": _parse_body(ep),
+                    }
+                    LOG.info(f"  验证端点回退2: {verify_action} ← "
+                             f"{ep['pathname'][:60]} (from {fallback_cat})")
+                    selected = True
+                    break
+            if selected:
                 break
         if verify_action not in verify_endpoints and eps:
             LOG.warning(f"  验证端点 {verify_action} 的响应不含 entity ID，跳过自动验证")

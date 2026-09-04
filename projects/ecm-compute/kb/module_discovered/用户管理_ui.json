@@ -381,30 +381,30 @@
       "success": true,
       "fill_data": {
         "名称": "test",
-        "编码": "code_417269",
-        "描述": "自动测试创建于417269",
-        "备注": "自动创建于417269",
-        "说明": "自动测试创建于417269",
+        "编码": "code_507807",
+        "描述": "自动测试创建于507807",
+        "备注": "自动创建于507807",
+        "说明": "自动测试创建于507807",
         "用户名": "test",
         "姓名": "test",
-        "邮箱": "at_417269@test.com",
-        "手机": "13849663049",
+        "邮箱": "at_507807@test.com",
+        "手机": "13889685510",
         "密码": "Test@123456",
         "确认密码": "Test@123456",
         "角色名称": "test",
-        "角色编码": "role_code_417269",
-        "角色描述": "自动测试角色创建于417269",
+        "角色编码": "role_code_507807",
+        "角色描述": "自动测试角色创建于507807",
         "username": "test",
         "name": "test",
-        "email": "at_417269@test.com",
-        "phone": "13849663049",
+        "email": "at_507807@test.com",
+        "phone": "13889685510",
         "password": "Test@123456",
-        "description": "自动测试创建于417269",
-        "code": "code_417269",
-        "remark": "自动创建于417269",
-        "账号": "AT_test_417269",
-        "系统角色": "AT_test_417269",
-        "部门角色": "AT_test_417269"
+        "description": "自动测试创建于507807",
+        "code": "code_507807",
+        "remark": "自动创建于507807",
+        "账号": "AT_test_507807",
+        "系统角色": "AT_test_507807",
+        "部门角色": "AT_test_507807"
       },
       "fill_rules": {
         "账号": {
@@ -658,6 +658,10 @@
         "confirm": "确定"
       },
       "confirmed": "确定",
+      "post_confirm_state": {
+        "dialog_remains": false,
+        "has_form_in_dialog": false
+      },
       "is_dropdown_operation": true,
       "dropdown_parent_selector": ".el-dropdown",
       "dropdown_item_locator": ".el-dropdown-menu__item:has-text('冻结')",
@@ -673,6 +677,10 @@
         "confirm": "确定"
       },
       "confirmed": "确定",
+      "post_confirm_state": {
+        "dialog_remains": false,
+        "has_form_in_dialog": false
+      },
       "is_dropdown_operation": true,
       "dropdown_parent_selector": ".el-dropdown",
       "dropdown_item_locator": ".el-dropdown-menu__item:has-text('启用')",
@@ -688,6 +696,10 @@
         "confirm": "确认"
       },
       "confirmed": "确认",
+      "post_confirm_state": {
+        "dialog_remains": false,
+        "has_form_in_dialog": false
+      },
       "is_dropdown_operation": true,
       "dropdown_parent_selector": ".el-dropdown",
       "dropdown_item_locator": ".el-dropdown-menu__item:has-text('重置密码')",
@@ -701,6 +713,10 @@
         "trigger": "批量迁移"
       },
       "confirmed": "",
+      "post_confirm_state": {
+        "dialog_remains": true,
+        "has_form_in_dialog": true
+      },
       "trigger_locator_verified": "button:has-text('批量迁移')",
       "needs_checkbox": true,
       "checkbox_locator": ".el-checkbox__input"
@@ -715,7 +731,11 @@
       "trigger_locator_verified": "button:has-text('批量删除')",
       "success_locator": ".el-message--success",
       "needs_checkbox": true,
-      "checkbox_locator": ".el-checkbox__input"
+      "checkbox_locator": ".el-checkbox__input",
+      "post_confirm_state": {
+        "dialog_remains": false,
+        "has_form_in_dialog": false
+      }
     }
   }
 }

@@ -41,6 +41,8 @@ def _crud_from_contexts(contexts: List[str]) -> str | None:
 
     例: 'click:创建用户' / 'row:编辑' / 'dropdown:更多:冻结'
         → 取末段动作文本，经 ACTION_KEYWORDS 分类。
+    支持 Stage 2 playbook 回放上下文格式 'replay:lock' / 'replay:unlock' 等，
+    此时 action 为英文 action 名，直接匹配 priority 列表而不走中文关键词查找。
     仅返回"写操作类"类别(create/delete/update/lock/unlock/reset/authorize/migrate)；
     查询/详情等不在此返回（避免把创建上下文里的列表查询误标为 create）。
     """
@@ -49,7 +51,18 @@ def _crud_from_contexts(contexts: List[str]) -> str | None:
     best = None
     for ctx in contexts:
         parts = str(ctx).split(":")
-        action = parts[-1].strip() if len(parts) >= 2 else str(ctx).strip()
+        if len(parts) < 2:
+            continue
+
+        action = parts[-1].strip()
+
+        # 直接匹配 replay:{action} 格式（Stage 2 playbook 回放上下文）
+        if parts[0] == "replay" and action in priority:
+            if best is None or priority.index(action) < priority.index(best):
+                best = action
+                continue
+
+        # 原有逻辑：中文按钮文本匹配
         cat = _classify_by_text(action)
         if cat in priority:
             if best is None or priority.index(cat) < priority.index(best):
@@ -102,8 +115,8 @@ def classify_endpoint(method: str, pathname: str, contexts: List[str]) -> str:
     # ⑤ URL 写操作关键词
     for crud, kws in (("create", ("/create", "/add", "/save", "/register", "/apply")),
                       ("update", ("/update", "/edit", "/modify", "/change")),
-                      ("lock", ("/lock", "/freeze", "/disable")),
-                      ("unlock", ("/unlock", "/enable", "/activate")),
+                      ("lock", ("/lock", "/freeze", "/disable", "/suspend")),
+                      ("unlock", ("/unlock", "/enable", "/activate", "/resume")),
                       ("reset", ("/reset", "/reset-password")),
                       ("delete", ("/delete", "/remove", "/destroy"))):
         if any(k in p for k in kws):

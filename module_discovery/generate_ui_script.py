@@ -1,14 +1,13 @@
 """
 generate_ui_script.py — UI 自动化脚本生成器
 
-从 Stage 1 生成的 playbook.json 生成独立的 Playwright UI 自动化脚本。
+从 Stage 1 生成的 playbook.json 生成独立的 Playwright UI 自动化脚本包。
 
-生成的脚本特点：
+生成的脚本包特点：
+- 包含完整回放引擎 (lib/)，从 module_discovery/ 复制
 - 纯 Playwright，不依赖项目内部库
-- 包含内置 Helper 函数（约 150 行）
-- 支持命令行参数（--headless, --data）
-- 分离数据文件（{module_name}_data.json）
-- 支持单个操作或全部操作执行
+- 支持命令行参数（--headless, --data, --operation）
+- 分离数据文件（{module_name}_data.json）和 playbook（{module_name}_playbook.json）
 """
 
 import json
@@ -19,61 +18,122 @@ from datetime import datetime
 LOG = logging.getLogger("generate_ui_script")
 
 
-def generate_ui_script(playbook: dict, module_name: str, project_dir: Path) -> tuple[Path, Path]:
-    """生成 UI 自动化脚本和数据文件
+def generate_ui_script(playbook: dict, module_name: str, project_dir: Path, version: str = "v1.0.0") -> tuple[Path, Path]:
+    """生成 UI 自动化脚本包和数据文件
 
     Args:
         playbook: Stage 1 生成的 playbook 数据
         module_name: 模块名称
         project_dir: 项目目录
+        version: 版本号
 
     Returns:
         (script_path, data_path)
     """
-    # 1. 生成数据文件
-    data = _extract_test_data(playbook)
-    data_path = project_dir / "scripts" / "v1.0.0" / "ui" / f"{module_name}_data.json"
-    data_path.parent.mkdir(parents=True, exist_ok=True)
+    # 1. 确定输出目录
+    ui_dir = project_dir / "scripts" / version / "ui"
+    ui_dir.mkdir(parents=True, exist_ok=True)
 
-    with open(data_path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    # 2. 同步运行时 lib/
+    _sync_ui_runtime_lib(ui_dir)
+
+    # 3. 生成数据文件
+    data = _extract_test_data(playbook)
+    data_path = ui_dir / f"{module_name}_data.json"
+    data_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     LOG.info(f"数据文件已生成: {data_path}")
 
-    # 2. 生成脚本
-    script_content = _render_script(playbook, module_name, data_path.name)
-    script_path = project_dir / "scripts" / "v1.0.0" / "ui" / f"{module_name}.py"
+    # 4. 输出 playbook 为独立 JSON 文件
+    playbook_path = ui_dir / f"{module_name}_playbook.json"
+    playbook_path.write_text(json.dumps(playbook, ensure_ascii=False, indent=2), encoding="utf-8")
+    LOG.info(f"Playbook 已生成: {playbook_path}")
 
-    with open(script_path, 'w', encoding='utf-8') as f:
-        f.write(script_content)
+    # 5. 生成薄主脚本
+    script_content = _render_script(playbook, module_name, data_path.name, playbook_path.name, version)
+    script_path = ui_dir / f"{module_name}.py"
+    script_path.write_text(script_content, encoding="utf-8")
     LOG.info(f"UI 脚本已生成: {script_path}")
 
     return script_path, data_path
 
 
-def _extract_test_data(playbook: dict) -> dict:
-    """从 playbook 中提取测试数据
+def _sync_ui_runtime_lib(ui_dir: Path):
+    """将 module_discovery/ 下的运行时文件复制到 ui/lib/。"""
+    src_dir = Path(__file__).resolve().parent  # module_discovery/
+    lib_dir = src_dir.parent / "lib"  # lib/
+    dst_lib = ui_dir / "lib"
+    dst_lib.mkdir(parents=True, exist_ok=True)
 
-    生成简单的测试数据，动态数据（如用户名、时间戳）使用代码生成。
-    """
+    # Python modules from module_discovery/
+    module_files = [
+        "__init__.py",
+        "replay_engine.py",
+        "button_driver.py",
+        "form_filler.py",
+        "wait_helpers.py",
+        "kb_loader.py",
+        "const.py",
+    ]
+    for name in module_files:
+        src = src_dir / name
+        dst = dst_lib / name
+        if name == "__init__.py" and not src.exists():
+            dst.write_text('"""UI automation runtime library."""\n', encoding="utf-8")
+            continue
+        if not src.exists():
+            LOG.warning(f"  Runtime file missing: {src}")
+            continue
+        src_content = src.read_text(encoding="utf-8")
+        if dst.exists() and dst.read_text(encoding="utf-8") == src_content:
+            continue
+        dst.write_text(src_content, encoding="utf-8")
+        LOG.info(f"  UI runtime sync: {name}")
+
+    # cookie_client.py from lib/
+    cookie_src = lib_dir / "cookie_client.py"
+    cookie_dst = dst_lib / "cookie_client.py"
+    if cookie_src.exists():
+        src_content = cookie_src.read_text(encoding="utf-8")
+        if not cookie_dst.exists() or cookie_dst.read_text(encoding="utf-8") != src_content:
+            cookie_dst.write_text(src_content, encoding="utf-8")
+            LOG.info("  UI runtime sync: cookie_client.py")
+    else:
+        LOG.warning(f"  Runtime file missing: {cookie_src}")
+
+    # KB data
+    kb_src = src_dir / "kb" / "probe_knowledge.json"
+    kb_dst = dst_lib / "kb" / "probe_knowledge.json"
+    kb_dst.parent.mkdir(parents=True, exist_ok=True)
+    if kb_src.exists():
+        src_content = kb_src.read_text(encoding="utf-8")
+        if not kb_dst.exists() or kb_dst.read_text(encoding="utf-8") != src_content:
+            kb_dst.write_text(src_content, encoding="utf-8")
+            LOG.info("  UI runtime sync: kb/probe_knowledge.json")
+
+    # cookies.json -> config/
+    config_dst = ui_dir / "config"
+    config_dst.mkdir(parents=True, exist_ok=True)
+    cookies_src = src_dir.parent / "cookies.json"  # project root
+    if cookies_src.exists():
+        dst_cookies = config_dst / "cookies.json"
+        if not dst_cookies.exists():
+            dst_cookies.write_text(cookies_src.read_text(encoding="utf-8"), encoding="utf-8")
+            LOG.info("  UI runtime sync: config/cookies.json")
+
+
+def _extract_test_data(playbook: dict) -> dict:
+    """从 playbook 中提取测试数据"""
     data = {}
 
-    # 创建操作数据
     create_op = playbook.get("operations", {}).get("create", {})
     if create_op:
         create_data = {}
-        steps = create_op.get("steps", [])
-
-        for step in steps:
+        for step in create_op.get("steps", []):
             if step.get("action") == "fill_form":
-                fields = step.get("fields", [])
-                for field in fields:
+                for field in step.get("fields", []):
                     label = field.get("label")
-                    field_type = field.get("type", "input")
-
                     if not label:
                         continue
-
-                    # 根据字段类型生成测试数据
                     if "密码" in label or "password" in label.lower():
                         create_data[label] = "Test@123456"
                     elif "手机" in label or "phone" in label.lower():
@@ -83,53 +143,51 @@ def _extract_test_data(playbook: dict) -> dict:
                     elif "描述" in label or "备注" in label or "description" in label.lower():
                         create_data[label] = "UI 自动化测试数据"
                     elif "名称" in label or "name" in label.lower():
-                        # 动态生成，使用代码
-                        create_data[label] = None  # 标记为动态
+                        create_data[label] = None  # 动态
                     elif "编码" in label or "code" in label.lower():
-                        create_data[label] = None  # 标记为动态
+                        create_data[label] = None  # 动态
                     else:
                         create_data[label] = f"test_{label}"
-
         data["create"] = create_data
 
-    # 更新操作数据
     update_op = playbook.get("operations", {}).get("update", {})
     if update_op:
-        update_data = {
-            "描述": "auto_edited",
-            "备注": "UI 自动化更新测试"
-        }
-        data["update"] = update_data
+        data["update"] = {"描述": "auto_edited", "备注": "UI 自动化更新测试"}
 
     return data
 
 
-def _render_script(playbook: dict, module_name: str, data_filename: str) -> str:
-    """渲染完整的 Playwright 脚本"""
-
-    # 提取配置信息
+def _render_script(playbook: dict, module_name: str, data_filename: str, playbook_filename: str, version: str) -> str:
+    """渲染薄主脚本"""
     meta = playbook.get("meta", {})
-    base_url = meta.get("base_url", "")
-    login_url = meta.get("login_url", "")
     target_url = meta.get("target_url", "")
-    framework = meta.get("framework", "element-ui")
+    base_url = meta.get("base_url", "")
+    if not base_url and target_url:
+        from urllib.parse import urlparse
+        parsed = urlparse(target_url)
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
 
-    # 提取操作列表
+    login_url = meta.get("login_url", "")
+    if not login_url and base_url:
+        login_url = f"{base_url}/estack/web/estack/login"
+
+    # 提取鉴权配置
+    auth_config = meta.get("auth_config", {})
+    token_key = auth_config.get("token_key", "estackToken")
+    token_storage = auth_config.get("token_storage", "localStorage")
+    cookie_token_key = auth_config.get("cookie_token_key", "accessToken")
+
+    # 提取操作名列表
     operations = playbook.get("operations", {})
-    op_list = []
-    for op_name, op_data in operations.items():
-        op_list.append({
-            "name": op_name,
-            "description": op_data.get("description", op_name)
-        })
+    op_names = list(operations.keys())
 
-    # 构建脚本内容
-    script = f'''#!/usr/bin/env python3
+    return f'''#!/usr/bin/env python3
 """
 {module_name} - UI 自动化测试脚本
 
 生成时间: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 生成工具: API AI Test Framework - Stage 2
+版本: {version}
 
 用法:
     python {module_name}.py                    # 运行所有操作
@@ -143,11 +201,23 @@ def _render_script(playbook: dict, module_name: str, data_filename: str) -> str:
 """
 
 import json
+import os
+import sys
+import io
 import asyncio
 import argparse
 import time
 from pathlib import Path
 from playwright.async_api import async_playwright
+
+# ==================== Bootstrap ====================
+
+_lib = Path(__file__).resolve().parent / "lib"
+sys.path.insert(0, str(_lib.parent))
+
+from lib.replay_engine import replay_from_playbook
+from lib.button_driver import ButtonDriver
+from lib.cookie_client import load_cookies, get_token, apply_to_playwright_context, inject_token_to_storage
 
 # ==================== 配置 ====================
 
@@ -155,296 +225,237 @@ CONFIG = {{
     "base_url": "{base_url}",
     "login_url": "{login_url}",
     "target_url": "{target_url}",
-    "username": "estack-yy",  # 可从环境变量 APP_USER 读取
-    "password": "R@9eDuck$!mpleM00n",  # 可从环境变量 APP_PASS 读取
     "headless": False,
     "slow_mo": 100,
+    # 鉴权配置
+    "token_key": "{token_key}",
+    "token_storage": "{token_storage}",
+    "cookie_token_key": "{cookie_token_key}",
 }}
 
-# Playbook 操作定义（从 Stage 1 生成）
-PLAYBOOK_OPERATIONS = {json.dumps(operations, ensure_ascii=False, indent=4)}
+AVAILABLE_OPERATIONS = {repr(op_names)}
 
-# ==================== 内置 Helper ====================
+# ==================== Cookie 鉴权 ====================
 
-async def wait_for_dialog(page, locator=".el-dialog__wrapper", timeout=5000):
-    """等待对话框出现"""
-    await page.wait_for_selector(
-        f"{{locator}}:not([style*='display: none'])",
-        state="visible",
-        timeout=timeout
-    )
+async def require_cookie_auth(context, page):
+    """Cookie-only 鉴权，失败则报错退出。"""
+    cookies_path = Path(__file__).parent / "config" / "cookies.json"
+    cookies, token = load_cookies(cookies_path)
+
+    if not cookies:
+        print("=" * 60)
+        print("  ❌ 鉴权失败: 未找到 cookies.json")
+        print("=" * 60)
+        print(f"  期望文件: {{cookies_path}}")
+        print("  解决方法: 运行 --stage 1 或 --stage 2 刷新 cookie")
+        sys.exit(1)
+
+    # 注入 cookie
+    await apply_to_playwright_context(context, cookies)
+    print(f"  ✅ 已注入 {{len(cookies)}} 个 cookies")
+
+    # 导航到登录页以设置 origin
+    await page.goto(CONFIG["login_url"], wait_until="domcontentloaded", timeout=30000)
     await page.wait_for_timeout(500)
 
-
-async def fill_form(page, fields, data):
-    """填充表单字段"""
-    filled = 0
-    for field in fields:
-        locator = field.get("playwright_locator")
-        label = field.get("label")
-        fill_rule = field.get("fill_rule")
-
-        if not locator:
-            continue
-
-        # 确定填充值
-        value = None
-        if label in data and data[label] is not None:
-            value = data[label]
-        elif fill_rule:
-            value = apply_fill_rule(fill_rule)
-
-        if value is None:
-            continue
-
-        try:
-            await page.fill(locator, str(value), timeout=3000)
-            filled += 1
-        except Exception as e:
-            print(f"  ⚠️ 填充 {{label}} 失败: {{e}}")
-
-    print(f"  ✓ 已填充 {{filled}}/{{len(fields)}} 个字段")
-    return filled
-
-
-def apply_fill_rule(rule):
-    """应用填充规则生成值"""
-    rule_type = rule.get("rule", "")
-    params = rule.get("params", {{}})
-    ts = int(time.time())
-
-    if rule_type == "username_pattern":
-        prefix = params.get("prefix", "autotest")
-        return f"{{prefix}}_{{ts}}"
-    elif rule_type == "password_fixed":
-        return params.get("value", "Test@123456")
-    elif rule_type == "email_pattern":
-        domain = params.get("domain", "test.com")
-        return f"auto_{{ts}}@{{domain}}"
-    elif rule_type == "phone_pattern":
-        prefix = params.get("prefix", "138")
-        import random
-        return f"{{prefix}}{{random.randint(10000000, 99999999)}}"
-    elif rule_type == "code_pattern":
-        prefix = params.get("prefix", "code")
-        return f"{{prefix}}_{{ts}}"
-    elif rule_type == "description_pattern":
-        prefix = params.get("prefix", "auto")
-        return f"{{prefix}}_{{ts}}"
-    elif rule_type == "first_option":
-        return None  # 标记为动态选择
+    # 注入 token 到 storage
+    if token:
+        await inject_token_to_storage(page, token, CONFIG["token_storage"], CONFIG["token_key"])
+        print(f"  ✅ 已注入 {{CONFIG['token_key']}} 到 {{CONFIG['token_storage']}}")
     else:
-        return f"test_{{ts}}"
+        print(f"  ⚠️ 未找到 token (cookie_token_key={{CONFIG['cookie_token_key']}})")
 
-
-async def click_confirm_dialog(page, confirm_text="确定"):
-    """点击确认对话框"""
-    # 检测三种确认框类型
-    for _ in range(4):
-        has_confirm = await page.evaluate("""() => {{
-            const msgBox = document.querySelector('.el-message-box__wrapper:not([style*="display: none"])');
-            if (msgBox && msgBox.offsetWidth > 0) return 'message-box';
-
-            const popconfirm = document.querySelector('.el-popconfirm:not([style*="display: none"])');
-            if (popconfirm && popconfirm.offsetWidth > 0) return 'popconfirm';
-
-            return null;
-        }}""")
-
-        if has_confirm:
-            break
-
-        await page.wait_for_timeout(500)
-
-    if not has_confirm:
-        print("  ⚠️ 未检测到确认框")
-        return False
-
-    # 点击确认按钮
-    if has_confirm == "message-box":
-        locator = f".el-message-box__btns button:has-text('{{confirm_text}}')"
-    else:
-        locator = f".el-popconfirm__action button:has-text('{{confirm_text}}')"
-
-    await page.click(locator, timeout=3000)
-    return True
-
-
-async def find_row_and_hover_dropdown(page, marker, dropdown_parent=".el-dropdown"):
-    """定位数据行并展开下拉菜单"""
-    # 找到包含 marker 的行
-    row = await page.query_selector(f".el-table__body-wrapper tr:has-text('{{marker}}')")
-    if not row:
-        print(f"  ⚠️ 未找到数据行: {{marker}}")
-        return False
-
-    # 找到行内的"更多"按钮
-    more_btn = await row.query_selector(dropdown_parent)
-    if not more_btn:
-        print(f"  ⚠️ 未找到下拉菜单触发器")
-        return False
-
-    # Hover 展开
-    await more_btn.hover()
-    await page.wait_for_timeout(600)
-
-    # 验证展开
-    expanded = await page.evaluate("""() => {{
-        const items = document.querySelectorAll('.el-dropdown-menu__item');
-        return Array.from(items).some(el => el.offsetWidth > 0);
-    }}""")
-
-    if not expanded:
-        await more_btn.click()
-        await page.wait_for_timeout(600)
-
-    return True
-
-
-async def select_row_checkbox(page, marker):
-    """勾选数据行的 checkbox"""
-    row = await page.query_selector(f".el-table__body-wrapper tr:has-text('{{marker}}')")
-    if not row:
-        return False
-
-    checkbox = await row.query_selector(".el-checkbox__input")
-    if not checkbox:
-        return False
-
-    await checkbox.click()
-    await page.wait_for_timeout(300)
-    return True
-
-
-async def assert_success_message(page, locator=".el-message--success"):
-    """验证成功消息"""
-    try:
-        await page.wait_for_selector(locator, state="visible", timeout=5000)
-        print(f"  ✓ 操作成功")
-        return True
-    except:
-        print(f"  ⚠️ 未检测到成功消息")
-        return False
-
-
-async def auto_login(page, context, login_url, username, password):
-    """简化版自动登录（用户名+密码+点击登录）"""
-    await page.goto(login_url, wait_until="networkidle")
+    # 导航到目标页验证
+    target_url = CONFIG.get("target_url", CONFIG["login_url"])
+    await page.goto(target_url, wait_until="networkidle", timeout=30000)
     await page.wait_for_timeout(1000)
 
-    # 填充用户名
-    await page.fill("input[placeholder*='用户名'], input[placeholder*='账号']", username)
-
-    # 填充密码
-    await page.fill("input[type='password']", password)
-
-    # 点击登录
-    await page.click("button:has-text('登录'), button:has-text('Login')")
-
-    # 等待登录完成
-    await page.wait_for_load_state("networkidle")
-    await page.wait_for_timeout(2000)
-
-    # 检查是否成功登录
     if "login" in page.url:
-        print("  ⚠️ 登录可能失败，请检查凭证")
-        return False
+        print("=" * 60)
+        print("  ❌ Cookie 已过期或无效")
+        print("=" * 60)
+        print("  解决方法: 运行 --stage 1 或 --stage 2 刷新 cookie")
+        sys.exit(1)
 
-    return True
+    print("  ✅ Cookie 鉴权成功")
 
+# ==================== 操作执行 ====================
 
-# ==================== 操作执行器 ====================
-
-async def run_operation(page, operation_name, data, marker=None):
-    """执行单个操作"""
-    op = PLAYBOOK_OPERATIONS.get(operation_name)
+async def run_operation(page, operation_name, operations_data, marker=None):
+    """使用回放引擎执行单个操作"""
+    op = operations_data.get(operation_name)
     if not op:
         print(f"⚠️ 操作不存在: {{operation_name}}")
-        return None
+        return marker, {{"operation": operation_name, "status": "failed", "error": "操作不存在", "steps": []}}
 
     print(f"\\n▶ 执行: {{op.get('description', operation_name)}}")
 
     steps = op.get("steps", [])
-    new_marker = marker
+    button_driver = ButtonDriver(page)
+    op_start = time.time()
 
-    for step in steps:
-        action = step.get("action")
+    try:
+        result = await replay_from_playbook(page, steps, button_driver, marker)
+        duration = time.time() - op_start
 
-        if action == "click_button":
-            locator = step.get("playwright_locator")
-            text = step.get("text")
+        new_marker = result.get("marker", marker)
+        op_result = {{
+            "operation": operation_name,
+            "status": "passed",
+            "steps": [{{"action": s.get("action"), "status": "passed"}} for s in steps],
+            "duration": duration,
+        }}
+        print(f"  ✅ 操作成功 (耗时 {{duration:.2f}}s)")
+        return new_marker, op_result
 
-            if locator:
-                await page.click(locator, timeout=5000)
-            else:
-                await page.click(f"button:has-text('{{text}}')", timeout=5000)
+    except Exception as e:
+        duration = time.time() - op_start
+        op_result = {{
+            "operation": operation_name,
+            "status": "failed",
+            "error": str(e),
+            "steps": [],
+            "duration": duration,
+        }}
+        print(f"  ❌ 操作失败: {{e}}")
+        return marker, op_result
 
-        elif action == "wait_for_dialog":
-            locator = step.get("playwright_locator", ".el-dialog__wrapper")
-            timeout = step.get("timeout_ms", 5000)
-            await wait_for_dialog(page, locator, timeout)
+# ==================== 报告 ====================
 
-        elif action == "fill_form":
-            fields = step.get("fields", [])
-            op_data = data.get(operation_name, {{}})
-            await fill_form(page, fields, op_data)
+_REPORT_CSS = (
+    "*{{margin:0;padding:0;box-sizing:border-box}}"
+    "body{{font-family:-apple-system,'Segoe UI',Roboto,'Microsoft YaHei',sans-serif;"
+    "background:#f5f6fa;color:#2c3e50;padding:20px 28px;line-height:1.6}}"
+    ".header{{background:linear-gradient(135deg,#2c3e50,#3498db);color:#fff;"
+    "padding:22px 28px;border-radius:8px;margin-bottom:18px}}"
+    ".header h1{{font-size:20px;margin-bottom:6px}}"
+    ".header p{{opacity:.88;font-size:13px}}"
+    ".summary{{display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap}}"
+    ".card{{background:#fff;padding:12px 20px;border-radius:8px;"
+    "box-shadow:0 1px 3px rgba(0,0,0,.08);text-align:center;min-width:100px}}"
+    ".card .num{{font-size:24px;font-weight:700}}"
+    ".card .label{{font-size:12px;color:#7f8c8d}}"
+    ".card.ok .num{{color:#27ae60}}"
+    ".card.fail .num{{color:#e74c3c}}"
+    ".card.warn .num{{color:#f39c12}}"
+    "details{{background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);"
+    "margin-bottom:14px;overflow:hidden}}"
+    "summary{{padding:12px 18px;font-size:14px;font-weight:600;cursor:pointer;"
+    "background:#ecf0f1;list-style:none;display:flex;gap:8px;align-items:center}}"
+    "summary::-webkit-details-marker{{display:none}}"
+    "summary::before{{content:'▶';font-size:10px;transition:.2s}}"
+    "details[open]>summary::before{{transform:rotate(90deg)}}"
+    ".body{{padding:14px 18px}}"
+    "table{{width:100%;border-collapse:collapse;font-size:12px}}"
+    "th{{background:#f8f9fa;padding:6px 8px;text-align:left;"
+    "border-bottom:2px solid #dee2e6;white-space:nowrap}}"
+    "td{{padding:5px 8px;border-bottom:1px solid #eee;vertical-align:top;word-break:break-all}}"
+    "tr.fail-row{{background:#fef0f0}}"
+    ".badge{{display:inline-block;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600}}"
+    ".badge-ok{{background:#d5f5e3;color:#27ae60}}"
+    ".badge-fail{{background:#fadbd8;color:#e74c3c}}"
+    ".badge-warn{{background:#fef9e7;color:#f39c12}}"
+    ".badge-skip{{background:#f2f3f4;color:#95a5a6}}"
+    ".err{{background:#fef0f0;border-left:4px solid #e74c3c;padding:10px 14px;"
+    "border-radius:4px;color:#c0392b;white-space:pre-wrap;font-size:13px;margin-bottom:14px}}"
+    ".oknote{{background:#eafaf1;border-left:4px solid #27ae60;padding:10px 14px;"
+    "border-radius:4px;color:#1e7e44;font-size:13px;margin-bottom:14px;white-space:pre-wrap}}"
+    ".oknote b{{color:#155d33}}"
+)
 
-        elif action == "find_row":
-            if not marker:
-                print("  ⚠️ 缺少 marker，跳过")
-                continue
+def generate_html_report(results, module_name):
+    """生成 HTML 测试报告（风格与 EcsCloud 统一）"""
+    from datetime import datetime as _dt
+    total = len(results)
+    passed = sum(1 for r in results if r["status"] == "passed")
+    failed = total - passed
+    pass_rate = f"{{(passed / total * 100) if total > 0 else 0:.1f}}%" if total else "0.0%"
+    now_str = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
+    all_ok = failed == 0 and total > 0
 
-        elif action == "hover_dropdown":
-            if not marker:
-                print("  ⚠️ 缺少 marker，跳过")
-                continue
-            parent = step.get("parent_selector", ".el-dropdown")
-            await find_row_and_hover_dropdown(page, marker, parent)
+    icon = "✅" if all_ok else "❌"
 
-        elif action == "click_dropdown_item":
-            locator = step.get("playwright_locator")
-            if locator:
-                await page.click(locator, timeout=3000)
+    # --- 操作明细行 ---
+    rows_html = ""
+    for i, r in enumerate(results, 1):
+        st = r.get("status", "unknown")
+        dur = r.get("duration", 0)
+        op_name = r.get("operation", "?")
+        err_msg = r.get("error", "")
+        cls = "badge-ok" if st == "passed" else "badge-fail"
+        label = "通过" if st == "passed" else "失败"
+        row_cls = ' class="fail-row"' if st == "failed" else ""
+        rows_html += (
+            f"<tr{{row_cls}}>"
+            f"<td>{{i}}</td>"
+            f"<td>{{op_name}}</td>"
+            f"<td>{{dur:.2f}}s</td>"
+            f'<td><span class="badge {{cls}}">{{label}}</span></td>'
+            f"<td>{{err_msg}}</td>"
+            f"</tr>"
+        )
 
-        elif action == "click_confirm_dialog":
-            confirm_text = step.get("confirm_text", "确定")
-            await click_confirm_dialog(page, confirm_text)
+    # --- 组装 HTML（用 + 拼接避免 f-string 嵌套 triple-quote 冲突） ---
+    html = (
+        '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">'
+        f"<title>{{module_name}} · UI 测试报告</title>"
+        f"<style>{{_REPORT_CSS}}</style></head><body>"
+        f'<div class="header"><h1>{{icon}} {{module_name}} · UI 测试报告</h1>'
+        f"<p>执行时间: {{now_str}} | 耗时: {{sum(r.get('duration',0) for r in results):.1f}}s</p></div>"
+        '<div class="summary">'
+        f'<div class="card"><div class="num">{{total}}</div><div class="stat-label">总操作</div></div>'
+        f'<div class="card ok"><div class="num">{{passed}}</div><div class="stat-label">通过</div></div>'
+        f'<div class="card fail"><div class="num">{{failed}}</div><div class="stat-label">失败</div></div>'
+        f'<div class="card warn"><div class="num">{{pass_rate}}</div><div class="stat-label">通过率</div></div>'
+        "</div>"
+    )
 
-        elif action == "select_row_checkbox":
-            if marker:
-                await select_row_checkbox(page, marker)
+    if failed > 0:
+        err_ops = [r["operation"] for r in results if r["status"] == "failed"]
+        html += f'<div class="err">失败操作: {{", ".join(err_ops)}}</div>'
 
-        elif action == "assert_success":
-            locator = step.get("playwright_locator", ".el-message--success")
-            await assert_success_message(page, locator)
+    if all_ok:
+        html += '<div class="oknote">✅ <b>全部操作执行成功</b>。以下为各操作的执行明细。</div>'
 
-        await page.wait_for_timeout(500)
+    html += (
+        '<details open><summary>操作执行明细</summary><div class="body"><table>'
+        "<thead><tr><th>#</th><th>操作</th><th>耗时</th><th>结果</th><th>错误信息</th></tr></thead>"
+        f"<tbody>{{rows_html}}</tbody></table></div></details>"
+        "</body></html>"
+    )
 
-    return new_marker
-
+    report_dir = Path(__file__).parent / "output" / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    ts = _dt.now().strftime("%Y%m%d_%H%M%S")
+    report_path = report_dir / f"{{module_name}}_ui_report_{{ts}}.html"
+    report_path.write_text(html, encoding="utf-8")
+    return str(report_path)
 
 # ==================== 主程序 ====================
 
 async def main():
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
     parser = argparse.ArgumentParser(description="{module_name} UI 自动化测试脚本")
     parser.add_argument("operations", nargs="*", help="要执行的操作列表")
     parser.add_argument("--headless", action="store_true", help="无头模式")
     parser.add_argument("--data", help="数据文件路径")
     args = parser.parse_args()
 
-    # 加载数据
-    data_file = Path(args.data) if args.data else Path(__file__).parent / "{data_filename}"
-    if data_file.exists():
-        with open(data_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-    else:
-        print(f"⚠️ 数据文件不存在: {{data_file}}")
-        data = {{}}
+    # 加载 playbook
+    playbook_path = Path(__file__).parent / "{playbook_filename}"
+    if not playbook_path.exists():
+        print(f"❌ Playbook 文件不存在: {{playbook_path}}")
+        return
+    with open(playbook_path, "r", encoding="utf-8") as f:
+        playbook = json.load(f)
+
+    operations_data = playbook.get("operations", {{}})
 
     # 确定要执行的操作
-    operations = args.operations if args.operations else list(PLAYBOOK_OPERATIONS.keys())
+    ops = args.operations if args.operations else AVAILABLE_OPERATIONS
 
-    # 启动浏览器
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=args.headless or CONFIG["headless"],
@@ -456,32 +467,32 @@ async def main():
         )
         page = await context.new_page()
 
-        # 登录
-        print("登录...")
-        await auto_login(
-            page, context,
-            CONFIG["login_url"],
-            CONFIG["username"],
-            CONFIG["password"]
-        )
+        # Cookie 鉴权（不做登录）
+        print("Cookie 鉴权...")
+        await require_cookie_auth(context, page)
 
-        # 导航到目标页面
         print(f"导航到: {{CONFIG['target_url']}}")
         await page.goto(CONFIG["target_url"], wait_until="networkidle")
         await page.wait_for_timeout(2000)
 
-        # 执行操作
         marker = None
-        for op_name in operations:
-            marker = await run_operation(page, op_name, data, marker)
+        results = []
+        for op_name in ops:
+            marker, op_result = await run_operation(page, op_name, operations_data, marker)
+            results.append(op_result)
 
-        # 等待用户确认
-        input("\\n按 Enter 关闭浏览器...")
+        report_path = generate_html_report(results, "{module_name}")
+        print(f"\\n{{'='*60}}")
+        print(f"  ✅ 测试完成")
+        print(f"{{'='*60}}")
+        print(f"  📊 报告: {{report_path}}")
+
+        if not (args.headless or CONFIG["headless"]):
+            input("\\n按 Enter 关闭浏览器...")
         await browser.close()
 
 
 if __name__ == "__main__":
+    from datetime import datetime
     asyncio.run(main())
 '''
-
-    return script

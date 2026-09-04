@@ -2414,6 +2414,19 @@ async def _do_delete(page, context: dict) -> dict:
     await wait_for_loading_complete(page)
     await page.wait_for_timeout(1000)
 
+    # 检查确认后的页面状态（是否仍有残留对话框）
+    post_state = await page.evaluate("""() => {
+        const dialogs = document.querySelectorAll(
+            '.el-dialog__wrapper:not([style*="display: none"]), ' +
+            '.el-drawer:not([style*="display: none"]), ' +
+            '.ant-modal-wrap:not([style*="display: none"])');
+        const hasOpenDialog = Array.from(dialogs).some(d => d.offsetWidth > 0);
+        const hasForm = document.querySelector(
+            '.el-dialog__wrapper:not([style*="display: none"]) form, ' +
+            '.el-dialog__wrapper:not([style*="display: none"]) .el-form') !== null;
+        return { dialog_remains: hasOpenDialog, has_form_in_dialog: hasForm };
+    }""")
+
     # 检查错误
     errors = await read_form_errors(page)
     if errors:
@@ -2447,6 +2460,10 @@ async def _do_delete(page, context: dict) -> dict:
         "success_locator": ".el-message--success",
         "needs_checkbox": needs_checkbox,
         "checkbox_locator": checkbox_locator,
+        "post_confirm_state": {
+            "dialog_remains": post_state["dialog_remains"],
+            "has_form_in_dialog": post_state["has_form_in_dialog"],
+        },
     } if success else {
         "success": False, "error_type": "no_success_signal",
         "error_text": "删除后未检测到成功信号"
@@ -2575,6 +2592,19 @@ async def _do_generic_operation(page, context: dict) -> dict:
     else:
         LOG.debug(f"    未检测到确认弹窗 (state: {state.get('actual_state', 'none')})")
 
+    # 检查确认后的页面状态（是否仍有残留对话框）
+    post_state = await page.evaluate("""() => {
+        const dialogs = document.querySelectorAll(
+            '.el-dialog__wrapper:not([style*="display: none"]), ' +
+            '.el-drawer:not([style*="display: none"]), ' +
+            '.ant-modal-wrap:not([style*="display: none"])');
+        const hasOpenDialog = Array.from(dialogs).some(d => d.offsetWidth > 0);
+        const hasForm = document.querySelector(
+            '.el-dialog__wrapper:not([style*="display: none"]) form, ' +
+            '.el-dialog__wrapper:not([style*="display: none"]) .el-form') !== null;
+        return { dialog_remains: hasOpenDialog, has_form_in_dialog: hasForm };
+    }""")
+
     # 检查错误
     errors = await read_form_errors(page)
     if errors:
@@ -2602,6 +2632,12 @@ async def _do_generic_operation(page, context: dict) -> dict:
 
     # Playbook 增强字段
     result = {"success": True, "selectors": selectors, "confirmed": confirmed}
+
+    # 记录确认后的对话框状态（供 playbook 生成 close_dialog 步骤）
+    result["post_confirm_state"] = {
+        "dialog_remains": post_state["dialog_remains"],
+        "has_form_in_dialog": post_state["has_form_in_dialog"],
+    }
 
     # 记录 trigger_locator_verified（使用实际点击成功的标签）
     trigger_text_normalized = " ".join(btn_text.split())
@@ -3224,7 +3260,8 @@ def build_playbook(ui_result: dict) -> dict:
         "login_url": ui_result.get("login_url", ""),
         "framework": ui_result.get("framework", "element-ui"),
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "version": "1.0"
+        "version": "1.0",
+        "auth_config": ui_result.get("auth_config", {}),
     }
 
     # 提取页面结构
@@ -3420,6 +3457,14 @@ def _build_dropdown_steps(op_data: dict) -> list:
             "description": "点击确认对话框"
         })
 
+    # Step 3.5: 如果确认后对话框仍在，插入关闭步骤
+    post_state = op_data.get("post_confirm_state", {})
+    if post_state.get("dialog_remains"):
+        steps.append({
+            "action": "close_dialog",
+            "description": "关闭残留对话框"
+        })
+
     # Step 4: 验证成功
     success_locator = op_data.get("success_locator", ".el-message--success")
     steps.append({
@@ -3471,6 +3516,14 @@ def _build_delete_steps(op_data: dict) -> list:
         steps.append({
             "action": "confirm_dialog",
             "description": "点击确认对话框"
+        })
+
+    # Step 4.5: 如果确认后对话框仍在，插入关闭步骤
+    post_state = op_data.get("post_confirm_state", {})
+    if post_state.get("dialog_remains"):
+        steps.append({
+            "action": "close_dialog",
+            "description": "关闭残留对话框"
         })
 
     # Step 5: 验证行消失
@@ -3677,6 +3730,14 @@ def _build_generic_steps(op_data: dict) -> list:
         steps.append({
             "action": "confirm_dialog",
             "description": "点击确认对话框"
+        })
+
+    # 如果确认后对话框仍在，插入关闭步骤
+    post_state = op_data.get("post_confirm_state", {})
+    if post_state.get("dialog_remains"):
+        steps.append({
+            "action": "close_dialog",
+            "description": "关闭残留对话框"
         })
 
     # 如果有导航返回，添加 navigate_back 步骤

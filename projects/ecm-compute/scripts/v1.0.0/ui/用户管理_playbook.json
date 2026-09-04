@@ -2,16 +2,11 @@
   "meta": {
     "module_name": "用户管理",
     "target_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/user",
-    "base_url": "https://10.151.61.248",
-    "login_url": "https://10.151.61.248/estack/web/estack/login",
+    "base_url": "",
+    "login_url": "",
     "framework": "element-ui",
-    "generated_at": "2026-09-04 15:45:15",
-    "version": "1.0",
-    "auth_config": {
-      "token_key": "estackToken",
-      "token_storage": "localStorage",
-      "cookie_token_key": "accessToken"
-    }
+    "generated_at": "2026-09-04 12:26:49",
+    "version": "1.0"
   },
   "page_structure": {},
   "operations": {

@@ -94,9 +94,11 @@ def _load_ui_result(project_dir: Path, module_name: str) -> dict:
 
 def _load_capture_result(project_dir: Path, module_name: str) -> dict:
     """加载已保存的 API 捕获结果。"""
-    p = project_dir / "kb" / "module_discovered" / f"{module_name}.json"
-    if p.exists():
-        return json.loads(p.read_text(encoding="utf-8"))
+    # 兼容新旧文件名：{module}.json（旧）和 {module}_capture.json（Stage 2 重构后）
+    for suffix in ("_capture.json", ".json"):
+        p = project_dir / "kb" / "module_discovered" / f"{module_name}{suffix}"
+        if p.exists():
+            return json.loads(p.read_text(encoding="utf-8"))
     return {}
 
 
@@ -249,6 +251,23 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str)
     # 注入 meta 信息到 ui_result（供 build_playbook 使用）
     ui_result["module_name"] = module_name
     ui_result["target_url"] = target_url
+    # 从 target_url 推导 base_url
+    from urllib.parse import urlparse
+    parsed_url = urlparse(target_url)
+    base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+    ui_result["base_url"] = base_url
+    # 从 profile 加载 login_url
+    profile = _load_profile(project_dir)
+    login_url = profile.get("login_url", f"{base_url}/estack/web/estack/login")
+    ui_result["login_url"] = login_url
+
+    # 注入 auth_config（供 UI 脚本生成使用）
+    profile_auth = profile.get("auth", {})
+    ui_result["auth_config"] = {
+        "token_key": profile_auth.get("token_key", "estackToken"),
+        "token_storage": profile_auth.get("token_storage", "localStorage"),
+        "cookie_token_key": profile_auth.get("cookie_token_key", "accessToken"),
+    }
 
     # 生成并保存 playbook
     from .discover_ui import build_playbook
@@ -393,7 +412,8 @@ async def _vision_rescue(page, ui_result: dict, missing: list) -> dict:
 async def run_stage2(page, project_dir: Path, module_name: str,
                      ui_result: dict, base_url: str, target_url: str,
                      max_recapture: int = 2,
-                     capture_all_mode: bool = False) -> tuple:
+                     capture_all_mode: bool = False,
+                     version: str = "") -> tuple:
     """Stage 2: API 捕获。
 
     Stage 1 已验证所有操作可成功，Stage 2 只做 API 捕获。
@@ -458,7 +478,8 @@ async def run_stage2(page, project_dir: Path, module_name: str,
                 try:
                     with open(playbook_path, 'r', encoding='utf-8') as f:
                         playbook_data = json.load(f)
-                    script_path, data_path = generate_ui_script(playbook_data, module_name, project_dir)
+                    ver = version or ver_mod.resolve_version(project_dir)
+                    script_path, data_path = generate_ui_script(playbook_data, module_name, project_dir, version=ver)
                     LOG.info(f"  UI 脚本已生成: {script_path}")
                     LOG.info(f"  UI 数据已生成: {data_path}")
                 except Exception as e:
@@ -779,7 +800,8 @@ async def main():
             capture_result, stage2_valid = await run_stage2(
                 page, project_dir, args.module, ui_result or {}, base_url, target_url,
                 max_recapture=args.max_recapture,
-                capture_all_mode=args.capture_all)
+                capture_all_mode=args.capture_all,
+                version=args.version or ver_mod.resolve_version(project_dir))
         else:
             capture_result = _load_capture_result(project_dir, args.module)
             stage2_valid = bool(capture_result and capture_result.get("by_category"))
@@ -860,7 +882,8 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
                 capture_result, stage2_valid = await run_stage2(
                     page, project_dir, name, ui_result or {}, base_url, target_url,
                     max_recapture=args.max_recapture,
-                    capture_all_mode=args.capture_all)
+                    capture_all_mode=args.capture_all,
+                    version=args.version or ver_mod.resolve_version(project_dir))
             else:
                 capture_result = _load_capture_result(project_dir, name)
                 stage2_valid = bool(capture_result and capture_result.get("by_category"))

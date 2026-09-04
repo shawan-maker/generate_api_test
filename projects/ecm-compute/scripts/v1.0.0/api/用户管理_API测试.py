@@ -1,16 +1,21 @@
 """
 用户管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-03 14:38:19
+生成时间: 2026-09-04 14:41:58
 目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/user
 
 执行流程:
   1. 创建用户
-  2. 重置密码
-  3. 更多
-  4. 查询
-  5. 编辑
-  6. 启用
-  7. 批量删除
+  2. 查询验证（创建后）
+  3. 编辑
+  4. 查询验证（编辑后）
+  5. 冻结
+  6. 查询验证（冻结后）
+  7. 启用
+  8. 查询验证（启用后）
+  9. 重置密码
+  10. 查询验证（重置密码后）
+  11. 批量删除
+  12. 查询验证（删除后）
 
 状态断言:
   - 删除后数据不应出现
@@ -19,12 +24,9 @@
 import sys, json
 from pathlib import Path
 
-# 确保能找到 lib（向上搜索含 lib/auth.py 的仓库根）
-_root = Path(__file__).resolve()
-while _root.parent != _root and not (_root / 'lib' / 'auth.py').exists():
-    _root = _root.parent
-sys.path.insert(0, str(_root))
-
+# 找到同目录的 lib/（脚本独立运行时使用）
+_lib = Path(__file__).resolve().parent / "lib"
+sys.path.insert(0, str(_lib.parent))
 from lib.test_runtime import TestRunner
 
 MANIFEST = {
@@ -68,6 +70,9 @@ MANIFEST = {
         "path": "entity.id"
       }
     },
+    "token_key": "estackToken",
+    "token_storage": "localStorage",
+    "cookie_token_key": "accessToken",
     "captcha": {
       "auth_button_text": "点击完成认证",
       "login_button_text": "登录"
@@ -91,12 +96,12 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userName": "autotest417387",
-        "password": "cEskk3LJ4WEVoTVYb7p31s9fEhvHxE2xfJDgaCI8Lwcm6Sm+EXyVwFq4CsGS+KBPsIBJYBdWl87x0ZfwTgwARz7KZqhhRimWfbOMTIwJdvcAwSBX8MfaM/nmwXnlAJfCOaHoViDs4O/Cz5zhXVBAhyjUynCtNreq3BuCLIOVFCg=",
-        "name": "test_417387",
-        "email": "bL5qXNYbieDntjIX4DHCURVf7DdpMRkbrGTKTr6OXq2tP6UbZWVICTftyEsFkL93YZ1fHIaECBG11z5jjcbI8BlYgd9MzAgNin56v6Ta+ZsIUXZWxpVqvVVIEyqw+U+dLoTVI21r5AVcfFDVeQuO9GBOXlhUNDfz4lScJsqBhbQ=",
-        "phone": "bO25ofhDb2gtVRRFro6/7OeSp3udnsRzfFNoh0zDmbQKpnJ34nm1LeZsl1drPLsnMXVfind0n9GmV4C8j1bMTQ0eJBT5XkRxvEZzFtnlLWzULZ8etgQye5wjexM3oi4PVE4HapvNbyRjg/m2FWiatsxUa4w0bIpdXzROtpxjVXc=",
-        "description": "auto_desc_417387",
+        "userName": "autotest496052",
+        "password": "cRTuXumd/pUcvTmWvm7OaEf4VGgKwCqQq9tTRvh+WRf+hQZPmi5XP++8oovsVVCJQ7sE5yNhx/fn0rCxPn5NyVQfDbHyp+ZgI/7X+eWZ987yAN3HWmAmm5HRgmwRm76wxBtaUoNN9W5Eh3mjrTsTcbOOBxB1XuiwgK+hzWYSnCk=",
+        "name": "test_496052",
+        "email": "ArEN/57hYmo82S4QlwK5D/VhZZE/z7lbvis8ThfnDmtZ/AnnxP5P0ogIKfTOsEQDrbKFrJzw+znTtBvj+3zdnH3XCaF+mi5AQV9czTU3RyooIz0hz7gkB9JsKfQREEVNhBEuMJRW4XDz/UWDuxcMcLbARM9AbFXz1ROWfaScqBo=",
+        "phone": "D2zr64rw1ZovsQZS+SEtwzCYfaSfV9HREMlbxkluqgrVS1chPZc0Ist9e6I2nH12BlU+ApmDwlDP78PV7n5vyCE4AqLWAWacb2zCYtwwTmFsplA+l9WdUR8cbT3db/5zRqe3DxtHwjUe1kGdvjYi1Q/lS2S7hm7kqS5QJi0LU34=",
+        "description": "auto_desc_496052",
         "policyIds": [
           "1f8e392309fc414c9d77d45d0315fedc"
         ],
@@ -148,100 +153,19 @@ MANIFEST = {
       }
     },
     {
-      "action": "reset",
-      "label": "重置密码",
-      "api": {
-        "method": "POST",
-        "pathname": "/estack/api/estack/draco/v1/password-reset/reset",
-        "query_params": {}
-      },
-      "body_template": {
-        "forceChangePassword": 1,
-        "isRandomPassword": 1,
-        "newPassword": "TJDzBB0yux2AHhinEcJ+YNeoi6+c8kc6IlZaJbsfsT8Plc2bC6LTXjQzKBiLStJ/OJOsRns7H+KGyNuUfcx3wlMXNEewj1spoQZOQNcuIGiWW7OIVpnDX1s3FzdlOZtOzvI9X3LWCUEtVmmfWBHxZ9mSpxwVUUiOr/aaHoM0OAY=",
-        "passwordPolicy": {
-          "id": "90542be67d584ab09daa12e697fb041a",
-          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
-          "minPasswordLength": 8,
-          "requireLowercaseCharacters": False,
-          "requireUppercaseCharacters": True,
-          "requireNumbers": True,
-          "requireSymbols": True,
-          "minPasswordDifferentCharacter": 0,
-          "createdAt": "2023-08-30 10:07:14",
-          "updatedAt": "2025-03-08 18:39:42",
-          "deleted": False,
-          "userName": None
-        },
-        "userId": "0f8e1b534a8f4d31a8839c157b993aca",
-        "noticeType": []
-      },
-      "body_field_roles": {
-        "forceChangePassword": {
-          "role": "static"
-        },
-        "isRandomPassword": {
-          "role": "static"
-        },
-        "newPassword": {
-          "role": "static"
-        },
-        "passwordPolicy": {
-          "role": "static"
-        },
-        "userId": {
-          "role": "id_ref"
-        },
-        "noticeType": {
-          "role": "static"
-        }
-      },
-      "requires": [
-        "id"
-      ]
-    },
-    {
-      "action": "execute",
-      "label": "更多",
+      "action": "get",
+      "label": "查询验证（创建后）",
       "api": {
         "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/tenants/display-by-role",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {}
       },
       "body_template": {},
       "body_field_roles": {},
       "requires": [
         "id"
-      ]
-    },
-    {
-      "action": "query",
-      "label": "查询",
-      "api": {
-        "method": "POST",
-        "pathname": "/estack/api/estack/draco/v1/policies/list",
-        "query_params": {}
-      },
-      "body_template": {
-        "policyType": "SYSTEM",
-        "policyCategory": "ORGANIZATION",
-        "tenantId": "34e2594fca9e44cd9e23b25474838c7f"
-      },
-      "body_field_roles": {
-        "policyType": {
-          "role": "static"
-        },
-        "policyCategory": {
-          "role": "static"
-        },
-        "tenantId": {
-          "role": "context",
-          "source": "context.tenantId"
-        }
-      },
-      "requires": [
-        "id"
-      ]
+      ],
+      "assertion": "contains_id"
     },
     {
       "action": "update",
@@ -252,13 +176,13 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "0f8e1b534a8f4d31a8839c157b993aca",
-        "name": "test_417409",
-        "description": "auto_desc_417409",
+        "userId": "ef3949bfc9c64f2f93ff2649dbfe6a09",
+        "name": "test_496074",
+        "description": "auto_desc_496074",
         "tenantId": "34e2594fca9e44cd9e23b25474838c7f",
         "countryCode": "+86",
-        "phone": "JYiGkawxmqRrnnW0xNnT9tnoNjRuKnKFW8qAvmocNdZ6hHx/F6KE3pnaMtR/veXLHuEsJPMx2Po9Axcxci6iG8t8DO006YVHNlVf37xkKZrbtzEm/uzRJgn+rmF4jExkuVhVDCcXIS21k9n5DcGi71INz5BsoWgTpG6umRZK4/g=",
-        "email": "dkCU75JkQGoLusxN8HF2TSAKed/jps+Xn7vZuMNWLNKR8cuX8BIGMunFcBpxMvWec/NWJFXYCiZ//0DKoAhlLBlXYgiBAQd6RpG5gwCIg6CUJl3sO5SExmc0nCWrugwODL/TCGzv3BR2shS3VjTktJDp7kMhw/Zg92byef+toqQ=",
+        "phone": "KTGXtH9J/7Qi49jDFDPNolslOA/NyZW56vVPrha1NyBbOauebG+2FZIhPGMuLY4G7KkRF/YzhDvGE2FJOUnsH1PX8EnUCFCP8A+wEgEW1/HYHSAJEx6QRPQ5GEwCNv6aL0I4ZvT+NeyMZT7nQcawEWgN26Z9T7qXfl4t1WozXgI=",
+        "email": "Q0JiHO0OvyPF0bf+O5ulGJzPzvyv5HOgTXRpNmtH5fhYXP2q+BFkATcIfXRdYq0faInExZ1KdAqfXWgQH1awn/CwX6rUPZe9u413Jls+ttkCVbJZz8CrYbcPAtOYXPevGbFt6/zLZas5mkkRF8NZ7wxkn0ntm5z0ADkk5VtMv1w=",
         "adminId": "93552edc908e4dadae761fff1fd0f24c"
       },
       "body_field_roles": {
@@ -294,6 +218,66 @@ MANIFEST = {
       ]
     },
     {
+      "action": "get",
+      "label": "查询验证（编辑后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "query_params": {}
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "contains_id"
+    },
+    {
+      "action": "lock",
+      "label": "冻结",
+      "api": {
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/users/{id}/suspend",
+        "query_params": {}
+      },
+      "body_template": {
+        "userId": "ef3949bfc9c64f2f93ff2649dbfe6a09",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "adminId": "93552edc908e4dadae761fff1fd0f24c"
+      },
+      "body_field_roles": {
+        "userId": {
+          "role": "id_ref"
+        },
+        "tenantId": {
+          "role": "context",
+          "source": "context.tenantId"
+        },
+        "adminId": {
+          "role": "context",
+          "source": "context.adminId"
+        }
+      },
+      "requires": [
+        "id"
+      ]
+    },
+    {
+      "action": "get",
+      "label": "查询验证（冻结后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "query_params": {}
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "contains_id"
+    },
+    {
       "action": "unlock",
       "label": "启用",
       "api": {
@@ -320,6 +304,77 @@ MANIFEST = {
       ]
     },
     {
+      "action": "get",
+      "label": "查询验证（启用后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "query_params": {}
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "contains_id"
+    },
+    {
+      "action": "reset",
+      "label": "重置密码",
+      "api": {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/password-reset/generate",
+        "query_params": {}
+      },
+      "body_template": {
+        "userId": "ef3949bfc9c64f2f93ff2649dbfe6a09",
+        "passwordPolicy": {
+          "id": "90542be67d584ab09daa12e697fb041a",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "minPasswordLength": 8,
+          "requireLowercaseCharacters": False,
+          "requireUppercaseCharacters": True,
+          "requireNumbers": True,
+          "requireSymbols": True,
+          "minPasswordDifferentCharacter": 0,
+          "createdAt": "2023-08-30 10:07:14",
+          "updatedAt": "2025-03-08 18:39:42",
+          "deleted": False,
+          "userName": None
+        },
+        "isRandomPassword": False
+      },
+      "body_field_roles": {
+        "userId": {
+          "role": "id_ref"
+        },
+        "passwordPolicy": {
+          "role": "static"
+        },
+        "isRandomPassword": {
+          "role": "static"
+        }
+      },
+      "requires": [
+        "id"
+      ]
+    },
+    {
+      "action": "get",
+      "label": "查询验证（重置密码后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "query_params": {}
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "contains_id"
+    },
+    {
       "action": "delete",
       "label": "批量删除",
       "api": {
@@ -328,7 +383,7 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": [
-        "0f8e1b534a8f4d31a8839c157b993aca"
+        "ef3949bfc9c64f2f93ff2649dbfe6a09"
       ],
       "body_field_roles": {
         "__array_items__": {
@@ -339,6 +394,21 @@ MANIFEST = {
       "requires": [
         "id"
       ]
+    },
+    {
+      "action": "get",
+      "label": "查询验证（删除后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "query_params": {}
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "not_contains_id"
     }
   ],
   "state_assertions": {
@@ -346,9 +416,11 @@ MANIFEST = {
     "values_by_crud": {
       "create": "ENABLE",
       "update": "ENABLE",
+      "lock": "DISABLE",
       "unlock": "ENABLE"
     },
     "after_create": "ENABLE",
+    "after_lock": "DISABLE",
     "after_unlock": "ENABLE",
     "after_delete": "NOT_EXIST"
   }

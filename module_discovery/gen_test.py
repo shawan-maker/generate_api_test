@@ -59,16 +59,13 @@ def generate_manifest_script(manifest: dict, module_name: str) -> str:
     L.append('"""')
     L.append('')
 
-    # 导入
+    # 导入：bootstrap 找到同目录的 lib/
     L.append('import sys, json')
     L.append('from pathlib import Path')
     L.append('')
-    L.append('# 确保能找到 lib（向上搜索含 lib/auth.py 的仓库根）')
-    L.append('_root = Path(__file__).resolve()')
-    L.append("while _root.parent != _root and not (_root / 'lib' / 'auth.py').exists():")
-    L.append('    _root = _root.parent')
-    L.append('sys.path.insert(0, str(_root))')
-    L.append('')
+    L.append('# 找到同目录的 lib/（脚本独立运行时使用）')
+    L.append('_lib = Path(__file__).resolve().parent / "lib"')
+    L.append('sys.path.insert(0, str(_lib.parent))')
     L.append('from lib.test_runtime import TestRunner')
     L.append('')
 
@@ -101,7 +98,38 @@ def save_script_to_file(script: str, project_dir: str, module_name: str, version
     else:
         scripts_dir = Path(project_dir) / "scripts" / "v1.0.0" / "api"
         scripts_dir.mkdir(parents=True, exist_ok=True)
+
+    # 同步运行时 lib/ 到 api/lib/
+    _sync_runtime_lib(scripts_dir)
+
     output_path = scripts_dir / f"{module_name}_API测试.py"
     output_path.write_text(script, encoding="utf-8")
     LOG.info(f"  脚本已生成: {output_path}")
     return str(output_path)
+
+
+def _sync_runtime_lib(api_dir: Path):
+    """将项目根 lib/ 下的运行时文件复制到 api/lib/。"""
+    src_lib = Path(__file__).resolve().parent.parent / "lib"
+    dst_lib = api_dir / "lib"
+    dst_lib.mkdir(parents=True, exist_ok=True)
+
+    # 生成脚本只同步精简版运行时（不含 auth.py / slider.py）
+    files = ["__init__.py", "test_runtime.py", "test_report.py", "cookie_client.py"]
+    for name in files:
+        src = src_lib / name
+        dst = dst_lib / name
+        if not src.exists():
+            continue
+        src_content = src.read_text(encoding="utf-8")
+        if dst.exists() and dst.read_text(encoding="utf-8") == src_content:
+            continue  # 内容相同，跳过
+        dst.write_text(src_content, encoding="utf-8")
+        LOG.info(f"  运行时同步: {name}")
+
+    # 清理旧版登录文件（生成脚本不再包含滑块登录）
+    for old_file in ["auth.py", "slider.py"]:
+        p = dst_lib / old_file
+        if p.exists():
+            p.unlink()
+            LOG.info(f"  清理旧文件: {old_file}")
