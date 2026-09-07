@@ -1742,6 +1742,22 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
 # 错误驱动重试循环
 # ============================================================
 
+# P2: 不可重试错误 — 环境限制，重试多少次都没用
+TERMINAL_ERRORS = {
+    "env_dependency",           # 需要上传文件（import）
+    "permission_denied",        # 权限不足
+    "resource_not_found",       # 资源不存在
+    "required_field_empty",     # 必填字段为空或无可选项（select 无数据）
+    "confirm_button_disabled",  # 确认按钮被禁用
+}
+
+# P2: 委托专用处理器
+DELEGATE_ERRORS = {
+    "navigation_unexplored": "_handle_cross_page_operation",  # → P3
+    "cross_page_partial": "_handle_cross_page_operation",
+}
+
+
 async def _error_driven_retry(page, operation_fn, context: dict) -> dict:
     """错误驱动重试循环。
 
@@ -1781,6 +1797,22 @@ async def _error_driven_retry(page, operation_fn, context: dict) -> dict:
 
         LOG.info(f"    第 {round_num + 1} 轮失败: [{error_type}] {error_text[:80]}")
 
+        # P2: 不可重试错误 → 立即返回
+        if error_type in TERMINAL_ERRORS:
+            LOG.info(f"    [{error_type}] 不可重试，直接标记")
+            return result
+
+        # P2: 委托专用处理器（如跨页面操作）
+        if error_type in DELEGATE_ERRORS:
+            handler_name = DELEGATE_ERRORS[error_type]
+            handler = globals().get(handler_name)
+            if handler and callable(handler):
+                LOG.info(f"    [{error_type}] 委托给 {handler_name} 处理")
+                return await handler(page, context, result)
+            else:
+                LOG.warning(f"    [{error_type}] 处理器 {handler_name} 未找到，标记失败")
+                return result
+
         if current_error_key == last_error_key:
             # 卡住了：错误信息无变化
             page_state_key = await _get_page_state_key(page)
@@ -1793,9 +1825,9 @@ async def _error_driven_retry(page, operation_fn, context: dict) -> dict:
                     context["vision_hints"] = vision_hints
                     last_error_key = None  # 重置，让下一轮视为"新"信息
                     continue
-            # Vision 也用过了或无新 insights
+            # Vision 也用过了或无新 insights — 返回最后一次结果（保留 error_type/selectors）
             LOG.warning(f"    所有补救策略已尝试，操作 {context.get('btn', {}).get('text', '?')} 验证失败")
-            return None
+            return result
         else:
             last_error_key = current_error_key
 
@@ -1803,7 +1835,7 @@ async def _error_driven_retry(page, operation_fn, context: dict) -> dict:
         context = _apply_fix(result, context)
 
     LOG.warning(f"    超过最大重试次数 ({max_rounds})")
-    return None
+    return result
 
 
 # ============================================================
@@ -2371,6 +2403,9 @@ async def _do_delete(page, context: dict) -> dict:
             LOG.debug(f"    已勾选表格行供批量删除使用")
         await page.wait_for_timeout(500)
 
+    # 安装消息捕获（在点击按钮前，防止瞬态 toast 消失）
+    await _install_message_capture(page)
+
     # 找到行并点击删除（带重试）
     max_locate_retries = 2
     row_selector = None
@@ -2435,8 +2470,11 @@ async def _do_delete(page, context: dict) -> dict:
             return {"success": False, "error_type": "api_error",
                     "error_text": global_errors[0].get("error_text", "")}
 
+    # 读取捕获的消息
+    captured_msgs = await _get_captured_messages(page)
+
     # 验证成功（成功提示或行消失）
-    success = await _verify_operation_success(page, "delete")
+    success = await _verify_operation_success(page, "delete", captured_messages=captured_msgs)
 
     # 构建 selectors
     selectors = {"trigger": btn_text, "confirm": confirmed}
@@ -2526,24 +2564,74 @@ async def _do_generic_operation(page, context: dict) -> dict:
     url_after = page.url
     if url_before != url_after:
         LOG.info(f"    检测到页面跳转: {url_before[:40]} → {url_after[:40]}")
-        # 探索新页面（如授权页面），记录能收集到的信息
-        nav_info = await _explore_navigated_page(page, action, url_after)
+
+        # 使用递归探索函数，探测并执行新页面的操作
+        nav_info = await _explore_and_operate_in_new_page(
+            page=page,
+            action=action,
+            new_url=url_after,
+            depth=0,
+            max_depth=3
+        )
+
         # 导航回原始页面
-        try:
-            await page.goto(url_before, wait_until="domcontentloaded", timeout=30000)
-            await wait_for_table_ready(page, timeout=15000)
-            LOG.info(f"    已导航回原始页面")
-        except Exception as e:
-            LOG.warning(f"    导航回原始页面失败: {e}")
+        await _navigate_back_to_list(page, url_before)
+
         selectors = {"trigger": btn_text}
         if row_selector:
             selectors["row_selector"] = row_selector
-        # 导航类操作标记为未探索完成（success: False），但记录已探索的步骤
-        return {"success": False, "error_type": "navigation_unexplored",
-                "error_text": f"操作触发了页面跳转，已探索目标页面但未完成完整流程",
-                "nav_info": nav_info, "selectors": selectors}
+
+        # 根据 nav_info 判断跨页面操作是否成功（新格式：submit_result）
+        submit_result = nav_info.get("submit_result", {})
+        if submit_result:
+            # 有提交操作执行
+            if submit_result.get("success"):
+                # 提交成功
+                return {
+                    "success": True,
+                    "nav_info": nav_info,
+                    "selectors": selectors,
+                    "fill_data": nav_info.get("fill_data", {}),
+                    "submit_result": submit_result
+                }
+            else:
+                # 提交失败
+                return {
+                    "success": False,
+                    "error_type": "cross_page_submit_failed",
+                    "error_text": f"跨页面操作提交失败: {submit_result.get('button_text', 'unknown')}",
+                    "nav_info": nav_info,
+                    "selectors": selectors,
+                    "submit_result": submit_result
+                }
+        else:
+            # 没有执行提交操作，检查是否有错误
+            error_type = nav_info.get("error_type", "")
+            error_text = nav_info.get("error_text", "")
+
+            if error_type:
+                # 有明确错误
+                return {
+                    "success": False,
+                    "error_type": error_type,
+                    "error_text": error_text,
+                    "nav_info": nav_info,
+                    "selectors": selectors
+                }
+            else:
+                # 没有错误但没有提交操作（可能是页面没有表单或关键按钮）
+                return {
+                    "success": False,
+                    "error_type": "cross_page_no_submit",
+                    "error_text": "跨页面操作后未执行提交操作",
+                    "nav_info": nav_info,
+                    "selectors": selectors
+                }
 
     await wait_for_loading_complete(page)
+
+    # 安装消息捕获（在点击按钮前，防止瞬态 toast 消失）
+    await _install_message_capture(page)
 
     # 特殊处理 import 操作 - 检测文件上传对话框
     if action == "import":
@@ -2592,6 +2680,103 @@ async def _do_generic_operation(page, context: dict) -> dict:
     else:
         LOG.debug(f"    未检测到确认弹窗 (state: {state.get('actual_state', 'none')})")
 
+    # P1: 严格成功判定 — 确认按钮未点击直接失败
+    if not confirmed:
+        # 诊断失败原因：检查所有类型的弹窗，找出真正原因
+        diag = await page.evaluate("""() => {
+            // 收集所有可见的弹窗容器
+            const containers = [];
+
+            // 1. el-message-box
+            const msgBox = document.querySelector('.el-message-box__wrapper:not([style*="display: none"])');
+            if (msgBox && msgBox.offsetWidth > 0) containers.push({type: 'message-box', el: msgBox});
+
+            // 2. el-popconfirm
+            const popconfirm = document.querySelector('.el-popconfirm:not([style*="display: none"])');
+            if (popconfirm && popconfirm.offsetWidth > 0) containers.push({type: 'popconfirm', el: popconfirm});
+
+            // 3. el-dialog
+            document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"])').forEach(d => {
+                if (d.offsetWidth > 0) containers.push({type: 'dialog', el: d});
+            });
+
+            if (containers.length === 0) {
+                return { has_dialog: false };
+            }
+
+            // 对每个弹窗容器做检查
+            for (const c of containers) {
+                const el = c.el;
+                const result = { has_dialog: true, dialog_type: c.type };
+
+                // 检查空的 select 字段（最常见的导致无法确认的原因）
+                const emptySelects = [];
+                el.querySelectorAll('.el-select').forEach(sel => {
+                    const input = sel.querySelector('.el-input__inner');
+                    const isEmpty = !input || !input.value;
+                    if (isEmpty) {
+                        const label = sel.closest('.el-form-item')?.querySelector('.el-form-item__label')?.textContent?.trim();
+                        emptySelects.push(label || '未知字段');
+                    }
+                });
+
+                // 检查确认按钮状态
+                const allBtns = el.querySelectorAll('button');
+                const btnInfos = [];
+                allBtns.forEach(btn => {
+                    const txt = (btn.textContent || '').trim();
+                    btnInfos.push({
+                        text: txt,
+                        disabled: btn.disabled,
+                        visible: btn.offsetWidth > 0
+                    });
+                });
+
+                // 查找确认按钮（按常见文本）
+                const CONFIRM_TEXTS = ['确定', '确认', '是', 'OK', 'Yes', '迁移', '提交'];
+                let confirmBtn = null;
+                allBtns.forEach(btn => {
+                    const txt = (btn.textContent || '').trim();
+                    if (CONFIRM_TEXTS.includes(txt) && !confirmBtn) confirmBtn = btn;
+                });
+
+                result.buttons = btnInfos;
+                result.confirm_found = !!confirmBtn;
+                result.confirm_disabled = confirmBtn ? confirmBtn.disabled : null;
+                result.empty_selects = emptySelects;
+
+                // 如果有空字段或确认按钮 disabled → 直接报告
+                if (emptySelects.length > 0 || (confirmBtn && confirmBtn.disabled)) {
+                    result.has_actionable_issue = true;
+                    return result;
+                }
+
+                // 如果有弹窗但无明显问题，也返回（可能按钮文本不匹配）
+                result.has_actionable_issue = false;
+                return result;
+            }
+
+            return { has_dialog: false };
+        }""")
+
+        LOG.debug(f"    确认按钮诊断: {diag}")
+
+        if diag.get("has_dialog"):
+            empty_fields = diag.get("empty_selects", [])
+            if empty_fields:
+                return {"success": False, "error_type": "required_field_empty",
+                        "error_text": f"弹窗中必填字段为空: {', '.join(empty_fields)}"}
+            if diag.get("confirm_disabled"):
+                return {"success": False, "error_type": "confirm_button_disabled",
+                        "error_text": f"确认按钮被禁用，无法执行 {action} 操作"}
+            # 弹窗存在、无空字段、确认按钮未 disabled → 可能是按钮文本不匹配
+            btn_list = [b.get("text", "?") for b in diag.get("buttons", [])]
+            return {"success": False, "error_type": "no_confirm_button",
+                    "error_text": f"{action} 弹窗中未找到可点击的确认按钮（弹窗按钮: {btn_list}）"}
+        else:
+            return {"success": False, "error_type": "no_confirm_button",
+                    "error_text": f"{action} 操作未检测到确认弹窗"}
+
     # 检查确认后的页面状态（是否仍有残留对话框）
     post_state = await page.evaluate("""() => {
         const dialogs = document.querySelectorAll(
@@ -2612,16 +2797,14 @@ async def _do_generic_operation(page, context: dict) -> dict:
         return {"success": False, "error_type": first.get("severity", "unknown"),
                 "error_text": first.get("error_text", "")}
 
-    # 验证操作是否真的成功（不能只靠"没错误=成功"）
-    success = await _verify_operation_success(page, action)
+    # 读取捕获的消息（操作后可能已消失）
+    captured_msgs = await _get_captured_messages(page)
+
+    # 验证操作是否真的成功（严格模式：需要正向成功信号）
+    success = await _verify_operation_success(page, action, strict=True, captured_messages=captured_msgs)
     if not success:
-        # 如果确认框没被点击（可能 _check_precondition_state 漏检），返回失败
-        if not confirmed:
-            return {"success": False, "error_type": "no_confirm_button",
-                    "error_text": f"未检测到 {action} 确认弹窗或操作成功信号"}
-        # 确认框点了但没有成功信号
         return {"success": False, "error_type": "no_success_signal",
-                "error_text": f"{action} 操作后未检测到成功信号"}
+                "error_text": f"{action} 操作后未检测到成功信号（成功提示/数据变化）"}
 
     # 构建 selectors
     selectors = {"trigger": btn_text}
@@ -2747,17 +2930,121 @@ async def _click_button_escalating(page, btn_text: str) -> dict:
     return result
 
 
-async def _verify_operation_success(page, operation_type: str) -> bool:
-    """验证操作是否成功（弹窗关闭 / 成功提示 / 列表变化）。
+async def _install_message_capture(page) -> None:
+    """在页面注入 MutationObserver，捕获瞬态的 ElMessage / ElNotification 文本。
+
+    某些操作（lock/unlock/reset 等）成功后会弹出 ElMessage.success()，
+    但该消息会在 ~3 秒后自动消失。等到 _verify_operation_success 检查时已经消失了。
+
+    此函数在操作前注入，记录所有出现的消息文本到 window.__captured_messages。
+    后续用 _get_captured_messages() 读取。
+    """
+    await page.evaluate("""() => {
+        // 初始化捕获数组（如果还没有）
+        if (!window.__captured_messages) {
+            window.__captured_messages = [];
+        }
+
+        // 避免重复安装 observer
+        if (window.__msg_capture_observer) return;
+
+        const SUCCESS_KEYWORDS = ['成功', 'success', 'Success', '完成', 'done'];
+        const ERROR_KEYWORDS = ['失败', 'error', 'Error', '异常', '错误'];
+
+        window.__msg_capture_observer = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                for (const node of mutation.addedNodes) {
+                    if (node.nodeType !== 1) continue;
+
+                    const text = (node.textContent || '').trim();
+                    if (!text) continue;
+
+                    // 检查是否是 Element UI Message / Notification
+                    const isMessage = node.classList && (
+                        node.classList.contains('el-message') ||
+                        node.classList.contains('el-message--success') ||
+                        node.classList.contains('el-message--error') ||
+                        node.classList.contains('el-message--warning') ||
+                        node.classList.contains('el-notification') ||
+                        node.classList.contains('ant-message-notice') ||
+                        node.classList.contains('ant-notification-notice')
+                    );
+
+                    if (!isMessage) {
+                        // 也检查子节点是否包含消息组件
+                        const inner = node.querySelector && node.querySelector(
+                            '.el-message, .el-notification, .ant-message-notice, .ant-notification-notice'
+                        );
+                        if (!inner) continue;
+                    }
+
+                    const isSuccess = SUCCESS_KEYWORDS.some(kw => text.includes(kw));
+                    const isError = ERROR_KEYWORDS.some(kw => text.includes(kw));
+
+                    window.__captured_messages.push({
+                        text: text.substring(0, 200),
+                        type: isSuccess ? 'success' : (isError ? 'error' : 'info'),
+                        time: Date.now()
+                    });
+                }
+            }
+        });
+
+        window.__msg_capture_observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+    }""")
+
+
+async def _get_captured_messages(page, msg_type: str = None) -> list:
+    """读取被捕获的消息，并清除捕获数组。
+
+    Args:
+        page: Playwright 页面对象
+        msg_type: 过滤类型 ('success' / 'error' / None=全部)
+
+    Returns:
+        list of {"text": str, "type": str, "time": int}
+    """
+    messages = await page.evaluate("""(filterType) => {
+        const msgs = window.__captured_messages || [];
+        const filtered = filterType ? msgs.filter(m => m.type === filterType) : msgs;
+        // 清空已捕获的消息
+        window.__captured_messages = [];
+        return filtered;
+    }""", msg_type)
+    return messages or []
+
+
+async def _verify_operation_success(page, operation_type: str, strict: bool = False,
+                                     captured_messages: list = None) -> bool:
+    """验证操作是否成功（弹窗关闭 / 成功提示 / 列表变化 / 捕获的消息）。
 
     Args:
         page: Playwright Page 对象
         operation_type: 操作类型 (create/update/delete/lock/unlock/...)
+        strict: 严格模式（需要正向成功信号，而非"无错误即成功"）
+        captured_messages: 由 _get_captured_messages() 返回的捕获消息列表
 
     Returns:
         bool: 是否检测到成功信号
     """
-    # 1. 检查成功提示 (Element UI / Ant Design)
+    # 0. 检查捕获的消息（解决瞬态 toast 消失问题）
+    if captured_messages:
+        has_captured_success = any(m.get("type") == "success" for m in captured_messages)
+        if has_captured_success:
+            success_texts = [m["text"] for m in captured_messages if m.get("type") == "success"]
+            LOG.info(f"    捕获到成功消息: {success_texts}")
+            return True
+        # 如果只捕获到错误消息，也算失败信号
+        has_captured_error = any(m.get("type") == "error" for m in captured_messages)
+        if has_captured_error:
+            error_texts = [m["text"] for m in captured_messages if m.get("type") == "error"]
+            LOG.info(f"    捕获到错误消息: {error_texts}")
+            return False
+
+    # 1. 检查成功提示 (Element UI / Ant Design) — 正向信号，两种模式都接受
     has_success = await page.evaluate("""() => {
         // Element UI success message
         const successMsg = document.querySelector('.el-message--success, .el-message .el-icon-success');
@@ -2783,7 +3070,7 @@ async def _verify_operation_success(page, operation_type: str) -> bool:
             # 弹窗已关闭 = 成功
             return True
 
-    # 3. 对于 delete/lock/unlock/reset/authorize/migrate/import/export: 检查无错误提示 + 确认弹窗已关闭
+    # 3. 对于 delete/lock/unlock/reset/authorize/migrate/import/export
     if operation_type in ("delete", "lock", "unlock", "reset", "authorize",
                           "migrate", "import", "export", "batch", "approve"):
         # 确认弹窗/MessageBox 已关闭（说明确认流程走完了）
@@ -2799,6 +3086,16 @@ async def _verify_operation_success(page, operation_type: str) -> bool:
         if has_pending_confirm:
             return False  # 确认弹窗仍在 → 操作未完成
 
+        # 严格模式：必须有正向成功信号（成功提示或数据变化）
+        if strict:
+            # 检查数据变化（行数变化、状态变化等）
+            data_changed = await _check_data_changed(page, operation_type)
+            if data_changed:
+                return True
+            # 没有成功提示也没有数据变化 → 判定失败
+            return False
+
+        # 宽松模式（向后兼容）：无错误即成功
         has_error = await page.evaluate("""() => {
             const errMsg = document.querySelector('.el-message--error, .ant-message-error, .el-message--warning');
             return errMsg && errMsg.offsetWidth > 0;
@@ -2807,6 +3104,51 @@ async def _verify_operation_success(page, operation_type: str) -> bool:
             return True
 
     return False
+
+
+async def _check_data_changed(page, operation_type: str) -> bool:
+    """检查操作后是否有可观测的数据变化。
+
+    检测信号：
+    - 表格行数变化（与操作前对比）
+    - 行状态变化（如 state 字段从 ENABLE → DISABLE）
+    - 成功通知（某些系统用 notification 而非 message）
+
+    Args:
+        page: Playwright Page 对象
+        operation_type: 操作类型
+
+    Returns:
+        bool: 是否检测到数据变化
+    """
+    return await page.evaluate("""() => {
+        // 1. 成功通知（el-notification / ant-notification）
+        const notif = document.querySelector(
+            '.el-notification .el-icon-success, ' +
+            '.ant-notification .anticon-check-circle, ' +
+            '.el-notification__content:has(.el-icon-success)');
+        if (notif && notif.offsetWidth > 0) return true;
+
+        // 2. 成功提示文本（某些系统用普通 message 显示"操作成功"）
+        const msgs = document.querySelectorAll('.el-message, .ant-message-notice');
+        for (const msg of msgs) {
+            if (msg.offsetWidth > 0) {
+                const text = msg.textContent || '';
+                if (text.includes('成功') || text.includes('success') || text.includes('Success')) {
+                    return true;
+                }
+            }
+        }
+
+        // 3. 表格行高亮/动画（某些系统在操作成功后会高亮受影响的行）
+        const highlightedRow = document.querySelector(
+            '.el-table__row.el-table__row--striped.current-row, ' +
+            '.el-table__row.success-highlight, ' +
+            'tr.highlight-success');
+        if (highlightedRow && highlightedRow.offsetWidth > 0) return true;
+
+        return false;
+    }""")
 
 
 async def _ensure_on_list_page(page):
@@ -2824,6 +3166,451 @@ async def _ensure_on_list_page(page):
     except Exception as e:
         # 浏览器可能已关闭（如 Target page, context or browser has been closed）
         LOG.debug(f"    _ensure_on_list_page: {e}")
+
+
+async def _explore_and_operate_in_new_page(page, action: str, new_url: str, depth: int = 0, max_depth: int = 3) -> dict:
+    """探索导航后的新页面，探测表单并完成操作。
+
+    核心逻辑：
+    1. 探测页面，提取表单字段
+    2. 如果有表单：填写字段 → 点击提交按钮 → 验证结果
+    3. 如果没有表单：点击关键操作按钮（保存/确认）→ 验证结果
+    4. 忽略菜单栏按钮（menu_items）
+
+    Args:
+        page: Playwright Page 对象
+        action: 触发跳转的操作类型（如 'authorize'）
+        new_url: 新页面 URL
+        depth: 当前递归深度（0 = 首次进入）
+        max_depth: 最大递归深度（默认 3 层）
+
+    Returns:
+        dict: {
+            "navigated_url": str,
+            "page_title": str,
+            "has_form": bool,
+            "form_fields": list,
+            "fill_data": dict,
+            "submit_result": {...},
+            "error_type": str,
+            "error_text": str,
+        }
+    """
+    nav_info = {
+        "navigated_url": new_url,
+        "depth": depth,
+        "page_title": "",
+        "has_form": False,
+        "form_fields": [],
+        "fill_data": {},
+        "submit_result": {},
+        "error_type": "",
+        "error_text": "",
+    }
+
+    try:
+        # 1. 等待页面加载
+        await page.wait_for_load_state("networkidle", timeout=15000)
+        await page.wait_for_timeout(1500)
+
+        # 2. 探测页面（提取表单字段，忽略菜单栏）
+        page_result = await discover_all(page)
+        nav_info["page_title"] = await page.title()
+
+        # 只提取表单字段和工具栏/对话框按钮（忽略菜单栏）
+        form_fields = page_result.get("form_fields", [])
+        toolbar_buttons = page_result.get("toolbar_buttons", [])
+        dialog_buttons = page_result.get("dialog_buttons", [])
+
+        nav_info["has_form"] = len(form_fields) > 0
+        nav_info["form_fields"] = form_fields
+
+        LOG.info(f"    新页面 (depth={depth}): title='{nav_info['page_title']}', "
+                f"form_fields={len(form_fields)}, toolbar_buttons={len(toolbar_buttons)}, "
+                f"dialog_buttons={len(dialog_buttons)}")
+
+        # 3. 如果达到最大深度，停止
+        if depth >= max_depth:
+            LOG.warning(f"    达到最大递归深度 {max_depth}，停止探索")
+            nav_info["error_type"] = "max_depth_reached"
+            nav_info["error_text"] = f"达到最大深度 {max_depth}"
+            return nav_info
+
+        # 4. 如果有表单：填写并提交
+        if form_fields:
+            LOG.info(f"    发现表单，开始填写...")
+            form_filler = FormFiller(page)
+
+            # 扫描表单字段详情
+            form_field_details = await form_filler.scan_form_fields_v2()
+
+            # 生成填充数据并填写表单（使用标准 API）
+            fill_data = generate_fill_data(form_field_details, username="AT_test_auto")
+            nav_info["fill_data"] = fill_data
+
+            # 填写表单（普通字段 + 多步组件）
+            filled_count = await form_filler.fill_create_form(form_field_details, "AT_test_auto", fill_data)
+
+            # 处理 el-select 等多步组件
+            ms_filled, ms_details = await form_filler.fill_multi_step_fields(form_field_details, "element-ui")
+            filled_count += ms_filled
+
+            LOG.info(f"    已填写 {filled_count} 个字段（含 {ms_filled} 个多步组件）")
+
+            # 检查必填字段是否填写成功
+            # 核心逻辑：fill 完后重新读 DOM，检查必填字段是否已有值（包括默认值）
+            unfilled_required = []
+            field_states = await page.evaluate("""() => {
+                const results = [];
+                const formItems = document.querySelectorAll('.el-form-item, .ant-form-item');
+                formItems.forEach((fi, idx) => {
+                    const labelEl = fi.querySelector('.el-form-item__label, .ant-form-item-label label');
+                    const label = labelEl ? labelEl.textContent.trim().replace(/[：:]/g, '') : '';
+                    if (!label) return;
+
+                    const required = fi.classList.contains('is-required') ||
+                                     fi.querySelector('[class*="required"]') !== null;
+                    if (!required) return;
+
+                    const r = fi.getBoundingClientRect();
+                    if (r.width <= 0 || r.height <= 0) return;
+
+                    // 检测组件类型和当前值
+                    const selectEl = fi.querySelector('.el-select, .ant-select');
+                    const radioGroup = fi.querySelector('.el-radio-group, .ant-radio-group');
+                    const checkboxGroup = fi.querySelector('.el-checkbox-group, .ant-checkbox-group');
+
+                    if (selectEl) {
+                        // el-select: 检查 input 中显示的选中值
+                        const inputEl = selectEl.querySelector('.el-input__inner, input');
+                        const selectedText = inputEl ? inputEl.value.trim() : '';
+                        const isDisabled = selectEl.classList.contains('is-disabled') ||
+                                           selectEl.querySelector('.is-disabled') !== null ||
+                                           (inputEl && inputEl.disabled);
+                        results.push({
+                            label, type: 'select', value: selectedText,
+                            isDisabled: isDisabled, hasValue: selectedText.length > 0
+                        });
+                    } else if (radioGroup) {
+                        const checkedRadio = radioGroup.querySelector(
+                            '.el-radio__input.is-checked + .el-radio__label, ' +
+                            '.ant-radio-wrapper-checked .ant-radio + span, ' +
+                            'input[type="radio"]:checked + span'
+                        );
+                        const checkedText = checkedRadio ? checkedRadio.textContent.trim() : '';
+                        results.push({
+                            label, type: 'radio', value: checkedText,
+                            isDisabled: false, hasValue: checkedText.length > 0
+                        });
+                    } else if (checkboxGroup) {
+                        const checkedBoxes = checkboxGroup.querySelectorAll(
+                            '.el-checkbox__input.is-checked + .el-checkbox__label, ' +
+                            '.ant-checkbox-wrapper-checked'
+                        );
+                        const checkedTexts = Array.from(checkedBoxes).map(cb => cb.textContent.trim());
+                        results.push({
+                            label, type: 'checkbox', value: checkedTexts.join(', '),
+                            isDisabled: false, hasValue: checkedTexts.length > 0
+                        });
+                    } else {
+                        // 普通 input / textarea
+                        const inputEl = fi.querySelector('input:not([type="hidden"]), textarea');
+                        const value = inputEl ? inputEl.value.trim() : '';
+                        const isDisabled = inputEl ? inputEl.disabled : false;
+                        results.push({
+                            label, type: 'input', value: value,
+                            isDisabled: isDisabled, hasValue: value.length > 0
+                        });
+                    }
+                });
+                return results;
+            }""")
+
+            nav_info["field_states"] = field_states
+            LOG.info(f"    表单字段状态检查:")
+            for fs in field_states:
+                status = "✅" if fs["hasValue"] else ("⏭️ disabled" if fs["isDisabled"] else "❌ 空")
+                LOG.info(f"      {fs['label']} ({fs['type']}): {status} value='{fs['value']}'")
+
+            # 必填字段为空且非 disabled → 标记失败
+            for fs in field_states:
+                if not fs["hasValue"]:
+                    if fs["isDisabled"]:
+                        # disabled 的字段不需要填，跳过
+                        LOG.info(f"    跳过 disabled 必填字段: {fs['label']}（有默认值或不可编辑）")
+                        continue
+                    # 非 disabled 且为空 → 真的填不上
+                    unfilled_required.append(f"{fs['label']}（{fs['type']}，值为空）")
+
+            if unfilled_required:
+                LOG.warning(f"    必填字段未填写: {', '.join(unfilled_required)}")
+                nav_info["error_type"] = "required_field_empty"
+                nav_info["error_text"] = f"必填字段无法填写: {', '.join(unfilled_required)}"
+                return nav_info
+
+            LOG.info(f"    表单已填写，查找提交按钮...")
+
+            # 查找提交按钮（优先级：确定 > 保存 > 提交）
+            submit_btn = None
+            for btn in toolbar_buttons + dialog_buttons:
+                btn_text = btn.get("text", "")
+                if btn_text in ["确定", "保存", "提交", "确认", "OK", "Save", "Submit"]:
+                    submit_btn = btn
+                    break
+
+            if not submit_btn:
+                nav_info["error_type"] = "no_submit_button"
+                nav_info["error_text"] = "未找到提交按钮"
+                return nav_info
+
+            # 点击提交按钮
+            btn_text = submit_btn.get("text", "")
+            LOG.info(f"    点击提交按钮: {btn_text}")
+            btn_click_result = await _click_button_escalating(page, btn_text)
+
+            if not btn_click_result["clicked"]:
+                nav_info["error_type"] = "click_submit_failed"
+                nav_info["error_text"] = f"无法点击提交按钮: {btn_text}"
+                return nav_info
+
+            # 等待前端验证完成（包括表单错误提示）
+            await page.wait_for_timeout(1500)
+
+            # 检查表单错误提示（前端验证失败）
+            form_errors = await read_form_errors(page)
+            if form_errors:
+                error_texts = [err.get("text", "") for err in form_errors if err.get("text")]
+                if error_texts:
+                    LOG.warning(f"    表单验证失败: {', '.join(error_texts)}")
+                    nav_info["error_type"] = "required_field_empty"
+                    nav_info["error_text"] = f"表单验证失败: {', '.join(error_texts)}"
+                    nav_info["form_errors"] = form_errors
+                    return nav_info
+
+            # 检查是否有确认对话框
+            state = await _check_precondition_state(page, {"type": "dialog"})
+            if state["success"]:
+                from .button_driver import confirm_dialog
+                confirmed = await confirm_dialog(page)
+                if confirmed:
+                    LOG.info(f"    已点击确认按钮: {confirmed}")
+                await page.wait_for_timeout(1000)
+
+            # 验证提交是否成功（严格模式）
+            success = await _verify_operation_success(page, "submit", strict=True)
+            nav_info["submit_result"] = {
+                "success": success,
+                "button_text": btn_text
+            }
+
+            if not success:
+                nav_info["error_type"] = "submit_failed"
+                nav_info["error_text"] = "提交后未检测到成功信号"
+
+            return nav_info
+
+        # 5. 如果没有表单：查找关键操作按钮（保存/确认/授权）
+        LOG.info(f"    无表单，查找关键操作按钮...")
+
+        key_actions = ["save", "submit", "confirm", "authorize", "batch"]
+        target_btn = None
+
+        for btn in toolbar_buttons + dialog_buttons:
+            btn_action = btn.get("action", "") or _match_crud(btn.get("text", ""))
+            if btn_action in key_actions:
+                target_btn = btn
+                break
+
+        if not target_btn:
+            nav_info["error_type"] = "no_key_action"
+            nav_info["error_text"] = "未找到关键操作按钮（save/submit/confirm/authorize/batch）"
+            return nav_info
+
+        # 点击关键操作按钮
+        btn_text = target_btn.get("text", "")
+        btn_action = target_btn.get("action", "")
+        LOG.info(f"    点击关键操作按钮: {btn_text} (action: {btn_action})")
+
+        btn_click_result = await _click_button_escalating(page, btn_text)
+
+        if not btn_click_result["clicked"]:
+            nav_info["error_type"] = "click_failed"
+            nav_info["error_text"] = f"无法点击按钮: {btn_text}"
+            return nav_info
+
+        await page.wait_for_timeout(1000)
+
+        # 检查是否有确认对话框
+        state = await _check_precondition_state(page, {"type": "dialog"})
+        if state["success"]:
+            from .button_driver import confirm_dialog
+            confirmed = await confirm_dialog(page)
+            if confirmed:
+                LOG.info(f"    已点击确认按钮: {confirmed}")
+            await page.wait_for_timeout(1000)
+
+        # 验证操作是否成功（严格模式）
+        success = await _verify_operation_success(page, btn_action, strict=True)
+        nav_info["submit_result"] = {
+            "success": success,
+            "button_text": btn_text,
+            "action": btn_action
+        }
+
+        if not success:
+            nav_info["error_type"] = "operation_failed"
+            nav_info["error_text"] = f"操作 {btn_action} 后未检测到成功信号"
+
+        return nav_info
+
+    except Exception as e:
+        error_str = str(e)
+        LOG.warning(f"    探索新页面失败: {error_str[:80]}")
+
+        # 检测是否是因为打开新标签页导致 page 对象失效
+        if "Target page" in error_str or "has been closed" in error_str:
+            LOG.warning(f"    页面已关闭（可能打开了新标签页）")
+            nav_info["error_type"] = "page_closed_new_tab"
+            nav_info["error_text"] = "操作打开了新标签页，当前 page 对象已失效"
+        else:
+            nav_info["error_type"] = "exception"
+            nav_info["error_text"] = error_str[:200]
+
+        return nav_info
+
+
+async def _do_save_or_confirm(page, context: dict) -> dict:
+    """执行保存或确认操作。
+
+    Args:
+        page: Playwright Page 对象
+        context: 包含 btn 的上下文
+
+    Returns:
+        dict: 操作结果
+    """
+    btn = context["btn"]
+    btn_text = btn.get("text", "")
+
+    # 点击保存/确认按钮
+    btn_click_result = await _click_button_escalating(page, btn_text)
+    if not btn_click_result["clicked"]:
+        return {"success": False, "error_type": "click_failed",
+                "error_text": f"无法点击按钮: {btn_text}"}
+
+    await page.wait_for_timeout(1000)
+    await wait_for_loading_complete(page)
+
+    # 检查是否有确认弹窗
+    state = await _check_precondition_state(page, {"type": "dialog"})
+    if state["success"]:
+        from .button_driver import confirm_dialog
+        confirmed = await confirm_dialog(page)
+        if confirmed:
+            LOG.info(f"    已点击确认按钮: {confirmed}")
+        await page.wait_for_timeout(1000)
+
+    # 验证成功
+    success = await _verify_operation_success(page, "save", strict=True)
+
+    return {
+        "success": success,
+        "selectors": {"trigger": btn_text},
+        "error_type": "" if success else "no_success_signal",
+        "error_text": "" if success else "保存/确认操作后未检测到成功信号"
+    }
+
+
+async def _handle_cross_page_operation(page, context: dict, result: dict) -> dict:
+    """处理跨页面操作的委托处理器。
+
+    当 _do_generic_operation 检测到页面跳转并返回 navigation_unexplored 时，
+    _error_driven_retry 会委托此函数处理。
+
+    Args:
+        page: Playwright Page 对象
+        context: 操作上下文
+        result: _do_generic_operation 返回的结果（包含 nav_info）
+
+    Returns:
+        dict: 最终操作结果
+    """
+    nav_info = result.get("nav_info", {})
+    btn = context.get("btn", {})
+    btn_text = btn.get("text", "")
+
+    # 从 nav_info 中提取子操作结果
+    sub_ops = nav_info.get("sub_operations", [])
+
+    if not sub_ops:
+        # 没有子操作，标记为部分失败
+        return {
+            "success": False,
+            "error_type": "cross_page_no_operations",
+            "error_text": f"跨页面操作未找到可执行的子操作",
+            "nav_info": nav_info,
+            "selectors": {"trigger": btn_text}
+        }
+
+    # 统计子操作成功率
+    success_count = sum(1 for op in sub_ops if op.get("success", False))
+    total_count = len(sub_ops)
+
+    if success_count == total_count:
+        # 所有子操作都成功
+        LOG.info(f"    跨页面操作全部成功: {success_count}/{total_count}")
+        return {
+            "success": True,
+            "nav_info": nav_info,
+            "sub_operations": sub_ops,
+            "selectors": {"trigger": btn_text}
+        }
+    elif success_count > 0:
+        # 部分成功
+        LOG.warning(f"    跨页面操作部分成功: {success_count}/{total_count}")
+        return {
+            "success": False,
+            "error_type": "cross_page_partial",
+            "error_text": f"跨页面操作部分失败: {success_count}/{total_count} 成功",
+            "nav_info": nav_info,
+            "sub_operations": sub_ops,
+            "selectors": {"trigger": btn_text}
+        }
+    else:
+        # 全部失败
+        LOG.error(f"    跨页面操作全部失败: 0/{total_count}")
+        return {
+            "success": False,
+            "error_type": "cross_page_failed",
+            "error_text": f"跨页面操作全部失败: 0/{total_count}",
+            "nav_info": nav_info,
+            "sub_operations": sub_ops,
+            "selectors": {"trigger": btn_text}
+        }
+
+
+async def _navigate_back_to_list(page, original_url: str):
+    """安全导航回原始列表页。
+
+    优先使用 page.goto()，失败则尝试 page.go_back()。
+
+    Args:
+        page: Playwright Page 对象
+        original_url: 原始列表页 URL
+    """
+    try:
+        await page.goto(original_url, wait_until="domcontentloaded", timeout=30000)
+        await wait_for_table_ready(page, timeout=15000)
+        LOG.info(f"    已导航回原始页面: {original_url[:60]}")
+    except Exception as e1:
+        LOG.warning(f"    page.goto 失败: {e1}，尝试 page.go_back()")
+        try:
+            await page.go_back()
+            await wait_for_navigation_complete(page)
+            await wait_for_table_ready(page, timeout=15000)
+            LOG.info(f"    已通过 go_back 返回")
+        except Exception as e2:
+            LOG.error(f"    导航回原始页面失败: {e2}")
 
 
 async def _explore_navigated_page(page, action: str, new_url: str) -> dict:

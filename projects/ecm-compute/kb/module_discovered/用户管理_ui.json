@@ -381,30 +381,30 @@
       "success": true,
       "fill_data": {
         "名称": "test",
-        "编码": "code_507807",
-        "描述": "自动测试创建于507807",
-        "备注": "自动创建于507807",
-        "说明": "自动测试创建于507807",
+        "编码": "code_744052",
+        "描述": "自动测试创建于744052",
+        "备注": "自动创建于744052",
+        "说明": "自动测试创建于744052",
         "用户名": "test",
         "姓名": "test",
-        "邮箱": "at_507807@test.com",
-        "手机": "13889685510",
+        "邮箱": "at_744052@test.com",
+        "手机": "13837969686",
         "密码": "Test@123456",
         "确认密码": "Test@123456",
         "角色名称": "test",
-        "角色编码": "role_code_507807",
-        "角色描述": "自动测试角色创建于507807",
+        "角色编码": "role_code_744052",
+        "角色描述": "自动测试角色创建于744052",
         "username": "test",
         "name": "test",
-        "email": "at_507807@test.com",
-        "phone": "13889685510",
+        "email": "at_744052@test.com",
+        "phone": "13837969686",
         "password": "Test@123456",
-        "description": "自动测试创建于507807",
-        "code": "code_507807",
-        "remark": "自动创建于507807",
-        "账号": "AT_test_507807",
-        "系统角色": "AT_test_507807",
-        "部门角色": "AT_test_507807"
+        "description": "自动测试创建于744052",
+        "code": "code_744052",
+        "remark": "自动创建于744052",
+        "账号": "AT_test_744052",
+        "系统角色": "AT_test_744052",
+        "部门角色": "AT_test_744052"
       },
       "fill_rules": {
         "账号": {
@@ -707,19 +707,118 @@
       "dropdown_trigger_method": "hover",
       "checkbox_locator": ".el-checkbox__input"
     },
-    "migrate": {
-      "success": true,
+    "import": {
+      "success": false,
+      "error_type": "env_dependency",
+      "error_text": "导入操作需要上传文件，无法自动完成",
       "selectors": {
-        "trigger": "批量迁移"
+        "trigger": "批量导入"
+      }
+    },
+    "authorize": {
+      "success": false,
+      "error_type": "required_field_empty",
+      "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
+      "nav_info": {
+        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=34e2594fca9e44cd9e23b25474838c7f&type=userList&rowId=74bca6fd075f4cc5a66ee313711dd164",
+        "depth": 0,
+        "page_title": "eStack Enterprise",
+        "has_form": true,
+        "form_fields": [
+          {
+            "label": "授权用户",
+            "type": "select",
+            "kb_category": "el-select",
+            "selector": ".el-form-item:nth-child(1) .el-select",
+            "required": true
+          },
+          {
+            "label": "授权用户组",
+            "type": "select",
+            "kb_category": "el-select",
+            "selector": ".el-form-item:nth-child(2) .el-select",
+            "required": true
+          },
+          {
+            "label": "授权角色",
+            "type": "radio",
+            "kb_category": "radio",
+            "selector": ".el-form-item:nth-child(3) .el-radio-group",
+            "required": true,
+            "firstOptionText": "组织架构"
+          },
+          {
+            "label": "授权范围",
+            "type": "radio",
+            "kb_category": "radio",
+            "selector": ".el-form-item:nth-child(4) .el-radio-group",
+            "required": false,
+            "firstOptionText": "全部"
+          }
+        ],
+        "fill_data": {
+          "名称": "AT_test_auto",
+          "编码": "code_744120",
+          "描述": "自动测试创建于744120",
+          "备注": "自动创建于744120",
+          "说明": "自动测试创建于744120",
+          "用户名": "AT_test_auto",
+          "姓名": "AT_test_auto",
+          "邮箱": "at_744120@test.com",
+          "手机": "13817898234",
+          "密码": "Test@123456",
+          "确认密码": "Test@123456",
+          "角色名称": "AT_test_auto",
+          "角色编码": "role_code_744120",
+          "角色描述": "自动测试角色创建于744120",
+          "username": "AT_test_auto",
+          "name": "AT_test_auto",
+          "email": "at_744120@test.com",
+          "phone": "13817898234",
+          "password": "Test@123456",
+          "description": "自动测试创建于744120",
+          "code": "code_744120",
+          "remark": "自动创建于744120",
+          "授权用户": "AT_AT_test_auto_744120",
+          "授权角色": "AT_AT_test_auto_744120",
+          "授权范围": "AT_AT_test_auto_744120"
+        },
+        "submit_result": {},
+        "error_type": "required_field_empty",
+        "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
+        "field_states": [
+          {
+            "label": "授权用户",
+            "type": "select",
+            "value": "",
+            "isDisabled": true,
+            "hasValue": false
+          },
+          {
+            "label": "授权用户组",
+            "type": "select",
+            "value": "",
+            "isDisabled": false,
+            "hasValue": false
+          },
+          {
+            "label": "授权角色",
+            "type": "radio",
+            "value": "组织架构",
+            "isDisabled": false,
+            "hasValue": true
+          }
+        ]
       },
-      "confirmed": "",
-      "post_confirm_state": {
-        "dialog_remains": true,
-        "has_form_in_dialog": true
-      },
-      "trigger_locator_verified": "button:has-text('批量迁移')",
-      "needs_checkbox": true,
-      "checkbox_locator": ".el-checkbox__input"
+      "selectors": {
+        "trigger": "授权",
+        "row_selector": "更多 > 授权"
+      }
+    },
+    "migrate": {
+      "success": false,
+      "error_type": "required_field_empty",
+      "error_text": "弹窗中必填字段为空: 待迁移用户：, 待迁移部门："
     },
     "delete": {
       "success": true,
