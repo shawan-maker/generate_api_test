@@ -1,0 +1,4309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>用户管理 API 测试报告</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "SF Pro Text", "Helvetica Neue", "Microsoft YaHei", "PingFang SC", sans-serif;
+         background: #f4f5f7; color: #1f2937; }
+  .header { background: linear-gradient(135deg, #1f2937 0%, #111827 100%); color: #fff;
+             padding: 26px 32px 22px; }
+  .header .wrap { max-width: 1080px; margin: 0 auto; }
+  .header h1 { font-size: 21px; font-weight: 700; letter-spacing: .3px; }
+  .header .sub { color: #9ca3af; font-size: 12.5px; margin-top: 6px; line-height: 1.7; }
+  .header .sub code { color: #d1d5db; background: rgba(255,255,255,.08); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+  .stats { display: flex; gap: 16px; margin: -26px auto 22px; position: relative; z-index: 2; flex-wrap: wrap; }
+  .stat { flex: 1; min-width: 150px; background: #fff; border-radius: 10px; padding: 16px 18px;
+           box-shadow: 0 1px 3px rgba(0,0,0,.08); border-top: 3px solid #e5e7eb; }
+  .stat.ok { border-top-color: #49cc90; } .stat.warn { border-top-color: #fca130; }
+  .stat.fail { border-top-color: #f93e3e; } .stat.total { border-top-color: #61affe; }
+  .stat b { font-size: 26px; display: block; line-height: 1.2; }
+  .stat span { font-size: 12px; color: #6b7280; }
+  .stat.ok b { color: #1a7f37; } .stat.warn b { color: #b45309; }
+  .stat.fail b { color: #dc2626; } .stat.total b { color: #2563eb; }
+  .donut-card { display: flex; align-items: center; gap: 16px; }
+  .donut { width: 76px; height: 76px; border-radius: 50%; flex: none;
+            background: conic-gradient(#49cc90 0 100.0%, #e5e7eb 100.0% 100%);
+            display: grid; place-items: center; }
+  .donut::before { content: ''; width: 56px; height: 56px; border-radius: 50%; background: #fff; }
+  .donut-val { position: absolute; font-size: 17px; font-weight: 700; }
+  .donut-wrap { position: relative; }
+  .donut-txt { font-size: 12px; color: #6b7280; line-height: 1.6; }
+  .requests { margin-top: 4px; }
+  .req { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.07);
+          margin-bottom: 12px; overflow: hidden; }
+  .req-head { display: flex; align-items: center; gap: 12px; padding: 13px 18px; flex-wrap: wrap;
+               border-bottom: 1px solid #f0f1f3; }
+  .req-no { width: 24px; height: 24px; border-radius: 50%; background: #eef2f7; color: #4a6da7;
+             display: inline-flex; align-items: center; justify-content: center; font-size: 12px;
+             font-weight: 700; flex: none; }
+  .method { color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .5px; padding: 3px 10px;
+             border-radius: 4px; flex: none; }
+  .path { font-family: "SF Mono", Consolas, monospace; font-size: 12.5px; color: #374151;
+           word-break: break-all; flex: 1; min-width: 180px; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px;
+            font-weight: 600; flex: none; }
+  .b-ok { background: #e8f7ee; color: #1a7f37; }
+  .b-warn { background: #fff4e5; color: #b45309; }
+  .b-info { background: #eef2f7; color: #4a6da7; }
+  .b-fail { background: #fdeaea; color: #dc2626; }
+  .req-body { padding: 12px 18px 14px; }
+  .mark { font-size: 13px; line-height: 1.9; color: #374151; }
+  .mark .mark-ic { margin-right: 8px; }
+  .detail { margin-top: 8px; }
+  .detail summary { cursor: pointer; font-size: 12.5px; color: #6b7280; user-select: none; }
+  .detail summary:hover { color: #2563eb; }
+  .detail-section { margin-top: 12px; padding: 12px 14px; background: #f8f9fb;
+                     border: 1px solid #eceff3; border-radius: 8px; }
+  .detail-title { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 8px; }
+  .section-label { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase;
+                    letter-spacing: .5px; margin: 10px 0 4px; padding-bottom: 4px;
+                    border-bottom: 1px solid #e5e7eb; }
+  .section-label:first-child { margin-top: 0; }
+  .kv-table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 4px 0; }
+  .kv-table td { padding: 4px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
+  .kv-table .hk { font-weight: 600; color: #4a6da7; white-space: nowrap; width: 160px; }
+  .kv-table .hv { color: #374151; word-break: break-all; font-family: "SF Mono", Consolas, monospace;
+                   font-size: 11.5px; }
+  .json-block { margin: 4px 0; background: #1e293b; color: #e2e8f0; border-radius: 6px;
+                 padding: 12px; font-size: 12px; line-height: 1.6; white-space: pre-wrap;
+                 word-break: break-all; max-height: 320px; overflow: auto;
+                 font-family: "SF Mono", Consolas, monospace; }
+  .resp-status { font-size: 13px; font-weight: 600; color: #374151; padding: 4px 0; }
+  .footer { text-align: center; color: #9ca3af; font-size: 12px; padding: 22px 0 30px; }
+  .legend { text-align: center; color: #6b7280; font-size: 12px; margin-bottom: 14px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="wrap">
+    <h1>用户管理 API 测试报告</h1>
+    <div class="sub">生成时间：2026-09-07 10:24:26 &nbsp;·&nbsp; 日志来源：<code>report/用户管理_API测试.jsonl</code></div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="stats">
+    <div class="stat total"><b>12</b><span>总请求数</span></div>
+    <div class="stat ok"><b>12</b><span>通过</span></div>
+    <div class="stat fail"><b>0</b><span>失败</span></div>
+    <div class="stat donut-card">
+      <div class="donut-wrap"><div class="donut"></div><div class="donut-val">100.0%</div></div>
+      <div class="donut-txt">通过率</div>
+    </div>
+  </div>
+
+  <div class="legend">共 12 个 API 调用 · 通过 12 · 通过率 100.0%</div>
+  <div class="requests">
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">1</span>
+        <span class="method" style="background:#49cc90">POST</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/users</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>创建用户: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 64f42bc6-e34b-4047-bd8d-0f7a3d4a7f79</td></tr>
+            </table>
+            <div class="section-label">Request Body</div>
+            <pre class="json-block">{
+  "userName": "AT_ae5979_autotest744711",
+  "password": "gw+UD7NGpQbB/4D1i+F6O746256uE+66DHzFXhXfN5OgdQ1rCWWr9yhGFJz29nhDnU3NSvMiGW9pn4lyUTF71VrNp6/z+js+uV8F2BVO5G++MRDANDPaCcwV7SUeRzvAfuz22gC2HGVbO3FXUXCXagq6izbF+z/oKCAc39D71t4=",
+  "name": "AT_ae5979_test_744711",
+  "email": "VrBws9ljgWeFhD6AOAYdX7LekxFUMNgUVcwbgR8legQMD1Vu/n5YxfacUaVFva3veDl7aubLiCnxeugfNcwxv9vnFQd0qlVmhS2vHvACwpQTtWgEPKASZo7e2x4eAZqQS0907qXKvt0GFE/mhLSVa17A2qaPLj1FwIzd9/8k9HQ=",
+  "phone": "hqtGpLgiIwR5TUIX1kE0ocmCr9mcJXz7pBf0xPBMmHwH4MBJ7id+HenHUU6b1MYGo2zJN9fslY4REizZt8J0lM0Cknhdwt2Xo4Kc/8UmxHx2h2RbAZgFaile0Py/aEulmgIJjBC8tFxunbkXaoHUcXNvC+clFyqhlCV9ctNm8Ns=",
+  "description": "自动修改_ae5979",
+  "policyIds": [
+    "1f8e392309fc414c9d77d45d0315fedc"
+  ],
+  "adminId": "93552edc908e4dadae761fff1fd0f24c",
+  "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+  "countryCode": "+86"
+}</pre>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "a8151729298df015",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "id": "a4628c06f07c4222b9eba6795c2db1e1",
+    "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+    "tenantName": "Super Management Department",
+    "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+    "ramId": "a4628c06f07c4222b9eba6795c2db1e1",
+    "name": "AT_ae5979_test_744711",
+    "userName": "AT_ae5979_autotest744711",
+    "email": "a*****1@test.com",
+    "phone": "138***3625",
+    "encryptedEmail": "KxSewwYsxV1ScEsAspCjOk9ewTkP+6gX",
+    "encryptedPhone": "SMxsUJhjW0FmPCAwPDOLbA==",
+    "countryCode": "+86",
+    "description": "自动修改_ae5979",
+    "createdAt": "2026-09-07 10:24:20",
+    "updatedAt": null,
+    "deleted": false,
+    "state": "ENABLE",
+    "isAdmin": false,
+    "isProjectManager": false,
+    "isAuthentication": false,
+    "roleId": null,
+    "roleName": null,
+    "ancestorList": [
+      "Super Management Department"
+    ],
+    "isPassword": true,
+    "isEmail": true,
+    "isPhone": true,
+    "poolNameList": [],
+    "isRootTenantUser": true,
+    "isApproval": false,
+    "tenantLevel": 0,
+    "locked": false,
+    "policyIdList": [],
+    "policyList": [],
+    "countryCodePhone": "+86 138***3625",
+    "password": "18ed28966419effa4130e69c13f7d231c928b5c71974d3582a64a15c1832ff3c",
+    "projectIdList": null,
+    "needRamIdentity": null,
+    "isInnerUser": null,
+    "userType": null,
+    "isForceChange": false,
+    "isTempPassword": false,
+    "mfLoginPolicy": null,
+    "enableMultiFactLoginPolicy": null,
+    "maintainAt": null
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">2</span>
+        <span class="method" style="background:#61affe">GET</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/tenants/users</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>查询验证（创建后）: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 64f42bc6-e34b-4047-bd8d-0f7a3d4a7f79</td></tr>
+            </table>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "6f1eadfa05e1e2ff",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "total": 9,
+    "list": [
+      {
+        "id": "a4628c06f07c4222b9eba6795c2db1e1",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "a4628c06f07c4222b9eba6795c2db1e1",
+        "name": "AT_ae5979_test_744711",
+        "userName": "AT_ae5979_autotest744711",
+        "email": "a*****1@test.com",
+        "phone": "138***3625",
+        "encryptedEmail": "KxSewwYsxV1ScEsAspCjOk9ewTkP+6gX",
+        "encryptedPhone": "SMxsUJhjW0FmPCAwPDOLbA==",
+        "countryCode": "+86",
+        "description": "自动修改_ae5979",
+        "createdAt": "2026-09-07 10:24:20",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "1f8e392309fc414c9d77d45d0315fedc"
+        ],
+        "policyList": [
+          {
+            "id": "1f8e392309fc414c9d77d45d0315fedc",
+            "tenantId": null,
+            "policyName": "普通用户",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": true,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.COMMON_ROLE"
+          }
+        ],
+        "countryCodePhone": "+86 138***3625",
+        "password": "18ed28966419effa4130e69c13f7d231c928b5c71974d3582a64a15c1832ff3c",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "8534814636014d36b8eccb8fe8b9290f",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "8534814636014d36b8eccb8fe8b9290f",
+        "name": "estack-admin-galaxy-dw",
+        "userName": "estack-admin-galaxy-dw",
+        "email": "b*****b@bb.b",
+        "phone": "188***9999",
+        "encryptedEmail": "wMRcOQgFUGo=",
+        "encryptedPhone": "Iz1LEVhewsTUcdhvqGRkfg==",
+        "countryCode": "+86",
+        "description": "asdas",
+        "createdAt": "2026-09-01 16:55:27",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "MAINTAIN"
+        ],
+        "policyList": [
+          {
+            "id": "MAINTAIN",
+            "tenantId": null,
+            "policyName": "代维管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.AGENT_MAINTENANCE_ADMIN"
+          }
+        ],
+        "countryCodePhone": "+86 188***9999",
+        "password": "0bb3c5d7a707286936df12b8f42a439c11f0f6f249fbcaddf56a27ec8aabcc89",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "d6373f3a36d04d4dad19708fcfce3c3b",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "d6373f3a36d04d4dad19708fcfce3c3b",
+        "name": "estack-operations-operator",
+        "userName": "estack-operations-operator",
+        "email": "1*****6@qq.com",
+        "phone": "188***8566",
+        "encryptedEmail": "IiYXqx1Sm2Wea2M3S+eYsk9ewTkP+6gX",
+        "encryptedPhone": "IiYXqx1Sm2V5+Hsw8+vJqw==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-08-18 11:24:30",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [],
+        "policyList": [],
+        "countryCodePhone": "+86 188***8566",
+        "password": "663d6833b5402d60f70af84f417181acfe57a21a4043212406e3af096eea26cc",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "d39550aaa00f4d0aa0b9b887b1e50fd9",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "d39550aaa00f4d0aa0b9b887b1e50fd9",
+        "name": "estack-operations-whole",
+        "userName": "estack-operations-whole",
+        "email": "1*****1@qq.com",
+        "phone": "188***2631",
+        "encryptedEmail": "h226UHMr8dTWcKToNjbtrE9ewTkP+6gX",
+        "encryptedPhone": "h226UHMr8dQGt2MEb6C/Rw==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-08-18 11:24:04",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [],
+        "policyList": [],
+        "countryCodePhone": "+86 188***2631",
+        "password": "723ccbccc2fde5f1e1c26094a191e3c2e694c440e860a43bd83bc5da2e77842e",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "0c5b1be90a59443283b2a2a3c07d9356",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "0c5b1be90a59443283b2a2a3c07d9356",
+        "name": "BC-OV",
+        "userName": "BC-OV",
+        "email": "1*****7@qq.com",
+        "phone": "188***1457",
+        "encryptedEmail": "3hmpCM+1128X0mxmAFu9G09ewTkP+6gX",
+        "encryptedPhone": "3hmpCM+112/TtV7/gHm9oQ==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-08-18 11:23:37",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [],
+        "policyList": [],
+        "countryCodePhone": "+86 188***1457",
+        "password": "9f0ae4a020839f6d61b7b46e9d8f618371f1e38e6d2e79a1f4d79b2cfce5d062",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "93552edc908e4dadae761fff1fd0f24c",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "93552edc908e4dadae761fff1fd0f24c",
+        "name": "estack-yy",
+        "userName": "estack-yy",
+        "email": "l*****u@163.com",
+        "phone": "188***1683",
+        "encryptedEmail": "d5DMRsWzfs9NOAiRMBvZMNq7TvsxOeiZ",
+        "encryptedPhone": "3hmpCM+112+O+OaTCsGN9A==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-01-24 12:19:29",
+        "updatedAt": "2025-03-11 17:24:50",
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "OPERATION"
+        ],
+        "policyList": [
+          {
+            "id": "OPERATION",
+            "tenantId": null,
+            "policyName": "运营管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.OPERATIONS_ADMIN"
+          }
+        ],
+        "countryCodePhone": "+86 188***1683",
+        "password": "6974d2bb056747082f6b7fcd01d61d0c9fcbc34f189a6c12d9a295891454d8e2",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "26a9754fddda4e5481f9f9c7a7de73c2",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "98a62b3b64674784bf85c51e7eee1701",
+        "ramId": "26a9754fddda4e5481f9f9c7a7de73c2",
+        "name": "ecsc-register",
+        "userName": "ecsc-register",
+        "email": "1*****8@12.com",
+        "phone": "180***9958",
+        "encryptedEmail": "6p0fb9yY6qRqFQwLL8nDKE9ewTkP+6gX",
+        "encryptedPhone": "6p0fb9yY6qS8nlnarMd2lA==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-01-24 12:19:29",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "d71c28dc4eca42abb84b3ba9ce777103"
+        ],
+        "policyList": [
+          {
+            "id": "d71c28dc4eca42abb84b3ba9ce777103",
+            "tenantId": null,
+            "policyName": "账号注册管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.ACCOUNT_REGISTRATION_ADMIN"
+          }
+        ],
+        "countryCodePhone": "+86 180***9958",
+        "password": "d05fecc49a87c1db315350a2f53cf6b0a61b31fa5838963310e308f7eec99110",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "8bdfb943a8c04943aa5140ca4ea29eb8",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "8bdfb943a8c04943aa5140ca4ea29eb8",
+        "name": "estack-accountRegister",
+        "userName": "estack-accountRegister",
+        "email": "1*****0@163.com",
+        "phone": "136***7060",
+        "encryptedEmail": "ksv59NQSQ7G53eJMhrKfzxgnf86GCBJV",
+        "encryptedPhone": "ksv59NQSQ7GxmNwkapOG9w==",
+        "countryCode": null,
+        "description": "",
+        "createdAt": "2024-05-30 14:58:39",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "d71c28dc4eca42abb84b3ba9ce777103"
+        ],
+        "policyList": [
+          {
+            "id": "d71c28dc4eca42abb84b3ba9ce777103",
+            "tenantId": null,
+            "policyName": "账号注册管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.ACCOUNT_REGISTRATION_ADMIN"
+          }
+        ],
+        "countryCodePhone": "136***7060",
+        "password": "f06062b91ec10780ab1fa35a3266d9744b4e3589b648bc03f2199639aa29e667",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "name": "ecsc-superAdmin",
+        "userName": "estack-superAdmin",
+        "email": "1*****9@163.com",
+        "phone": "188***8485",
+        "encryptedEmail": "Xzbe5PfuGlKPeMvwRy0oSg==",
+        "encryptedPhone": "NprgAP3FLJKyFwYaRG9oTw==",
+        "countryCode": null,
+        "description": "",
+        "createdAt": "2021-07-01 12:17:03",
+        "updatedAt": "2023-09-18 17:16:46",
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": true,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": true,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "SUPERADMIN"
+        ],
+        "policyList": [
+          {
+            "id": "SUPERADMIN",
+            "tenantId": null,
+            "policyName": "超级管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.SUPER_ADMIN"
+          }
+        ],
+        "countryCodePhone": "188***8485",
+        "password": "3d55d6b4e30781ee998dbb422293bbf1ae9e98ebbd7dad96d048cccee461a712",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      }
+    ],
+    "pageNum": 1,
+    "pageSize": 9,
+    "size": 9,
+    "startRow": 0,
+    "endRow": 8,
+    "pages": 1,
+    "prePage": 0,
+    "nextPage": 0,
+    "isFirstPage": true,
+    "isLastPage": true,
+    "hasPreviousPage": false,
+    "hasNextPage": false,
+    "navigatePages": 8,
+    "navigatepageNums": [
+      1
+    ],
+    "navigateFirstPage": 1,
+    "navigateLastPage": 1
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">3</span>
+        <span class="method" style="background:#fca130">PUT</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/users/a4628c06f07c4222b9eba6795c2db1e1</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>编辑: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 64f42bc6-e34b-4047-bd8d-0f7a3d4a7f79</td></tr>
+            </table>
+            <div class="section-label">Request Body</div>
+            <pre class="json-block">{
+  "userId": "a4628c06f07c4222b9eba6795c2db1e1",
+  "name": "AT_ae5979_test_744711",
+  "description": "自动修改_ae5979",
+  "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+  "countryCode": "+86",
+  "phone": "bg0XCQ2kTrZO+b8jOqZbIr1/aR7MrCXHyaqThoAzt384p08fkF3qJPQSIiJjkrTV5Z7YzGCvx82zfyijLrt1hg/O9VxhLkJzo3S12QnzKwEcho7+4+XpGS0ko1ObqHbaoOGPIzOPSlfMMcH2fpW/Zv1zplbJlbueWVkKivf0zqI=",
+  "email": "KURCwwYNp5zwbArytZSw8S4lxF7lzzGtRzt/z5De1+hG8IJVavfcc2/rbHwenY1Px1YCu6+73YW78LgIMqwBP8fd3ljXVlTBZbLvPeQWlqwDFo8LJFVs0N6TLJ0QnXhVgTHqVHldtk5fuby0kKYGzcCTlthCCzH7mUEYtPQLIVo=",
+  "adminId": "93552edc908e4dadae761fff1fd0f24c"
+}</pre>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "3564426e22a7fa04",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "id": "a4628c06f07c4222b9eba6795c2db1e1",
+    "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+    "tenantName": "Super Management Department",
+    "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+    "ramId": "a4628c06f07c4222b9eba6795c2db1e1",
+    "name": "AT_ae5979_test_744711",
+    "userName": "AT_ae5979_autotest744711",
+    "email": "a*****5@test.com",
+    "phone": "138***2641",
+    "encryptedEmail": "zr+3UfwP16x4QDOqXgF5Ck9ewTkP+6gX",
+    "encryptedPhone": "24Qd3ENK3Qykpj1oKh9fRw==",
+    "countryCode": "+86",
+    "description": "自动修改_ae5979",
+    "createdAt": "2026-09-07 10:24:20",
+    "updatedAt": "2026-09-07 10:24:20",
+    "deleted": false,
+    "state": "ENABLE",
+    "isAdmin": false,
+    "isProjectManager": false,
+    "isAuthentication": false,
+    "roleId": null,
+    "roleName": null,
+    "ancestorList": [
+      "Super Management Department"
+    ],
+    "isPassword": true,
+    "isEmail": true,
+    "isPhone": true,
+    "poolNameList": null,
+    "isRootTenantUser": true,
+    "isApproval": false,
+    "tenantLevel": 0,
+    "locked": false,
+    "policyIdList": [
+      "1f8e392309fc414c9d77d45d0315fedc"
+    ],
+    "policyList": [
+      {
+        "id": "1f8e392309fc414c9d77d45d0315fedc",
+        "tenantId": null,
+        "policyName": "普通用户",
+        "policyType": "SYSTEM",
+        "policyCategory": "ORGANIZATION",
+        "description": null,
+        "released": true,
+        "deleted": null,
+        "originalPolicyName": "RAM.POLICES.POLICY_NAME.COMMON_ROLE"
+      }
+    ],
+    "countryCodePhone": "+86 138***2641",
+    "password": "18ed28966419effa4130e69c13f7d231c928b5c71974d3582a64a15c1832ff3c",
+    "projectIdList": null,
+    "needRamIdentity": null,
+    "isInnerUser": null,
+    "userType": null,
+    "isForceChange": false,
+    "isTempPassword": false,
+    "mfLoginPolicy": null,
+    "enableMultiFactLoginPolicy": null,
+    "maintainAt": null
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">4</span>
+        <span class="method" style="background:#61affe">GET</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/tenants/users</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>查询验证（编辑后）: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 64f42bc6-e34b-4047-bd8d-0f7a3d4a7f79</td></tr>
+            </table>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "c0fab952a94ed691",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "total": 9,
+    "list": [
+      {
+        "id": "a4628c06f07c4222b9eba6795c2db1e1",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "a4628c06f07c4222b9eba6795c2db1e1",
+        "name": "AT_ae5979_test_744711",
+        "userName": "AT_ae5979_autotest744711",
+        "email": "a*****5@test.com",
+        "phone": "138***2641",
+        "encryptedEmail": "zr+3UfwP16x4QDOqXgF5Ck9ewTkP+6gX",
+        "encryptedPhone": "24Qd3ENK3Qykpj1oKh9fRw==",
+        "countryCode": "+86",
+        "description": "自动修改_ae5979",
+        "createdAt": "2026-09-07 10:24:20",
+        "updatedAt": "2026-09-07 10:24:20",
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "1f8e392309fc414c9d77d45d0315fedc"
+        ],
+        "policyList": [
+          {
+            "id": "1f8e392309fc414c9d77d45d0315fedc",
+            "tenantId": null,
+            "policyName": "普通用户",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": true,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.COMMON_ROLE"
+          }
+        ],
+        "countryCodePhone": "+86 138***2641",
+        "password": "18ed28966419effa4130e69c13f7d231c928b5c71974d3582a64a15c1832ff3c",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "8534814636014d36b8eccb8fe8b9290f",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "8534814636014d36b8eccb8fe8b9290f",
+        "name": "estack-admin-galaxy-dw",
+        "userName": "estack-admin-galaxy-dw",
+        "email": "b*****b@bb.b",
+        "phone": "188***9999",
+        "encryptedEmail": "wMRcOQgFUGo=",
+        "encryptedPhone": "Iz1LEVhewsTUcdhvqGRkfg==",
+        "countryCode": "+86",
+        "description": "asdas",
+        "createdAt": "2026-09-01 16:55:27",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "MAINTAIN"
+        ],
+        "policyList": [
+          {
+            "id": "MAINTAIN",
+            "tenantId": null,
+            "policyName": "代维管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.AGENT_MAINTENANCE_ADMIN"
+          }
+        ],
+        "countryCodePhone": "+86 188***9999",
+        "password": "0bb3c5d7a707286936df12b8f42a439c11f0f6f249fbcaddf56a27ec8aabcc89",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "d6373f3a36d04d4dad19708fcfce3c3b",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "d6373f3a36d04d4dad19708fcfce3c3b",
+        "name": "estack-operations-operator",
+        "userName": "estack-operations-operator",
+        "email": "1*****6@qq.com",
+        "phone": "188***8566",
+        "encryptedEmail": "IiYXqx1Sm2Wea2M3S+eYsk9ewTkP+6gX",
+        "encryptedPhone": "IiYXqx1Sm2V5+Hsw8+vJqw==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-08-18 11:24:30",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [],
+        "policyList": [],
+        "countryCodePhone": "+86 188***8566",
+        "password": "663d6833b5402d60f70af84f417181acfe57a21a4043212406e3af096eea26cc",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "d39550aaa00f4d0aa0b9b887b1e50fd9",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "d39550aaa00f4d0aa0b9b887b1e50fd9",
+        "name": "estack-operations-whole",
+        "userName": "estack-operations-whole",
+        "email": "1*****1@qq.com",
+        "phone": "188***2631",
+        "encryptedEmail": "h226UHMr8dTWcKToNjbtrE9ewTkP+6gX",
+        "encryptedPhone": "h226UHMr8dQGt2MEb6C/Rw==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-08-18 11:24:04",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [],
+        "policyList": [],
+        "countryCodePhone": "+86 188***2631",
+        "password": "723ccbccc2fde5f1e1c26094a191e3c2e694c440e860a43bd83bc5da2e77842e",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "0c5b1be90a59443283b2a2a3c07d9356",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "0c5b1be90a59443283b2a2a3c07d9356",
+        "name": "BC-OV",
+        "userName": "BC-OV",
+        "email": "1*****7@qq.com",
+        "phone": "188***1457",
+        "encryptedEmail": "3hmpCM+1128X0mxmAFu9G09ewTkP+6gX",
+        "encryptedPhone": "3hmpCM+112/TtV7/gHm9oQ==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-08-18 11:23:37",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [],
+        "policyList": [],
+        "countryCodePhone": "+86 188***1457",
+        "password": "9f0ae4a020839f6d61b7b46e9d8f618371f1e38e6d2e79a1f4d79b2cfce5d062",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "93552edc908e4dadae761fff1fd0f24c",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "93552edc908e4dadae761fff1fd0f24c",
+        "name": "estack-yy",
+        "userName": "estack-yy",
+        "email": "l*****u@163.com",
+        "phone": "188***1683",
+        "encryptedEmail": "d5DMRsWzfs9NOAiRMBvZMNq7TvsxOeiZ",
+        "encryptedPhone": "3hmpCM+112+O+OaTCsGN9A==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-01-24 12:19:29",
+        "updatedAt": "2025-03-11 17:24:50",
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "OPERATION"
+        ],
+        "policyList": [
+          {
+            "id": "OPERATION",
+            "tenantId": null,
+            "policyName": "运营管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.OPERATIONS_ADMIN"
+          }
+        ],
+        "countryCodePhone": "+86 188***1683",
+        "password": "6974d2bb056747082f6b7fcd01d61d0c9fcbc34f189a6c12d9a295891454d8e2",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "26a9754fddda4e5481f9f9c7a7de73c2",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "98a62b3b64674784bf85c51e7eee1701",
+        "ramId": "26a9754fddda4e5481f9f9c7a7de73c2",
+        "name": "ecsc-register",
+        "userName": "ecsc-register",
+        "email": "1*****8@12.com",
+        "phone": "180***9958",
+        "encryptedEmail": "6p0fb9yY6qRqFQwLL8nDKE9ewTkP+6gX",
+        "encryptedPhone": "6p0fb9yY6qS8nlnarMd2lA==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-01-24 12:19:29",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "d71c28dc4eca42abb84b3ba9ce777103"
+        ],
+        "policyList": [
+          {
+            "id": "d71c28dc4eca42abb84b3ba9ce777103",
+            "tenantId": null,
+            "policyName": "账号注册管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.ACCOUNT_REGISTRATION_ADMIN"
+          }
+        ],
+        "countryCodePhone": "+86 180***9958",
+        "password": "d05fecc49a87c1db315350a2f53cf6b0a61b31fa5838963310e308f7eec99110",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "8bdfb943a8c04943aa5140ca4ea29eb8",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "8bdfb943a8c04943aa5140ca4ea29eb8",
+        "name": "estack-accountRegister",
+        "userName": "estack-accountRegister",
+        "email": "1*****0@163.com",
+        "phone": "136***7060",
+        "encryptedEmail": "ksv59NQSQ7G53eJMhrKfzxgnf86GCBJV",
+        "encryptedPhone": "ksv59NQSQ7GxmNwkapOG9w==",
+        "countryCode": null,
+        "description": "",
+        "createdAt": "2024-05-30 14:58:39",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "d71c28dc4eca42abb84b3ba9ce777103"
+        ],
+        "policyList": [
+          {
+            "id": "d71c28dc4eca42abb84b3ba9ce777103",
+            "tenantId": null,
+            "policyName": "账号注册管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.ACCOUNT_REGISTRATION_ADMIN"
+          }
+        ],
+        "countryCodePhone": "136***7060",
+        "password": "f06062b91ec10780ab1fa35a3266d9744b4e3589b648bc03f2199639aa29e667",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "name": "ecsc-superAdmin",
+        "userName": "estack-superAdmin",
+        "email": "1*****9@163.com",
+        "phone": "188***8485",
+        "encryptedEmail": "Xzbe5PfuGlKPeMvwRy0oSg==",
+        "encryptedPhone": "NprgAP3FLJKyFwYaRG9oTw==",
+        "countryCode": null,
+        "description": "",
+        "createdAt": "2021-07-01 12:17:03",
+        "updatedAt": "2023-09-18 17:16:46",
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": true,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": true,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "SUPERADMIN"
+        ],
+        "policyList": [
+          {
+            "id": "SUPERADMIN",
+            "tenantId": null,
+            "policyName": "超级管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.SUPER_ADMIN"
+          }
+        ],
+        "countryCodePhone": "188***8485",
+        "password": "3d55d6b4e30781ee998dbb422293bbf1ae9e98ebbd7dad96d048cccee461a712",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      }
+    ],
+    "pageNum": 1,
+    "pageSize": 9,
+    "size": 9,
+    "startRow": 0,
+    "endRow": 8,
+    "pages": 1,
+    "prePage": 0,
+    "nextPage": 0,
+    "isFirstPage": true,
+    "isLastPage": true,
+    "hasPreviousPage": false,
+    "hasNextPage": false,
+    "navigatePages": 8,
+    "navigatepageNums": [
+      1
+    ],
+    "navigateFirstPage": 1,
+    "navigateLastPage": 1
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">5</span>
+        <span class="method" style="background:#fca130">PUT</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/users/a4628c06f07c4222b9eba6795c2db1e1/suspend</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>冻结: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 64f42bc6-e34b-4047-bd8d-0f7a3d4a7f79</td></tr>
+            </table>
+            <div class="section-label">Request Body</div>
+            <pre class="json-block">{
+  "userId": "a4628c06f07c4222b9eba6795c2db1e1",
+  "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+  "adminId": "93552edc908e4dadae761fff1fd0f24c"
+}</pre>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "d8d3dfbe3a39a1d0",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "id": "a4628c06f07c4222b9eba6795c2db1e1",
+    "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+    "tenantName": "Super Management Department",
+    "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+    "ramId": "a4628c06f07c4222b9eba6795c2db1e1",
+    "name": "AT_ae5979_test_744711",
+    "userName": "AT_ae5979_autotest744711",
+    "email": "a*****5@test.com",
+    "phone": "138***2641",
+    "encryptedEmail": "zr+3UfwP16x4QDOqXgF5Ck9ewTkP+6gX",
+    "encryptedPhone": "24Qd3ENK3Qykpj1oKh9fRw==",
+    "countryCode": "+86",
+    "description": "自动修改_ae5979",
+    "createdAt": "2026-09-07 10:24:20",
+    "updatedAt": "2026-09-07 10:24:20",
+    "deleted": false,
+    "state": "DISABLE",
+    "isAdmin": false,
+    "isProjectManager": false,
+    "isAuthentication": false,
+    "roleId": null,
+    "roleName": null,
+    "ancestorList": [
+      "Super Management Department"
+    ],
+    "isPassword": true,
+    "isEmail": true,
+    "isPhone": true,
+    "poolNameList": null,
+    "isRootTenantUser": true,
+    "isApproval": false,
+    "tenantLevel": 0,
+    "locked": false,
+    "policyIdList": [
+      "1f8e392309fc414c9d77d45d0315fedc"
+    ],
+    "policyList": [
+      {
+        "id": "1f8e392309fc414c9d77d45d0315fedc",
+        "tenantId": null,
+        "policyName": "普通用户",
+        "policyType": "SYSTEM",
+        "policyCategory": "ORGANIZATION",
+        "description": null,
+        "released": true,
+        "deleted": null,
+        "originalPolicyName": "RAM.POLICES.POLICY_NAME.COMMON_ROLE"
+      }
+    ],
+    "countryCodePhone": "+86 138***2641",
+    "password": "18ed28966419effa4130e69c13f7d231c928b5c71974d3582a64a15c1832ff3c",
+    "projectIdList": null,
+    "needRamIdentity": null,
+    "isInnerUser": null,
+    "userType": null,
+    "isForceChange": false,
+    "isTempPassword": false,
+    "mfLoginPolicy": null,
+    "enableMultiFactLoginPolicy": null,
+    "maintainAt": null
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">6</span>
+        <span class="method" style="background:#61affe">GET</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/tenants/users</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>查询验证（冻结后）: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 64f42bc6-e34b-4047-bd8d-0f7a3d4a7f79</td></tr>
+            </table>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "bd627021663c6225",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "total": 9,
+    "list": [
+      {
+        "id": "a4628c06f07c4222b9eba6795c2db1e1",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "a4628c06f07c4222b9eba6795c2db1e1",
+        "name": "AT_ae5979_test_744711",
+        "userName": "AT_ae5979_autotest744711",
+        "email": "a*****5@test.com",
+        "phone": "138***2641",
+        "encryptedEmail": "zr+3UfwP16x4QDOqXgF5Ck9ewTkP+6gX",
+        "encryptedPhone": "24Qd3ENK3Qykpj1oKh9fRw==",
+        "countryCode": "+86",
+        "description": "自动修改_ae5979",
+        "createdAt": "2026-09-07 10:24:20",
+        "updatedAt": "2026-09-07 10:24:20",
+        "deleted": false,
+        "state": "DISABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "1f8e392309fc414c9d77d45d0315fedc"
+        ],
+        "policyList": [
+          {
+            "id": "1f8e392309fc414c9d77d45d0315fedc",
+            "tenantId": null,
+            "policyName": "普通用户",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": true,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.COMMON_ROLE"
+          }
+        ],
+        "countryCodePhone": "+86 138***2641",
+        "password": "18ed28966419effa4130e69c13f7d231c928b5c71974d3582a64a15c1832ff3c",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "8534814636014d36b8eccb8fe8b9290f",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "8534814636014d36b8eccb8fe8b9290f",
+        "name": "estack-admin-galaxy-dw",
+        "userName": "estack-admin-galaxy-dw",
+        "email": "b*****b@bb.b",
+        "phone": "188***9999",
+        "encryptedEmail": "wMRcOQgFUGo=",
+        "encryptedPhone": "Iz1LEVhewsTUcdhvqGRkfg==",
+        "countryCode": "+86",
+        "description": "asdas",
+        "createdAt": "2026-09-01 16:55:27",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "MAINTAIN"
+        ],
+        "policyList": [
+          {
+            "id": "MAINTAIN",
+            "tenantId": null,
+            "policyName": "代维管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.AGENT_MAINTENANCE_ADMIN"
+          }
+        ],
+        "countryCodePhone": "+86 188***9999",
+        "password": "0bb3c5d7a707286936df12b8f42a439c11f0f6f249fbcaddf56a27ec8aabcc89",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "d6373f3a36d04d4dad19708fcfce3c3b",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "d6373f3a36d04d4dad19708fcfce3c3b",
+        "name": "estack-operations-operator",
+        "userName": "estack-operations-operator",
+        "email": "1*****6@qq.com",
+        "phone": "188***8566",
+        "encryptedEmail": "IiYXqx1Sm2Wea2M3S+eYsk9ewTkP+6gX",
+        "encryptedPhone": "IiYXqx1Sm2V5+Hsw8+vJqw==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-08-18 11:24:30",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [],
+        "policyList": [],
+        "countryCodePhone": "+86 188***8566",
+        "password": "663d6833b5402d60f70af84f417181acfe57a21a4043212406e3af096eea26cc",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "d39550aaa00f4d0aa0b9b887b1e50fd9",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "d39550aaa00f4d0aa0b9b887b1e50fd9",
+        "name": "estack-operations-whole",
+        "userName": "estack-operations-whole",
+        "email": "1*****1@qq.com",
+        "phone": "188***2631",
+        "encryptedEmail": "h226UHMr8dTWcKToNjbtrE9ewTkP+6gX",
+        "encryptedPhone": "h226UHMr8dQGt2MEb6C/Rw==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-08-18 11:24:04",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [],
+        "policyList": [],
+        "countryCodePhone": "+86 188***2631",
+        "password": "723ccbccc2fde5f1e1c26094a191e3c2e694c440e860a43bd83bc5da2e77842e",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "0c5b1be90a59443283b2a2a3c07d9356",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "0c5b1be90a59443283b2a2a3c07d9356",
+        "name": "BC-OV",
+        "userName": "BC-OV",
+        "email": "1*****7@qq.com",
+        "phone": "188***1457",
+        "encryptedEmail": "3hmpCM+1128X0mxmAFu9G09ewTkP+6gX",
+        "encryptedPhone": "3hmpCM+112/TtV7/gHm9oQ==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-08-18 11:23:37",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [],
+        "policyList": [],
+        "countryCodePhone": "+86 188***1457",
+        "password": "9f0ae4a020839f6d61b7b46e9d8f618371f1e38e6d2e79a1f4d79b2cfce5d062",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "93552edc908e4dadae761fff1fd0f24c",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "93552edc908e4dadae761fff1fd0f24c",
+        "name": "estack-yy",
+        "userName": "estack-yy",
+        "email": "l*****u@163.com",
+        "phone": "188***1683",
+        "encryptedEmail": "d5DMRsWzfs9NOAiRMBvZMNq7TvsxOeiZ",
+        "encryptedPhone": "3hmpCM+112+O+OaTCsGN9A==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-01-24 12:19:29",
+        "updatedAt": "2025-03-11 17:24:50",
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "OPERATION"
+        ],
+        "policyList": [
+          {
+            "id": "OPERATION",
+            "tenantId": null,
+            "policyName": "运营管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.OPERATIONS_ADMIN"
+          }
+        ],
+        "countryCodePhone": "+86 188***1683",
+        "password": "6974d2bb056747082f6b7fcd01d61d0c9fcbc34f189a6c12d9a295891454d8e2",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "26a9754fddda4e5481f9f9c7a7de73c2",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "98a62b3b64674784bf85c51e7eee1701",
+        "ramId": "26a9754fddda4e5481f9f9c7a7de73c2",
+        "name": "ecsc-register",
+        "userName": "ecsc-register",
+        "email": "1*****8@12.com",
+        "phone": "180***9958",
+        "encryptedEmail": "6p0fb9yY6qRqFQwLL8nDKE9ewTkP+6gX",
+        "encryptedPhone": "6p0fb9yY6qS8nlnarMd2lA==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-01-24 12:19:29",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "d71c28dc4eca42abb84b3ba9ce777103"
+        ],
+        "policyList": [
+          {
+            "id": "d71c28dc4eca42abb84b3ba9ce777103",
+            "tenantId": null,
+            "policyName": "账号注册管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.ACCOUNT_REGISTRATION_ADMIN"
+          }
+        ],
+        "countryCodePhone": "+86 180***9958",
+        "password": "d05fecc49a87c1db315350a2f53cf6b0a61b31fa5838963310e308f7eec99110",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "8bdfb943a8c04943aa5140ca4ea29eb8",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "8bdfb943a8c04943aa5140ca4ea29eb8",
+        "name": "estack-accountRegister",
+        "userName": "estack-accountRegister",
+        "email": "1*****0@163.com",
+        "phone": "136***7060",
+        "encryptedEmail": "ksv59NQSQ7G53eJMhrKfzxgnf86GCBJV",
+        "encryptedPhone": "ksv59NQSQ7GxmNwkapOG9w==",
+        "countryCode": null,
+        "description": "",
+        "createdAt": "2024-05-30 14:58:39",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "d71c28dc4eca42abb84b3ba9ce777103"
+        ],
+        "policyList": [
+          {
+            "id": "d71c28dc4eca42abb84b3ba9ce777103",
+            "tenantId": null,
+            "policyName": "账号注册管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.ACCOUNT_REGISTRATION_ADMIN"
+          }
+        ],
+        "countryCodePhone": "136***7060",
+        "password": "f06062b91ec10780ab1fa35a3266d9744b4e3589b648bc03f2199639aa29e667",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "name": "ecsc-superAdmin",
+        "userName": "estack-superAdmin",
+        "email": "1*****9@163.com",
+        "phone": "188***8485",
+        "encryptedEmail": "Xzbe5PfuGlKPeMvwRy0oSg==",
+        "encryptedPhone": "NprgAP3FLJKyFwYaRG9oTw==",
+        "countryCode": null,
+        "description": "",
+        "createdAt": "2021-07-01 12:17:03",
+        "updatedAt": "2023-09-18 17:16:46",
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": true,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": true,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "SUPERADMIN"
+        ],
+        "policyList": [
+          {
+            "id": "SUPERADMIN",
+            "tenantId": null,
+            "policyName": "超级管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.SUPER_ADMIN"
+          }
+        ],
+        "countryCodePhone": "188***8485",
+        "password": "3d55d6b4e30781ee998dbb422293bbf1ae9e98ebbd7dad96d048cccee461a712",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      }
+    ],
+    "pageNum": 1,
+    "pageSize": 9,
+    "size": 9,
+    "startRow": 0,
+    "endRow": 8,
+    "pages": 1,
+    "prePage": 0,
+    "nextPage": 0,
+    "isFirstPage": true,
+    "isLastPage": true,
+    "hasPreviousPage": false,
+    "hasNextPage": false,
+    "navigatePages": 8,
+    "navigatepageNums": [
+      1
+    ],
+    "navigateFirstPage": 1,
+    "navigateLastPage": 1
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">7</span>
+        <span class="method" style="background:#fca130">PUT</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/users/a4628c06f07c4222b9eba6795c2db1e1/enable</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>启用: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 64f42bc6-e34b-4047-bd8d-0f7a3d4a7f79</td></tr>
+            </table>
+            <div class="section-label">Request Body</div>
+            <pre class="json-block">{
+  "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+  "adminId": "93552edc908e4dadae761fff1fd0f24c"
+}</pre>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "8016aaf1c1ba8e4b",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "id": "a4628c06f07c4222b9eba6795c2db1e1",
+    "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+    "tenantName": "Super Management Department",
+    "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+    "ramId": "a4628c06f07c4222b9eba6795c2db1e1",
+    "name": "AT_ae5979_test_744711",
+    "userName": "AT_ae5979_autotest744711",
+    "email": "a*****5@test.com",
+    "phone": "138***2641",
+    "encryptedEmail": "zr+3UfwP16x4QDOqXgF5Ck9ewTkP+6gX",
+    "encryptedPhone": "24Qd3ENK3Qykpj1oKh9fRw==",
+    "countryCode": "+86",
+    "description": "自动修改_ae5979",
+    "createdAt": "2026-09-07 10:24:20",
+    "updatedAt": "2026-09-07 10:24:20",
+    "deleted": false,
+    "state": "ENABLE",
+    "isAdmin": false,
+    "isProjectManager": false,
+    "isAuthentication": false,
+    "roleId": null,
+    "roleName": null,
+    "ancestorList": [
+      "Super Management Department"
+    ],
+    "isPassword": true,
+    "isEmail": true,
+    "isPhone": true,
+    "poolNameList": null,
+    "isRootTenantUser": true,
+    "isApproval": false,
+    "tenantLevel": 0,
+    "locked": false,
+    "policyIdList": [
+      "1f8e392309fc414c9d77d45d0315fedc"
+    ],
+    "policyList": [
+      {
+        "id": "1f8e392309fc414c9d77d45d0315fedc",
+        "tenantId": null,
+        "policyName": "普通用户",
+        "policyType": "SYSTEM",
+        "policyCategory": "ORGANIZATION",
+        "description": null,
+        "released": true,
+        "deleted": null,
+        "originalPolicyName": "RAM.POLICES.POLICY_NAME.COMMON_ROLE"
+      }
+    ],
+    "countryCodePhone": "+86 138***2641",
+    "password": "18ed28966419effa4130e69c13f7d231c928b5c71974d3582a64a15c1832ff3c",
+    "projectIdList": null,
+    "needRamIdentity": null,
+    "isInnerUser": null,
+    "userType": null,
+    "isForceChange": false,
+    "isTempPassword": false,
+    "mfLoginPolicy": null,
+    "enableMultiFactLoginPolicy": null,
+    "maintainAt": null
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">8</span>
+        <span class="method" style="background:#61affe">GET</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/tenants/users</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>查询验证（启用后）: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 64f42bc6-e34b-4047-bd8d-0f7a3d4a7f79</td></tr>
+            </table>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "63c991d8c8697b6a",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "total": 9,
+    "list": [
+      {
+        "id": "a4628c06f07c4222b9eba6795c2db1e1",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "a4628c06f07c4222b9eba6795c2db1e1",
+        "name": "AT_ae5979_test_744711",
+        "userName": "AT_ae5979_autotest744711",
+        "email": "a*****5@test.com",
+        "phone": "138***2641",
+        "encryptedEmail": "zr+3UfwP16x4QDOqXgF5Ck9ewTkP+6gX",
+        "encryptedPhone": "24Qd3ENK3Qykpj1oKh9fRw==",
+        "countryCode": "+86",
+        "description": "自动修改_ae5979",
+        "createdAt": "2026-09-07 10:24:20",
+        "updatedAt": "2026-09-07 10:24:20",
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "1f8e392309fc414c9d77d45d0315fedc"
+        ],
+        "policyList": [
+          {
+            "id": "1f8e392309fc414c9d77d45d0315fedc",
+            "tenantId": null,
+            "policyName": "普通用户",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": true,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.COMMON_ROLE"
+          }
+        ],
+        "countryCodePhone": "+86 138***2641",
+        "password": "18ed28966419effa4130e69c13f7d231c928b5c71974d3582a64a15c1832ff3c",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "8534814636014d36b8eccb8fe8b9290f",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "8534814636014d36b8eccb8fe8b9290f",
+        "name": "estack-admin-galaxy-dw",
+        "userName": "estack-admin-galaxy-dw",
+        "email": "b*****b@bb.b",
+        "phone": "188***9999",
+        "encryptedEmail": "wMRcOQgFUGo=",
+        "encryptedPhone": "Iz1LEVhewsTUcdhvqGRkfg==",
+        "countryCode": "+86",
+        "description": "asdas",
+        "createdAt": "2026-09-01 16:55:27",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "MAINTAIN"
+        ],
+        "policyList": [
+          {
+            "id": "MAINTAIN",
+            "tenantId": null,
+            "policyName": "代维管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.AGENT_MAINTENANCE_ADMIN"
+          }
+        ],
+        "countryCodePhone": "+86 188***9999",
+        "password": "0bb3c5d7a707286936df12b8f42a439c11f0f6f249fbcaddf56a27ec8aabcc89",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "d6373f3a36d04d4dad19708fcfce3c3b",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "d6373f3a36d04d4dad19708fcfce3c3b",
+        "name": "estack-operations-operator",
+        "userName": "estack-operations-operator",
+        "email": "1*****6@qq.com",
+        "phone": "188***8566",
+        "encryptedEmail": "IiYXqx1Sm2Wea2M3S+eYsk9ewTkP+6gX",
+        "encryptedPhone": "IiYXqx1Sm2V5+Hsw8+vJqw==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-08-18 11:24:30",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [],
+        "policyList": [],
+        "countryCodePhone": "+86 188***8566",
+        "password": "663d6833b5402d60f70af84f417181acfe57a21a4043212406e3af096eea26cc",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "d39550aaa00f4d0aa0b9b887b1e50fd9",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "d39550aaa00f4d0aa0b9b887b1e50fd9",
+        "name": "estack-operations-whole",
+        "userName": "estack-operations-whole",
+        "email": "1*****1@qq.com",
+        "phone": "188***2631",
+        "encryptedEmail": "h226UHMr8dTWcKToNjbtrE9ewTkP+6gX",
+        "encryptedPhone": "h226UHMr8dQGt2MEb6C/Rw==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-08-18 11:24:04",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [],
+        "policyList": [],
+        "countryCodePhone": "+86 188***2631",
+        "password": "723ccbccc2fde5f1e1c26094a191e3c2e694c440e860a43bd83bc5da2e77842e",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "0c5b1be90a59443283b2a2a3c07d9356",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "0c5b1be90a59443283b2a2a3c07d9356",
+        "name": "BC-OV",
+        "userName": "BC-OV",
+        "email": "1*****7@qq.com",
+        "phone": "188***1457",
+        "encryptedEmail": "3hmpCM+1128X0mxmAFu9G09ewTkP+6gX",
+        "encryptedPhone": "3hmpCM+112/TtV7/gHm9oQ==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-08-18 11:23:37",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [],
+        "policyList": [],
+        "countryCodePhone": "+86 188***1457",
+        "password": "9f0ae4a020839f6d61b7b46e9d8f618371f1e38e6d2e79a1f4d79b2cfce5d062",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "93552edc908e4dadae761fff1fd0f24c",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "93552edc908e4dadae761fff1fd0f24c",
+        "name": "estack-yy",
+        "userName": "estack-yy",
+        "email": "l*****u@163.com",
+        "phone": "188***1683",
+        "encryptedEmail": "d5DMRsWzfs9NOAiRMBvZMNq7TvsxOeiZ",
+        "encryptedPhone": "3hmpCM+112+O+OaTCsGN9A==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-01-24 12:19:29",
+        "updatedAt": "2025-03-11 17:24:50",
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "OPERATION"
+        ],
+        "policyList": [
+          {
+            "id": "OPERATION",
+            "tenantId": null,
+            "policyName": "运营管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.OPERATIONS_ADMIN"
+          }
+        ],
+        "countryCodePhone": "+86 188***1683",
+        "password": "6974d2bb056747082f6b7fcd01d61d0c9fcbc34f189a6c12d9a295891454d8e2",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "26a9754fddda4e5481f9f9c7a7de73c2",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "98a62b3b64674784bf85c51e7eee1701",
+        "ramId": "26a9754fddda4e5481f9f9c7a7de73c2",
+        "name": "ecsc-register",
+        "userName": "ecsc-register",
+        "email": "1*****8@12.com",
+        "phone": "180***9958",
+        "encryptedEmail": "6p0fb9yY6qRqFQwLL8nDKE9ewTkP+6gX",
+        "encryptedPhone": "6p0fb9yY6qS8nlnarMd2lA==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-01-24 12:19:29",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "d71c28dc4eca42abb84b3ba9ce777103"
+        ],
+        "policyList": [
+          {
+            "id": "d71c28dc4eca42abb84b3ba9ce777103",
+            "tenantId": null,
+            "policyName": "账号注册管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.ACCOUNT_REGISTRATION_ADMIN"
+          }
+        ],
+        "countryCodePhone": "+86 180***9958",
+        "password": "d05fecc49a87c1db315350a2f53cf6b0a61b31fa5838963310e308f7eec99110",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "8bdfb943a8c04943aa5140ca4ea29eb8",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "8bdfb943a8c04943aa5140ca4ea29eb8",
+        "name": "estack-accountRegister",
+        "userName": "estack-accountRegister",
+        "email": "1*****0@163.com",
+        "phone": "136***7060",
+        "encryptedEmail": "ksv59NQSQ7G53eJMhrKfzxgnf86GCBJV",
+        "encryptedPhone": "ksv59NQSQ7GxmNwkapOG9w==",
+        "countryCode": null,
+        "description": "",
+        "createdAt": "2024-05-30 14:58:39",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "d71c28dc4eca42abb84b3ba9ce777103"
+        ],
+        "policyList": [
+          {
+            "id": "d71c28dc4eca42abb84b3ba9ce777103",
+            "tenantId": null,
+            "policyName": "账号注册管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.ACCOUNT_REGISTRATION_ADMIN"
+          }
+        ],
+        "countryCodePhone": "136***7060",
+        "password": "f06062b91ec10780ab1fa35a3266d9744b4e3589b648bc03f2199639aa29e667",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "name": "ecsc-superAdmin",
+        "userName": "estack-superAdmin",
+        "email": "1*****9@163.com",
+        "phone": "188***8485",
+        "encryptedEmail": "Xzbe5PfuGlKPeMvwRy0oSg==",
+        "encryptedPhone": "NprgAP3FLJKyFwYaRG9oTw==",
+        "countryCode": null,
+        "description": "",
+        "createdAt": "2021-07-01 12:17:03",
+        "updatedAt": "2023-09-18 17:16:46",
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": true,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": true,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "SUPERADMIN"
+        ],
+        "policyList": [
+          {
+            "id": "SUPERADMIN",
+            "tenantId": null,
+            "policyName": "超级管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.SUPER_ADMIN"
+          }
+        ],
+        "countryCodePhone": "188***8485",
+        "password": "3d55d6b4e30781ee998dbb422293bbf1ae9e98ebbd7dad96d048cccee461a712",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      }
+    ],
+    "pageNum": 1,
+    "pageSize": 9,
+    "size": 9,
+    "startRow": 0,
+    "endRow": 8,
+    "pages": 1,
+    "prePage": 0,
+    "nextPage": 0,
+    "isFirstPage": true,
+    "isLastPage": true,
+    "hasPreviousPage": false,
+    "hasNextPage": false,
+    "navigatePages": 8,
+    "navigatepageNums": [
+      1
+    ],
+    "navigateFirstPage": 1,
+    "navigateLastPage": 1
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">9</span>
+        <span class="method" style="background:#49cc90">POST</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/password-reset/generate</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>重置密码: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 64f42bc6-e34b-4047-bd8d-0f7a3d4a7f79</td></tr>
+            </table>
+            <div class="section-label">Request Body</div>
+            <pre class="json-block">{
+  "userId": "a4628c06f07c4222b9eba6795c2db1e1",
+  "passwordPolicy": {
+    "id": "90542be67d584ab09daa12e697fb041a",
+    "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+    "minPasswordLength": 8,
+    "requireLowercaseCharacters": false,
+    "requireUppercaseCharacters": true,
+    "requireNumbers": true,
+    "requireSymbols": true,
+    "minPasswordDifferentCharacter": 0,
+    "createdAt": "2023-08-30 10:07:14",
+    "updatedAt": "2025-03-08 18:39:42",
+    "deleted": false,
+    "userName": null
+  },
+  "isRandomPassword": false
+}</pre>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "e03342808bac4cc6",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "userId": null,
+    "password": "V8#BI$TDNQYANQGU7GI$M",
+    "passwordStrength": "MEDIUM"
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">10</span>
+        <span class="method" style="background:#61affe">GET</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/tenants/users</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>查询验证（重置密码后）: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 64f42bc6-e34b-4047-bd8d-0f7a3d4a7f79</td></tr>
+            </table>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "b0c8e9567cee306e",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "total": 9,
+    "list": [
+      {
+        "id": "a4628c06f07c4222b9eba6795c2db1e1",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "a4628c06f07c4222b9eba6795c2db1e1",
+        "name": "AT_ae5979_test_744711",
+        "userName": "AT_ae5979_autotest744711",
+        "email": "a*****5@test.com",
+        "phone": "138***2641",
+        "encryptedEmail": "zr+3UfwP16x4QDOqXgF5Ck9ewTkP+6gX",
+        "encryptedPhone": "24Qd3ENK3Qykpj1oKh9fRw==",
+        "countryCode": "+86",
+        "description": "自动修改_ae5979",
+        "createdAt": "2026-09-07 10:24:20",
+        "updatedAt": "2026-09-07 10:24:20",
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "1f8e392309fc414c9d77d45d0315fedc"
+        ],
+        "policyList": [
+          {
+            "id": "1f8e392309fc414c9d77d45d0315fedc",
+            "tenantId": null,
+            "policyName": "普通用户",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": true,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.COMMON_ROLE"
+          }
+        ],
+        "countryCodePhone": "+86 138***2641",
+        "password": "18ed28966419effa4130e69c13f7d231c928b5c71974d3582a64a15c1832ff3c",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "8534814636014d36b8eccb8fe8b9290f",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "8534814636014d36b8eccb8fe8b9290f",
+        "name": "estack-admin-galaxy-dw",
+        "userName": "estack-admin-galaxy-dw",
+        "email": "b*****b@bb.b",
+        "phone": "188***9999",
+        "encryptedEmail": "wMRcOQgFUGo=",
+        "encryptedPhone": "Iz1LEVhewsTUcdhvqGRkfg==",
+        "countryCode": "+86",
+        "description": "asdas",
+        "createdAt": "2026-09-01 16:55:27",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "MAINTAIN"
+        ],
+        "policyList": [
+          {
+            "id": "MAINTAIN",
+            "tenantId": null,
+            "policyName": "代维管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.AGENT_MAINTENANCE_ADMIN"
+          }
+        ],
+        "countryCodePhone": "+86 188***9999",
+        "password": "0bb3c5d7a707286936df12b8f42a439c11f0f6f249fbcaddf56a27ec8aabcc89",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "d6373f3a36d04d4dad19708fcfce3c3b",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "d6373f3a36d04d4dad19708fcfce3c3b",
+        "name": "estack-operations-operator",
+        "userName": "estack-operations-operator",
+        "email": "1*****6@qq.com",
+        "phone": "188***8566",
+        "encryptedEmail": "IiYXqx1Sm2Wea2M3S+eYsk9ewTkP+6gX",
+        "encryptedPhone": "IiYXqx1Sm2V5+Hsw8+vJqw==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-08-18 11:24:30",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [],
+        "policyList": [],
+        "countryCodePhone": "+86 188***8566",
+        "password": "663d6833b5402d60f70af84f417181acfe57a21a4043212406e3af096eea26cc",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "d39550aaa00f4d0aa0b9b887b1e50fd9",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "d39550aaa00f4d0aa0b9b887b1e50fd9",
+        "name": "estack-operations-whole",
+        "userName": "estack-operations-whole",
+        "email": "1*****1@qq.com",
+        "phone": "188***2631",
+        "encryptedEmail": "h226UHMr8dTWcKToNjbtrE9ewTkP+6gX",
+        "encryptedPhone": "h226UHMr8dQGt2MEb6C/Rw==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-08-18 11:24:04",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [],
+        "policyList": [],
+        "countryCodePhone": "+86 188***2631",
+        "password": "723ccbccc2fde5f1e1c26094a191e3c2e694c440e860a43bd83bc5da2e77842e",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "0c5b1be90a59443283b2a2a3c07d9356",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "0c5b1be90a59443283b2a2a3c07d9356",
+        "name": "BC-OV",
+        "userName": "BC-OV",
+        "email": "1*****7@qq.com",
+        "phone": "188***1457",
+        "encryptedEmail": "3hmpCM+1128X0mxmAFu9G09ewTkP+6gX",
+        "encryptedPhone": "3hmpCM+112/TtV7/gHm9oQ==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-08-18 11:23:37",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [],
+        "policyList": [],
+        "countryCodePhone": "+86 188***1457",
+        "password": "9f0ae4a020839f6d61b7b46e9d8f618371f1e38e6d2e79a1f4d79b2cfce5d062",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "93552edc908e4dadae761fff1fd0f24c",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "93552edc908e4dadae761fff1fd0f24c",
+        "name": "estack-yy",
+        "userName": "estack-yy",
+        "email": "l*****u@163.com",
+        "phone": "188***1683",
+        "encryptedEmail": "d5DMRsWzfs9NOAiRMBvZMNq7TvsxOeiZ",
+        "encryptedPhone": "3hmpCM+112+O+OaTCsGN9A==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-01-24 12:19:29",
+        "updatedAt": "2025-03-11 17:24:50",
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "OPERATION"
+        ],
+        "policyList": [
+          {
+            "id": "OPERATION",
+            "tenantId": null,
+            "policyName": "运营管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.OPERATIONS_ADMIN"
+          }
+        ],
+        "countryCodePhone": "+86 188***1683",
+        "password": "6974d2bb056747082f6b7fcd01d61d0c9fcbc34f189a6c12d9a295891454d8e2",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "26a9754fddda4e5481f9f9c7a7de73c2",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "98a62b3b64674784bf85c51e7eee1701",
+        "ramId": "26a9754fddda4e5481f9f9c7a7de73c2",
+        "name": "ecsc-register",
+        "userName": "ecsc-register",
+        "email": "1*****8@12.com",
+        "phone": "180***9958",
+        "encryptedEmail": "6p0fb9yY6qRqFQwLL8nDKE9ewTkP+6gX",
+        "encryptedPhone": "6p0fb9yY6qS8nlnarMd2lA==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-01-24 12:19:29",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "d71c28dc4eca42abb84b3ba9ce777103"
+        ],
+        "policyList": [
+          {
+            "id": "d71c28dc4eca42abb84b3ba9ce777103",
+            "tenantId": null,
+            "policyName": "账号注册管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.ACCOUNT_REGISTRATION_ADMIN"
+          }
+        ],
+        "countryCodePhone": "+86 180***9958",
+        "password": "d05fecc49a87c1db315350a2f53cf6b0a61b31fa5838963310e308f7eec99110",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "8bdfb943a8c04943aa5140ca4ea29eb8",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "8bdfb943a8c04943aa5140ca4ea29eb8",
+        "name": "estack-accountRegister",
+        "userName": "estack-accountRegister",
+        "email": "1*****0@163.com",
+        "phone": "136***7060",
+        "encryptedEmail": "ksv59NQSQ7G53eJMhrKfzxgnf86GCBJV",
+        "encryptedPhone": "ksv59NQSQ7GxmNwkapOG9w==",
+        "countryCode": null,
+        "description": "",
+        "createdAt": "2024-05-30 14:58:39",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "d71c28dc4eca42abb84b3ba9ce777103"
+        ],
+        "policyList": [
+          {
+            "id": "d71c28dc4eca42abb84b3ba9ce777103",
+            "tenantId": null,
+            "policyName": "账号注册管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.ACCOUNT_REGISTRATION_ADMIN"
+          }
+        ],
+        "countryCodePhone": "136***7060",
+        "password": "f06062b91ec10780ab1fa35a3266d9744b4e3589b648bc03f2199639aa29e667",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "name": "ecsc-superAdmin",
+        "userName": "estack-superAdmin",
+        "email": "1*****9@163.com",
+        "phone": "188***8485",
+        "encryptedEmail": "Xzbe5PfuGlKPeMvwRy0oSg==",
+        "encryptedPhone": "NprgAP3FLJKyFwYaRG9oTw==",
+        "countryCode": null,
+        "description": "",
+        "createdAt": "2021-07-01 12:17:03",
+        "updatedAt": "2023-09-18 17:16:46",
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": true,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": true,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "SUPERADMIN"
+        ],
+        "policyList": [
+          {
+            "id": "SUPERADMIN",
+            "tenantId": null,
+            "policyName": "超级管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.SUPER_ADMIN"
+          }
+        ],
+        "countryCodePhone": "188***8485",
+        "password": "3d55d6b4e30781ee998dbb422293bbf1ae9e98ebbd7dad96d048cccee461a712",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      }
+    ],
+    "pageNum": 1,
+    "pageSize": 9,
+    "size": 9,
+    "startRow": 0,
+    "endRow": 8,
+    "pages": 1,
+    "prePage": 0,
+    "nextPage": 0,
+    "isFirstPage": true,
+    "isLastPage": true,
+    "hasPreviousPage": false,
+    "hasNextPage": false,
+    "navigatePages": 8,
+    "navigatepageNums": [
+      1
+    ],
+    "navigateFirstPage": 1,
+    "navigateLastPage": 1
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">11</span>
+        <span class="method" style="background:#f93e3e">DELETE</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/users/batch/delete</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>批量删除: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 64f42bc6-e34b-4047-bd8d-0f7a3d4a7f79</td></tr>
+            </table>
+            <div class="section-label">Request Body</div>
+            <pre class="json-block">[
+  "a4628c06f07c4222b9eba6795c2db1e1"
+]</pre>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "99237f0fdd9e2c9f",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": 1
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">12</span>
+        <span class="method" style="background:#61affe">GET</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/tenants/users</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>查询验证（删除后）: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 64f42bc6-e34b-4047-bd8d-0f7a3d4a7f79</td></tr>
+            </table>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "921568593d4a3a08",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "total": 8,
+    "list": [
+      {
+        "id": "8534814636014d36b8eccb8fe8b9290f",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "8534814636014d36b8eccb8fe8b9290f",
+        "name": "estack-admin-galaxy-dw",
+        "userName": "estack-admin-galaxy-dw",
+        "email": "b*****b@bb.b",
+        "phone": "188***9999",
+        "encryptedEmail": "wMRcOQgFUGo=",
+        "encryptedPhone": "Iz1LEVhewsTUcdhvqGRkfg==",
+        "countryCode": "+86",
+        "description": "asdas",
+        "createdAt": "2026-09-01 16:55:27",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "MAINTAIN"
+        ],
+        "policyList": [
+          {
+            "id": "MAINTAIN",
+            "tenantId": null,
+            "policyName": "代维管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.AGENT_MAINTENANCE_ADMIN"
+          }
+        ],
+        "countryCodePhone": "+86 188***9999",
+        "password": "0bb3c5d7a707286936df12b8f42a439c11f0f6f249fbcaddf56a27ec8aabcc89",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "d6373f3a36d04d4dad19708fcfce3c3b",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "d6373f3a36d04d4dad19708fcfce3c3b",
+        "name": "estack-operations-operator",
+        "userName": "estack-operations-operator",
+        "email": "1*****6@qq.com",
+        "phone": "188***8566",
+        "encryptedEmail": "IiYXqx1Sm2Wea2M3S+eYsk9ewTkP+6gX",
+        "encryptedPhone": "IiYXqx1Sm2V5+Hsw8+vJqw==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-08-18 11:24:30",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [],
+        "policyList": [],
+        "countryCodePhone": "+86 188***8566",
+        "password": "663d6833b5402d60f70af84f417181acfe57a21a4043212406e3af096eea26cc",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "d39550aaa00f4d0aa0b9b887b1e50fd9",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "d39550aaa00f4d0aa0b9b887b1e50fd9",
+        "name": "estack-operations-whole",
+        "userName": "estack-operations-whole",
+        "email": "1*****1@qq.com",
+        "phone": "188***2631",
+        "encryptedEmail": "h226UHMr8dTWcKToNjbtrE9ewTkP+6gX",
+        "encryptedPhone": "h226UHMr8dQGt2MEb6C/Rw==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-08-18 11:24:04",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [],
+        "policyList": [],
+        "countryCodePhone": "+86 188***2631",
+        "password": "723ccbccc2fde5f1e1c26094a191e3c2e694c440e860a43bd83bc5da2e77842e",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "0c5b1be90a59443283b2a2a3c07d9356",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "0c5b1be90a59443283b2a2a3c07d9356",
+        "name": "BC-OV",
+        "userName": "BC-OV",
+        "email": "1*****7@qq.com",
+        "phone": "188***1457",
+        "encryptedEmail": "3hmpCM+1128X0mxmAFu9G09ewTkP+6gX",
+        "encryptedPhone": "3hmpCM+112/TtV7/gHm9oQ==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-08-18 11:23:37",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [],
+        "policyList": [],
+        "countryCodePhone": "+86 188***1457",
+        "password": "9f0ae4a020839f6d61b7b46e9d8f618371f1e38e6d2e79a1f4d79b2cfce5d062",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "93552edc908e4dadae761fff1fd0f24c",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "93552edc908e4dadae761fff1fd0f24c",
+        "name": "estack-yy",
+        "userName": "estack-yy",
+        "email": "l*****u@163.com",
+        "phone": "188***1683",
+        "encryptedEmail": "d5DMRsWzfs9NOAiRMBvZMNq7TvsxOeiZ",
+        "encryptedPhone": "3hmpCM+112+O+OaTCsGN9A==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-01-24 12:19:29",
+        "updatedAt": "2025-03-11 17:24:50",
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "OPERATION"
+        ],
+        "policyList": [
+          {
+            "id": "OPERATION",
+            "tenantId": null,
+            "policyName": "运营管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.OPERATIONS_ADMIN"
+          }
+        ],
+        "countryCodePhone": "+86 188***1683",
+        "password": "6974d2bb056747082f6b7fcd01d61d0c9fcbc34f189a6c12d9a295891454d8e2",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "26a9754fddda4e5481f9f9c7a7de73c2",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "98a62b3b64674784bf85c51e7eee1701",
+        "ramId": "26a9754fddda4e5481f9f9c7a7de73c2",
+        "name": "ecsc-register",
+        "userName": "ecsc-register",
+        "email": "1*****8@12.com",
+        "phone": "180***9958",
+        "encryptedEmail": "6p0fb9yY6qRqFQwLL8nDKE9ewTkP+6gX",
+        "encryptedPhone": "6p0fb9yY6qS8nlnarMd2lA==",
+        "countryCode": "+86",
+        "description": "",
+        "createdAt": "2025-01-24 12:19:29",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "d71c28dc4eca42abb84b3ba9ce777103"
+        ],
+        "policyList": [
+          {
+            "id": "d71c28dc4eca42abb84b3ba9ce777103",
+            "tenantId": null,
+            "policyName": "账号注册管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.ACCOUNT_REGISTRATION_ADMIN"
+          }
+        ],
+        "countryCodePhone": "+86 180***9958",
+        "password": "d05fecc49a87c1db315350a2f53cf6b0a61b31fa5838963310e308f7eec99110",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "8bdfb943a8c04943aa5140ca4ea29eb8",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "8bdfb943a8c04943aa5140ca4ea29eb8",
+        "name": "estack-accountRegister",
+        "userName": "estack-accountRegister",
+        "email": "1*****0@163.com",
+        "phone": "136***7060",
+        "encryptedEmail": "ksv59NQSQ7G53eJMhrKfzxgnf86GCBJV",
+        "encryptedPhone": "ksv59NQSQ7GxmNwkapOG9w==",
+        "countryCode": null,
+        "description": "",
+        "createdAt": "2024-05-30 14:58:39",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "d71c28dc4eca42abb84b3ba9ce777103"
+        ],
+        "policyList": [
+          {
+            "id": "d71c28dc4eca42abb84b3ba9ce777103",
+            "tenantId": null,
+            "policyName": "账号注册管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.ACCOUNT_REGISTRATION_ADMIN"
+          }
+        ],
+        "countryCodePhone": "136***7060",
+        "password": "f06062b91ec10780ab1fa35a3266d9744b4e3589b648bc03f2199639aa29e667",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      },
+      {
+        "id": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "name": "ecsc-superAdmin",
+        "userName": "estack-superAdmin",
+        "email": "1*****9@163.com",
+        "phone": "188***8485",
+        "encryptedEmail": "Xzbe5PfuGlKPeMvwRy0oSg==",
+        "encryptedPhone": "NprgAP3FLJKyFwYaRG9oTw==",
+        "countryCode": null,
+        "description": "",
+        "createdAt": "2021-07-01 12:17:03",
+        "updatedAt": "2023-09-18 17:16:46",
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": true,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": true,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "SUPERADMIN"
+        ],
+        "policyList": [
+          {
+            "id": "SUPERADMIN",
+            "tenantId": null,
+            "policyName": "超级管理员",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": false,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.SUPER_ADMIN"
+          }
+        ],
+        "countryCodePhone": "188***8485",
+        "password": "3d55d6b4e30781ee998dbb422293bbf1ae9e98ebbd7dad96d048cccee461a712",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      }
+    ],
+    "pageNum": 1,
+    "pageSize": 8,
+    "size": 8,
+    "startRow": 0,
+    "endRow": 7,
+    "pages": 1,
+    "prePage": 0,
+    "nextPage": 0,
+    "isFirstPage": true,
+    "isLastPage": true,
+    "hasPreviousPage": false,
+    "hasNextPage": false,
+    "navigatePages": 8,
+    "navigatepageNums": [
+      1
+    ],
+    "navigateFirstPage": 1,
+    "navigateLastPage": 1
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+  </div>
+  <div class="footer">Postman/Newman 风格报告 · 由 lib/test_report.py 生成 · API_AI_test</div>
+</div>
+</body>
+</html>

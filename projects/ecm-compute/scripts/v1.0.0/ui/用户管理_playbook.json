@@ -2,15 +2,21 @@
   "meta": {
     "module_name": "用户管理",
     "target_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/user",
-    "base_url": "",
-    "login_url": "",
+    "base_url": "https://10.151.61.248",
+    "login_url": "https://10.151.61.248/estack/web/estack/login",
     "framework": "element-ui",
-    "generated_at": "2026-09-04 12:26:49",
-    "version": "1.0"
+    "generated_at": "2026-09-07 10:22:43",
+    "version": "1.0",
+    "auth_config": {
+      "token_key": "estackToken",
+      "token_storage": "localStorage",
+      "cookie_token_key": "accessToken"
+    }
   },
   "page_structure": {},
   "operations": {
     "create": {
+      "display_name": "创建用户",
       "description": "create",
       "steps": [
         {
@@ -149,6 +155,7 @@
       "status": "success"
     },
     "update": {
+      "display_name": "编辑",
       "description": "update",
       "steps": [
         {
@@ -237,6 +244,7 @@
       "status": "success"
     },
     "lock": {
+      "display_name": "冻结",
       "description": "lock",
       "steps": [
         {
@@ -262,6 +270,7 @@
       "status": "success"
     },
     "unlock": {
+      "display_name": "启用",
       "description": "unlock",
       "steps": [
         {
@@ -287,6 +296,7 @@
       "status": "success"
     },
     "reset": {
+      "display_name": "重置密码",
       "description": "reset",
       "steps": [
         {
@@ -311,18 +321,15 @@
       "marker": null,
       "status": "success"
     },
-    "migrate": {
-      "description": "migrate",
+    "import": {
+      "display_name": "批量导入",
+      "description": "import",
       "steps": [
         {
           "action": "click_button",
-          "text": "批量迁移",
-          "playwright_locator": "button:has-text('批量迁移')",
+          "text": "批量导入",
+          "playwright_locator": "button:has-text('批量导入')",
           "description": "点击操作按钮"
-        },
-        {
-          "action": "close_dialog",
-          "description": "关闭残留对话框"
         },
         {
           "action": "assert_success",
@@ -331,9 +338,143 @@
         }
       ],
       "marker": null,
-      "status": "success"
+      "status": "failed",
+      "error_type": "env_dependency",
+      "error_text": "导入操作需要上传文件，无法自动完成"
+    },
+    "authorize": {
+      "display_name": "授权",
+      "description": "authorize",
+      "steps": [
+        {
+          "action": "find_row",
+          "description": "定位目标数据行"
+        },
+        {
+          "action": "click_button",
+          "text": "授权",
+          "playwright_locator": "button:has-text('授权')",
+          "description": "点击操作按钮"
+        },
+        {
+          "action": "assert_success",
+          "playwright_locator": ".el-message--success",
+          "description": "验证操作成功"
+        }
+      ],
+      "marker": null,
+      "status": "failed",
+      "error_type": "required_field_empty",
+      "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
+      "nav_info": {
+        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=34e2594fca9e44cd9e23b25474838c7f&type=userList&rowId=bcf21f9feae8437b922d1a2cc697efc5",
+        "depth": 0,
+        "page_title": "eStack Enterprise",
+        "has_form": true,
+        "form_fields": [
+          {
+            "label": "授权用户",
+            "type": "select",
+            "kb_category": "el-select",
+            "selector": ".el-form-item:nth-child(1) .el-select",
+            "required": true
+          },
+          {
+            "label": "授权用户组",
+            "type": "select",
+            "kb_category": "el-select",
+            "selector": ".el-form-item:nth-child(2) .el-select",
+            "required": true
+          },
+          {
+            "label": "授权角色",
+            "type": "radio",
+            "kb_category": "radio",
+            "selector": ".el-form-item:nth-child(3) .el-radio-group",
+            "required": true,
+            "firstOptionText": "组织架构"
+          },
+          {
+            "label": "授权范围",
+            "type": "radio",
+            "kb_category": "radio",
+            "selector": ".el-form-item:nth-child(4) .el-radio-group",
+            "required": false,
+            "firstOptionText": "全部"
+          }
+        ],
+        "fill_data": {
+          "名称": "AT_test_auto",
+          "编码": "code_747720",
+          "描述": "自动测试创建于747720",
+          "备注": "自动创建于747720",
+          "说明": "自动测试创建于747720",
+          "用户名": "AT_test_auto",
+          "姓名": "AT_test_auto",
+          "邮箱": "at_747720@test.com",
+          "手机": "13838396588",
+          "密码": "Test@123456",
+          "确认密码": "Test@123456",
+          "角色名称": "AT_test_auto",
+          "角色编码": "role_code_747720",
+          "角色描述": "自动测试角色创建于747720",
+          "username": "AT_test_auto",
+          "name": "AT_test_auto",
+          "email": "at_747720@test.com",
+          "phone": "13838396588",
+          "password": "Test@123456",
+          "description": "自动测试创建于747720",
+          "code": "code_747720",
+          "remark": "自动创建于747720",
+          "授权用户": "AT_AT_test_auto_747720",
+          "授权角色": "AT_AT_test_auto_747720",
+          "授权范围": "AT_AT_test_auto_747720"
+        },
+        "submit_result": {},
+        "error_type": "required_field_empty",
+        "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
+        "field_states": [
+          {
+            "label": "授权用户",
+            "type": "select",
+            "value": "",
+            "isDisabled": true,
+            "hasValue": false
+          },
+          {
+            "label": "授权用户组",
+            "type": "select",
+            "value": "",
+            "isDisabled": false,
+            "hasValue": false
+          },
+          {
+            "label": "授权角色",
+            "type": "radio",
+            "value": "组织架构",
+            "isDisabled": false,
+            "hasValue": true
+          }
+        ]
+      }
+    },
+    "migrate": {
+      "display_name": "批量迁移",
+      "description": "migrate",
+      "steps": [
+        {
+          "action": "assert_success",
+          "playwright_locator": ".el-message--success",
+          "description": "验证操作成功"
+        }
+      ],
+      "marker": null,
+      "status": "failed",
+      "error_type": "required_field_empty",
+      "error_text": "弹窗中必填字段为空: 待迁移用户：, 待迁移部门："
     },
     "delete": {
+      "display_name": "批量删除",
       "description": "delete",
       "steps": [
         {

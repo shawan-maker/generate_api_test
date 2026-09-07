@@ -564,24 +564,51 @@ class TestRunner:
         return None
 
     def fetch_context(self, session: requests.Session):
+        """从 probe_url 获取上下文字段（tenantId, adminId 等）。
+
+        如果 probe_url 配置了但请求失败，则退出测试（这些字段通常是必需的）。
+        """
         auth_profile = self.manifest.get("auth_profile", {})
         probe_url = auth_profile.get("probe_url", "")
         context_fields = auth_profile.get("context_fields", {})
         if not probe_url:
             return
+
+        url = self.base_url + probe_url
+        print(f"  🔍 获取上下文: {url}")
+
         try:
-            url = self.base_url + probe_url
-            resp = session.get(url)
-            if resp.status_code < 300:
-                resp_json = resp.json()
-                for field, config in context_fields.items():
-                    path = config.get("path", "")
-                    value = self.parser.extract_by_path(resp_json, path)
-                    if value is not None:
-                        self.state[field] = value
-                print(f"  ✅ 上下文已加载: {list(context_fields.keys())}")
+            resp = session.get(url, timeout=10)
         except Exception as e:
-            print(f"  ⚠️ 获取上下文失败: {e}")
+            print(f"  ❌ 无法连接 probe_url: {e}")
+            print(f"     Cookie/Token 可能已过期，请刷新")
+            sys.exit(1)
+
+        if resp.status_code >= 300:
+            print(f"  ❌ probe_url 返回 HTTP {resp.status_code}")
+            print(f"     Cookie/Token 可能已过期，请刷新")
+            sys.exit(1)
+
+        try:
+            resp_json = resp.json()
+        except Exception:
+            print(f"  ❌ probe_url 响应不是 JSON")
+            sys.exit(1)
+
+        extracted = []
+        for field, config in context_fields.items():
+            path = config.get("path", "")
+            value = self.parser.extract_by_path(resp_json, path)
+            if value is not None:
+                self.state[field] = value
+                extracted.append(f"{field}={value}")
+            else:
+                print(f"  ⚠️ 无法提取 {field} (path: {path})")
+
+        if extracted:
+            print(f"  ✅ 上下文已加载: {', '.join(extracted)}")
+        else:
+            print(f"  ⚠️ 未提取到任何上下文字段")
 
     def prepare_create_body(self, step_def: dict):
         body_template = step_def.get("body_template", {})

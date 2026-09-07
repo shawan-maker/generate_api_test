@@ -4080,7 +4080,10 @@ def build_playbook(ui_result: dict) -> dict:
             op_steps.extend(_build_generic_steps(op_data))
 
         if op_steps:
+            # 使用 trigger_text 作为业务名称（如"创建用户"而非"create"）
+            display_name = op_data.get("trigger_text") or op_data.get("description", action)
             entry = {
+                "display_name": display_name,
                 "description": op_data.get("description", action),
                 "steps": op_steps,
                 "marker": op_data.get("marker"),

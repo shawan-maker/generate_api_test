@@ -69,9 +69,15 @@ def generate_manifest_script(manifest: dict, module_name: str) -> str:
     L.append('from lib.test_runtime import TestRunner')
     L.append('')
 
-    # Manifest 数据
+    # Manifest 数据 — 移除 cookie-only 模式不需要的字段
     # json.dumps 输出 JSON 格式（null/true/false），需替换为 Python 字面量
-    manifest_json = json.dumps(manifest, indent=2, ensure_ascii=False)
+    manifest_clean = json.loads(json.dumps(manifest))
+    auth_profile = manifest_clean.get("auth_profile", {})
+    # cookie-only 模式不需要 captcha 和 credentials_default
+    auth_profile.pop("captcha", None)
+    auth_profile.pop("credentials_default", None)
+
+    manifest_json = json.dumps(manifest_clean, indent=2, ensure_ascii=False)
     manifest_json = manifest_json.replace(": null", ": None")
     manifest_json = manifest_json.replace(": true", ": True")
     manifest_json = manifest_json.replace(": false", ": False")

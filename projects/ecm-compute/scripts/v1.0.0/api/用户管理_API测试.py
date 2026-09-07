@@ -1,7 +1,7 @@
 """
 用户管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-04 14:41:58
-目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/user
+生成时间: 2026-09-07 10:43:00
+目标URL: https://10.151.61.248D:/Program Files (x86)/Git/estack/web/estack/user-center/user-manage/user
 
 执行流程:
   1. 创建用户
@@ -35,7 +35,7 @@ MANIFEST = {
     "name": "用户管理",
     "base_url": "https://10.151.61.248",
     "login_url": "https://10.151.61.248/estack/web/estack/login",
-    "target_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/user"
+    "target_url": "https://10.151.61.248D:/Program Files (x86)/Git/estack/web/estack/user-center/user-manage/user"
   },
   "response_contract": {
     "envelope_keys": [
@@ -96,12 +96,12 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userName": "autotest496052",
-        "password": "cRTuXumd/pUcvTmWvm7OaEf4VGgKwCqQq9tTRvh+WRf+hQZPmi5XP++8oovsVVCJQ7sE5yNhx/fn0rCxPn5NyVQfDbHyp+ZgI/7X+eWZ987yAN3HWmAmm5HRgmwRm76wxBtaUoNN9W5Eh3mjrTsTcbOOBxB1XuiwgK+hzWYSnCk=",
-        "name": "test_496052",
-        "email": "ArEN/57hYmo82S4QlwK5D/VhZZE/z7lbvis8ThfnDmtZ/AnnxP5P0ogIKfTOsEQDrbKFrJzw+znTtBvj+3zdnH3XCaF+mi5AQV9czTU3RyooIz0hz7gkB9JsKfQREEVNhBEuMJRW4XDz/UWDuxcMcLbARM9AbFXz1ROWfaScqBo=",
-        "phone": "D2zr64rw1ZovsQZS+SEtwzCYfaSfV9HREMlbxkluqgrVS1chPZc0Ist9e6I2nH12BlU+ApmDwlDP78PV7n5vyCE4AqLWAWacb2zCYtwwTmFsplA+l9WdUR8cbT3db/5zRqe3DxtHwjUe1kGdvjYi1Q/lS2S7hm7kqS5QJi0LU34=",
-        "description": "auto_desc_496052",
+        "userName": "autotest744711",
+        "password": "gw+UD7NGpQbB/4D1i+F6O746256uE+66DHzFXhXfN5OgdQ1rCWWr9yhGFJz29nhDnU3NSvMiGW9pn4lyUTF71VrNp6/z+js+uV8F2BVO5G++MRDANDPaCcwV7SUeRzvAfuz22gC2HGVbO3FXUXCXagq6izbF+z/oKCAc39D71t4=",
+        "name": "test_744711",
+        "email": "VrBws9ljgWeFhD6AOAYdX7LekxFUMNgUVcwbgR8legQMD1Vu/n5YxfacUaVFva3veDl7aubLiCnxeugfNcwxv9vnFQd0qlVmhS2vHvACwpQTtWgEPKASZo7e2x4eAZqQS0907qXKvt0GFE/mhLSVa17A2qaPLj1FwIzd9/8k9HQ=",
+        "phone": "hqtGpLgiIwR5TUIX1kE0ocmCr9mcJXz7pBf0xPBMmHwH4MBJ7id+HenHUU6b1MYGo2zJN9fslY4REizZt8J0lM0Cknhdwt2Xo4Kc/8UmxHx2h2RbAZgFaile0Py/aEulmgIJjBC8tFxunbkXaoHUcXNvC+clFyqhlCV9ctNm8Ns=",
+        "description": "auto_desc_744711",
         "policyIds": [
           "1f8e392309fc414c9d77d45d0315fedc"
         ],
@@ -176,13 +176,13 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "ef3949bfc9c64f2f93ff2649dbfe6a09",
-        "name": "test_496074",
-        "description": "auto_desc_496074",
+        "userId": "ac44abfff4734e008b72c47944e77f5e",
+        "name": "test_744735",
+        "description": "auto_desc_744735",
         "tenantId": "34e2594fca9e44cd9e23b25474838c7f",
         "countryCode": "+86",
-        "phone": "KTGXtH9J/7Qi49jDFDPNolslOA/NyZW56vVPrha1NyBbOauebG+2FZIhPGMuLY4G7KkRF/YzhDvGE2FJOUnsH1PX8EnUCFCP8A+wEgEW1/HYHSAJEx6QRPQ5GEwCNv6aL0I4ZvT+NeyMZT7nQcawEWgN26Z9T7qXfl4t1WozXgI=",
-        "email": "Q0JiHO0OvyPF0bf+O5ulGJzPzvyv5HOgTXRpNmtH5fhYXP2q+BFkATcIfXRdYq0faInExZ1KdAqfXWgQH1awn/CwX6rUPZe9u413Jls+ttkCVbJZz8CrYbcPAtOYXPevGbFt6/zLZas5mkkRF8NZ7wxkn0ntm5z0ADkk5VtMv1w=",
+        "phone": "bg0XCQ2kTrZO+b8jOqZbIr1/aR7MrCXHyaqThoAzt384p08fkF3qJPQSIiJjkrTV5Z7YzGCvx82zfyijLrt1hg/O9VxhLkJzo3S12QnzKwEcho7+4+XpGS0ko1ObqHbaoOGPIzOPSlfMMcH2fpW/Zv1zplbJlbueWVkKivf0zqI=",
+        "email": "KURCwwYNp5zwbArytZSw8S4lxF7lzzGtRzt/z5De1+hG8IJVavfcc2/rbHwenY1Px1YCu6+73YW78LgIMqwBP8fd3ljXVlTBZbLvPeQWlqwDFo8LJFVs0N6TLJ0QnXhVgTHqVHldtk5fuby0kKYGzcCTlthCCzH7mUEYtPQLIVo=",
         "adminId": "93552edc908e4dadae761fff1fd0f24c"
       },
       "body_field_roles": {
@@ -241,7 +241,7 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "ef3949bfc9c64f2f93ff2649dbfe6a09",
+        "userId": "ac44abfff4734e008b72c47944e77f5e",
         "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
         "adminId": "93552edc908e4dadae761fff1fd0f24c"
       },
@@ -327,7 +327,7 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "ef3949bfc9c64f2f93ff2649dbfe6a09",
+        "userId": "ac44abfff4734e008b72c47944e77f5e",
         "passwordPolicy": {
           "id": "90542be67d584ab09daa12e697fb041a",
           "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
@@ -383,7 +383,7 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": [
-        "ef3949bfc9c64f2f93ff2649dbfe6a09"
+        "ac44abfff4734e008b72c47944e77f5e"
       ],
       "body_field_roles": {
         "__array_items__": {

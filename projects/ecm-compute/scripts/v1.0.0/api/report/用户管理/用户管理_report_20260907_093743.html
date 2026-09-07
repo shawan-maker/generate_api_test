@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>用户管理 API 测试报告</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "SF Pro Text", "Helvetica Neue", "Microsoft YaHei", "PingFang SC", sans-serif;
+         background: #f4f5f7; color: #1f2937; }
+  .header { background: linear-gradient(135deg, #1f2937 0%, #111827 100%); color: #fff;
+             padding: 26px 32px 22px; }
+  .header .wrap { max-width: 1080px; margin: 0 auto; }
+  .header h1 { font-size: 21px; font-weight: 700; letter-spacing: .3px; }
+  .header .sub { color: #9ca3af; font-size: 12.5px; margin-top: 6px; line-height: 1.7; }
+  .header .sub code { color: #d1d5db; background: rgba(255,255,255,.08); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+  .stats { display: flex; gap: 16px; margin: -26px auto 22px; position: relative; z-index: 2; flex-wrap: wrap; }
+  .stat { flex: 1; min-width: 150px; background: #fff; border-radius: 10px; padding: 16px 18px;
+           box-shadow: 0 1px 3px rgba(0,0,0,.08); border-top: 3px solid #e5e7eb; }
+  .stat.ok { border-top-color: #49cc90; } .stat.warn { border-top-color: #fca130; }
+  .stat.fail { border-top-color: #f93e3e; } .stat.total { border-top-color: #61affe; }
+  .stat b { font-size: 26px; display: block; line-height: 1.2; }
+  .stat span { font-size: 12px; color: #6b7280; }
+  .stat.ok b { color: #1a7f37; } .stat.warn b { color: #b45309; }
+  .stat.fail b { color: #dc2626; } .stat.total b { color: #2563eb; }
+  .donut-card { display: flex; align-items: center; gap: 16px; }
+  .donut { width: 76px; height: 76px; border-radius: 50%; flex: none;
+            background: conic-gradient(#49cc90 0 0.0%, #e5e7eb 0.0% 100%);
+            display: grid; place-items: center; }
+  .donut::before { content: ''; width: 56px; height: 56px; border-radius: 50%; background: #fff; }
+  .donut-val { position: absolute; font-size: 17px; font-weight: 700; }
+  .donut-wrap { position: relative; }
+  .donut-txt { font-size: 12px; color: #6b7280; line-height: 1.6; }
+  .requests { margin-top: 4px; }
+  .req { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.07);
+          margin-bottom: 12px; overflow: hidden; }
+  .req-head { display: flex; align-items: center; gap: 12px; padding: 13px 18px; flex-wrap: wrap;
+               border-bottom: 1px solid #f0f1f3; }
+  .req-no { width: 24px; height: 24px; border-radius: 50%; background: #eef2f7; color: #4a6da7;
+             display: inline-flex; align-items: center; justify-content: center; font-size: 12px;
+             font-weight: 700; flex: none; }
+  .method { color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .5px; padding: 3px 10px;
+             border-radius: 4px; flex: none; }
+  .path { font-family: "SF Mono", Consolas, monospace; font-size: 12.5px; color: #374151;
+           word-break: break-all; flex: 1; min-width: 180px; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px;
+            font-weight: 600; flex: none; }
+  .b-ok { background: #e8f7ee; color: #1a7f37; }
+  .b-warn { background: #fff4e5; color: #b45309; }
+  .b-info { background: #eef2f7; color: #4a6da7; }
+  .b-fail { background: #fdeaea; color: #dc2626; }
+  .req-body { padding: 12px 18px 14px; }
+  .mark { font-size: 13px; line-height: 1.9; color: #374151; }
+  .mark .mark-ic { margin-right: 8px; }
+  .detail { margin-top: 8px; }
+  .detail summary { cursor: pointer; font-size: 12.5px; color: #6b7280; user-select: none; }
+  .detail summary:hover { color: #2563eb; }
+  .detail-section { margin-top: 12px; padding: 12px 14px; background: #f8f9fb;
+                     border: 1px solid #eceff3; border-radius: 8px; }
+  .detail-title { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 8px; }
+  .section-label { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase;
+                    letter-spacing: .5px; margin: 10px 0 4px; padding-bottom: 4px;
+                    border-bottom: 1px solid #e5e7eb; }
+  .section-label:first-child { margin-top: 0; }
+  .kv-table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 4px 0; }
+  .kv-table td { padding: 4px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
+  .kv-table .hk { font-weight: 600; color: #4a6da7; white-space: nowrap; width: 160px; }
+  .kv-table .hv { color: #374151; word-break: break-all; font-family: "SF Mono", Consolas, monospace;
+                   font-size: 11.5px; }
+  .json-block { margin: 4px 0; background: #1e293b; color: #e2e8f0; border-radius: 6px;
+                 padding: 12px; font-size: 12px; line-height: 1.6; white-space: pre-wrap;
+                 word-break: break-all; max-height: 320px; overflow: auto;
+                 font-family: "SF Mono", Consolas, monospace; }
+  .resp-status { font-size: 13px; font-weight: 600; color: #374151; padding: 4px 0; }
+  .footer { text-align: center; color: #9ca3af; font-size: 12px; padding: 22px 0 30px; }
+  .legend { text-align: center; color: #6b7280; font-size: 12px; margin-bottom: 14px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="wrap">
+    <h1>用户管理 API 测试报告</h1>
+    <div class="sub">生成时间：2026-09-07 09:37:43 &nbsp;·&nbsp; 日志来源：<code>report/用户管理_API测试.jsonl</code></div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="stats">
+    <div class="stat total"><b>1</b><span>总请求数</span></div>
+    <div class="stat ok"><b>0</b><span>通过</span></div>
+    <div class="stat fail"><b>1</b><span>失败</span></div>
+    <div class="stat donut-card">
+      <div class="donut-wrap"><div class="donut"></div><div class="donut-val">0.0%</div></div>
+      <div class="donut-txt">通过率</div>
+    </div>
+  </div>
+
+  <div class="legend">共 1 个 API 调用 · 通过 0 · 通过率 0.0%</div>
+  <div class="requests">
+    <div class="req fail">
+      <div class="req-head">
+        <span class="req-no">1</span>
+        <span class="method" style="background:#49cc90">POST</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/users</code>
+        <span class="badge b-fail">❌ 失败</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">❌</span>创建用户: HTTP 0</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer c7bd17a0-7a8b-409b-90f3-e9e83f5193cf</td></tr>
+            </table>
+            <div class="section-label">Request Body</div>
+            <pre class="json-block">{
+  "userName": "AT_839cb4_autotest744711",
+  "password": "gw+UD7NGpQbB/4D1i+F6O746256uE+66DHzFXhXfN5OgdQ1rCWWr9yhGFJz29nhDnU3NSvMiGW9pn4lyUTF71VrNp6/z+js+uV8F2BVO5G++MRDANDPaCcwV7SUeRzvAfuz22gC2HGVbO3FXUXCXagq6izbF+z/oKCAc39D71t4=",
+  "name": "AT_839cb4_test_744711",
+  "email": "VrBws9ljgWeFhD6AOAYdX7LekxFUMNgUVcwbgR8legQMD1Vu/n5YxfacUaVFva3veDl7aubLiCnxeugfNcwxv9vnFQd0qlVmhS2vHvACwpQTtWgEPKASZo7e2x4eAZqQS0907qXKvt0GFE/mhLSVa17A2qaPLj1FwIzd9/8k9HQ=",
+  "phone": "hqtGpLgiIwR5TUIX1kE0ocmCr9mcJXz7pBf0xPBMmHwH4MBJ7id+HenHUU6b1MYGo2zJN9fslY4REizZt8J0lM0Cknhdwt2Xo4Kc/8UmxHx2h2RbAZgFaile0Py/aEulmgIJjBC8tFxunbkXaoHUcXNvC+clFyqhlCV9ctNm8Ns=",
+  "description": "自动修改_839cb4",
+  "policyIds": [
+    "1f8e392309fc414c9d77d45d0315fedc"
+  ],
+  "adminId": "",
+  "tenantId": "",
+  "countryCode": "+86"
+}</pre>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 0</div>
+          </div>
+        </details>
+      </div>
+    </div>
+  </div>
+  <div class="footer">Postman/Newman 风格报告 · 由 lib/test_report.py 生成 · API_AI_test</div>
+</div>
+</body>
+</html>

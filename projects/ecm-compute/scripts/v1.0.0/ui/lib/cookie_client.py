@@ -17,11 +17,12 @@ from pathlib import Path
 from typing import Optional
 
 
-def load_cookies(cookie_path) -> tuple:
+def load_cookies(cookie_path, token_key: str = "accessToken") -> tuple:
     """读取 cookies.json，返回 (cookies_list, token_value_or_None)。
 
     Args:
         cookie_path: cookies.json 的路径（str 或 Path）
+        token_key: 优先查找的 cookie name
 
     Returns:
         (cookies, token) 元组。文件不存在或解析失败返回 ([], None)。
@@ -33,7 +34,7 @@ def load_cookies(cookie_path) -> tuple:
         data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, list):
             return [], None
-        token = get_token(data)
+        token = get_token(data, token_key)
         return data, token
     except Exception:
         return [], None
@@ -149,22 +150,96 @@ def require_auth(config_dir, auth_config: dict):
         (requests.Session, cookies_list) 元组
     """
     cookie_path = Path(config_dir) / "cookies.json"
-    cookies, token = load_cookies(cookie_path)
+    cookie_token_key = auth_config.get("cookie_token_key", "accessToken")
+    cookies, token = load_cookies(cookie_path, token_key=cookie_token_key)
 
     if not cookies or not token:
-        print("=" * 60)
-        print("  ❌ 鉴权失败: 未找到有效的 cookies.json")
-        print("=" * 60)
-        print()
-        print(f"  期望文件: {cookie_path}")
-        print()
-        print("  解决方法:")
-        print("    1. 运行框架刷新 cookie:")
-        print("       python -m module_discovery.run --project <project> --stage 1 ...")
-        print("    2. 从浏览器 DevTools 导出 cookie 到上述路径")
-        print()
-        sys.exit(1)
+        _auth_fail_exit(cookie_path)
 
     session = build_requests_session(cookies, token, auth_config)
     print(f"  ✅ Cookie 鉴权成功 ({len(cookies)} cookies, token={'yes' if token else 'no'})")
     return session, cookies
+
+
+# ==================== UI 脚本专用 ====================
+
+async def require_auth_for_ui(config_dir, auth_config: dict, target_url: str = ""):
+    """UI 脚本一键鉴权：读 cookie → 注入 BrowserContext → 注入 token → 验证。
+
+    鉴权失败时打印错误并 sys.exit(1)，不做登录回退。
+
+    Args:
+        config_dir: config/ 目录路径（cookies.json 所在位置）
+        auth_config: 鉴权配置 (token_key, token_storage, cookie_token_key, login_url, target_url)
+        target_url: 目标页面 URL，为空时从 auth_config 取
+
+    Returns:
+        (cookies_list, token, page) 元组，page 已验证鉴权
+    """
+    cookie_path = Path(config_dir) / "cookies.json"
+    cookies, token = load_cookies(cookie_path, token_key=auth_config.get("cookie_token_key", "accessToken"))
+
+    if not cookies:
+        _auth_fail_exit(cookie_path)
+
+    return cookies, token
+
+
+async def apply_auth_to_playwright(context, page, cookies, token, auth_config):
+    """将 cookie + token 注入到 Playwright 页面。
+
+    Args:
+        context: BrowserContext
+        page: Page
+        cookies: cookie 列表
+        token: token 值
+        auth_config: 鉴权配置 dict
+    """
+    token_key = auth_config.get("token_key", "estackToken")
+    token_storage = auth_config.get("token_storage", "localStorage")
+    login_url = auth_config.get("login_url", "")
+    target_url = auth_config.get("target_url", "")
+
+    # 1. 注入 cookie
+    await apply_to_playwright_context(context, cookies)
+    print(f"  ✅ 已注入 {len(cookies)} 个 cookies")
+
+    # 2. 导航到登录页以设置 origin（需要先到一个同域页面才能操作 storage）
+    if login_url:
+        await page.goto(login_url, wait_until="domcontentloaded", timeout=30000)
+        await page.wait_for_timeout(500)
+
+    # 3. 注入 token 到 storage
+    if token:
+        await inject_token_to_storage(page, token, token_storage, token_key)
+        print(f"  ✅ 已注入 {token_key} 到 {token_storage}")
+    else:
+        print(f"  ⚠️ 未找到 token (cookie_token_key={auth_config.get('cookie_token_key', 'accessToken')})")
+
+    # 4. 验证
+    if target_url:
+        await page.goto(target_url, wait_until="networkidle", timeout=30000)
+        await page.wait_for_timeout(1000)
+        if "login" in page.url:
+            _auth_fail_exit(None, "Cookie 已过期或无效")
+
+    print("  ✅ Cookie 鉴权成功")
+
+
+def _auth_fail_exit(cookie_path, reason: str = ""):
+    """鉴权失败统一退出。"""
+    print("=" * 60)
+    if reason:
+        print(f"  ❌ 鉴权失败: {reason}")
+    else:
+        print("  ❌ 鉴权失败: 未找到有效的 cookies.json")
+    print("=" * 60)
+    if cookie_path:
+        print(f"  期望文件: {cookie_path}")
+    print()
+    print("  解决方法:")
+    print("    1. 运行框架刷新 cookie:")
+    print("       python -m module_discovery.run --project <project> --stage 1 ...")
+    print("    2. 从浏览器 DevTools 导出 cookie 到上述路径")
+    print()
+    sys.exit(1)

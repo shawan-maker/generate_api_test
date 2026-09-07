@@ -2,7 +2,7 @@
 """
 用户管理 - UI 自动化测试脚本
 
-生成时间: 2026-09-04 14:40:15
+生成时间: 2026-09-07 11:02:24
 生成工具: API AI Test Framework - Stage 2
 版本: v1.0.0
 
@@ -23,6 +23,7 @@ import sys
 import io
 import asyncio
 import argparse
+import base64
 import time
 from pathlib import Path
 from playwright.async_api import async_playwright
@@ -34,7 +35,6 @@ sys.path.insert(0, str(_lib.parent))
 
 from lib.replay_engine import replay_from_playbook
 from lib.button_driver import ButtonDriver
-from lib.cookie_client import load_cookies, get_token, apply_to_playwright_context, inject_token_to_storage
 
 # ==================== 配置 ====================
 
@@ -44,59 +44,83 @@ CONFIG = {
     "target_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/user",
     "headless": False,
     "slow_mo": 100,
-    # 鉴权配置
-    "token_key": "estackToken",
-    "token_storage": "localStorage",
-    "cookie_token_key": "accessToken",
+    # 鉴权配置（cookie_client 统一使用）
+    "auth_config": {
+        "token_key": "estackToken",
+        "token_storage": "localStorage",
+        "cookie_token_key": "accessToken",
+    },
 }
 
-AVAILABLE_OPERATIONS = ['create', 'update', 'lock', 'unlock', 'reset', 'migrate', 'delete']
+AVAILABLE_OPERATIONS = ['create', 'update', 'lock', 'unlock', 'reset', 'import', 'authorize', 'migrate', 'delete']
 
 # ==================== Cookie 鉴权 ====================
 
 async def require_cookie_auth(context, page):
-    """Cookie-only 鉴权，失败则报错退出。"""
-    cookies_path = Path(__file__).parent / "config" / "cookies.json"
-    cookies, token = load_cookies(cookies_path)
+    """使用 cookie_client 统一鉴权，失败则报错退出。"""
+    auth_cfg = CONFIG.get("auth_config", {})
+    full_auth_cfg = {**auth_cfg, "login_url": CONFIG["login_url"], "target_url": CONFIG["target_url"]}
 
-    if not cookies:
-        print("=" * 60)
-        print("  ❌ 鉴权失败: 未找到 cookies.json")
-        print("=" * 60)
-        print(f"  期望文件: {cookies_path}")
-        print("  解决方法: 运行 --stage 1 或 --stage 2 刷新 cookie")
-        sys.exit(1)
+    from lib.cookie_client import require_auth_for_ui, apply_auth_to_playwright
 
-    # 注入 cookie
-    await apply_to_playwright_context(context, cookies)
-    print(f"  ✅ 已注入 {len(cookies)} 个 cookies")
+    cookies, token = await require_auth_for_ui(
+        config_dir=Path(__file__).parent / "config",
+        auth_config=full_auth_cfg,
+    )
 
-    # 导航到登录页以设置 origin
-    await page.goto(CONFIG["login_url"], wait_until="domcontentloaded", timeout=30000)
-    await page.wait_for_timeout(500)
-
-    # 注入 token 到 storage
-    if token:
-        await inject_token_to_storage(page, token, CONFIG["token_storage"], CONFIG["token_key"])
-        print(f"  ✅ 已注入 {CONFIG['token_key']} 到 {CONFIG['token_storage']}")
-    else:
-        print(f"  ⚠️ 未找到 token (cookie_token_key={CONFIG['cookie_token_key']})")
-
-    # 导航到目标页验证
-    target_url = CONFIG.get("target_url", CONFIG["login_url"])
-    await page.goto(target_url, wait_until="networkidle", timeout=30000)
-    await page.wait_for_timeout(1000)
-
-    if "login" in page.url:
-        print("=" * 60)
-        print("  ❌ Cookie 已过期或无效")
-        print("=" * 60)
-        print("  解决方法: 运行 --stage 1 或 --stage 2 刷新 cookie")
-        sys.exit(1)
-
-    print("  ✅ Cookie 鉴权成功")
+    await apply_auth_to_playwright(context, page, cookies, token, full_auth_cfg)
 
 # ==================== 操作执行 ====================
+
+async def _cleanup_dialogs(page):
+    """关闭操作间可能残留的对话框/弹窗，防止阻塞后续操作。"""
+    try:
+        await page.keyboard.press("Escape")
+        await page.wait_for_timeout(300)
+    except Exception:
+        pass
+    # Element UI / Ant Design / 通用关闭按钮
+    close_selectors = [
+        ".el-dialog__close",
+        ".el-message-box__btns button:not(.el-button--primary)",
+        ".el-drawer__close-btn",
+        ".ant-modal-close",
+        ".el-dialog__headerbtn",
+    ]
+    for sel in close_selectors:
+        try:
+            els = await page.query_selector_all(sel)
+            for el in els:
+                if await el.is_visible():
+                    await el.click()
+                    await page.wait_for_timeout(200)
+        except Exception:
+            pass
+    # 最终兜底 Escape
+    try:
+        await page.keyboard.press("Escape")
+        await page.wait_for_timeout(200)
+    except Exception:
+        pass
+
+# 操作失败原因（由 Stage 1 标记）
+_OPERATION_STATUS = {
+    "import": {
+        "status": "failed",
+        "error_type": "env_dependency",
+        "error_text": "导入操作需要上传文件，无法自动完成"
+    },
+    "authorize": {
+        "status": "failed",
+        "error_type": "required_field_empty",
+        "error_text": "必填字段无法填写: 授权用户组（select，值为空）"
+    },
+    "migrate": {
+        "status": "failed",
+        "error_type": "required_field_empty",
+        "error_text": "弹窗中必填字段为空: 待迁移用户：, 待迁移部门："
+    }
+}
 
 async def run_operation(page, operation_name, operations_data, marker=None):
     """使用回放引擎执行单个操作"""
@@ -105,7 +129,23 @@ async def run_operation(page, operation_name, operations_data, marker=None):
         print(f"⚠️ 操作不存在: {operation_name}")
         return marker, {"operation": operation_name, "status": "failed", "error": "操作不存在", "steps": []}
 
-    print(f"\n▶ 执行: {op.get('description', operation_name)}")
+    # 跳过 Stage 1 标记为失败的操作
+    st = _OPERATION_STATUS.get(operation_name, {})
+    if st.get("status") == "failed":
+        reason = st.get("error_text", "Stage 1 标记为失败")
+        err_type = st.get("error_type", "unknown")
+        display_name = op.get("display_name", op.get("description", operation_name))
+        print(f"\n⏭ 跳过: {display_name} ({err_type}: {reason})")
+        return marker, {
+            "operation": operation_name,
+            "display_name": display_name,
+            "status": "skipped",
+            "error": f"[{err_type}] {reason}",
+            "steps": [],
+            "duration": 0,
+        }
+
+    print(f"\n▶ 执行: {op.get('display_name', op.get('description', operation_name))}")
 
     steps = op.get("steps", [])
     button_driver = ButtonDriver(page)
@@ -116,137 +156,90 @@ async def run_operation(page, operation_name, operations_data, marker=None):
         duration = time.time() - op_start
 
         new_marker = result.get("marker", marker)
+        # 截图（成功）
+        screenshot = None
+        try:
+            raw = await page.screenshot(type="png")
+            screenshot = base64.b64encode(raw).decode("ascii")
+        except Exception:
+            pass
+
+        # 构建详细步骤信息（含 locator 和测试数据）
+        detailed_steps = []
+        for s in steps:
+            step_info = {
+                "action": s.get("action", ""),
+                "status": "passed",
+                "locator": s.get("playwright_locator", ""),
+                "description": s.get("description", ""),
+            }
+            # 填充表单的字段数据
+            if s.get("action") == "fill_form" and "fields" in s:
+                fields_summary = []
+                for field in s["fields"]:
+                    field_info = {
+                        "label": field.get("label", ""),
+                        "locator": field.get("playwright_locator", ""),
+                        "type": field.get("type", ""),
+                    }
+                    # 测试数据
+                    fill_rule = field.get("fill_rule", {})
+                    if fill_rule:
+                        params = fill_rule.get("params", {})
+                        if "value" in params:
+                            field_info["test_data"] = params["value"]
+                        elif "prefix" in params:
+                            field_info["test_data"] = f"{params['prefix']}*"
+                        else:
+                            field_info["test_data"] = str(fill_rule.get("rule", ""))
+                    elif field.get("option_text"):
+                        field_info["test_data"] = field["option_text"]
+                    fields_summary.append(field_info)
+                step_info["fields"] = fields_summary
+
+            detailed_steps.append(step_info)
+
         op_result = {
             "operation": operation_name,
+            "display_name": op.get("display_name", operation_name),
             "status": "passed",
-            "steps": [{"action": s.get("action"), "status": "passed"} for s in steps],
+            "steps": detailed_steps,
             "duration": duration,
+            "screenshot": screenshot,
         }
         print(f"  ✅ 操作成功 (耗时 {duration:.2f}s)")
+
+        # 操作成功后清理残留弹窗
+        await _cleanup_dialogs(page)
         return new_marker, op_result
 
     except Exception as e:
         duration = time.time() - op_start
+        # 截图（失败）
+        screenshot = None
+        try:
+            raw = await page.screenshot(type="png")
+            screenshot = base64.b64encode(raw).decode("ascii")
+        except Exception:
+            pass
         op_result = {
             "operation": operation_name,
+            "display_name": op.get("display_name", operation_name),
             "status": "failed",
             "error": str(e),
             "steps": [],
             "duration": duration,
+            "screenshot": screenshot,
         }
         print(f"  ❌ 操作失败: {e}")
+
+        # 失败后也尝试清理弹窗
+        await _cleanup_dialogs(page)
         return marker, op_result
 
 # ==================== 报告 ====================
 
-_REPORT_CSS = (
-    "*{margin:0;padding:0;box-sizing:border-box}"
-    "body{font-family:-apple-system,'Segoe UI',Roboto,'Microsoft YaHei',sans-serif;"
-    "background:#f5f6fa;color:#2c3e50;padding:20px 28px;line-height:1.6}"
-    ".header{background:linear-gradient(135deg,#2c3e50,#3498db);color:#fff;"
-    "padding:22px 28px;border-radius:8px;margin-bottom:18px}"
-    ".header h1{font-size:20px;margin-bottom:6px}"
-    ".header p{opacity:.88;font-size:13px}"
-    ".summary{display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap}"
-    ".card{background:#fff;padding:12px 20px;border-radius:8px;"
-    "box-shadow:0 1px 3px rgba(0,0,0,.08);text-align:center;min-width:100px}"
-    ".card .num{font-size:24px;font-weight:700}"
-    ".card .label{font-size:12px;color:#7f8c8d}"
-    ".card.ok .num{color:#27ae60}"
-    ".card.fail .num{color:#e74c3c}"
-    ".card.warn .num{color:#f39c12}"
-    "details{background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);"
-    "margin-bottom:14px;overflow:hidden}"
-    "summary{padding:12px 18px;font-size:14px;font-weight:600;cursor:pointer;"
-    "background:#ecf0f1;list-style:none;display:flex;gap:8px;align-items:center}"
-    "summary::-webkit-details-marker{display:none}"
-    "summary::before{content:'▶';font-size:10px;transition:.2s}"
-    "details[open]>summary::before{transform:rotate(90deg)}"
-    ".body{padding:14px 18px}"
-    "table{width:100%;border-collapse:collapse;font-size:12px}"
-    "th{background:#f8f9fa;padding:6px 8px;text-align:left;"
-    "border-bottom:2px solid #dee2e6;white-space:nowrap}"
-    "td{padding:5px 8px;border-bottom:1px solid #eee;vertical-align:top;word-break:break-all}"
-    "tr.fail-row{background:#fef0f0}"
-    ".badge{display:inline-block;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600}"
-    ".badge-ok{background:#d5f5e3;color:#27ae60}"
-    ".badge-fail{background:#fadbd8;color:#e74c3c}"
-    ".badge-warn{background:#fef9e7;color:#f39c12}"
-    ".badge-skip{background:#f2f3f4;color:#95a5a6}"
-    ".err{background:#fef0f0;border-left:4px solid #e74c3c;padding:10px 14px;"
-    "border-radius:4px;color:#c0392b;white-space:pre-wrap;font-size:13px;margin-bottom:14px}"
-    ".oknote{background:#eafaf1;border-left:4px solid #27ae60;padding:10px 14px;"
-    "border-radius:4px;color:#1e7e44;font-size:13px;margin-bottom:14px;white-space:pre-wrap}"
-    ".oknote b{color:#155d33}"
-)
-
-def generate_html_report(results, module_name):
-    """生成 HTML 测试报告（风格与 EcsCloud 统一）"""
-    from datetime import datetime as _dt
-    total = len(results)
-    passed = sum(1 for r in results if r["status"] == "passed")
-    failed = total - passed
-    pass_rate = f"{(passed / total * 100) if total > 0 else 0:.1f}%" if total else "0.0%"
-    now_str = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
-    all_ok = failed == 0 and total > 0
-
-    icon = "✅" if all_ok else "❌"
-
-    # --- 操作明细行 ---
-    rows_html = ""
-    for i, r in enumerate(results, 1):
-        st = r.get("status", "unknown")
-        dur = r.get("duration", 0)
-        op_name = r.get("operation", "?")
-        err_msg = r.get("error", "")
-        cls = "badge-ok" if st == "passed" else "badge-fail"
-        label = "通过" if st == "passed" else "失败"
-        row_cls = ' class="fail-row"' if st == "failed" else ""
-        rows_html += (
-            f"<tr{row_cls}>"
-            f"<td>{i}</td>"
-            f"<td>{op_name}</td>"
-            f"<td>{dur:.2f}s</td>"
-            f'<td><span class="badge {cls}">{label}</span></td>'
-            f"<td>{err_msg}</td>"
-            f"</tr>"
-        )
-
-    # --- 组装 HTML（用 + 拼接避免 f-string 嵌套 triple-quote 冲突） ---
-    html = (
-        '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">'
-        f"<title>{module_name} · UI 测试报告</title>"
-        f"<style>{_REPORT_CSS}</style></head><body>"
-        f'<div class="header"><h1>{icon} {module_name} · UI 测试报告</h1>'
-        f"<p>执行时间: {now_str} | 耗时: {sum(r.get('duration',0) for r in results):.1f}s</p></div>"
-        '<div class="summary">'
-        f'<div class="card"><div class="num">{total}</div><div class="stat-label">总操作</div></div>'
-        f'<div class="card ok"><div class="num">{passed}</div><div class="stat-label">通过</div></div>'
-        f'<div class="card fail"><div class="num">{failed}</div><div class="stat-label">失败</div></div>'
-        f'<div class="card warn"><div class="num">{pass_rate}</div><div class="stat-label">通过率</div></div>'
-        "</div>"
-    )
-
-    if failed > 0:
-        err_ops = [r["operation"] for r in results if r["status"] == "failed"]
-        html += f'<div class="err">失败操作: {", ".join(err_ops)}</div>'
-
-    if all_ok:
-        html += '<div class="oknote">✅ <b>全部操作执行成功</b>。以下为各操作的执行明细。</div>'
-
-    html += (
-        '<details open><summary>操作执行明细</summary><div class="body"><table>'
-        "<thead><tr><th>#</th><th>操作</th><th>耗时</th><th>结果</th><th>错误信息</th></tr></thead>"
-        f"<tbody>{rows_html}</tbody></table></div></details>"
-        "</body></html>"
-    )
-
-    report_dir = Path(__file__).parent / "output" / "reports"
-    report_dir.mkdir(parents=True, exist_ok=True)
-    ts = _dt.now().strftime("%Y%m%d_%H%M%S")
-    report_path = report_dir / f"{module_name}_ui_report_{ts}.html"
-    report_path.write_text(html, encoding="utf-8")
-    return str(report_path)
+from lib.ui_report import generate_ui_report as generate_html_report
 
 # ==================== 主程序 ====================
 
