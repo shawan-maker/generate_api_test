@@ -168,6 +168,22 @@ class StepExecutor:
             url = self._build_url(step_def["api"])
             body = self._build_body(step_def)
             method = step_def["api"]["method"].upper()
+
+            # search_verify / search_not_found: 添加搜索参数
+            assertion = step_def.get("assertion", "")
+            if assertion in ("search_verify", "search_not_found"):
+                search_param = step_def.get("search_param", "")
+                if search_param and "create_body" in self.state:
+                    # 从 create_body 中获取名称字段值
+                    create_body = self.state["create_body"]
+                    search_value = create_body.get(search_param, "")
+                    if search_value:
+                        # 添加到 URL query string
+                        if "?" in url:
+                            url += f"&{search_param}={search_value}"
+                        else:
+                            url += f"?{search_param}={search_value}"
+
             resp = self._send_request(method, url, body)
 
             # 保存当前请求信息（用于日志更新）
@@ -432,11 +448,55 @@ class StepExecutor:
                     raise AssertionError(f"列表中仍存在 ID={target_id}")
 
         elif assertion == "field_changed":
-            # 验证实体中名称字段已更新
+            # Fix: check for both "_Updated" and "自动修改_" patterns
             if isinstance(entity, dict):
                 name_val = entity.get("policyName") or entity.get("userName") or entity.get("name")
-                if name_val and "_Updated" in str(name_val):
+                if name_val and ("_Updated" in str(name_val) or "自动修改_" in str(name_val)):
                     return f"验证通过: 名称已更新为 {name_val}"
+
+        elif assertion == "search_verify":
+            # Same as contains_id - search by name and verify ID exists
+            if isinstance(entity, dict):
+                items, total = self.parser.extract_list(entity)
+                found = any(
+                    str(item.get(self.parser.id_field)) == str(target_id)
+                    for item in items if isinstance(item, dict)
+                )
+                if found:
+                    return f"验证通过: 搜索中找到 ID={target_id} (共 {total} 条)"
+                else:
+                    raise AssertionError(f"搜索结果中未找到 ID={target_id}")
+            elif isinstance(entity, list):
+                found = any(
+                    str(item.get(self.parser.id_field)) == str(target_id)
+                    for item in entity if isinstance(item, dict)
+                )
+                if found:
+                    return f"验证通过: 搜索中找到 ID={target_id}"
+                else:
+                    raise AssertionError(f"搜索结果中未找到 ID={target_id}")
+
+        elif assertion == "search_not_found":
+            # Same as not_contains_id - search by name and verify ID doesn't exist
+            if isinstance(entity, dict):
+                items, total = self.parser.extract_list(entity)
+                found = any(
+                    str(item.get(self.parser.id_field)) == str(target_id)
+                    for item in items if isinstance(item, dict)
+                )
+                if not found:
+                    return f"验证通过: 搜索中未找到 ID={target_id} (剩余 {total} 条)"
+                else:
+                    raise AssertionError(f"搜索结果中仍存在 ID={target_id}")
+            elif isinstance(entity, list):
+                found = any(
+                    str(item.get(self.parser.id_field)) == str(target_id)
+                    for item in entity if isinstance(item, dict)
+                )
+                if not found:
+                    return f"验证通过: 搜索中未找到 ID={target_id}"
+                else:
+                    raise AssertionError(f"搜索结果中仍存在 ID={target_id}")
 
         return ""
 

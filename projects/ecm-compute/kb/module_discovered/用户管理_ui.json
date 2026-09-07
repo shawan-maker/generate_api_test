@@ -362,6 +362,22 @@
       "reset": 1
     }
   },
+  "search_inputs": [
+    {
+      "locator": "input[placeholder=\"请输入\"]",
+      "placeholder": "请输入",
+      "has_adjacent_btn": true,
+      "score": 18,
+      "source": "css"
+    },
+    {
+      "locator": "input[placeholder=\"请输入部门名称\"]",
+      "placeholder": "请输入部门名称",
+      "has_adjacent_btn": false,
+      "score": 12,
+      "source": "css"
+    }
+  ],
   "button_labels": {
     "create": "创建用户",
     "import": "批量导入",
@@ -381,30 +397,30 @@
       "success": true,
       "fill_data": {
         "名称": "test",
-        "编码": "code_750329",
-        "描述": "自动测试创建于750329",
-        "备注": "自动创建于750329",
-        "说明": "自动测试创建于750329",
+        "编码": "code_765798",
+        "描述": "自动测试创建于765798",
+        "备注": "自动创建于765798",
+        "说明": "自动测试创建于765798",
         "用户名": "test",
         "姓名": "test",
-        "邮箱": "at_750329@test.com",
-        "手机": "13883937625",
+        "邮箱": "at_765798@test.com",
+        "手机": "13883083578",
         "密码": "Test@123456",
         "确认密码": "Test@123456",
         "角色名称": "test",
-        "角色编码": "role_code_750329",
-        "角色描述": "自动测试角色创建于750329",
+        "角色编码": "role_code_765798",
+        "角色描述": "自动测试角色创建于765798",
         "username": "test",
         "name": "test",
-        "email": "at_750329@test.com",
-        "phone": "13883937625",
+        "email": "at_765798@test.com",
+        "phone": "13883083578",
         "password": "Test@123456",
-        "description": "自动测试创建于750329",
-        "code": "code_750329",
-        "remark": "自动创建于750329",
-        "账号": "AT_test_750329",
-        "系统角色": "AT_test_750329",
-        "部门角色": "AT_test_750329"
+        "description": "自动测试创建于765798",
+        "code": "code_765798",
+        "remark": "自动创建于765798",
+        "账号": "AT_test_765798",
+        "系统角色": "AT_test_765798",
+        "部门角色": "AT_test_765798"
       },
       "fill_rules": {
         "账号": {
@@ -569,6 +585,19 @@
       ],
       "radio_field_details": []
     },
+    "query": {
+      "success": true,
+      "selectors": {
+        "trigger": "搜索输入:请输入"
+      },
+      "trigger_locator_verified": "input[placeholder=\"请输入\"]",
+      "search_input": {
+        "locator": "input[placeholder=\"请输入\"]",
+        "placeholder": "请输入"
+      },
+      "trigger_mode": "button",
+      "has_table": true
+    },
     "update": {
       "success": true,
       "edit_fill_data": {
@@ -720,7 +749,7 @@
       "error_type": "required_field_empty",
       "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
       "nav_info": {
-        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=34e2594fca9e44cd9e23b25474838c7f&type=userList&rowId=62f98f8202794db2bdfdf72f909f3417",
+        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=34e2594fca9e44cd9e23b25474838c7f&type=userList&rowId=f468f9d2b60d46b9a43358232340d4fb",
         "depth": 0,
         "page_title": "eStack Enterprise",
         "has_form": true,
@@ -758,30 +787,30 @@
         ],
         "fill_data": {
           "名称": "AT_test_auto",
-          "编码": "code_750398",
-          "描述": "自动测试创建于750398",
-          "备注": "自动创建于750398",
-          "说明": "自动测试创建于750398",
+          "编码": "code_765869",
+          "描述": "自动测试创建于765869",
+          "备注": "自动创建于765869",
+          "说明": "自动测试创建于765869",
           "用户名": "AT_test_auto",
           "姓名": "AT_test_auto",
-          "邮箱": "at_750398@test.com",
-          "手机": "13870997247",
+          "邮箱": "at_765869@test.com",
+          "手机": "13843380462",
           "密码": "Test@123456",
           "确认密码": "Test@123456",
           "角色名称": "AT_test_auto",
-          "角色编码": "role_code_750398",
-          "角色描述": "自动测试角色创建于750398",
+          "角色编码": "role_code_765869",
+          "角色描述": "自动测试角色创建于765869",
           "username": "AT_test_auto",
           "name": "AT_test_auto",
-          "email": "at_750398@test.com",
-          "phone": "13870997247",
+          "email": "at_765869@test.com",
+          "phone": "13843380462",
           "password": "Test@123456",
-          "description": "自动测试创建于750398",
-          "code": "code_750398",
-          "remark": "自动创建于750398",
-          "授权用户": "AT_AT_test_auto_750398",
-          "授权角色": "AT_AT_test_auto_750398",
-          "授权范围": "AT_AT_test_auto_750398"
+          "description": "自动测试创建于765869",
+          "code": "code_765869",
+          "remark": "自动创建于765869",
+          "授权用户": "AT_AT_test_auto_765869",
+          "授权角色": "AT_AT_test_auto_765869",
+          "授权范围": "AT_AT_test_auto_765869"
         },
         "submit_result": {},
         "error_type": "required_field_empty",

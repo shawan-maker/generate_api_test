@@ -251,6 +251,17 @@ class ProbeKB:
         """
         return self._kb_data.get("fallback_strategies", {}).get("strategies", [])
 
+    def get_pagination_params(self) -> set:
+        """获取分页/排序参数名集合（从 KB 读取，用于搜索参数识别时排除）。
+
+        Returns:
+            set: 分页参数名集合，如 {"pageNum", "pageSize", "page", ...}
+        """
+        if not self._kb_data:
+            return set()
+        params = self._kb_data.get("pagination_params", {}).get("params", [])
+        return set(params)
+
     def detect_framework_sync(self, html: str) -> str:
         """通过 HTML 内容检测 UI 框架（同步版本）
 

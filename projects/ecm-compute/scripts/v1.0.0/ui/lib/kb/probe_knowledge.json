@@ -1,6 +1,16 @@
 {
   "version": "2.0",
   "description": "探针知识库 v2 - 所有 XPath 的隐藏过滤都在最终元素上",
+  "pagination_params": {
+    "description": "分页/排序参数名列表（排除后剩余的才可能是搜索参数）",
+    "params": [
+      "pageNum", "pageSize", "page", "size", "limit", "offset",
+      "current", "total", "currentPage", "pageNo", "page_num",
+      "page_size", "per_page", "rows", "start", "end",
+      "sortField", "sortOrder", "sort_field", "sort_order",
+      "orderBy", "order", "order_by", "sortBy", "sort_by"
+    ]
+  },
   "single_step": {
     "description": "单步定位模板（按钮、输入框、链接等）",
     "categories": {

@@ -1304,6 +1304,11 @@ def build_manifest(analysis: dict, capture_result: dict,
             "requires": ["id"],
             "assertion": assertion,
         }
+        # search_verify / search_not_found 需要携带搜索参数名
+        if assertion in ("search_verify", "search_not_found"):
+            search_param = ep.get("search_param", "")
+            if search_param:
+                step["search_param"] = search_param
         return step
 
     def _plan_verify_steps(action):
@@ -1327,7 +1332,17 @@ def build_manifest(analysis: dict, capture_result: dict,
         if action in ("create", "update", "delete", "lock", "unlock", "reset"):
             # 优先用 query（列表验证），其次 detail（详情验证）
             if "query" in verify_endpoints:
-                if action == "delete":
+                query_ep = verify_endpoints["query"]["ep"]
+                search_param = query_ep.get("search_param", "")
+
+                # 有 search_param → 使用 search_verify/search_not_found
+                if search_param:
+                    if action == "delete":
+                        plans.append(("query", f"搜索验证（删除后）", "search_not_found"))
+                    else:
+                        plans.append(("query", f"搜索验证（{action_label}后）", "search_verify"))
+                # 无 search_param → 使用 contains_id/not_contains_id（旧逻辑）
+                elif action == "delete":
                     plans.append(("query", f"查询验证（删除后）", "not_contains_id"))
                 elif action == "create":
                     plans.append(("query", f"查询验证（创建后）", "contains_id"))

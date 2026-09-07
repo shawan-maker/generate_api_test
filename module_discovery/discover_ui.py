@@ -104,6 +104,15 @@ async def _discover_once(page, kb: ProbeKB, framework: str) -> dict:
     result["dropdowns"] = dropdowns
     LOG.info(f"  下拉菜单子项: {len(dropdowns)}")
 
+    # 3.5 搜索输入框探测（独立于按钮扫描，复用 KB 搜索模板）
+    search_inputs = await _discover_search_inputs(page, kb, framework)
+    result["search_inputs"] = search_inputs
+    if search_inputs:
+        LOG.info(f"  搜索输入框: {len(search_inputs)} 个")
+        for si in search_inputs:
+            LOG.info(f"    - placeholder='{si.get('placeholder', '')}', locator={si.get('locator', '')}, "
+                     f"source={si.get('source', 'css')}")
+
     # 4. 创建表单扫描（同时扫描弹窗按钮）
     has_create = any(_match_crud(b["text"]) == "create" for b in result["toolbar_buttons"])
     if has_create:
@@ -184,6 +193,248 @@ async def _scan_candidates(page) -> list:
         return results;
     }}""")
     return raw
+
+
+async def _discover_search_inputs(page, kb: ProbeKB = None, framework: str = "element-ui") -> list:
+    """探测页面搜索输入框（表格上方区域，排除弹窗/表单字段）。
+
+    探测策略分两轮：
+    - 第一轮：KB 增强 — 用 search-button 知识库的 XPath 模板定位搜索按钮/图标，
+              再从其上下文推断关联的输入框
+    - 第二轮：CSS 选择器扫描 — placeholder 关键词 + 搜索图标 + 表格上方 input
+
+    排除规则：
+    - 弹窗/抽屉内的输入框
+    - 隐藏/禁用的元素
+    - 表格行内的输入框（行内编辑）
+
+    Returns:
+        list: [{"locator": str, "placeholder": str, "has_adjacent_btn": bool,
+                "source": str, "btn_xpath": str}]
+    """
+    results = []
+    seen_locators = set()
+
+    # ── 第一轮：KB 搜索按钮模板 → 推断关联输入框 ──
+    if kb and kb._kb_data:
+        search_btn_patterns = kb.get_patterns("search-button", framework)
+        if search_btn_patterns:
+            # 用 "搜索"/"查询" 作为 label 展开占位符
+            search_labels = ["搜索", "查询", "查找"]
+            xpath_list = []
+            for label in search_labels:
+                for pattern in search_btn_patterns:
+                    xpath = pattern.replace("{label}", label)
+                    if "{chars_all}" in xpath:
+                        chars = list(label)
+                        chars_all = " and ".join([f"contains(., '{c}')" for c in chars])
+                        xpath = xpath.replace("{chars_all}", chars_all)
+                    if "{char1}" in xpath and len(label) > 0:
+                        xpath = xpath.replace("{char1}", label[0])
+                    if "{char2}" in xpath and len(label) > 1:
+                        xpath = xpath.replace("{char2}", label[1])
+                    xpath_list.append(xpath)
+
+            if xpath_list:
+                import json
+                xpath_json = json.dumps(xpath_list)
+                try:
+                    kb_results = await page.evaluate(f"""() => {{
+                        const xpaths = {xpath_json};
+                        const found = [];
+                        const table = document.querySelector('.el-table, table, .ant-table');
+                        if (!table) return found;
+                        const tableRect = table.getBoundingClientRect();
+
+                        for (const xpath of xpaths) {{
+                            try {{
+                                const result = document.evaluate(
+                                    xpath, document, null,
+                                    XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null
+                                );
+                                for (let i = 0; i < result.snapshotLength; i++) {{
+                                    const btn = result.snapshotItem(i);
+                                    if (!btn || btn.offsetWidth <= 0) continue;
+                                    // 排除弹窗内
+                                    if (btn.closest('.el-dialog, .el-drawer, .ant-modal')) continue;
+
+                                    // 从搜索按钮向上查找关联输入框
+                                    const container = btn.closest(
+                                        '.el-form-item, .el-input-group, .ant-input-group, '
+                                        + '[class*="search"], [class*="filter"], [class*="toolbar"]'
+                                    ) || btn.parentElement;
+                                    if (!container) continue;
+
+                                    const input = container.querySelector(
+                                        'input[type="text"], input:not([type]), .el-input__inner, .ant-input'
+                                    );
+                                    if (!input || input.offsetWidth <= 0) continue;
+
+                                    // 排除表格内和表格下方
+                                    if (table.contains(input)) continue;
+                                    const inputRect = input.getBoundingClientRect();
+                                    if (inputRect.top > tableRect.bottom) continue;
+
+                                    const placeholder = (input.getAttribute('placeholder') || '').trim();
+                                    let locator = '';
+                                    if (placeholder) {{
+                                        locator = 'input[placeholder="' + placeholder + '"]';
+                                    }} else {{
+                                        const name = input.getAttribute('name') || '';
+                                        if (name) locator = 'input[name="' + name + '"]';
+                                        else continue;
+                                    }}
+
+                                    found.push({{
+                                        locator,
+                                        placeholder,
+                                        has_adjacent_btn: true,
+                                        source: 'kb_search',
+                                        btn_xpath: xpath,
+                                        score: 15,  // KB 匹配得分高
+                                    }});
+                                }}
+                            }} catch (e) {{
+                                // 忽略单个 XPath 错误
+                            }}
+                        }}
+                        return found;
+                    }}""")
+                    for item in kb_results:
+                        loc = item.get("locator", "")
+                        if loc and loc not in seen_locators:
+                            seen_locators.add(loc)
+                            results.append(item)
+                except Exception as e:
+                    LOG.debug(f"KB search-button 扫描失败: {e}")
+
+    # ── 第二轮：CSS 选择器扫描（兜底） ──
+    # ── 第二轮：CSS 结构特征扫描（兜底，不依赖关键词） ──
+    css_raw = await page.evaluate(f"""() => {{
+        const results = [];
+        // 已知的 locator（KB 轮已发现的）
+        const knownLocators = {json.dumps(list(seen_locators))};
+        const table = document.querySelector('.el-table, table, .ant-table');
+        if (!table) return results;
+        const tableRect = table.getBoundingClientRect();
+
+        // 收集所有候选 input
+        const inputs = document.querySelectorAll(
+            'input[type="text"], input:not([type]), .el-input input, .ant-input'
+        );
+
+        for (const el of inputs) {{
+            // ── 基础排除 ──
+            if (el.offsetWidth <= 0 || el.offsetHeight <= 0) continue;
+            if (el.closest('.el-dialog, .el-drawer, .ant-modal, .ant-drawer')) continue;
+            if (el.closest('[style*="display: none"], [style*="display:none"]')) continue;
+            if (el.disabled) continue;
+            if (table.contains(el)) continue;
+
+            const rect = el.getBoundingClientRect();
+            if (rect.top > tableRect.bottom) continue;
+
+            const placeholder = (el.getAttribute('placeholder') || '').trim();
+
+            // ── 结构特征打分（不依赖具体关键词） ──
+            let score = 0;
+
+            // 1. 有搜索图标 → 强信号
+            const parentInput = el.closest('.el-input, .ant-input-wrapper, .ant-input-affix-wrapper');
+            const hasSearchIcon = parentInput
+                && parentInput.querySelector(
+                    'i[class*="search"], svg[class*="search"], '
+                    + '.el-icon-search, .anticon-search'
+                );
+            if (hasSearchIcon) score += 8;
+
+            // 2. 有相邻按钮 → 强信号（搜索框+搜索按钮组合）
+            let hasAdjacentBtn = false;
+            const container = el.closest(
+                '.el-input-group, .ant-input-group, '
+                + '[class*="search"], [class*="filter"], [class*="toolbar"], '
+                + '[class*="Search"], [class*="Filter"]'
+            );
+            if (container) {{
+                const btn = container.querySelector('button, .el-button, .ant-btn');
+                if (btn && btn.offsetWidth > 0) hasAdjacentBtn = true;
+            }}
+            // 紧邻兄弟按钮
+            if (!hasAdjacentBtn && el.nextElementSibling) {{
+                const sib = el.nextElementSibling;
+                if (sib.tagName === 'BUTTON' || sib.classList.contains('el-button')
+                    || sib.classList.contains('ant-btn')) {{
+                    hasAdjacentBtn = true;
+                }}
+            }}
+            // input 外层的父元素旁边有按钮
+            if (!hasAdjacentBtn) {{
+                const grandparent = el.closest('.el-input, .ant-input-wrapper')?.parentElement;
+                if (grandparent) {{
+                    const sibBtn = grandparent.nextElementSibling;
+                    if (sibBtn && (sibBtn.tagName === 'BUTTON' || sibBtn.classList.contains('el-button'))) {{
+                        hasAdjacentBtn = true;
+                    }}
+                }}
+            }}
+            if (hasAdjacentBtn) score += 6;
+
+            // 3. 不在 form-item 中 → 中信号（搜索框通常独立于表单）
+            const inFormItem = !!el.closest('.el-form-item, .ant-form-item');
+            if (!inFormItem) score += 3;
+
+            // 4. 有 placeholder → 弱信号（比空 placeholder 好）
+            if (placeholder) score += 1;
+
+            // 5. 容器 class 含搜索/过滤语义 → 中信号
+            if (container) {{
+                const cls = (container.className || '').toLowerCase();
+                if (cls.includes('search') || cls.includes('filter')
+                    || cls.includes('query') || cls.includes('toolbar')) {{
+                    score += 4;
+                }}
+            }}
+
+            // 需要至少满足: 搜索图标(8) 或 相邻按钮(6) 或 无formItem+placeholder(4)
+            if (score < 4) continue;
+
+            // 构建 CSS locator
+            let locator = '';
+            if (placeholder) {{
+                locator = 'input[placeholder="' + placeholder + '"]';
+            }} else if (hasSearchIcon) {{
+                locator = '.el-input--prefix input';
+            }} else {{
+                const name = el.getAttribute('name') || '';
+                if (name) {{
+                    locator = 'input[name="' + name + '"]';
+                }} else {{
+                    continue;
+                }}
+            }}
+
+            if (knownLocators.includes(locator)) continue;
+
+            results.push({{
+                locator,
+                placeholder,
+                has_adjacent_btn: hasAdjacentBtn,
+                score,
+                source: 'css',
+            }});
+        }}
+
+        return results;
+    }}""")
+    for item in css_raw:
+        loc = item.get("locator", "")
+        if loc and loc not in seen_locators:
+            seen_locators.add(loc)
+            results.append(item)
+
+    # 按得分排序，返回前 2 个（避免把多个表单字段误当搜索框）
+    results.sort(key=lambda x: x.get("score", 0), reverse=True)
+    return results[:2]
 
 
 async def _discover_dropdowns(page, parent_buttons: list, kb: ProbeKB = None, framework: str = "element-ui") -> list:
@@ -1607,6 +1858,20 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
         if action and action not in buttons_by_action:
             buttons_by_action[action] = btn
 
+    # 自动推断 query 操作：如果没有 query 按钮但探测到搜索输入框
+    if "query" not in buttons_by_action and ui_result.get("search_inputs"):
+        search_input = ui_result["search_inputs"][0]  # 使用得分最高的搜索框
+        LOG.info(f"  自动推断 query 操作: 使用搜索输入框 '{search_input.get('placeholder', '')}'")
+        # 创建合成的 query 按钮记录
+        buttons_by_action["query"] = {
+            "text": f"搜索:{search_input.get('placeholder', '输入框')}",
+            "action": "query",
+            "tag": "INPUT",
+            "location": "toolbar",
+            "is_search_input": True,
+            "search_input": search_input,
+        }
+
     # 表单字段（从探测结果获取）
     form_fields = ui_result.get("form_fields", [])
 
@@ -1644,11 +1909,17 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
                     validated[action] = result
 
         elif action == "query":
-            result = await _error_driven_retry(
-                page, _do_query, {"btn": btn}
-            )
-            if result and result.get("success"):
-                validated[action] = result
+            if btn.get("is_search_input"):
+                # 搜索输入框驱动的 query（无按钮）
+                result = await _do_query_via_search_input(page, btn)
+                if result and result.get("success"):
+                    validated[action] = result
+            else:
+                result = await _error_driven_retry(
+                    page, _do_query, {"btn": btn}
+                )
+                if result and result.get("success"):
+                    validated[action] = result
 
         elif action == "detail":
             result = await _error_driven_retry(
@@ -2059,21 +2330,120 @@ async def _do_create(page, context: dict) -> dict:
     }
 
 
+async def _do_query_via_search_input(page, btn: dict) -> dict:
+    """执行查询操作：通过搜索输入框触发（无搜索按钮）。
+
+    Args:
+        page: Playwright Page 对象
+        btn: 合成的按钮字典，含 search_input 信息
+    """
+    search_input_info = btn.get("search_input", {})
+    locator = search_input_info.get("locator", "")
+    placeholder = search_input_info.get("placeholder", "")
+
+    if not locator:
+        return {"success": False, "error_type": "no_locator",
+                "error_text": "搜索输入框无有效 locator"}
+
+    # 填写搜索框
+    try:
+        input_el = page.locator(locator).first
+        if await input_el.count() == 0:
+            return {"success": False, "error_type": "locator_failed",
+                    "error_text": f"搜索输入框未找到: {locator}"}
+
+        await input_el.click()
+        await input_el.fill("test")
+        await page.wait_for_timeout(500)
+    except Exception as e:
+        return {"success": False, "error_type": "fill_failed",
+                "error_text": f"填写搜索框失败: {e}"}
+
+    # 触发搜索：根据是否有相邻按钮决定触发方式
+    has_adjacent_btn = search_input_info.get("has_adjacent_btn", False)
+    trigger_mode = "auto"
+
+    if has_adjacent_btn:
+        # 尝试点击相邻按钮
+        try:
+            # 尝试多种定位方式
+            btn_locators = [
+                page.locator(f"{locator} ~ button").first,
+                page.locator(f"{locator} + .el-button").first,
+                page.locator(f'{locator}').locator('xpath=../following-sibling::button').first,
+            ]
+            clicked = False
+            for btn_loc in btn_locators:
+                if await btn_loc.count() > 0 and await btn_loc.is_visible():
+                    await btn_loc.click()
+                    clicked = True
+                    trigger_mode = "button"
+                    break
+            if not clicked:
+                # 回退到回车
+                await page.keyboard.press("Enter")
+                trigger_mode = "enter"
+        except Exception:
+            await page.keyboard.press("Enter")
+            trigger_mode = "enter"
+    else:
+        # 无相邻按钮，使用回车触发
+        await page.keyboard.press("Enter")
+        trigger_mode = "enter"
+
+    # 等待表格刷新
+    await wait_for_loading_complete(page)
+    await page.wait_for_timeout(1000)
+
+    # 验证列表仍存在
+    has_table = await page.evaluate(
+        "() => !!document.querySelector('.el-table__body-wrapper tbody tr')"
+    )
+
+    result = {
+        "success": True,
+        "selectors": {"trigger": f"搜索输入:{placeholder}"},
+        "trigger_locator_verified": locator,
+        "search_input": {
+            "locator": locator,
+            "placeholder": placeholder,
+        },
+        "trigger_mode": trigger_mode,
+        "has_table": has_table,
+    }
+    LOG.info(f"  搜索输入框验证成功: trigger_mode={trigger_mode}, has_table={has_table}")
+    return result
+
+
 async def _do_query(page, context: dict) -> dict:
     """执行查询操作：输入搜索条件 → 点击搜索 → 验证列表刷新。"""
     btn = context["btn"]
     btn_text = btn.get("text", "")
 
-    # 尝试在搜索框输入
+    # 尝试在搜索框输入（结构特征探测，不依赖关键词）
+    search_input_locator = None
+    search_input_placeholder = None
     try:
         search_input = page.locator(
-            '.el-input input[placeholder*="搜索"], '
-            '.el-input input[placeholder*="请输入"], '
-            '.el-input input[placeholder*="关键词"]'
+            '.el-input--prefix input, '
+            '.el-input input[placeholder], '
+            '.ant-input-affix-wrapper input'
         ).first
         if await search_input.count() > 0:
-            await search_input.fill("test")
-            await page.wait_for_timeout(500)
+            # 排除弹窗内的
+            in_dialog = await search_input.evaluate(
+                "el => !!el.closest('.el-dialog, .el-drawer, .ant-modal')"
+            )
+            if not in_dialog:
+                search_input_locator = await search_input.evaluate(
+                    "el => el.getAttribute('placeholder') ? "
+                    "'input[placeholder=\"' + el.getAttribute('placeholder') + '\"]' : ''"
+                )
+                search_input_placeholder = await search_input.evaluate(
+                    "el => el.getAttribute('placeholder') || ''"
+                )
+                await search_input.fill("test")
+                await page.wait_for_timeout(500)
     except Exception:
         pass
 
@@ -2101,6 +2471,15 @@ async def _do_query(page, context: dict) -> dict:
         "trigger_locator_verified": trigger_locator,
         "has_table": has_table,
     }
+
+    # 记录搜索输入框信息（供 playbook 生成使用）
+    if search_input_locator:
+        result["search_input"] = {
+            "locator": search_input_locator,
+            "placeholder": search_input_placeholder or "",
+        }
+        result["trigger_mode"] = "button"
+
     return result
 
 
@@ -4465,19 +4844,68 @@ def _build_update_steps(op_data: dict) -> list:
 
 
 def _build_query_steps(op_data: dict) -> list:
-    """构建 query 操作步骤"""
+    """构建 query 操作步骤
+
+    支持两种模式：
+    1. 搜索按钮模式：click_button + wait_for_table_ready
+    2. 搜索输入框模式：fill_input + (click_button/press_key) + wait_for_table_ready
+    """
     steps = []
 
-    trigger_locator = op_data.get("trigger_locator_verified")
-    if not trigger_locator:
-        trigger_text = op_data.get("selectors", {}).get("trigger", "")
-        trigger_locator = f"button:has-text('{trigger_text}')"
+    # 搜索输入框步骤（如果有）
+    search_input = op_data.get("search_input")
+    if search_input:
+        locator = search_input.get("locator", "")
+        placeholder = search_input.get("placeholder", "")
+        if locator:
+            steps.append({
+                "action": "fill_input",
+                "playwright_locator": locator,
+                "value": "{marker_name}",  # 运行时替换为创建的名称
+                "description": f"搜索框输入: {placeholder}" if placeholder else "搜索框输入关键词"
+            })
 
-    steps.append({
-        "action": "click_button",
-        "playwright_locator": trigger_locator,
-        "description": "点击查询按钮"
-    })
+    # 触发步骤：按钮/回车/自动
+    trigger_locator = op_data.get("trigger_locator_verified")
+    trigger_mode = op_data.get("trigger_mode", "button")
+
+    if trigger_locator and trigger_mode != "auto":
+        if trigger_locator.startswith("input["):
+            # locator 是输入框，不是按钮 → 统一用回车触发
+            # （即使 trigger_mode="button" 表示有相邻按钮，但我们没存其 locator）
+            steps.append({
+                "action": "press_key",
+                "key": "Enter",
+                "description": "回车触发搜索"
+            })
+        else:
+            steps.append({
+                "action": "click_button",
+                "playwright_locator": trigger_locator,
+                "description": "点击查询按钮"
+            })
+    elif trigger_mode == "enter":
+        steps.append({
+            "action": "press_key",
+            "key": "Enter",
+            "description": "回车触发搜索"
+        })
+    elif not search_input:
+        # 传统模式（无搜索输入框信息）
+        if trigger_locator:
+            steps.append({
+                "action": "click_button",
+                "playwright_locator": trigger_locator,
+                "description": "点击查询按钮"
+            })
+        else:
+            trigger_text = op_data.get("selectors", {}).get("trigger", "")
+            if trigger_text:
+                steps.append({
+                    "action": "click_button",
+                    "playwright_locator": f"button:has-text('{trigger_text}')",
+                    "description": "点击查询按钮"
+                })
 
     # 等待表格刷新（不检查成功消息）
     steps.append({

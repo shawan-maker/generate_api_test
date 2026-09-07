@@ -32,9 +32,9 @@
           "replay:create"
         ],
         "bodies": [
-          "{\"userName\":\"autotest744711\",\"password\":\"gw+UD7NGpQbB/4D1i+F6O746256uE+66DHzFXhXfN5OgdQ1rCWWr9yhGFJz29nhDnU3NSvMiGW9pn4lyUTF71VrNp6/z+js+uV8F2BVO5G++MRDANDPaCcwV7SUeRzvAfuz22gC2HGVbO3FXUXCXagq6izbF+z/oKCAc39D71t4=\",\"name\":\"test_744711\",\"email\":\"VrBws9ljgWeFhD6AOAYdX7LekxFUMNgUVcwbgR8legQMD1Vu/n5YxfacUaVFva3veDl7aubLiCnxeugfNcwxv9vnFQd0qlVmhS2vHvACwpQTtWgEPKASZo7e2x4eAZqQS0907qXKvt0GFE/mhLSVa17A2qaPLj1FwIzd9/8k9HQ=\",\"phone\":\"hqtGpLgiIwR5TUIX1kE0ocmCr9mcJXz7pBf0xPBMmHwH4MBJ7id+HenHUU6b1MYGo2zJN9fslY4REizZt8J0lM0Cknhdwt2Xo4Kc/8UmxHx2h2RbAZgFaile0Py/aEulmgIJjBC8tFxunbkXaoHUcXNvC+clFyqhlCV9ctNm8Ns=\",\"description\":\"auto_desc_744711\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\"}"
+          "{\"userName\":\"autotest769045\",\"password\":\"LqNt1/udEMxqhcNSCZn6dOS3e2AtRb9HTQQHOeAz9yejLtFjsJAwyKKNFhtZK6cl2s1u9BQO2b6EYmVzSgjR7kgH3Qv7UqyTEu72bX3ru+o8M3/7AvdaqaIfZJbz4Hcbsg7dnJ9OXTvZwFwujE74ztCj01RmWtXyko+75uNGbXs=\",\"name\":\"test_769045\",\"email\":\"NmzDcukaHt+pJywE5d33gPRXHHOpbwWfma1bjdilvKStEa3BmD2VP2GhHB3KSpE5yUfPNetzDXhwpRqT1/Bc86DkpsqNXPEM7/Zc5GDOKc8zuLY69wU1LRv9Orpqv8tufYbZGQvhjJiQ3K7FYHUceJrDEm9xwf0akWIs2vxMltY=\",\"phone\":\"HEEiD9TFj8pnfc1bkWLr39JOzx6zG5yaPmqSC4jnCMCiYMgfret62RCkoTyMynZkKjscHtOx2DkQiXfmuDnvulMeMsaaiTmp/ckhQUIlR3Fv+IuqPI7H2DSy7bSJ3YRNfr+wemM3SS6BUQ/AUkdur5crulg0OLPvup29yLENz/4=\",\"description\":\"auto_desc_769045\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\"}"
         ],
-        "request_body_sample": "{\"userName\":\"autotest744711\",\"password\":\"gw+UD7NGpQbB/4D1i+F6O746256uE+66DHzFXhXfN5OgdQ1rCWWr9yhGFJz29nhDnU3NSvMiGW9pn4lyUTF71VrNp6/z+js+uV8F2BVO5G++MRDANDPaCcwV7SUeRzvAfuz22gC2HGVbO3FXUXCXagq6izbF+z/oKCAc39D71t4=\",\"name\":\"test_744711\",\"email\":\"VrBws9ljgWeFhD6AOAYdX7LekxFUMNgUVcwbgR8legQMD1Vu/n5YxfacUaVFva3veDl7aubLiCnxeugfNcwxv9vnFQd0qlVmhS2vHvACwpQTtWgEPKASZo7e2x4eAZqQS0907qXKvt0GFE/mhLSVa17A2qaPLj1FwIzd9/8k9HQ=\",\"phone\":\"hqtGpLgiIwR5TUIX1kE0ocmCr9mcJXz7pBf0xPBMmHwH4MBJ7id+HenHUU6b1MYGo2zJN9fslY4REizZt8J0lM0Cknhdwt2Xo4Kc/8UmxHx2h2RbAZgFaile0Py/aEulmgIJjBC8tFxunbkXaoHUcXNvC+clFyqhlCV9ctNm8Ns=\",\"description\":\"auto_desc_744711\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\"}",
+        "request_body_sample": "{\"userName\":\"autotest769045\",\"password\":\"LqNt1/udEMxqhcNSCZn6dOS3e2AtRb9HTQQHOeAz9yejLtFjsJAwyKKNFhtZK6cl2s1u9BQO2b6EYmVzSgjR7kgH3Qv7UqyTEu72bX3ru+o8M3/7AvdaqaIfZJbz4Hcbsg7dnJ9OXTvZwFwujE74ztCj01RmWtXyko+75uNGbXs=\",\"name\":\"test_769045\",\"email\":\"NmzDcukaHt+pJywE5d33gPRXHHOpbwWfma1bjdilvKStEa3BmD2VP2GhHB3KSpE5yUfPNetzDXhwpRqT1/Bc86DkpsqNXPEM7/Zc5GDOKc8zuLY69wU1LRv9Orpqv8tufYbZGQvhjJiQ3K7FYHUceJrDEm9xwf0akWIs2vxMltY=\",\"phone\":\"HEEiD9TFj8pnfc1bkWLr39JOzx6zG5yaPmqSC4jnCMCiYMgfret62RCkoTyMynZkKjscHtOx2DkQiXfmuDnvulMeMsaaiTmp/ckhQUIlR3Fv+IuqPI7H2DSy7bSJ3YRNfr+wemM3SS6BUQ/AUkdur5crulg0OLPvup29yLENz/4=\",\"description\":\"auto_desc_769045\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\"}",
         "query_params": {},
         "query_params_samples": []
       }
@@ -42,14 +42,14 @@
     "update": [
       {
         "method": "PUT",
-        "pathname": "/estack/api/estack/draco/v1/users/ac44abfff4734e008b72c47944e77f5e",
+        "pathname": "/estack/api/estack/draco/v1/users/5d9af442c5c34a05ae8a76e24a4fefc6",
         "contexts": [
           "replay:update"
         ],
         "bodies": [
-          "{\"userId\":\"ac44abfff4734e008b72c47944e77f5e\",\"name\":\"test_744735\",\"description\":\"auto_desc_744735\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\",\"phone\":\"bg0XCQ2kTrZO+b8jOqZbIr1/aR7MrCXHyaqThoAzt384p08fkF3qJPQSIiJjkrTV5Z7YzGCvx82zfyijLrt1hg/O9VxhLkJzo3S12QnzKwEcho7+4+XpGS0ko1ObqHbaoOGPIzOPSlfMMcH2fpW/Zv1zplbJlbueWVkKivf0zqI=\",\"email\":\"KURCwwYNp5zwbArytZSw8S4lxF7lzzGtRzt/z5De1+hG8IJVavfcc2/rbHwenY1Px1YCu6+73YW78LgIMqwBP8fd3ljXVlTBZbLvPeQWlqwDFo8LJFVs0N6TLJ0QnXhVgTHqVHldtk5fuby0kKYGzcCTlthCCzH7mUEYtPQLIVo=\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+          "{\"userId\":\"5d9af442c5c34a05ae8a76e24a4fefc6\",\"name\":\"test_769072\",\"description\":\"auto_desc_769072\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\",\"phone\":\"hW5/uAgPOLing6HfLGoA+wlbO/iBTH+oc1XzVaXseSNE7nulqCm6OUNpAujsRiV196ETXnciD6TcRHn1nYo0xmqV4o/Gy42L1+YJak6ypldVYOORyu2XNCD96qOpkS2oW7Bh3cNVlh9wmwITvalNPL19Ve0fxTY7Ql5Rt9yF80I=\",\"email\":\"MRAlLpsrDqoXEEUz8NCccjjimIZRezss5EH/FsgxUYhSVHPOlKzxYBkme1Mzb3qaoabmKSYgjbHmAli4Sthas6DLS5cRJH6hY8AL2xWQ/JRFJR3ML1uOGW3fi5l1XbD1cXsQiqzRzRPPslTt+omrJV+BRS6QvmDjmSNjR8Mpz4s=\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
         ],
-        "request_body_sample": "{\"userId\":\"ac44abfff4734e008b72c47944e77f5e\",\"name\":\"test_744735\",\"description\":\"auto_desc_744735\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\",\"phone\":\"bg0XCQ2kTrZO+b8jOqZbIr1/aR7MrCXHyaqThoAzt384p08fkF3qJPQSIiJjkrTV5Z7YzGCvx82zfyijLrt1hg/O9VxhLkJzo3S12QnzKwEcho7+4+XpGS0ko1ObqHbaoOGPIzOPSlfMMcH2fpW/Zv1zplbJlbueWVkKivf0zqI=\",\"email\":\"KURCwwYNp5zwbArytZSw8S4lxF7lzzGtRzt/z5De1+hG8IJVavfcc2/rbHwenY1Px1YCu6+73YW78LgIMqwBP8fd3ljXVlTBZbLvPeQWlqwDFo8LJFVs0N6TLJ0QnXhVgTHqVHldtk5fuby0kKYGzcCTlthCCzH7mUEYtPQLIVo=\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
+        "request_body_sample": "{\"userId\":\"5d9af442c5c34a05ae8a76e24a4fefc6\",\"name\":\"test_769072\",\"description\":\"auto_desc_769072\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\",\"phone\":\"hW5/uAgPOLing6HfLGoA+wlbO/iBTH+oc1XzVaXseSNE7nulqCm6OUNpAujsRiV196ETXnciD6TcRHn1nYo0xmqV4o/Gy42L1+YJak6ypldVYOORyu2XNCD96qOpkS2oW7Bh3cNVlh9wmwITvalNPL19Ve0fxTY7Ql5Rt9yF80I=\",\"email\":\"MRAlLpsrDqoXEEUz8NCccjjimIZRezss5EH/FsgxUYhSVHPOlKzxYBkme1Mzb3qaoabmKSYgjbHmAli4Sthas6DLS5cRJH6hY8AL2xWQ/JRFJR3ML1uOGW3fi5l1XbD1cXsQiqzRzRPPslTt+omrJV+BRS6QvmDjmSNjR8Mpz4s=\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
         "query_params": {},
         "query_params_samples": []
       }
@@ -57,14 +57,14 @@
     "lock": [
       {
         "method": "PUT",
-        "pathname": "/estack/api/estack/draco/v1/users/ac44abfff4734e008b72c47944e77f5e/suspend",
+        "pathname": "/estack/api/estack/draco/v1/users/5d9af442c5c34a05ae8a76e24a4fefc6/suspend",
         "contexts": [
           "replay:lock"
         ],
         "bodies": [
-          "{\"userId\":\"ac44abfff4734e008b72c47944e77f5e\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+          "{\"userId\":\"5d9af442c5c34a05ae8a76e24a4fefc6\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
         ],
-        "request_body_sample": "{\"userId\":\"ac44abfff4734e008b72c47944e77f5e\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
+        "request_body_sample": "{\"userId\":\"5d9af442c5c34a05ae8a76e24a4fefc6\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
         "query_params": {},
         "query_params_samples": []
       }
@@ -72,7 +72,7 @@
     "unlock": [
       {
         "method": "PUT",
-        "pathname": "/estack/api/estack/draco/v1/users/ac44abfff4734e008b72c47944e77f5e/enable",
+        "pathname": "/estack/api/estack/draco/v1/users/5d9af442c5c34a05ae8a76e24a4fefc6/enable",
         "contexts": [
           "replay:unlock"
         ],
@@ -92,9 +92,9 @@
           "replay:reset"
         ],
         "bodies": [
-          "{\"userId\":\"ac44abfff4734e008b72c47944e77f5e\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}"
+          "{\"userId\":\"5d9af442c5c34a05ae8a76e24a4fefc6\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}"
         ],
-        "request_body_sample": "{\"userId\":\"ac44abfff4734e008b72c47944e77f5e\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}",
+        "request_body_sample": "{\"userId\":\"5d9af442c5c34a05ae8a76e24a4fefc6\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}",
         "query_params": {},
         "query_params_samples": []
       },
@@ -105,9 +105,9 @@
           "replay:reset"
         ],
         "bodies": [
-          "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"HFg0y2wJo5LfkEVVzJQDSMO7PEu9bG0zjL2w8p9CwTpthbPZbTiB8WZ37x/ie30SjH4Me2/xZDbtK8lDDp2XKFmmpnFAUUDYmBJfEmKNvf22rV+XQ+bt1fz9M38RF+Uq9CWjhPZUN5M7bJo1A12jmgg6KE866mN4IK3/goCc6hk=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"ac44abfff4734e008b72c47944e77f5e\",\"noticeType\":[]}"
+          "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"DkVslru13AZg8504L3AczG2FuiWmVYT7r6I+kDjEJJWdTYiqzewqvYglMJ27nP9kvt9qz5hZGPP5mft0JE7LGJSfHQTTYVJeJ9ukxmLMWtAlb1NBpvIpiii+CHVv2WE1WXTl2omCk8xEQF3/4oUTS2NvUYZsAWXuJeIVnTMV+Es=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"5d9af442c5c34a05ae8a76e24a4fefc6\",\"noticeType\":[]}"
         ],
-        "request_body_sample": "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"HFg0y2wJo5LfkEVVzJQDSMO7PEu9bG0zjL2w8p9CwTpthbPZbTiB8WZ37x/ie30SjH4Me2/xZDbtK8lDDp2XKFmmpnFAUUDYmBJfEmKNvf22rV+XQ+bt1fz9M38RF+Uq9CWjhPZUN5M7bJo1A12jmgg6KE866mN4IK3/goCc6hk=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"ac44abfff4734e008b72c47944e77f5e\",\"noticeType\":[]}",
+        "request_body_sample": "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"DkVslru13AZg8504L3AczG2FuiWmVYT7r6I+kDjEJJWdTYiqzewqvYglMJ27nP9kvt9qz5hZGPP5mft0JE7LGJSfHQTTYVJeJ9ukxmLMWtAlb1NBpvIpiii+CHVv2WE1WXTl2omCk8xEQF3/4oUTS2NvUYZsAWXuJeIVnTMV+Es=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"5d9af442c5c34a05ae8a76e24a4fefc6\",\"noticeType\":[]}",
         "query_params": {},
         "query_params_samples": []
       }
@@ -120,9 +120,9 @@
           "replay:delete"
         ],
         "bodies": [
-          "[\"ac44abfff4734e008b72c47944e77f5e\"]"
+          "[\"5d9af442c5c34a05ae8a76e24a4fefc6\"]"
         ],
-        "request_body_sample": "[\"ac44abfff4734e008b72c47944e77f5e\"]",
+        "request_body_sample": "[\"5d9af442c5c34a05ae8a76e24a4fefc6\"]",
         "query_params": {},
         "query_params_samples": []
       }
@@ -139,33 +139,6 @@
         "request_body_sample": null,
         "query_params": {},
         "query_params_samples": []
-      },
-      {
-        "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/tenants/users",
-        "contexts": [
-          "init",
-          "replay:create",
-          "replay:delete",
-          "replay:lock",
-          "replay:unlock",
-          "replay:update"
-        ],
-        "bodies": [],
-        "request_body_sample": null,
-        "query_params": {},
-        "query_params_samples": [
-          {
-            "tenantId": "34e2594fca9e44cd9e23b25474838c7f",
-            "pageNum": "1",
-            "pageSize": "10"
-          },
-          {
-            "tenantId": "34e2594fca9e44cd9e23b25474838c7f",
-            "pageNum": "2",
-            "pageSize": "10"
-          }
-        ]
       },
       {
         "method": "GET",
@@ -202,12 +175,12 @@
         "query_params": {},
         "query_params_samples": [
           {
-            "phone": "Wf7jLAeAqYTOjEYSOz3GmrOxMMGgUpZY5C2UF3n4t7Edrneonly+6qb791JOIwxRGsy/U5NHsQEa2nffVszueMfuAUU81+Mw1/o3xcd82AO56Xa5c7j3RjcvRuvs4iQ695r+cuilj8D4JrbQuyQdG6dq7yQRHCRSZK3RxMhHXg4=",
+            "phone": "Et8rrYFJGevAOYwv022WnPXNui+jhVM9dfsu5re40GrC96WL0Db4AnRU9YTfosqLLcAywhh+j+CwTu9FeWVf7u9cz+suKp7kJTXGkChtc1ZIVQaGHsE+Afo+4wgJ154GTLQLIWR0ri9Ak3ONbtP5UkhYM4faDCTy0RLhvac05FU=",
             "noloading": "true",
             "countryCode": "86"
           },
           {
-            "phone": "EYHuanrAUGFOfr4Ar11Bjf1FpRMJNk33guy9nJkAhb4koQbcgYAx4JdqqOHZ8aji0Mu8vFy9SG72yWaRgJ/pHIyxbtVsmwG7BX2FIeCKb1nJMB6zlbqlSyyuEGeOcqDzcYvyva6hYZ0GI3IX1TssVul2FhA+fszmOn5paBqRm1s=",
+            "phone": "fUwSdopi2KcfI8kJKv6dnLRn+xQiL465qSk09XaeaFHcdLyC+cNOnypH5rKvbLOJKuqeZdrqJ+J2PpLqOYAEDvkewmuKIyDAscptdxY/YIVMwMfUSBe0/x/DBFakP840jwKVjC8LhK8jjBa4n6akyJ9Kxdp1EQ40VTV/OkG25Vo=",
             "noloading": "true",
             "countryCode": "86"
           }
@@ -224,18 +197,18 @@
         "query_params": {},
         "query_params_samples": [
           {
-            "email": "SqC3cBmM4IE4XYAoNsrcyaEehNXLVplu0bSI3ESjj597FmTCYc9WyYTv1oK2xknrvZvzFV49XnaXwbRoty+zpVcglM+r++luSzvcUjUTfuOXEWgom6wXaILnSikrcUFbKPeraioCd+bDcDwNZOs4tAf1Hh3KMXLt4UrYr8gEa5Y=",
+            "email": "O3Bo0XBcs3URbmi7oxnm3oBQACvlNeaHoCJ1mUy8MuEXpEIwJA3aKFlq+z+HLuyVKOVce/H7HAjU+wPoWlrPGzasaaRwTg46910+wVpc2w1HOVj/JtFGX5vx47zF1IZT0uj2vUcoXwOnTgpQrzEQvLnmgSQRx9hymuHneO5cfH8=",
             "noloading": "true"
           },
           {
-            "email": "btRpVREWqoco2EqTiykFF5qjo3ditUV0zLF/HQdPClAasCjjPJJw8HJQoa9i8y9xWSbEdZuxBYFr3b4jhIymXcujAPP22nV7ZazmZAyI06xUblBU+tjFjMKtOJCMdSFdslIDz7zFHMRSFSzV24Irp82JZLB0dy4j3G0WufvfKDs=",
+            "email": "Xrz5fejBY27QchevRBTLbktK/3gUQyEeXwYM3lGnaZUbFuuAqP3jKFlXAxQmucHlbPSqnRhxJ9L5u0DRiJM7B/Ssr/mmJk0i/NDNfWJSrybytyOKF/J1/AZIyyaPaRdUqRV5TA3GgaHIbn/EIojz2JA1o3TntJxZm8+chPbFzP4=",
             "noloading": "true"
           }
         ]
       },
       {
         "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/users/ac44abfff4734e008b72c47944e77f5e/email/usability",
+        "pathname": "/estack/api/estack/draco/v1/users/5d9af442c5c34a05ae8a76e24a4fefc6/email/usability",
         "contexts": [
           "replay:update"
         ],
@@ -244,20 +217,20 @@
         "query_params": {},
         "query_params_samples": [
           {
-            "email": "BOk5O/ipJDXXcJZCc6VhyjniWqhJ0uFoejMfuIyK6PX/VhYEOd/a/EaSo0UI0Y3WaM4y83Pqw+IGmSW7e0ofqzYd9udC6Jat9Ld6iMs3y5Y2RbgR+bFiNVyBcdFTXgGp7hQW3KhyXITtcIR2snjTXQbOouLKlF8Va4/MaYQiIz0=",
-            "userId": "ac44abfff4734e008b72c47944e77f5e",
+            "email": "Vnm8cmOrj/0DEA4Yh3QlmNrH7uGbos6AzDNRvhgymLb+2YJvH+qNTcRaC9Dd1+dbe/yYzW38NwMpDYMO/Lzo/yE5/ZqMYYXQewYJh/tkUeYQ2094pA9kRhVdkv+XCSI8UfnqtM5ixtkfJnJdNWCC9cjzEeAV4Fu+2BOOvZ/+U/w=",
+            "userId": "5d9af442c5c34a05ae8a76e24a4fefc6",
             "noloading": "true"
           },
           {
-            "email": "cbnmt+JDBO4f6uwuLseVqNYVNYFnrkpA8HytUmb+uG+RYYVS2lHmoXqt+yuS5GLPFs4zNEX8sIxfMnI5VQYFRYkuTcy+cig4e87PJ1VQQOISH1yMiAtrRwiuiWD0U2wpRMmWMwtFNoq3SQiI6kRaMJ51rCpehjA24KFsp1pL0RU=",
-            "userId": "ac44abfff4734e008b72c47944e77f5e",
+            "email": "Q+ZuYyRp+YgQaTnW8oCe5YthojOV8rkFvijaqCiJMiWDR1Z+vGoQYlY7RqPnYGSenZulxR8WfbYCoeaf4njkbCoG38Y65N0c7ofyPuIuVUFQrWRwid0VrKQ9PGJaxl+61r7w3TdeUG/Kn4xYMBmG0T2QdFNGLA82laH3mouOJyU=",
+            "userId": "5d9af442c5c34a05ae8a76e24a4fefc6",
             "noloading": "true"
           }
         ]
       },
       {
         "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/users/ac44abfff4734e008b72c47944e77f5e/phone/usability",
+        "pathname": "/estack/api/estack/draco/v1/users/5d9af442c5c34a05ae8a76e24a4fefc6/phone/usability",
         "contexts": [
           "replay:update"
         ],
@@ -266,16 +239,16 @@
         "query_params": {},
         "query_params_samples": [
           {
-            "phone": "RKtgmnnwQM+GEAbgrtYJ7TrBeipoDv44zRwBG+dBB+KddvgjywaXWgCadGzvopYjUfn9sPGzoSCmbE9g8DAvAUxoeDNWXzLtMuR5tcTJfOycNLZ+rtNzd1DmwVeTvRJHM/IGEHqDYDKvDoatAZ6ga3AykMu8wptHBz/rP+cFEpQ=",
+            "phone": "SzImqhXQMRGv90iRQAQyjzLVVTLM0pGoDxyYp+hHwgmv2TZ9Thgk/izhHg4NdJ88krZfwa61MvZHWV1llEvfPm/UhPS7iljX8vayEy/Qh4N5JWbBfvv+FCfz0zN4/6DJ/ymdjGD/CeRmUZCMU0YpR6tvLeAVuTv57v9PNvc8Vlg=",
             "noloading": "true",
             "countryCode": "86",
-            "userId": "ac44abfff4734e008b72c47944e77f5e"
+            "userId": "5d9af442c5c34a05ae8a76e24a4fefc6"
           },
           {
-            "phone": "g7j/ehCO0VsiaYwnwMG4qvucEep3Td2ltpo4UWdJ+9dMHJMM6U32aj60cBg+Maqs63aRQybq19aqVh/cEwrafG26Ce0Ofa85wQbwX+hPG9jzMylwVkWty1jlVXZyNBBykAxRSO45muzvnmFcadivS3psE3tngAKjvHYjBtwoMak=",
+            "phone": "MiYXROrbs7XaWDKbedWcaMcBndpvdC+W7bLOGQJb4znm7WRLZ8kb6yZE4rHkpqmdR2YR8OC+78VlwIDjCXAh2AU880ZweYMTRXsi2REAeLIcfBXemvCBfRt4vN3h2wFgapRMExf+HO4z0AgQyqhhnfRCOu+PJUaKYNEG2fv75n8=",
             "noloading": "true",
             "countryCode": "86",
-            "userId": "ac44abfff4734e008b72c47944e77f5e"
+            "userId": "5d9af442c5c34a05ae8a76e24a4fefc6"
           }
         ]
       }
@@ -294,20 +267,13 @@
         "category": "create",
         "method": "POST",
         "pathname": "/estack/api/estack/draco/v1/users",
-        "body_sample": "{\"userName\":\"autotest744711\",\"password\":\"gw+UD7NGpQbB/4D1i+F6O746256uE+66DHzFXhXfN5OgdQ1rCWWr9yhGFJz29nhDnU3NSvMiGW9pn4lyUTF71VrNp6/z+js+uV8F2BVO5G++MRDANDPaCcwV7SUeRzvAfuz22gC2HGVbO3FXUXCXagq6izbF+z/oKCAc39D71t4=\",\"name\":\"test_744711\",\"email\":\"VrBws9ljgWeFhD6AOAYdX7LekxFUMNgUVcwbgR8legQMD1Vu/n5YxfacUaVFva3veDl7aubLiCnxeugfNcwxv9vnFQd0qlVmhS2vHvACwpQTtWgEPKASZo7e2x4eAZqQS0907qXKvt0GFE/mhLSVa17A2qaPLj1FwIzd9/8k9HQ=\",\"phone\":\"hqtGpLgiIwR5TUIX1kE0ocmCr9mcJXz7pBf0xPBMmHwH4MBJ7id+HenHUU6b1MYGo2zJN9fslY4REizZt8J0lM0Cknhdwt2Xo4Kc/8UmxHx2h2RbAZgFaile0Py/aEulmgIJjBC8tFxunbkXaoHUcXNvC+clFyqhlCV9ctNm8Ns=\",\"description\":\"auto_desc_744711\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\"}",
+        "body_sample": "{\"userName\":\"autotest769045\",\"password\":\"LqNt1/udEMxqhcNSCZn6dOS3e2AtRb9HTQQHOeAz9yejLtFjsJAwyKKNFhtZK6cl2s1u9BQO2b6EYmVzSgjR7kgH3Qv7UqyTEu72bX3ru+o8M3/7AvdaqaIfZJbz4Hcbsg7dnJ9OXTvZwFwujE74ztCj01RmWtXyko+75uNGbXs=\",\"name\":\"test_769045\",\"email\":\"NmzDcukaHt+pJywE5d33gPRXHHOpbwWfma1bjdilvKStEa3BmD2VP2GhHB3KSpE5yUfPNetzDXhwpRqT1/Bc86DkpsqNXPEM7/Zc5GDOKc8zuLY69wU1LRv9Orpqv8tufYbZGQvhjJiQ3K7FYHUceJrDEm9xwf0akWIs2vxMltY=\",\"phone\":\"HEEiD9TFj8pnfc1bkWLr39JOzx6zG5yaPmqSC4jnCMCiYMgfret62RCkoTyMynZkKjscHtOx2DkQiXfmuDnvulMeMsaaiTmp/ckhQUIlR3Fv+IuqPI7H2DSy7bSJ3YRNfr+wemM3SS6BUQ/AUkdur5crulg0OLPvup29yLENz/4=\",\"description\":\"auto_desc_769045\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\"}",
         "query_params": {}
       },
       {
         "category": "execute",
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/display-by-role",
-        "body_sample": null,
-        "query_params": {}
-      },
-      {
-        "category": "execute",
-        "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "body_sample": null,
         "query_params": {}
       },
@@ -344,28 +310,21 @@
       {
         "category": "update",
         "method": "PUT",
-        "pathname": "/estack/api/estack/draco/v1/users/ac44abfff4734e008b72c47944e77f5e",
-        "body_sample": "{\"userId\":\"ac44abfff4734e008b72c47944e77f5e\",\"name\":\"test_744735\",\"description\":\"auto_desc_744735\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\",\"phone\":\"bg0XCQ2kTrZO+b8jOqZbIr1/aR7MrCXHyaqThoAzt384p08fkF3qJPQSIiJjkrTV5Z7YzGCvx82zfyijLrt1hg/O9VxhLkJzo3S12QnzKwEcho7+4+XpGS0ko1ObqHbaoOGPIzOPSlfMMcH2fpW/Zv1zplbJlbueWVkKivf0zqI=\",\"email\":\"KURCwwYNp5zwbArytZSw8S4lxF7lzzGtRzt/z5De1+hG8IJVavfcc2/rbHwenY1Px1YCu6+73YW78LgIMqwBP8fd3ljXVlTBZbLvPeQWlqwDFo8LJFVs0N6TLJ0QnXhVgTHqVHldtk5fuby0kKYGzcCTlthCCzH7mUEYtPQLIVo=\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
+        "pathname": "/estack/api/estack/draco/v1/users/5d9af442c5c34a05ae8a76e24a4fefc6",
+        "body_sample": "{\"userId\":\"5d9af442c5c34a05ae8a76e24a4fefc6\",\"name\":\"test_769072\",\"description\":\"auto_desc_769072\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\",\"phone\":\"hW5/uAgPOLing6HfLGoA+wlbO/iBTH+oc1XzVaXseSNE7nulqCm6OUNpAujsRiV196ETXnciD6TcRHn1nYo0xmqV4o/Gy42L1+YJak6ypldVYOORyu2XNCD96qOpkS2oW7Bh3cNVlh9wmwITvalNPL19Ve0fxTY7Ql5Rt9yF80I=\",\"email\":\"MRAlLpsrDqoXEEUz8NCccjjimIZRezss5EH/FsgxUYhSVHPOlKzxYBkme1Mzb3qaoabmKSYgjbHmAli4Sthas6DLS5cRJH6hY8AL2xWQ/JRFJR3ML1uOGW3fi5l1XbD1cXsQiqzRzRPPslTt+omrJV+BRS6QvmDjmSNjR8Mpz4s=\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
         "query_params": {}
       },
       {
         "category": "execute",
         "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "pathname": "/estack/api/estack/draco/v1/users/5d9af442c5c34a05ae8a76e24a4fefc6/email/usability",
         "body_sample": null,
         "query_params": {}
       },
       {
         "category": "execute",
         "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/users/ac44abfff4734e008b72c47944e77f5e/email/usability",
-        "body_sample": null,
-        "query_params": {}
-      },
-      {
-        "category": "execute",
-        "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/users/ac44abfff4734e008b72c47944e77f5e/phone/usability",
+        "pathname": "/estack/api/estack/draco/v1/users/5d9af442c5c34a05ae8a76e24a4fefc6/phone/usability",
         "body_sample": null,
         "query_params": {}
       }
@@ -374,15 +333,8 @@
       {
         "category": "lock",
         "method": "PUT",
-        "pathname": "/estack/api/estack/draco/v1/users/ac44abfff4734e008b72c47944e77f5e/suspend",
-        "body_sample": "{\"userId\":\"ac44abfff4734e008b72c47944e77f5e\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
-        "query_params": {}
-      },
-      {
-        "category": "execute",
-        "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/tenants/users",
-        "body_sample": null,
+        "pathname": "/estack/api/estack/draco/v1/users/5d9af442c5c34a05ae8a76e24a4fefc6/suspend",
+        "body_sample": "{\"userId\":\"5d9af442c5c34a05ae8a76e24a4fefc6\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
         "query_params": {}
       }
     ],
@@ -390,15 +342,8 @@
       {
         "category": "unlock",
         "method": "PUT",
-        "pathname": "/estack/api/estack/draco/v1/users/ac44abfff4734e008b72c47944e77f5e/enable",
+        "pathname": "/estack/api/estack/draco/v1/users/5d9af442c5c34a05ae8a76e24a4fefc6/enable",
         "body_sample": "{\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
-        "query_params": {}
-      },
-      {
-        "category": "execute",
-        "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/tenants/users",
-        "body_sample": null,
         "query_params": {}
       }
     ],
@@ -407,14 +352,14 @@
         "category": "reset",
         "method": "POST",
         "pathname": "/estack/api/estack/draco/v1/password-reset/generate",
-        "body_sample": "{\"userId\":\"ac44abfff4734e008b72c47944e77f5e\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}",
+        "body_sample": "{\"userId\":\"5d9af442c5c34a05ae8a76e24a4fefc6\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}",
         "query_params": {}
       },
       {
         "category": "reset",
         "method": "POST",
         "pathname": "/estack/api/estack/draco/v1/password-reset/reset",
-        "body_sample": "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"HFg0y2wJo5LfkEVVzJQDSMO7PEu9bG0zjL2w8p9CwTpthbPZbTiB8WZ37x/ie30SjH4Me2/xZDbtK8lDDp2XKFmmpnFAUUDYmBJfEmKNvf22rV+XQ+bt1fz9M38RF+Uq9CWjhPZUN5M7bJo1A12jmgg6KE866mN4IK3/goCc6hk=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"ac44abfff4734e008b72c47944e77f5e\",\"noticeType\":[]}",
+        "body_sample": "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"DkVslru13AZg8504L3AczG2FuiWmVYT7r6I+kDjEJJWdTYiqzewqvYglMJ27nP9kvt9qz5hZGPP5mft0JE7LGJSfHQTTYVJeJ9ukxmLMWtAlb1NBpvIpiii+CHVv2WE1WXTl2omCk8xEQF3/4oUTS2NvUYZsAWXuJeIVnTMV+Es=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"5d9af442c5c34a05ae8a76e24a4fefc6\",\"noticeType\":[]}",
         "query_params": {}
       },
       {
@@ -437,14 +382,7 @@
         "category": "delete",
         "method": "DELETE",
         "pathname": "/estack/api/estack/draco/v1/users/batch/delete",
-        "body_sample": "[\"ac44abfff4734e008b72c47944e77f5e\"]",
-        "query_params": {}
-      },
-      {
-        "category": "execute",
-        "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/tenants/users",
-        "body_sample": null,
+        "body_sample": "[\"5d9af442c5c34a05ae8a76e24a4fefc6\"]",
         "query_params": {}
       }
     ]
@@ -472,7 +410,7 @@
     "id_field_details": {
       "id": {
         "source_crud": "create",
-        "sample_value": "ac44abfff4734e008b72c47944e77f5e",
+        "sample_value": "5d9af442c5c34a05ae8a76e24a4fefc6",
         "path": "entity.id"
       },
       "tenantId": {
@@ -482,7 +420,7 @@
       },
       "userId": {
         "source_crud": "reset",
-        "sample_value": "ac44abfff4734e008b72c47944e77f5e",
+        "sample_value": "5d9af442c5c34a05ae8a76e24a4fefc6",
         "path": "entity.userId"
       }
     }

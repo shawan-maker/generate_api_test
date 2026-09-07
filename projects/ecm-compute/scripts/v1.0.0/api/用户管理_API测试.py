@@ -1,21 +1,21 @@
 """
 用户管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-07 10:43:00
-目标URL: https://10.151.61.248D:/Program Files (x86)/Git/estack/web/estack/user-center/user-manage/user
+生成时间: 2026-09-07 16:20:38
+目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/user
 
 执行流程:
   1. 创建用户
-  2. 查询验证（创建后）
+  2. 搜索验证（创建用户后）
   3. 编辑
-  4. 查询验证（编辑后）
+  4. 搜索验证（编辑后）
   5. 冻结
-  6. 查询验证（冻结后）
+  6. 搜索验证（冻结后）
   7. 启用
-  8. 查询验证（启用后）
+  8. 搜索验证（启用后）
   9. 重置密码
-  10. 查询验证（重置密码后）
+  10. 搜索验证（重置密码后）
   11. 批量删除
-  12. 查询验证（删除后）
+  12. 搜索验证（删除后）
 
 状态断言:
   - 删除后数据不应出现
@@ -35,7 +35,7 @@ MANIFEST = {
     "name": "用户管理",
     "base_url": "https://10.151.61.248",
     "login_url": "https://10.151.61.248/estack/web/estack/login",
-    "target_url": "https://10.151.61.248D:/Program Files (x86)/Git/estack/web/estack/user-center/user-manage/user"
+    "target_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/user"
   },
   "response_contract": {
     "envelope_keys": [
@@ -73,17 +73,9 @@ MANIFEST = {
     "token_key": "estackToken",
     "token_storage": "localStorage",
     "cookie_token_key": "accessToken",
-    "captcha": {
-      "auth_button_text": "点击完成认证",
-      "login_button_text": "登录"
-    },
     "credentials_env": {
       "username": "APP_USER",
       "password": "APP_PASS"
-    },
-    "credentials_default": {
-      "username": "estack-yy",
-      "password": "R@9eDuck$!mpleM00n"
     }
   },
   "steps": [
@@ -96,12 +88,12 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userName": "autotest744711",
-        "password": "gw+UD7NGpQbB/4D1i+F6O746256uE+66DHzFXhXfN5OgdQ1rCWWr9yhGFJz29nhDnU3NSvMiGW9pn4lyUTF71VrNp6/z+js+uV8F2BVO5G++MRDANDPaCcwV7SUeRzvAfuz22gC2HGVbO3FXUXCXagq6izbF+z/oKCAc39D71t4=",
-        "name": "test_744711",
-        "email": "VrBws9ljgWeFhD6AOAYdX7LekxFUMNgUVcwbgR8legQMD1Vu/n5YxfacUaVFva3veDl7aubLiCnxeugfNcwxv9vnFQd0qlVmhS2vHvACwpQTtWgEPKASZo7e2x4eAZqQS0907qXKvt0GFE/mhLSVa17A2qaPLj1FwIzd9/8k9HQ=",
-        "phone": "hqtGpLgiIwR5TUIX1kE0ocmCr9mcJXz7pBf0xPBMmHwH4MBJ7id+HenHUU6b1MYGo2zJN9fslY4REizZt8J0lM0Cknhdwt2Xo4Kc/8UmxHx2h2RbAZgFaile0Py/aEulmgIJjBC8tFxunbkXaoHUcXNvC+clFyqhlCV9ctNm8Ns=",
-        "description": "auto_desc_744711",
+        "userName": "autotest769045",
+        "password": "LqNt1/udEMxqhcNSCZn6dOS3e2AtRb9HTQQHOeAz9yejLtFjsJAwyKKNFhtZK6cl2s1u9BQO2b6EYmVzSgjR7kgH3Qv7UqyTEu72bX3ru+o8M3/7AvdaqaIfZJbz4Hcbsg7dnJ9OXTvZwFwujE74ztCj01RmWtXyko+75uNGbXs=",
+        "name": "test_769045",
+        "email": "NmzDcukaHt+pJywE5d33gPRXHHOpbwWfma1bjdilvKStEa3BmD2VP2GhHB3KSpE5yUfPNetzDXhwpRqT1/Bc86DkpsqNXPEM7/Zc5GDOKc8zuLY69wU1LRv9Orpqv8tufYbZGQvhjJiQ3K7FYHUceJrDEm9xwf0akWIs2vxMltY=",
+        "phone": "HEEiD9TFj8pnfc1bkWLr39JOzx6zG5yaPmqSC4jnCMCiYMgfret62RCkoTyMynZkKjscHtOx2DkQiXfmuDnvulMeMsaaiTmp/ckhQUIlR3Fv+IuqPI7H2DSy7bSJ3YRNfr+wemM3SS6BUQ/AUkdur5crulg0OLPvup29yLENz/4=",
+        "description": "auto_desc_769045",
         "policyIds": [
           "1f8e392309fc414c9d77d45d0315fedc"
         ],
@@ -154,7 +146,7 @@ MANIFEST = {
     },
     {
       "action": "get",
-      "label": "查询验证（创建后）",
+      "label": "搜索验证（创建用户后）",
       "api": {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
@@ -165,7 +157,8 @@ MANIFEST = {
       "requires": [
         "id"
       ],
-      "assertion": "contains_id"
+      "assertion": "search_verify",
+      "search_param": "name"
     },
     {
       "action": "update",
@@ -176,13 +169,13 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "ac44abfff4734e008b72c47944e77f5e",
-        "name": "test_744735",
-        "description": "auto_desc_744735",
+        "userId": "5d9af442c5c34a05ae8a76e24a4fefc6",
+        "name": "test_769072",
+        "description": "auto_desc_769072",
         "tenantId": "34e2594fca9e44cd9e23b25474838c7f",
         "countryCode": "+86",
-        "phone": "bg0XCQ2kTrZO+b8jOqZbIr1/aR7MrCXHyaqThoAzt384p08fkF3qJPQSIiJjkrTV5Z7YzGCvx82zfyijLrt1hg/O9VxhLkJzo3S12QnzKwEcho7+4+XpGS0ko1ObqHbaoOGPIzOPSlfMMcH2fpW/Zv1zplbJlbueWVkKivf0zqI=",
-        "email": "KURCwwYNp5zwbArytZSw8S4lxF7lzzGtRzt/z5De1+hG8IJVavfcc2/rbHwenY1Px1YCu6+73YW78LgIMqwBP8fd3ljXVlTBZbLvPeQWlqwDFo8LJFVs0N6TLJ0QnXhVgTHqVHldtk5fuby0kKYGzcCTlthCCzH7mUEYtPQLIVo=",
+        "phone": "hW5/uAgPOLing6HfLGoA+wlbO/iBTH+oc1XzVaXseSNE7nulqCm6OUNpAujsRiV196ETXnciD6TcRHn1nYo0xmqV4o/Gy42L1+YJak6ypldVYOORyu2XNCD96qOpkS2oW7Bh3cNVlh9wmwITvalNPL19Ve0fxTY7Ql5Rt9yF80I=",
+        "email": "MRAlLpsrDqoXEEUz8NCccjjimIZRezss5EH/FsgxUYhSVHPOlKzxYBkme1Mzb3qaoabmKSYgjbHmAli4Sthas6DLS5cRJH6hY8AL2xWQ/JRFJR3ML1uOGW3fi5l1XbD1cXsQiqzRzRPPslTt+omrJV+BRS6QvmDjmSNjR8Mpz4s=",
         "adminId": "93552edc908e4dadae761fff1fd0f24c"
       },
       "body_field_roles": {
@@ -219,7 +212,7 @@ MANIFEST = {
     },
     {
       "action": "get",
-      "label": "查询验证（编辑后）",
+      "label": "搜索验证（编辑后）",
       "api": {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
@@ -230,7 +223,8 @@ MANIFEST = {
       "requires": [
         "id"
       ],
-      "assertion": "contains_id"
+      "assertion": "search_verify",
+      "search_param": "name"
     },
     {
       "action": "lock",
@@ -241,7 +235,7 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "ac44abfff4734e008b72c47944e77f5e",
+        "userId": "5d9af442c5c34a05ae8a76e24a4fefc6",
         "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
         "adminId": "93552edc908e4dadae761fff1fd0f24c"
       },
@@ -264,7 +258,7 @@ MANIFEST = {
     },
     {
       "action": "get",
-      "label": "查询验证（冻结后）",
+      "label": "搜索验证（冻结后）",
       "api": {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
@@ -275,7 +269,8 @@ MANIFEST = {
       "requires": [
         "id"
       ],
-      "assertion": "contains_id"
+      "assertion": "search_verify",
+      "search_param": "name"
     },
     {
       "action": "unlock",
@@ -305,7 +300,7 @@ MANIFEST = {
     },
     {
       "action": "get",
-      "label": "查询验证（启用后）",
+      "label": "搜索验证（启用后）",
       "api": {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
@@ -316,7 +311,8 @@ MANIFEST = {
       "requires": [
         "id"
       ],
-      "assertion": "contains_id"
+      "assertion": "search_verify",
+      "search_param": "name"
     },
     {
       "action": "reset",
@@ -327,7 +323,7 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "ac44abfff4734e008b72c47944e77f5e",
+        "userId": "5d9af442c5c34a05ae8a76e24a4fefc6",
         "passwordPolicy": {
           "id": "90542be67d584ab09daa12e697fb041a",
           "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
@@ -361,7 +357,7 @@ MANIFEST = {
     },
     {
       "action": "get",
-      "label": "查询验证（重置密码后）",
+      "label": "搜索验证（重置密码后）",
       "api": {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
@@ -372,7 +368,8 @@ MANIFEST = {
       "requires": [
         "id"
       ],
-      "assertion": "contains_id"
+      "assertion": "search_verify",
+      "search_param": "name"
     },
     {
       "action": "delete",
@@ -383,7 +380,7 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": [
-        "ac44abfff4734e008b72c47944e77f5e"
+        "5d9af442c5c34a05ae8a76e24a4fefc6"
       ],
       "body_field_roles": {
         "__array_items__": {
@@ -397,7 +394,7 @@ MANIFEST = {
     },
     {
       "action": "get",
-      "label": "查询验证（删除后）",
+      "label": "搜索验证（删除后）",
       "api": {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
@@ -408,7 +405,8 @@ MANIFEST = {
       "requires": [
         "id"
       ],
-      "assertion": "not_contains_id"
+      "assertion": "search_not_found",
+      "search_param": "name"
     }
   ],
   "state_assertions": {

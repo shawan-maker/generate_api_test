@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>用户管理 API 测试报告</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "SF Pro Text", "Helvetica Neue", "Microsoft YaHei", "PingFang SC", sans-serif;
+         background: #f4f5f7; color: #1f2937; }
+  .header { background: linear-gradient(135deg, #1f2937 0%, #111827 100%); color: #fff;
+             padding: 26px 32px 22px; }
+  .header .wrap { max-width: 1080px; margin: 0 auto; }
+  .header h1 { font-size: 21px; font-weight: 700; letter-spacing: .3px; }
+  .header .sub { color: #9ca3af; font-size: 12.5px; margin-top: 6px; line-height: 1.7; }
+  .header .sub code { color: #d1d5db; background: rgba(255,255,255,.08); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+  .stats { display: flex; gap: 16px; margin: -26px auto 22px; position: relative; z-index: 2; flex-wrap: wrap; }
+  .stat { flex: 1; min-width: 150px; background: #fff; border-radius: 10px; padding: 16px 18px;
+           box-shadow: 0 1px 3px rgba(0,0,0,.08); border-top: 3px solid #e5e7eb; }
+  .stat.ok { border-top-color: #49cc90; } .stat.warn { border-top-color: #fca130; }
+  .stat.fail { border-top-color: #f93e3e; } .stat.total { border-top-color: #61affe; }
+  .stat b { font-size: 26px; display: block; line-height: 1.2; }
+  .stat span { font-size: 12px; color: #6b7280; }
+  .stat.ok b { color: #1a7f37; } .stat.warn b { color: #b45309; }
+  .stat.fail b { color: #dc2626; } .stat.total b { color: #2563eb; }
+  .donut-card { display: flex; align-items: center; gap: 16px; }
+  .donut { width: 76px; height: 76px; border-radius: 50%; flex: none;
+            background: conic-gradient(#49cc90 0 100.0%, #e5e7eb 100.0% 100%);
+            display: grid; place-items: center; }
+  .donut::before { content: ''; width: 56px; height: 56px; border-radius: 50%; background: #fff; }
+  .donut-val { position: absolute; font-size: 17px; font-weight: 700; }
+  .donut-wrap { position: relative; }
+  .donut-txt { font-size: 12px; color: #6b7280; line-height: 1.6; }
+  .requests { margin-top: 4px; }
+  .req { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.07);
+          margin-bottom: 12px; overflow: hidden; }
+  .req-head { display: flex; align-items: center; gap: 12px; padding: 13px 18px; flex-wrap: wrap;
+               border-bottom: 1px solid #f0f1f3; }
+  .req-no { width: 24px; height: 24px; border-radius: 50%; background: #eef2f7; color: #4a6da7;
+             display: inline-flex; align-items: center; justify-content: center; font-size: 12px;
+             font-weight: 700; flex: none; }
+  .method { color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .5px; padding: 3px 10px;
+             border-radius: 4px; flex: none; }
+  .path { font-family: "SF Mono", Consolas, monospace; font-size: 12.5px; color: #374151;
+           word-break: break-all; flex: 1; min-width: 180px; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px;
+            font-weight: 600; flex: none; }
+  .b-ok { background: #e8f7ee; color: #1a7f37; }
+  .b-warn { background: #fff4e5; color: #b45309; }
+  .b-info { background: #eef2f7; color: #4a6da7; }
+  .b-fail { background: #fdeaea; color: #dc2626; }
+  .req-body { padding: 12px 18px 14px; }
+  .mark { font-size: 13px; line-height: 1.9; color: #374151; }
+  .mark .mark-ic { margin-right: 8px; }
+  .detail { margin-top: 8px; }
+  .detail summary { cursor: pointer; font-size: 12.5px; color: #6b7280; user-select: none; }
+  .detail summary:hover { color: #2563eb; }
+  .detail-section { margin-top: 12px; padding: 12px 14px; background: #f8f9fb;
+                     border: 1px solid #eceff3; border-radius: 8px; }
+  .detail-title { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 8px; }
+  .section-label { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase;
+                    letter-spacing: .5px; margin: 10px 0 4px; padding-bottom: 4px;
+                    border-bottom: 1px solid #e5e7eb; }
+  .section-label:first-child { margin-top: 0; }
+  .kv-table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 4px 0; }
+  .kv-table td { padding: 4px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
+  .kv-table .hk { font-weight: 600; color: #4a6da7; white-space: nowrap; width: 160px; }
+  .kv-table .hv { color: #374151; word-break: break-all; font-family: "SF Mono", Consolas, monospace;
+                   font-size: 11.5px; }
+  .json-block { margin: 4px 0; background: #1e293b; color: #e2e8f0; border-radius: 6px;
+                 padding: 12px; font-size: 12px; line-height: 1.6; white-space: pre-wrap;
+                 word-break: break-all; max-height: 320px; overflow: auto;
+                 font-family: "SF Mono", Consolas, monospace; }
+  .resp-status { font-size: 13px; font-weight: 600; color: #374151; padding: 4px 0; }
+  .footer { text-align: center; color: #9ca3af; font-size: 12px; padding: 22px 0 30px; }
+  .legend { text-align: center; color: #6b7280; font-size: 12px; margin-bottom: 14px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="wrap">
+    <h1>用户管理 API 测试报告</h1>
+    <div class="sub">生成时间：2026-09-07 16:30:34 &nbsp;·&nbsp; 日志来源：<code>report/用户管理_API测试.jsonl</code></div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="stats">
+    <div class="stat total"><b>12</b><span>总请求数</span></div>
+    <div class="stat ok"><b>12</b><span>通过</span></div>
+    <div class="stat fail"><b>0</b><span>失败</span></div>
+    <div class="stat donut-card">
+      <div class="donut-wrap"><div class="donut"></div><div class="donut-val">100.0%</div></div>
+      <div class="donut-txt">通过率</div>
+    </div>
+  </div>
+
+  <div class="legend">共 12 个 API 调用 · 通过 12 · 通过率 100.0%</div>
+  <div class="requests">
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">1</span>
+        <span class="method" style="background:#49cc90">POST</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/users</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>创建用户: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 0e580516-0f54-4609-9f10-7c197df98b17</td></tr>
+            </table>
+            <div class="section-label">Request Body</div>
+            <pre class="json-block">{
+  "userName": "AT_fd905d_autotest769045",
+  "password": "LqNt1/udEMxqhcNSCZn6dOS3e2AtRb9HTQQHOeAz9yejLtFjsJAwyKKNFhtZK6cl2s1u9BQO2b6EYmVzSgjR7kgH3Qv7UqyTEu72bX3ru+o8M3/7AvdaqaIfZJbz4Hcbsg7dnJ9OXTvZwFwujE74ztCj01RmWtXyko+75uNGbXs=",
+  "name": "AT_fd905d_test_769045",
+  "email": "NmzDcukaHt+pJywE5d33gPRXHHOpbwWfma1bjdilvKStEa3BmD2VP2GhHB3KSpE5yUfPNetzDXhwpRqT1/Bc86DkpsqNXPEM7/Zc5GDOKc8zuLY69wU1LRv9Orpqv8tufYbZGQvhjJiQ3K7FYHUceJrDEm9xwf0akWIs2vxMltY=",
+  "phone": "HEEiD9TFj8pnfc1bkWLr39JOzx6zG5yaPmqSC4jnCMCiYMgfret62RCkoTyMynZkKjscHtOx2DkQiXfmuDnvulMeMsaaiTmp/ckhQUIlR3Fv+IuqPI7H2DSy7bSJ3YRNfr+wemM3SS6BUQ/AUkdur5crulg0OLPvup29yLENz/4=",
+  "description": "自动修改_fd905d",
+  "policyIds": [
+    "1f8e392309fc414c9d77d45d0315fedc"
+  ],
+  "adminId": "93552edc908e4dadae761fff1fd0f24c",
+  "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+  "countryCode": "+86"
+}</pre>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "8f550560a5be419d",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "id": "9bad9decf00649a5ba9fde7f3fc11d32",
+    "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+    "tenantName": "Super Management Department",
+    "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+    "ramId": "9bad9decf00649a5ba9fde7f3fc11d32",
+    "name": "AT_fd905d_test_769045",
+    "userName": "AT_fd905d_autotest769045",
+    "email": "a*****5@test.com",
+    "phone": "138***3873",
+    "encryptedEmail": "C4dUgo3srBt4QDOqXgF5Ck9ewTkP+6gX",
+    "encryptedPhone": "VIQa3OYSMhQLZj5yfId9FQ==",
+    "countryCode": "+86",
+    "description": "自动修改_fd905d",
+    "createdAt": "2026-09-07 16:30:28",
+    "updatedAt": null,
+    "deleted": false,
+    "state": "ENABLE",
+    "isAdmin": false,
+    "isProjectManager": false,
+    "isAuthentication": false,
+    "roleId": null,
+    "roleName": null,
+    "ancestorList": [
+      "Super Management Department"
+    ],
+    "isPassword": true,
+    "isEmail": true,
+    "isPhone": true,
+    "poolNameList": [],
+    "isRootTenantUser": true,
+    "isApproval": false,
+    "tenantLevel": 0,
+    "locked": false,
+    "policyIdList": [],
+    "policyList": [],
+    "countryCodePhone": "+86 138***3873",
+    "password": "2126e6e49a4f7fe8b56f3c0fc86528d777f2262ebdfcc96a3c6d5602ebbfe3a9",
+    "projectIdList": null,
+    "needRamIdentity": null,
+    "isInnerUser": null,
+    "userType": null,
+    "isForceChange": false,
+    "isTempPassword": false,
+    "mfLoginPolicy": null,
+    "enableMultiFactLoginPolicy": null,
+    "maintainAt": null
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">2</span>
+        <span class="method" style="background:#61affe">GET</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/tenants/users?name=AT_fd905d_test_769045</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>搜索验证（创建用户后）: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 0e580516-0f54-4609-9f10-7c197df98b17</td></tr>
+            </table>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "139303f5fedfaf47",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "total": 1,
+    "list": [
+      {
+        "id": "9bad9decf00649a5ba9fde7f3fc11d32",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "9bad9decf00649a5ba9fde7f3fc11d32",
+        "name": "AT_fd905d_test_769045",
+        "userName": "AT_fd905d_autotest769045",
+        "email": "a*****5@test.com",
+        "phone": "138***3873",
+        "encryptedEmail": "C4dUgo3srBt4QDOqXgF5Ck9ewTkP+6gX",
+        "encryptedPhone": "VIQa3OYSMhQLZj5yfId9FQ==",
+        "countryCode": "+86",
+        "description": "自动修改_fd905d",
+        "createdAt": "2026-09-07 16:30:28",
+        "updatedAt": null,
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "1f8e392309fc414c9d77d45d0315fedc"
+        ],
+        "policyList": [
+          {
+            "id": "1f8e392309fc414c9d77d45d0315fedc",
+            "tenantId": null,
+            "policyName": "普通用户",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": true,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.COMMON_ROLE"
+          }
+        ],
+        "countryCodePhone": "+86 138***3873",
+        "password": "2126e6e49a4f7fe8b56f3c0fc86528d777f2262ebdfcc96a3c6d5602ebbfe3a9",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      }
+    ],
+    "pageNum": 1,
+    "pageSize": 1,
+    "size": 1,
+    "startRow": 0,
+    "endRow": 0,
+    "pages": 1,
+    "prePage": 0,
+    "nextPage": 0,
+    "isFirstPage": true,
+    "isLastPage": true,
+    "hasPreviousPage": false,
+    "hasNextPage": false,
+    "navigatePages": 8,
+    "navigatepageNums": [
+      1
+    ],
+    "navigateFirstPage": 1,
+    "navigateLastPage": 1
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">3</span>
+        <span class="method" style="background:#fca130">PUT</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/users/9bad9decf00649a5ba9fde7f3fc11d32</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>编辑: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 0e580516-0f54-4609-9f10-7c197df98b17</td></tr>
+            </table>
+            <div class="section-label">Request Body</div>
+            <pre class="json-block">{
+  "userId": "9bad9decf00649a5ba9fde7f3fc11d32",
+  "name": "AT_fd905d_test_769045",
+  "description": "自动修改_fd905d",
+  "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+  "countryCode": "+86",
+  "phone": "hW5/uAgPOLing6HfLGoA+wlbO/iBTH+oc1XzVaXseSNE7nulqCm6OUNpAujsRiV196ETXnciD6TcRHn1nYo0xmqV4o/Gy42L1+YJak6ypldVYOORyu2XNCD96qOpkS2oW7Bh3cNVlh9wmwITvalNPL19Ve0fxTY7Ql5Rt9yF80I=",
+  "email": "MRAlLpsrDqoXEEUz8NCccjjimIZRezss5EH/FsgxUYhSVHPOlKzxYBkme1Mzb3qaoabmKSYgjbHmAli4Sthas6DLS5cRJH6hY8AL2xWQ/JRFJR3ML1uOGW3fi5l1XbD1cXsQiqzRzRPPslTt+omrJV+BRS6QvmDjmSNjR8Mpz4s=",
+  "adminId": "93552edc908e4dadae761fff1fd0f24c"
+}</pre>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "d20e473989ad1a4b",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "id": "9bad9decf00649a5ba9fde7f3fc11d32",
+    "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+    "tenantName": "Super Management Department",
+    "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+    "ramId": "9bad9decf00649a5ba9fde7f3fc11d32",
+    "name": "AT_fd905d_test_769045",
+    "userName": "AT_fd905d_autotest769045",
+    "email": "a*****2@test.com",
+    "phone": "138***2953",
+    "encryptedEmail": "G2SF/x8HTxVpb0xJ/qqOSk9ewTkP+6gX",
+    "encryptedPhone": "CT1kXxiNTliH85NCogGDHw==",
+    "countryCode": "+86",
+    "description": "自动修改_fd905d",
+    "createdAt": "2026-09-07 16:30:28",
+    "updatedAt": "2026-09-07 16:30:28",
+    "deleted": false,
+    "state": "ENABLE",
+    "isAdmin": false,
+    "isProjectManager": false,
+    "isAuthentication": false,
+    "roleId": null,
+    "roleName": null,
+    "ancestorList": [
+      "Super Management Department"
+    ],
+    "isPassword": true,
+    "isEmail": true,
+    "isPhone": true,
+    "poolNameList": null,
+    "isRootTenantUser": true,
+    "isApproval": false,
+    "tenantLevel": 0,
+    "locked": false,
+    "policyIdList": [
+      "1f8e392309fc414c9d77d45d0315fedc"
+    ],
+    "policyList": [
+      {
+        "id": "1f8e392309fc414c9d77d45d0315fedc",
+        "tenantId": null,
+        "policyName": "普通用户",
+        "policyType": "SYSTEM",
+        "policyCategory": "ORGANIZATION",
+        "description": null,
+        "released": true,
+        "deleted": null,
+        "originalPolicyName": "RAM.POLICES.POLICY_NAME.COMMON_ROLE"
+      }
+    ],
+    "countryCodePhone": "+86 138***2953",
+    "password": "2126e6e49a4f7fe8b56f3c0fc86528d777f2262ebdfcc96a3c6d5602ebbfe3a9",
+    "projectIdList": null,
+    "needRamIdentity": null,
+    "isInnerUser": null,
+    "userType": null,
+    "isForceChange": false,
+    "isTempPassword": false,
+    "mfLoginPolicy": null,
+    "enableMultiFactLoginPolicy": null,
+    "maintainAt": null
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">4</span>
+        <span class="method" style="background:#61affe">GET</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/tenants/users?name=AT_fd905d_test_769045</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>搜索验证（编辑后）: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 0e580516-0f54-4609-9f10-7c197df98b17</td></tr>
+            </table>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "6207d27d4b5353e8",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "total": 1,
+    "list": [
+      {
+        "id": "9bad9decf00649a5ba9fde7f3fc11d32",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "9bad9decf00649a5ba9fde7f3fc11d32",
+        "name": "AT_fd905d_test_769045",
+        "userName": "AT_fd905d_autotest769045",
+        "email": "a*****2@test.com",
+        "phone": "138***2953",
+        "encryptedEmail": "G2SF/x8HTxVpb0xJ/qqOSk9ewTkP+6gX",
+        "encryptedPhone": "CT1kXxiNTliH85NCogGDHw==",
+        "countryCode": "+86",
+        "description": "自动修改_fd905d",
+        "createdAt": "2026-09-07 16:30:28",
+        "updatedAt": "2026-09-07 16:30:28",
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "1f8e392309fc414c9d77d45d0315fedc"
+        ],
+        "policyList": [
+          {
+            "id": "1f8e392309fc414c9d77d45d0315fedc",
+            "tenantId": null,
+            "policyName": "普通用户",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": true,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.COMMON_ROLE"
+          }
+        ],
+        "countryCodePhone": "+86 138***2953",
+        "password": "2126e6e49a4f7fe8b56f3c0fc86528d777f2262ebdfcc96a3c6d5602ebbfe3a9",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      }
+    ],
+    "pageNum": 1,
+    "pageSize": 1,
+    "size": 1,
+    "startRow": 0,
+    "endRow": 0,
+    "pages": 1,
+    "prePage": 0,
+    "nextPage": 0,
+    "isFirstPage": true,
+    "isLastPage": true,
+    "hasPreviousPage": false,
+    "hasNextPage": false,
+    "navigatePages": 8,
+    "navigatepageNums": [
+      1
+    ],
+    "navigateFirstPage": 1,
+    "navigateLastPage": 1
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">5</span>
+        <span class="method" style="background:#fca130">PUT</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/users/9bad9decf00649a5ba9fde7f3fc11d32/suspend</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>冻结: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 0e580516-0f54-4609-9f10-7c197df98b17</td></tr>
+            </table>
+            <div class="section-label">Request Body</div>
+            <pre class="json-block">{
+  "userId": "9bad9decf00649a5ba9fde7f3fc11d32",
+  "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+  "adminId": "93552edc908e4dadae761fff1fd0f24c"
+}</pre>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "ea23466ecdaedf50",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "id": "9bad9decf00649a5ba9fde7f3fc11d32",
+    "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+    "tenantName": "Super Management Department",
+    "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+    "ramId": "9bad9decf00649a5ba9fde7f3fc11d32",
+    "name": "AT_fd905d_test_769045",
+    "userName": "AT_fd905d_autotest769045",
+    "email": "a*****2@test.com",
+    "phone": "138***2953",
+    "encryptedEmail": "G2SF/x8HTxVpb0xJ/qqOSk9ewTkP+6gX",
+    "encryptedPhone": "CT1kXxiNTliH85NCogGDHw==",
+    "countryCode": "+86",
+    "description": "自动修改_fd905d",
+    "createdAt": "2026-09-07 16:30:28",
+    "updatedAt": "2026-09-07 16:30:28",
+    "deleted": false,
+    "state": "DISABLE",
+    "isAdmin": false,
+    "isProjectManager": false,
+    "isAuthentication": false,
+    "roleId": null,
+    "roleName": null,
+    "ancestorList": [
+      "Super Management Department"
+    ],
+    "isPassword": true,
+    "isEmail": true,
+    "isPhone": true,
+    "poolNameList": null,
+    "isRootTenantUser": true,
+    "isApproval": false,
+    "tenantLevel": 0,
+    "locked": false,
+    "policyIdList": [
+      "1f8e392309fc414c9d77d45d0315fedc"
+    ],
+    "policyList": [
+      {
+        "id": "1f8e392309fc414c9d77d45d0315fedc",
+        "tenantId": null,
+        "policyName": "普通用户",
+        "policyType": "SYSTEM",
+        "policyCategory": "ORGANIZATION",
+        "description": null,
+        "released": true,
+        "deleted": null,
+        "originalPolicyName": "RAM.POLICES.POLICY_NAME.COMMON_ROLE"
+      }
+    ],
+    "countryCodePhone": "+86 138***2953",
+    "password": "2126e6e49a4f7fe8b56f3c0fc86528d777f2262ebdfcc96a3c6d5602ebbfe3a9",
+    "projectIdList": null,
+    "needRamIdentity": null,
+    "isInnerUser": null,
+    "userType": null,
+    "isForceChange": false,
+    "isTempPassword": false,
+    "mfLoginPolicy": null,
+    "enableMultiFactLoginPolicy": null,
+    "maintainAt": null
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">6</span>
+        <span class="method" style="background:#61affe">GET</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/tenants/users?name=AT_fd905d_test_769045</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>搜索验证（冻结后）: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 0e580516-0f54-4609-9f10-7c197df98b17</td></tr>
+            </table>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "35616aa1e859b005",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "total": 1,
+    "list": [
+      {
+        "id": "9bad9decf00649a5ba9fde7f3fc11d32",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "9bad9decf00649a5ba9fde7f3fc11d32",
+        "name": "AT_fd905d_test_769045",
+        "userName": "AT_fd905d_autotest769045",
+        "email": "a*****2@test.com",
+        "phone": "138***2953",
+        "encryptedEmail": "G2SF/x8HTxVpb0xJ/qqOSk9ewTkP+6gX",
+        "encryptedPhone": "CT1kXxiNTliH85NCogGDHw==",
+        "countryCode": "+86",
+        "description": "自动修改_fd905d",
+        "createdAt": "2026-09-07 16:30:28",
+        "updatedAt": "2026-09-07 16:30:28",
+        "deleted": false,
+        "state": "DISABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "1f8e392309fc414c9d77d45d0315fedc"
+        ],
+        "policyList": [
+          {
+            "id": "1f8e392309fc414c9d77d45d0315fedc",
+            "tenantId": null,
+            "policyName": "普通用户",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": true,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.COMMON_ROLE"
+          }
+        ],
+        "countryCodePhone": "+86 138***2953",
+        "password": "2126e6e49a4f7fe8b56f3c0fc86528d777f2262ebdfcc96a3c6d5602ebbfe3a9",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      }
+    ],
+    "pageNum": 1,
+    "pageSize": 1,
+    "size": 1,
+    "startRow": 0,
+    "endRow": 0,
+    "pages": 1,
+    "prePage": 0,
+    "nextPage": 0,
+    "isFirstPage": true,
+    "isLastPage": true,
+    "hasPreviousPage": false,
+    "hasNextPage": false,
+    "navigatePages": 8,
+    "navigatepageNums": [
+      1
+    ],
+    "navigateFirstPage": 1,
+    "navigateLastPage": 1
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">7</span>
+        <span class="method" style="background:#fca130">PUT</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/users/9bad9decf00649a5ba9fde7f3fc11d32/enable</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>启用: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 0e580516-0f54-4609-9f10-7c197df98b17</td></tr>
+            </table>
+            <div class="section-label">Request Body</div>
+            <pre class="json-block">{
+  "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+  "adminId": "93552edc908e4dadae761fff1fd0f24c"
+}</pre>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "6aec73ca033d5863",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "id": "9bad9decf00649a5ba9fde7f3fc11d32",
+    "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+    "tenantName": "Super Management Department",
+    "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+    "ramId": "9bad9decf00649a5ba9fde7f3fc11d32",
+    "name": "AT_fd905d_test_769045",
+    "userName": "AT_fd905d_autotest769045",
+    "email": "a*****2@test.com",
+    "phone": "138***2953",
+    "encryptedEmail": "G2SF/x8HTxVpb0xJ/qqOSk9ewTkP+6gX",
+    "encryptedPhone": "CT1kXxiNTliH85NCogGDHw==",
+    "countryCode": "+86",
+    "description": "自动修改_fd905d",
+    "createdAt": "2026-09-07 16:30:28",
+    "updatedAt": "2026-09-07 16:30:28",
+    "deleted": false,
+    "state": "ENABLE",
+    "isAdmin": false,
+    "isProjectManager": false,
+    "isAuthentication": false,
+    "roleId": null,
+    "roleName": null,
+    "ancestorList": [
+      "Super Management Department"
+    ],
+    "isPassword": true,
+    "isEmail": true,
+    "isPhone": true,
+    "poolNameList": null,
+    "isRootTenantUser": true,
+    "isApproval": false,
+    "tenantLevel": 0,
+    "locked": false,
+    "policyIdList": [
+      "1f8e392309fc414c9d77d45d0315fedc"
+    ],
+    "policyList": [
+      {
+        "id": "1f8e392309fc414c9d77d45d0315fedc",
+        "tenantId": null,
+        "policyName": "普通用户",
+        "policyType": "SYSTEM",
+        "policyCategory": "ORGANIZATION",
+        "description": null,
+        "released": true,
+        "deleted": null,
+        "originalPolicyName": "RAM.POLICES.POLICY_NAME.COMMON_ROLE"
+      }
+    ],
+    "countryCodePhone": "+86 138***2953",
+    "password": "2126e6e49a4f7fe8b56f3c0fc86528d777f2262ebdfcc96a3c6d5602ebbfe3a9",
+    "projectIdList": null,
+    "needRamIdentity": null,
+    "isInnerUser": null,
+    "userType": null,
+    "isForceChange": false,
+    "isTempPassword": false,
+    "mfLoginPolicy": null,
+    "enableMultiFactLoginPolicy": null,
+    "maintainAt": null
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">8</span>
+        <span class="method" style="background:#61affe">GET</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/tenants/users?name=AT_fd905d_test_769045</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>搜索验证（启用后）: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 0e580516-0f54-4609-9f10-7c197df98b17</td></tr>
+            </table>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "e95fe92b8ae6e4d3",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "total": 1,
+    "list": [
+      {
+        "id": "9bad9decf00649a5ba9fde7f3fc11d32",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "9bad9decf00649a5ba9fde7f3fc11d32",
+        "name": "AT_fd905d_test_769045",
+        "userName": "AT_fd905d_autotest769045",
+        "email": "a*****2@test.com",
+        "phone": "138***2953",
+        "encryptedEmail": "G2SF/x8HTxVpb0xJ/qqOSk9ewTkP+6gX",
+        "encryptedPhone": "CT1kXxiNTliH85NCogGDHw==",
+        "countryCode": "+86",
+        "description": "自动修改_fd905d",
+        "createdAt": "2026-09-07 16:30:28",
+        "updatedAt": "2026-09-07 16:30:28",
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "1f8e392309fc414c9d77d45d0315fedc"
+        ],
+        "policyList": [
+          {
+            "id": "1f8e392309fc414c9d77d45d0315fedc",
+            "tenantId": null,
+            "policyName": "普通用户",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": true,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.COMMON_ROLE"
+          }
+        ],
+        "countryCodePhone": "+86 138***2953",
+        "password": "2126e6e49a4f7fe8b56f3c0fc86528d777f2262ebdfcc96a3c6d5602ebbfe3a9",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      }
+    ],
+    "pageNum": 1,
+    "pageSize": 1,
+    "size": 1,
+    "startRow": 0,
+    "endRow": 0,
+    "pages": 1,
+    "prePage": 0,
+    "nextPage": 0,
+    "isFirstPage": true,
+    "isLastPage": true,
+    "hasPreviousPage": false,
+    "hasNextPage": false,
+    "navigatePages": 8,
+    "navigatepageNums": [
+      1
+    ],
+    "navigateFirstPage": 1,
+    "navigateLastPage": 1
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">9</span>
+        <span class="method" style="background:#49cc90">POST</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/password-reset/generate</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>重置密码: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 0e580516-0f54-4609-9f10-7c197df98b17</td></tr>
+            </table>
+            <div class="section-label">Request Body</div>
+            <pre class="json-block">{
+  "userId": "9bad9decf00649a5ba9fde7f3fc11d32",
+  "passwordPolicy": {
+    "id": "90542be67d584ab09daa12e697fb041a",
+    "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+    "minPasswordLength": 8,
+    "requireLowercaseCharacters": false,
+    "requireUppercaseCharacters": true,
+    "requireNumbers": true,
+    "requireSymbols": true,
+    "minPasswordDifferentCharacter": 0,
+    "createdAt": "2023-08-30 10:07:14",
+    "updatedAt": "2025-03-08 18:39:42",
+    "deleted": false,
+    "userName": null
+  },
+  "isRandomPassword": false
+}</pre>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "34359482f755f6ec",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "userId": null,
+    "password": "I9)R)FUSPFFR(1(LJ2YTV0Y0Q",
+    "passwordStrength": "MEDIUM"
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">10</span>
+        <span class="method" style="background:#61affe">GET</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/tenants/users?name=AT_fd905d_test_769045</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>搜索验证（重置密码后）: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 0e580516-0f54-4609-9f10-7c197df98b17</td></tr>
+            </table>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "e452e49b335830c3",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "total": 1,
+    "list": [
+      {
+        "id": "9bad9decf00649a5ba9fde7f3fc11d32",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "tenantName": "Super Management Department",
+        "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
+        "ramId": "9bad9decf00649a5ba9fde7f3fc11d32",
+        "name": "AT_fd905d_test_769045",
+        "userName": "AT_fd905d_autotest769045",
+        "email": "a*****2@test.com",
+        "phone": "138***2953",
+        "encryptedEmail": "G2SF/x8HTxVpb0xJ/qqOSk9ewTkP+6gX",
+        "encryptedPhone": "CT1kXxiNTliH85NCogGDHw==",
+        "countryCode": "+86",
+        "description": "自动修改_fd905d",
+        "createdAt": "2026-09-07 16:30:28",
+        "updatedAt": "2026-09-07 16:30:28",
+        "deleted": false,
+        "state": "ENABLE",
+        "isAdmin": false,
+        "isProjectManager": null,
+        "isAuthentication": null,
+        "roleId": null,
+        "roleName": null,
+        "ancestorList": [
+          "Super Management Department"
+        ],
+        "isPassword": true,
+        "isEmail": true,
+        "isPhone": true,
+        "poolNameList": null,
+        "isRootTenantUser": true,
+        "isApproval": false,
+        "tenantLevel": 0,
+        "locked": false,
+        "policyIdList": [
+          "1f8e392309fc414c9d77d45d0315fedc"
+        ],
+        "policyList": [
+          {
+            "id": "1f8e392309fc414c9d77d45d0315fedc",
+            "tenantId": null,
+            "policyName": "普通用户",
+            "policyType": "SYSTEM",
+            "policyCategory": "ORGANIZATION",
+            "description": null,
+            "released": true,
+            "deleted": null,
+            "originalPolicyName": "RAM.POLICES.POLICY_NAME.COMMON_ROLE"
+          }
+        ],
+        "countryCodePhone": "+86 138***2953",
+        "password": "2126e6e49a4f7fe8b56f3c0fc86528d777f2262ebdfcc96a3c6d5602ebbfe3a9",
+        "projectIdList": null,
+        "needRamIdentity": null,
+        "isInnerUser": null,
+        "userType": null,
+        "isForceChange": null,
+        "isTempPassword": null,
+        "mfLoginPolicy": {
+          "id": "91fa6bd08f6341bb85d943d1e1ce3dd5",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "loginPolicyType": "NO_SECONDARY_VERIFICATION",
+          "enabled": true
+        },
+        "enableMultiFactLoginPolicy": true,
+        "maintainAt": null
+      }
+    ],
+    "pageNum": 1,
+    "pageSize": 1,
+    "size": 1,
+    "startRow": 0,
+    "endRow": 0,
+    "pages": 1,
+    "prePage": 0,
+    "nextPage": 0,
+    "isFirstPage": true,
+    "isLastPage": true,
+    "hasPreviousPage": false,
+    "hasNextPage": false,
+    "navigatePages": 8,
+    "navigatepageNums": [
+      1
+    ],
+    "navigateFirstPage": 1,
+    "navigateLastPage": 1
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">11</span>
+        <span class="method" style="background:#f93e3e">DELETE</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/users/batch/delete</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>批量删除: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 0e580516-0f54-4609-9f10-7c197df98b17</td></tr>
+            </table>
+            <div class="section-label">Request Body</div>
+            <pre class="json-block">[
+  "9bad9decf00649a5ba9fde7f3fc11d32"
+]</pre>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "4bf517ea9fe22aae",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": 1
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="req ok">
+      <div class="req-head">
+        <span class="req-no">12</span>
+        <span class="method" style="background:#61affe">GET</span>
+        <code class="path">https://10.151.61.248/estack/api/estack/draco/v1/tenants/users?name=AT_fd905d_test_769045</code>
+        <span class="badge b-ok">✅ 通过</span>
+      </div>
+      <div class="req-body">
+        <div class="marks"><div class="mark"><span class="mark-ic">✅</span>搜索验证（删除后）: HTTP 200</div></div>
+        <details class="detail"><summary>查看请求/响应详情</summary>
+          <div class="detail-section">
+            <div class="detail-title">📤 请求详情</div>
+            <div class="section-label">Request Headers</div>
+            <table class="kv-table">
+              <tr><td class="hk">User-Agent</td><td class="hv">python-requests/2.32.5</td></tr>
+              <tr><td class="hk">Accept-Encoding</td><td class="hv">gzip, deflate, br, zstd</td></tr>
+              <tr><td class="hk">Accept</td><td class="hv">*/*</td></tr>
+              <tr><td class="hk">Connection</td><td class="hv">keep-alive</td></tr>
+              <tr><td class="hk">Estack-Language</td><td class="hv">zh-CN</td></tr>
+              <tr><td class="hk">Content-Type</td><td class="hv">application/json</td></tr>
+              <tr><td class="hk">Authorization</td><td class="hv">Bearer 0e580516-0f54-4609-9f10-7c197df98b17</td></tr>
+            </table>
+          </div>
+<div class="detail-section">
+            <div class="detail-title">📥 响应详情</div>
+            <div class="section-label">Response Status</div>
+            <div class="resp-status">HTTP 200</div>
+            <div class="section-label">Response Body</div>
+            <pre class="json-block">{
+  "traceId": "1c771393e7bdad61",
+  "success": true,
+  "errorMessage": null,
+  "message": null,
+  "errorCode": null,
+  "entity": {
+    "total": 0,
+    "list": [],
+    "pageNum": 1,
+    "pageSize": 0,
+    "size": 0,
+    "startRow": 0,
+    "endRow": 0,
+    "pages": 0,
+    "prePage": 0,
+    "nextPage": 0,
+    "isFirstPage": true,
+    "isLastPage": true,
+    "hasPreviousPage": false,
+    "hasNextPage": false,
+    "navigatePages": 8,
+    "navigatepageNums": [],
+    "navigateFirstPage": 0,
+    "navigateLastPage": 0
+  }
+}</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+  </div>
+  <div class="footer">Postman/Newman 风格报告 · 由 lib/test_report.py 生成 · API_AI_test</div>
+</div>
+</body>
+</html>

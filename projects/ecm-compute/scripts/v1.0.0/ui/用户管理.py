@@ -2,7 +2,7 @@
 """
 用户管理 - UI 自动化测试脚本
 
-生成时间: 2026-09-07 11:02:24
+生成时间: 2026-09-07 16:29:51
 生成工具: API AI Test Framework - Stage 2
 版本: v1.0.0
 
@@ -52,7 +52,7 @@ CONFIG = {
     },
 }
 
-AVAILABLE_OPERATIONS = ['create', 'update', 'lock', 'unlock', 'reset', 'import', 'authorize', 'migrate', 'delete']
+AVAILABLE_OPERATIONS = ['create', 'query', 'update', 'lock', 'unlock', 'reset', 'import', 'authorize', 'migrate', 'delete']
 
 # ==================== Cookie 鉴权 ====================
 

@@ -80,7 +80,8 @@ def classify_endpoint(method: str, pathname: str, contexts: List[str]) -> str:
               (下拉数据源/校验)无论上下文是什么都绝不可能是 create/update/lock 等写操作)
            ⑤ URL 写操作关键词
            ⑥ RESTful 资源路径兜底（POST=创建, PUT=更新, DELETE=删除）
-           ⑦ 兜底 other_post / other_get
+           ⑦ 上下文推断（replay:query 等）
+           ⑧ 兜底 other_post / other_get
     """
     p = pathname.lower()
 
@@ -137,7 +138,19 @@ def classify_endpoint(method: str, pathname: str, contexts: List[str]) -> str:
     if method == "PATCH":
         return "update"
 
-    # ⑦ 兜底
+    # ⑦ 上下文推断（replay:query 等）
+    # 判断逻辑：
+    #   - 列表查询 API（/tenants/users）只在 CRUD 操作中触发：
+    #     create, update, delete, lock, unlock + query → 6 个 replay 上下文
+    #   - 工具类 API（current-user）在每个操作回放时都会被调用，
+    #     额外出现在 import, migrate, reset 等"基础设施"操作中
+    # 策略：有 replay:query 且不在 import/migrate/reset 中出现 → 列表查询 API
+    if method == "GET" and "replay:query" in contexts:
+        infra_ctxs = {"replay:import", "replay:migrate", "replay:reset"}
+        if not any(c in contexts for c in infra_ctxs):
+            return "query"
+
+    # ⑧ 兜底
     if method == "POST":
         return "other_post"
     if method == "GET":
@@ -171,14 +184,20 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict) -> Dict:
     classified = {}
     for ep in uniq.values():
         cat = classify_endpoint(ep["method"], ep["pathname"], list(ep["contexts"]))
-        classified.setdefault(cat, []).append({
+        ep_data = {
             "method": ep["method"], "pathname": ep["pathname"],
             "contexts": sorted(ep["contexts"]),
             "bodies": ep["bodies"],
             "request_body_sample": ep["bodies"][0] if ep.get("bodies") else None,
             "query_params": ep["query_params_list"][0] if len(ep["query_params_list"]) == 1 else {},
             "query_params_samples": ep["query_params_list"],
-        })
+        }
+        # query 类端点：自动提取搜索参数名
+        if cat == "query":
+            search_param = _extract_search_param(ep_data)
+            if search_param:
+                ep_data["search_param"] = search_param
+        classified.setdefault(cat, []).append(ep_data)
 
     return {
         "classified": classified,
@@ -188,3 +207,90 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict) -> Dict:
         "response_samples": samples,
         "stats": {"total_calls": len(all_calls), "unique_endpoints": len(uniq)},
     }
+
+
+# 分页参数（排除后剩余的才可能是搜索参数）
+_PAGINATION_PARAMS = {
+    "pageNum", "pageSize", "page", "size", "limit", "offset",
+    "current", "total", "currentPage", "pageNo", "page_num",
+    "page_size", "per_page", "rows", "start", "end",
+    "sortField", "sortOrder", "sort_field", "sort_order",
+    "orderBy", "order", "order_by",
+}
+
+
+def _extract_search_param(ep_data: dict) -> str:
+    """从 query 端点的请求参数中提取搜索参数名。
+
+    策略（纯结构排除法，不依赖语义关键词）：
+    1. 从 KB 读取分页参数集，排除后剩余的非空参数即候选
+    2. 候选按值特征排序：
+       - 短字符串（2-30字符）优先（像用户输入的搜索文本）
+       - 纯数字排除（像 ID 或状态码）
+    3. 多个候选时取第一个（通常 API 设计只有一个搜索参数）
+
+    如果排除分页后无剩余参数，返回空字符串（该端点不支持搜索）。
+
+    Returns:
+        搜索参数名（str），找不到返回空字符串
+    """
+    from .kb_loader import get_kb
+    kb = get_kb()
+    pagination_params = kb.get_pagination_params()
+
+    def _score_candidate(k: str, v) -> int:
+        """对候选参数打分（越高越好）。"""
+        if v is None or v == "":
+            return -1
+        v_str = str(v)
+        # 纯数字（像 ID/状态码/分页）→ 排除
+        if v_str.isdigit():
+            return -1
+        # 短字符串（2-30字符）→ 像搜索输入
+        if 2 <= len(v_str) <= 30:
+            return 10
+        # 中等长度 → 仍可用
+        if len(v_str) <= 100:
+            return 5
+        return 1
+
+    def _pick_from_params(params_list):
+        # 按非分页参数数量降序排序，优先检查参数最多的样本（通常是搜索请求）
+        def count_non_pagination(params):
+            if not isinstance(params, dict):
+                return 0
+            return sum(1 for k in params.keys() if k not in pagination_params)
+
+        sorted_params = sorted(params_list, key=count_non_pagination, reverse=True)
+
+        for params in sorted_params:
+            if not isinstance(params, dict):
+                continue
+            candidates = []
+            for k, v in params.items():
+                if k in pagination_params:
+                    continue
+                score = _score_candidate(k, v)
+                if score > 0:
+                    candidates.append((k, score))
+            if candidates:
+                candidates.sort(key=lambda x: x[1], reverse=True)
+                return candidates[0][0]
+        return ""
+
+    # 检查 GET query params
+    all_params = ep_data.get("query_params_samples", [])
+    if not all_params and ep_data.get("query_params"):
+        all_params = [ep_data["query_params"]]
+    result = _pick_from_params(all_params)
+    if result:
+        return result
+
+    # 检查 POST body（POST-based list 端点）
+    bodies = ep_data.get("bodies", [])
+    result = _pick_from_params(bodies)
+    if result:
+        return result
+
+    return ""
+

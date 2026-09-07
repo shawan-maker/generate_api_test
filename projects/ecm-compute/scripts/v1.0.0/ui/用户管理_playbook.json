@@ -5,7 +5,7 @@
     "base_url": "https://10.151.61.248",
     "login_url": "https://10.151.61.248/estack/web/estack/login",
     "framework": "element-ui",
-    "generated_at": "2026-09-07 10:22:43",
+    "generated_at": "2026-09-07 15:25:10",
     "version": "1.0",
     "auth_config": {
       "token_key": "estackToken",
@@ -154,8 +154,31 @@
       "marker": "test",
       "status": "success"
     },
+    "query": {
+      "display_name": "query",
+      "description": "query",
+      "steps": [
+        {
+          "action": "fill_input",
+          "playwright_locator": "input[placeholder=\"请输入\"]",
+          "value": "{marker_name}",
+          "description": "搜索框输入: 请输入"
+        },
+        {
+          "action": "press_key",
+          "key": "Enter",
+          "description": "回车触发搜索"
+        },
+        {
+          "action": "wait_for_table_ready",
+          "description": "等待表格数据刷新"
+        }
+      ],
+      "marker": null,
+      "status": "success"
+    },
     "update": {
-      "display_name": "编辑",
+      "display_name": "update",
       "description": "update",
       "steps": [
         {
@@ -244,7 +267,7 @@
       "status": "success"
     },
     "lock": {
-      "display_name": "冻结",
+      "display_name": "lock",
       "description": "lock",
       "steps": [
         {
@@ -270,7 +293,7 @@
       "status": "success"
     },
     "unlock": {
-      "display_name": "启用",
+      "display_name": "unlock",
       "description": "unlock",
       "steps": [
         {
@@ -296,7 +319,7 @@
       "status": "success"
     },
     "reset": {
-      "display_name": "重置密码",
+      "display_name": "reset",
       "description": "reset",
       "steps": [
         {
@@ -322,7 +345,7 @@
       "status": "success"
     },
     "import": {
-      "display_name": "批量导入",
+      "display_name": "import",
       "description": "import",
       "steps": [
         {
@@ -343,7 +366,7 @@
       "error_text": "导入操作需要上传文件，无法自动完成"
     },
     "authorize": {
-      "display_name": "授权",
+      "display_name": "authorize",
       "description": "authorize",
       "steps": [
         {
@@ -367,7 +390,7 @@
       "error_type": "required_field_empty",
       "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
       "nav_info": {
-        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=34e2594fca9e44cd9e23b25474838c7f&type=userList&rowId=bcf21f9feae8437b922d1a2cc697efc5",
+        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=34e2594fca9e44cd9e23b25474838c7f&type=userList&rowId=f468f9d2b60d46b9a43358232340d4fb",
         "depth": 0,
         "page_title": "eStack Enterprise",
         "has_form": true,
@@ -405,30 +428,30 @@
         ],
         "fill_data": {
           "名称": "AT_test_auto",
-          "编码": "code_747720",
-          "描述": "自动测试创建于747720",
-          "备注": "自动创建于747720",
-          "说明": "自动测试创建于747720",
+          "编码": "code_765869",
+          "描述": "自动测试创建于765869",
+          "备注": "自动创建于765869",
+          "说明": "自动测试创建于765869",
           "用户名": "AT_test_auto",
           "姓名": "AT_test_auto",
-          "邮箱": "at_747720@test.com",
-          "手机": "13838396588",
+          "邮箱": "at_765869@test.com",
+          "手机": "13843380462",
           "密码": "Test@123456",
           "确认密码": "Test@123456",
           "角色名称": "AT_test_auto",
-          "角色编码": "role_code_747720",
-          "角色描述": "自动测试角色创建于747720",
+          "角色编码": "role_code_765869",
+          "角色描述": "自动测试角色创建于765869",
           "username": "AT_test_auto",
           "name": "AT_test_auto",
-          "email": "at_747720@test.com",
-          "phone": "13838396588",
+          "email": "at_765869@test.com",
+          "phone": "13843380462",
           "password": "Test@123456",
-          "description": "自动测试创建于747720",
-          "code": "code_747720",
-          "remark": "自动创建于747720",
-          "授权用户": "AT_AT_test_auto_747720",
-          "授权角色": "AT_AT_test_auto_747720",
-          "授权范围": "AT_AT_test_auto_747720"
+          "description": "自动测试创建于765869",
+          "code": "code_765869",
+          "remark": "自动创建于765869",
+          "授权用户": "AT_AT_test_auto_765869",
+          "授权角色": "AT_AT_test_auto_765869",
+          "授权范围": "AT_AT_test_auto_765869"
         },
         "submit_result": {},
         "error_type": "required_field_empty",
@@ -459,7 +482,7 @@
       }
     },
     "migrate": {
-      "display_name": "批量迁移",
+      "display_name": "migrate",
       "description": "migrate",
       "steps": [
         {
@@ -474,7 +497,7 @@
       "error_text": "弹窗中必填字段为空: 待迁移用户：, 待迁移部门："
     },
     "delete": {
-      "display_name": "批量删除",
+      "display_name": "delete",
       "description": "delete",
       "steps": [
         {

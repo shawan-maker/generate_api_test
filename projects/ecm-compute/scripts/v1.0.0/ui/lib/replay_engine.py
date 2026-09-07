@@ -92,6 +92,12 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver, m
             elif action == "wait_for_table_ready":
                 await _step_wait_for_table_ready(page, step)
 
+            elif action == "fill_input":
+                await _step_fill_input(page, step, marker)
+
+            elif action == "press_key":
+                await _step_press_key(page, step)
+
             # Legacy step types (backward compat — will be removed)
             elif action == "hover_dropdown":
                 LOG.warning("    hover_dropdown 已废弃，请重新运行 Stage 1 生成新 playbook")
@@ -492,3 +498,39 @@ async def _step_select_row_checkbox(page, step: dict, button_driver: ButtonDrive
         raise Exception(f"未找到含 '{marker}' 的行或无 checkbox 可点击")
 
     await page.wait_for_timeout(300)
+
+
+async def _step_fill_input(page, step: dict, marker: str):
+    """步骤：填充搜索输入框
+
+    支持 {marker_name} 占位符替换为实际的 marker 值。
+    """
+    locator = step.get("playwright_locator")
+    value_template = step.get("value", "")
+
+    if not locator:
+        raise Exception("fill_input 步骤缺少 playwright_locator（Stage 1 未提供）")
+
+    # 替换占位符
+    value = value_template.replace("{marker_name}", marker or "")
+
+    if not value:
+        LOG.warning("    fill_input: 值为空，跳过")
+        return
+
+    try:
+        await page.fill(locator, value, timeout=3000)
+        LOG.info(f"    搜索框已填充: {value}")
+    except Exception as e:
+        LOG.warning(f"    fill_input 失败: {e}")
+        raise
+
+
+async def _step_press_key(page, step: dict):
+    """步骤：按键操作（如回车触发搜索）"""
+    key = step.get("key")
+    if not key:
+        raise Exception("press_key 步骤缺少 key（Stage 1 未提供）")
+
+    await page.keyboard.press(key)
+    LOG.info(f"    按键: {key}")
