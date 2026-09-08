@@ -18,10 +18,10 @@ import json
 import logging
 from pathlib import Path
 from .request_interceptor import RequestInterceptor
-from .button_driver import ButtonDriver
+from .replay.button_driver import ButtonDriver
 from .endpoint_classifier import EndpointClassifier
-from .replay_engine import replay_from_playbook
-from .wait_helpers import (
+from .replay.replay_engine import replay_from_playbook
+from .replay.wait_helpers import (
     wait_for_table_ready,
     wait_for_dialog,
     wait_for_loading_complete,

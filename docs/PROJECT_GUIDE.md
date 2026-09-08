@@ -12,33 +12,52 @@ API_AI_test/
 ├── module_discovery/          ★ 核心：四阶段模块级发现引擎
 │   ├── run.py                   CLI 入口
 │   ├── discover_ui.py           Stage 1: 按钮/元素探测（KB驱动 + 动态标签）
-│   ├── kb_loader.py             知识库加载器（probe_knowledge.json + XPath 模板展开）
 │   ├── capture_apis.py          Stage 2: API 拦截捕获（动态操作列表）
 │   ├── analyze_flow.py          Stage 3: 逻辑分析 + Manifest 构建（build_manifest）
 │   ├── gen_test.py              Stage 4: 脚本生成（Manifest 驱动薄脚本）
 │   ├── request_interceptor.py   HTTP 拦截 + KB 驱动注入（支持 --capture-all）
-│   ├── button_driver.py         按钮点击驱动（KB 模板 fallback 链 + 隐藏过滤/覆盖层定位/iframe 穿透）
-│   ├── form_filler.py           表单智能填充（type-aware 动态构建 + Multi-Step 选项自动发现）
 │   ├── endpoint_classifier.py   端点分类去重
-│   ├── wait_helpers.py          事件驱动等待（表格就绪/弹窗/loading 完成/网络空闲）
 │   ├── stage_validators.py      质量门禁（含 manifest 架构检查）
 │   ├── diagnostic_mode.py       自诊断：失败时自动 DOM 分析 + 尝试修复
+│   ├── kb_loader.py             知识库加载器（probe_knowledge.json + XPath 模板展开）
 │   ├── kb_merger.py             知识库合并器（跨模块去重 + 冲突检测）
+│   ├── ai_debug_assistant.py    AI 辅助调试（LLM 分析失败原因）
+│   ├── feedback_loop.py         反馈循环（Stage 1↔2 联动）
+│   ├── required_elements.py     必需元素定义
 │   ├── version.py               版本管理
 │   ├── run_parallel.py          并行执行
-│   └── const.py                 常量定义
+│   ├── const.py                 常量定义
+│   ├── kb/                      知识库文件
+│   │   └── probe_knowledge.json
+│   └── replay/                  UI 操作回放引擎
+│       ├── replay_engine.py     Playbook 回放执行器
+│       ├── button_driver.py     按钮点击驱动（KB 模板 fallback + 隐藏过滤/覆盖层定位/iframe 穿透）
+│       ├── form_filler.py       表单智能填充（type-aware 动态构建 + Multi-Step 选项自动发现）
+│       └── wait_helpers.py      事件驱动等待（表格就绪/弹窗/loading 完成/网络空闲）
 │
-├── lib/                       通用库
-│   ├── auth.py                  鉴权引擎（Cookie 优先 + 滑块兜底）
-│   ├── test_runtime.py          Manifest 驱动测试运行时（ResponseParser + StepExecutor + TestRunner）
-│   ├── test_report.py           JSONL 日志 → Postman/Newman 风格 HTML 报告
-│   ├── api_client.py            API 客户端 + importlib 函数加载
-│   ├── slider.py                滑块验证码（多算法投票）
-│   ├── catalog.py               API 编目合并 → OpenAPI 3.1 IR
-│   ├── resolver.py              前置依赖解析（Test Data Fabric）
-│   ├── run_history.py           运行历史 + 五分法失败归因
-│   ├── report_html.py           日志 → HTML 报告
-│   └── utils.py                 safe_write / session_id
+├── lib/                       通用库（按功能分组）
+│   ├── auth/                  鉴权相关
+│   │   ├── auth.py              鉴权引擎（Cookie 优先 + 滑块兜底）
+│   │   ├── slider.py            滑块验证码（多算法投票）
+│   │   └── cookie_client.py     Cookie 管理客户端
+│   ├── runtime/               测试运行时
+│   │   ├── test_runtime.py      Manifest 驱动测试运行时（ResponseParser + StepExecutor + TestRunner）
+│   │   ├── test_runner.py       测试运行器封装
+│   │   └── run_history.py       运行历史记录
+│   ├── report/                报告生成
+│   │   ├── test_report.py       JSONL 日志 → Postman/Newman 风格 HTML 报告
+│   │   ├── report_html.py       HTML 报告模板
+│   │   ├── reporter.py          报告生成器
+│   │   └── ui_report.py         UI 测试报告
+│   ├── browser/               浏览器操作
+│   │   ├── browser_ops.py       浏览器操作封装
+│   │   ├── api_client.py        API 客户端 + importlib 函数加载
+│   │   └── nav.py               导航辅助
+│   ├── catalog.py             API 编目合并 → OpenAPI 3.1 IR
+│   ├── resolver.py            前置依赖解析（Test Data Fabric）
+│   ├── orphan_cleaner.py      孤立资源清理
+│   ├── drift.py               漂移检测
+│   └── utils.py               通用工具（safe_write / session_id）
 │
 ├── run_suite.py               测试套件运行器（扫描所有模块，依次执行并生成汇总报告）
 ├── discovery/                 P0 全站巡游（全站 API 离线扫描）
@@ -47,7 +66,7 @@ API_AI_test/
 ├── plugins/                   pytest 插件
 ├── scripts/                   工具与调试脚本
 ├── projects/                  多项目隔离工作空间
-└── tests/                     框架单元测试（122 tests）
+└── tests/                     框架单元测试
 ```
 
 ### 数据流
@@ -114,23 +133,23 @@ test_report.py          → output/reports/<模块>/  Postman/Newman 风格 HTML
 | 子模块 | 职责 |
 |--------|------|
 | `request_interceptor.py` | Playwright 请求/响应监听，过滤 API，收集调用记录和响应样本。支持 `--capture-all` 模式捕获全部 XHR/fetch |
-| `button_driver.py` | 驱动按钮点击（KB 模板 fallback 链 + **Locator 增强**：隐藏过滤器 `HIDDEN_FILTERS` 排除不可见/禁用元素、覆盖层定位 `OVERLAY_SELECTORS` 优先在弹窗/抽屉内查找、iframe 自动穿透） |
-| `form_filler.py` | 表单字段扫描与智能填充（type-aware 动态构建 + **Multi-Step 自动发现**：el-select 展开后自动读取首个可见选项、el-cascader 逐级发现+选择，最大深度 10 级） |
+| `replay/button_driver.py` | 驱动按钮点击（KB 模板 fallback 链 + **Locator 增强**：隐藏过滤器 `HIDDEN_FILTERS` 排除不可见/禁用元素、覆盖层定位 `OVERLAY_SELECTORS` 优先在弹窗/抽屉内寻找、iframe 自动穿透） |
+| `replay/form_filler.py` | 表单字段扫描与智能填充（type-aware 动态构建 + **Multi-Step 自动发现**：el-select 展开后自动读取首个可见选项、el-cascader 逐级发现+选择，最大深度 10 级） |
 | `endpoint_classifier.py` | 六级优先级端点分类与去重 |
 
 **动态操作列表**：`_build_operations_from_ui(ui_result)` 从 Stage 1 结果动态构建行操作列表，按 CRUD 优先级排序。仅在动态构建为空时 fallback 到硬编码默认列表。
 
 **Locator 增强系统**：按钮点击操作（`click_row_button_v2`、`click_row_more_item`、`confirm_dialog` 等）集成三大增强机制：
 - **隐藏过滤器**：`const.HIDDEN_FILTERS` 定义三套 XPath 过滤谓词（`element-ui` / `ant-design` / `_universal`），通过 `_append_hidden_filter()` 自动追加到按钮 XPath，排除 `is-hidden`、`display: none`、`disabled`、`is-disabled` 等不可见/禁用元素
-- **覆盖层定位**：`detect_active_overlay_js()` 检测当前活跃的弹窗/抽屉/消息框，`apply_overlay_scope()` 为 XPath 追加覆盖层容器前缀（如 `//div[contains(@class,'el-dialog')]`），优先在弹窗内查找按钮，失败时降级到全局定位
+- **覆盖层定位**：`detect_active_overlay_js()` 检测当前活跃的弹窗/抽屉/消息框，`apply_overlay_scope()` 为 XPath 追加覆盖层容器前缀（如 `//div[contains(@class,'el-dialog')]`），优先在弹窗内寻找按钮，失败时降级到全局定位
 - **iframe 穿透**：`_try_click_frame()` 遍历 `page.frames` 在主框架和所有 iframe 中查找目标元素，支持 Element UI 弹窗内容渲染在 iframe 中的场景
 
-**Multi-Step 选项自动发现**：`form_filler.py` 的 `MultiStepExecutor` 在填充 el-select / el-cascader 时自动发现选项：
+**Multi-Step 选项自动发现**：`replay/form_filler.py` 的 `MultiStepExecutor` 在填充 el-select / el-cascader 时自动发现选项：
 - `_execute_select()`：展开下拉框后调用 `_discover_first_option()` 读取首个可见选项文本，通过 `option_text` 参数传递给 KB 模板
 - `_execute_cascader()`：当 `options` 为 None 时调用 `_cascader_discover_and_select()`，逐级展开并选择第一个有子级的项，到叶子级时选择，最大深度 10 级
 - `_read_cascader_current_items()`：读取级联选择器当前面板的菜单项（Element UI: `.el-cascader-menu li[role="menuitem"]`，Ant Design: `.ant-cascader-menu .ant-cascader-menu-item`）
 
-**事件驱动等待**：所有按钮点击后调用 `wait_helpers.wait_for_loading_complete()` 替代固定 `wait_for_timeout(3000~5000)`，流程：等待浏览器加载状态 → 等待网络空闲（短超时容错） → 等待 7 种 loading 元素消失（`el-loading-mask`、`el-loading-text`、`ng-show loading`、`el-loading-spinner`、`ant-btn-loading`、`ant-btn-loading-icon`、`ant-spin-spinning`） → 稳定等待 1 秒。
+**事件驱动等待**：所有按钮点击后调用 `replay/wait_helpers.wait_for_loading_complete()` 替代固定 `wait_for_timeout(3000~5000)`，流程：等待浏览器加载状态 → 等待网络空闲（短超时容错） → 等待 7 种 loading 元素消失（`el-loading-mask`、`el-loading-text`、`ng-show loading`、`el-loading-spinner`、`ant-btn-loading`、`ant-btn-loading-icon`、`ant-spin-spinning`） → 稳定等待 1 秒。
 
 **KB 驱动注入**：从 `config/probe_lessons_kb.json` 加载系统级配置，monkey-patch 浏览器的 `XMLHttpRequest.send` 和 `fetch`，对匹配请求自动补全缺失字段（如 `tenantId`/`adminId`）。代码零硬编码。
 
@@ -169,10 +188,10 @@ test_report.py          → output/reports/<模块>/  Postman/Newman 风格 HTML
 
 **Manifest 驱动架构**：生成的脚本是薄脚本（~100 行），只包含：
 - 嵌入的 MANIFEST JSON 数据（含 response_contract、auth_profile、steps 定义、state_assertions）
-- `from lib.test_runtime import TestRunner` 引用
+- `from lib.runtime.test_runtime import TestRunner` 引用
 - `main()` 入口：创建 TestRunner 实例并执行
 
-所有执行逻辑由 `lib/test_runtime.py` 提供，脚本本身不包含硬编码的业务逻辑。
+所有执行逻辑由 `lib/runtime/test_runtime.py` 提供，脚本本身不包含硬编码的业务逻辑。
 
 **生成流程**：
 1. `run.py` 调用 `analyze_flow.build_manifest()` 构建完整测试清单
@@ -181,7 +200,7 @@ test_report.py          → output/reports/<模块>/  Postman/Newman 风格 HTML
 
 **输出**：`scripts/<version>/<模块>_API测试.py`
 
-### 2.5 测试运行时（lib/test_runtime.py）
+### 2.5 测试运行时（lib/runtime/test_runtime.py）
 
 Manifest 驱动的通用测试执行引擎，替代旧的硬编码脚本逻辑：
 
@@ -200,7 +219,7 @@ Manifest 驱动的通用测试执行引擎，替代旧的硬编码脚本逻辑�
 
 **JSONL 日志输出**：每次 API 调用写入一条结构化日志（`output/logs/<模块>_API测试.jsonl`），包含完整请求头/体、响应头/体、断言结果。
 
-### 2.6 报告生成（lib/test_report.py）
+### 2.6 报告生成（lib/report/test_report.py）
 
 从 JSONL 日志生成 Postman/Newman 风格 HTML 报告：
 
@@ -212,7 +231,7 @@ Manifest 驱动的通用测试执行引擎，替代旧的硬编码脚本逻辑�
 **用法**：
 ```bash
 # 运行脚本 + 生成报告（一体化）
-python lib/test_report.py projects/ecm-compute/scripts/v1.0.0/角色管理_API测试.py
+python lib/report/test_report.py projects/ecm-compute/scripts/v1.0.0/角色管理_API测试.py
 
 # 报告输出到
 output/reports/<模块>/<模块>_report_<timestamp>.html
@@ -250,7 +269,7 @@ python run_suite.py --project ecm-compute --modules 角色管理 用户管理
 
 ## 3. 鉴权机制
 
-### 3.1 AuthSession（lib/auth.py）
+### 3.1 AuthSession（lib/auth/auth.py）
 
 **设计原则**：Cookie 为唯一可信源，对齐 EcsCloud `session.js`。
 
@@ -353,7 +372,7 @@ python projects/ecm-compute/scripts/v1.0.0/角色管理_API测试.py
 
 ```bash
 # 运行脚本 + 生成报告（一体化）
-python lib/test_report.py projects/ecm-compute/scripts/v1.0.0/角色管理_API测试.py
+python lib/report/test_report.py projects/ecm-compute/scripts/v1.0.0/角色管理_API测试.py
 
 # 报告输出到
 output/reports/<模块>/<模块>_report_<timestamp>.html
@@ -680,11 +699,13 @@ python -m pytest tests/ -v     # 122 个测试
 | 自诊断模式嵌入捕获流程 | 连续失败时自动触发 DOM 分析 + 选择器修复，减少人工介入 |
 | KB 模板 fallback 链定位按钮 | `base_nav_kb.json` XPath 模板按 fixed-right → body-wrapper 顺序尝试，适配 Element UI 固定列 |
 | Worker AUTO_LOGIN=0 | 避免多进程并发抢登覆盖同一份 cookies.json |
-| 版本化 flows 目录 | 不同版本脚本互不影响，重跑不覆盖历史 |
+| 版本化 scripts 目录 | 不同版本脚本互不影响，重跑不覆盖历史 |
 | 隐藏过滤器仅作用于按钮点击 | 表单输入字段需要填充不可见元素（如隐藏域），过滤会导致填值失败 |
 | 覆盖层定位优先 + 全局降级 | 弹窗内按钮优先在弹窗容器内查找，失败时降级到全局避免误报 |
 | Multi-Step 选项内嵌自动发现 | 展开面板后直接读取选项文本，避免"打开→读取→关闭→重新打开→选择"的额外开销 |
 | 事件驱动等待替代固定等待 | `wait_for_loading_complete` 监听 7 种 loading 元素消失，比固定 `wait_for_timeout(3000~5000)` 更快更稳定 |
+| lib/ 按功能分组 | 将通用库按鉴权/运行时/报告/浏览器分组，提高可维护性 |
+| module_discovery/replay/ 独立子模块 | UI 操作回放引擎独立封装，便于复用和测试 |
 
 ---
 
@@ -762,13 +783,6 @@ config/
 
 ---
 
-## 15. 设计文档索引
-
-| 文档 | 路径 |
-|------|------|
-| 总体架构设计 | `docs/design/方案设计.md` |
-| 四阶段发现引擎全面优化方案 | `docs/design/four-stage-improvement.md` |
-| 四阶段流水线详细设计 | `docs/design/方案设计_模块级API发现.md` |
-| 鉴权与自动重登机制 | `docs/design/登录鉴权与自动重登机制.md` |
-| 用户管理探测踩坑记录 | `docs/design/经验总结_用户管理API探测踩坑与成功范式.md` |
-| 目录结构说明 | `docs/design/项目结构.md` |
+**文档版本**: v1.0  
+**最后更新**: 2026-09-07  
+**维护者**: API_AI_test 项目组

@@ -155,7 +155,7 @@
       "status": "success"
     },
     "query": {
-      "display_name": "query",
+      "display_name": "查询",
       "description": "query",
       "steps": [
         {
@@ -178,7 +178,7 @@
       "status": "success"
     },
     "update": {
-      "display_name": "update",
+      "display_name": "编辑",
       "description": "update",
       "steps": [
         {
@@ -267,7 +267,7 @@
       "status": "success"
     },
     "lock": {
-      "display_name": "lock",
+      "display_name": "冻结",
       "description": "lock",
       "steps": [
         {
@@ -293,7 +293,7 @@
       "status": "success"
     },
     "unlock": {
-      "display_name": "unlock",
+      "display_name": "启用",
       "description": "unlock",
       "steps": [
         {
@@ -319,7 +319,7 @@
       "status": "success"
     },
     "reset": {
-      "display_name": "reset",
+      "display_name": "重置密码",
       "description": "reset",
       "steps": [
         {
@@ -345,7 +345,7 @@
       "status": "success"
     },
     "import": {
-      "display_name": "import",
+      "display_name": "导入",
       "description": "import",
       "steps": [
         {
@@ -366,7 +366,7 @@
       "error_text": "导入操作需要上传文件，无法自动完成"
     },
     "authorize": {
-      "display_name": "authorize",
+      "display_name": "授权",
       "description": "authorize",
       "steps": [
         {
@@ -482,7 +482,7 @@
       }
     },
     "migrate": {
-      "display_name": "migrate",
+      "display_name": "迁移",
       "description": "migrate",
       "steps": [
         {
@@ -497,7 +497,7 @@
       "error_text": "弹窗中必填字段为空: 待迁移用户：, 待迁移部门："
     },
     "delete": {
-      "display_name": "delete",
+      "display_name": "删除",
       "description": "delete",
       "steps": [
         {

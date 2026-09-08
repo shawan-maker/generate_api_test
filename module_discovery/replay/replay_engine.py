@@ -15,7 +15,7 @@ import logging
 from .button_driver import ButtonDriver, confirm_dialog
 from .form_filler import apply_fill_rule, FormFiller
 from .wait_helpers import wait_for_table_ready
-from . import const
+from .. import const
 
 LOG = logging.getLogger(__name__)
 

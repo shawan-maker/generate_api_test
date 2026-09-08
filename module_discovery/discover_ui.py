@@ -6,13 +6,13 @@ import json
 import logging
 import time
 from . import const
-from .wait_helpers import (
+from .replay.wait_helpers import (
     wait_for_dropdown, wait_for_dialog_dismissed, wait_for_dialog,
     wait_for_loading_complete, wait_for_table_ready,
     wait_for_navigation_complete,
 )
 from .kb_loader import ProbeKB
-from .form_filler import (
+from .replay.form_filler import (
     FormFiller, read_form_errors, generate_fill_data, scan_form_fields,
     generate_fill_rules,
 )
@@ -540,7 +540,7 @@ async def _scan_create_dialog(page, kb: ProbeKB = None, framework: str = "elemen
     Returns:
         dict: {"form_fields": list, "dialog_buttons": list}
     """
-    from .wait_helpers import wait_for_loading_complete
+    from .replay.wait_helpers import wait_for_loading_complete
 
     result = {"form_fields": [], "dialog_buttons": []}
     url_before = page.url
@@ -2468,6 +2468,7 @@ async def _do_query(page, context: dict) -> dict:
     result = {
         "success": True,
         "selectors": {"trigger": btn_text},
+        "trigger_text": trigger_text_normalized,
         "trigger_locator_verified": trigger_locator,
         "has_table": has_table,
     }
@@ -2493,7 +2494,7 @@ async def _do_detail(page, context: dict) -> dict:
     # 如果是行操作，先找到对应行
     row_selector = None
     if btn_location == "row_action" and marker:
-        from .button_driver import ButtonDriver
+        from .replay.button_driver import ButtonDriver
         driver = ButtonDriver(page)
         row = await driver.find_data_row(marker)
         if not row:
@@ -2626,7 +2627,7 @@ async def _do_edit(page, context: dict) -> dict:
     btn_click_result = {"clicked": False, "strategy": "", "tag": "button", "text": btn_text}
     for attempt in range(max_locate_retries):
         if btn_location == "row_action" and marker:
-            from .button_driver import ButtonDriver
+            from .replay.button_driver import ButtonDriver
             driver = ButtonDriver(page)
             row = await driver.find_data_row(marker)
             if not row:
@@ -2750,6 +2751,7 @@ async def _do_edit(page, context: dict) -> dict:
         # Phase 1: 增强字段
         "is_row_action": is_row_action,
         "button_text": btn_text,
+        "trigger_text": trigger_text_normalized,
         "form_fields": fields,
         "fill_rules": generate_fill_rules(fields),
         "trigger_locator_verified": trigger_locator,
@@ -2791,7 +2793,7 @@ async def _do_delete(page, context: dict) -> dict:
     btn_click_result = {"clicked": False, "strategy": "", "tag": "button", "text": btn_text}
     for attempt in range(max_locate_retries):
         if btn_location == "row_action" and marker:
-            from .button_driver import ButtonDriver
+            from .replay.button_driver import ButtonDriver
             driver = ButtonDriver(page)
             row = await driver.find_data_row(marker)
             if not row:
@@ -2819,7 +2821,7 @@ async def _do_delete(page, context: dict) -> dict:
     await page.wait_for_timeout(1000)
 
     # 确认删除弹窗（支持 el-message-box 和 el-popconfirm）
-    from .button_driver import confirm_dialog
+    from .replay.button_driver import confirm_dialog
     confirmed = await confirm_dialog(page)
     if not confirmed:
         return {"success": False, "error_type": "no_confirm_button",
@@ -2873,6 +2875,7 @@ async def _do_delete(page, context: dict) -> dict:
         "success": True,
         "selectors": selectors,
         "confirmed": confirmed,
+        "trigger_text": trigger_text_normalized,
         "trigger_locator_verified": trigger_locator_verified,
         "success_locator": ".el-message--success",
         "needs_checkbox": needs_checkbox,
@@ -2883,7 +2886,8 @@ async def _do_delete(page, context: dict) -> dict:
         },
     } if success else {
         "success": False, "error_type": "no_success_signal",
-        "error_text": "删除后未检测到成功信号"
+        "error_text": "删除后未检测到成功信号",
+        "trigger_text": trigger_text_normalized,
     }
 
     return result
@@ -2896,6 +2900,8 @@ async def _do_generic_operation(page, context: dict) -> dict:
     marker = context.get("marker")
     btn_text = btn.get("text", "")
     btn_location = btn.get("location", "toolbar")
+    # 提前归一化，确保所有 return 路径都携带 trigger_text
+    trigger_text_normalized = " ".join(btn_text.split())
 
     # 记录点击前的 URL（用于导航保护）
     url_before = page.url
@@ -2903,7 +2909,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
     # 找到行并点击
     row_selector = None
     if btn_location == "row_action" and marker:
-        from .button_driver import ButtonDriver
+        from .replay.button_driver import ButtonDriver
         driver = ButtonDriver(page)
         row = await driver.find_data_row(marker)
         if not row:
@@ -2918,7 +2924,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
             return {"success": False, "error_type": "skipped",
                     "error_text": "dropdown 操作需要 marker"}
 
-        from .button_driver import ButtonDriver
+        from .replay.button_driver import ButtonDriver
         driver = ButtonDriver(page)
         row = await driver.find_data_row(marker)
         if not row:
@@ -2969,6 +2975,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
                 return {
                     "success": True,
                     "nav_info": nav_info,
+                    "trigger_text": trigger_text_normalized,
                     "selectors": selectors,
                     "fill_data": nav_info.get("fill_data", {}),
                     "submit_result": submit_result
@@ -2994,6 +3001,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
                     "success": False,
                     "error_type": error_type,
                     "error_text": error_text,
+                    "trigger_text": trigger_text_normalized,
                     "nav_info": nav_info,
                     "selectors": selectors
                 }
@@ -3003,6 +3011,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
                     "success": False,
                     "error_type": "cross_page_no_submit",
                     "error_text": "跨页面操作后未执行提交操作",
+                    "trigger_text": trigger_text_normalized,
                     "nav_info": nav_info,
                     "selectors": selectors
                 }
@@ -3041,6 +3050,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
             # 导入操作无法自动完成（需要文件），标记为失败
             return {"success": False, "error_type": "env_dependency",
                     "error_text": "导入操作需要上传文件，无法自动完成",
+                    "trigger_text": trigger_text_normalized,
                     "selectors": selectors}
 
     # 如果有确认弹窗，点击确认
@@ -3048,7 +3058,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
     confirmed = ""
     if state["success"]:
         LOG.info(f"    检测到确认弹窗: {state.get('actual_state', 'dialog')}")
-        from .button_driver import confirm_dialog
+        from .replay.button_driver import confirm_dialog
         confirmed = await confirm_dialog(page)
         if confirmed:
             LOG.info(f"    已点击确认按钮: {confirmed}")
@@ -3144,16 +3154,20 @@ async def _do_generic_operation(page, context: dict) -> dict:
             empty_fields = diag.get("empty_selects", [])
             if empty_fields:
                 return {"success": False, "error_type": "required_field_empty",
+                        "trigger_text": trigger_text_normalized,
                         "error_text": f"弹窗中必填字段为空: {', '.join(empty_fields)}"}
             if diag.get("confirm_disabled"):
                 return {"success": False, "error_type": "confirm_button_disabled",
+                        "trigger_text": trigger_text_normalized,
                         "error_text": f"确认按钮被禁用，无法执行 {action} 操作"}
             # 弹窗存在、无空字段、确认按钮未 disabled → 可能是按钮文本不匹配
             btn_list = [b.get("text", "?") for b in diag.get("buttons", [])]
             return {"success": False, "error_type": "no_confirm_button",
+                    "trigger_text": trigger_text_normalized,
                     "error_text": f"{action} 弹窗中未找到可点击的确认按钮（弹窗按钮: {btn_list}）"}
         else:
             return {"success": False, "error_type": "no_confirm_button",
+                    "trigger_text": trigger_text_normalized,
                     "error_text": f"{action} 操作未检测到确认弹窗"}
 
     # 检查确认后的页面状态（是否仍有残留对话框）
@@ -3174,6 +3188,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
     if errors:
         first = errors[0]
         return {"success": False, "error_type": first.get("severity", "unknown"),
+                "trigger_text": trigger_text_normalized,
                 "error_text": first.get("error_text", "")}
 
     # 读取捕获的消息（操作后可能已消失）
@@ -3183,6 +3198,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
     success = await _verify_operation_success(page, action, strict=True, captured_messages=captured_msgs)
     if not success:
         return {"success": False, "error_type": "no_success_signal",
+                "trigger_text": trigger_text_normalized,
                 "error_text": f"{action} 操作后未检测到成功信号（成功提示/数据变化）"}
 
     # 构建 selectors
@@ -3193,7 +3209,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
         selectors["confirm"] = confirmed
 
     # Playbook 增强字段
-    result = {"success": True, "selectors": selectors, "confirmed": confirmed}
+    result = {"success": True, "selectors": selectors, "confirmed": confirmed, "trigger_text": trigger_text_normalized}
 
     # 记录确认后的对话框状态（供 playbook 生成 close_dialog 步骤）
     result["post_confirm_state"] = {
@@ -3202,7 +3218,6 @@ async def _do_generic_operation(page, context: dict) -> dict:
     }
 
     # 记录 trigger_locator_verified（使用实际点击成功的标签）
-    trigger_text_normalized = " ".join(btn_text.split())
     if btn_location not in ("dropdown",):
         trigger_tag = btn_click_result.get("tag", "button")
         result["trigger_locator_verified"] = f"{trigger_tag}:has-text('{trigger_text_normalized}')"
@@ -3769,7 +3784,7 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
             # 检查是否有确认对话框
             state = await _check_precondition_state(page, {"type": "dialog"})
             if state["success"]:
-                from .button_driver import confirm_dialog
+                from .replay.button_driver import confirm_dialog
                 confirmed = await confirm_dialog(page)
                 if confirmed:
                     LOG.info(f"    已点击确认按钮: {confirmed}")
@@ -3822,7 +3837,7 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
         # 检查是否有确认对话框
         state = await _check_precondition_state(page, {"type": "dialog"})
         if state["success"]:
-            from .button_driver import confirm_dialog
+            from .replay.button_driver import confirm_dialog
             confirmed = await confirm_dialog(page)
             if confirmed:
                 LOG.info(f"    已点击确认按钮: {confirmed}")
@@ -3883,7 +3898,7 @@ async def _do_save_or_confirm(page, context: dict) -> dict:
     # 检查是否有确认弹窗
     state = await _check_precondition_state(page, {"type": "dialog"})
     if state["success"]:
-        from .button_driver import confirm_dialog
+        from .replay.button_driver import confirm_dialog
         confirmed = await confirm_dialog(page)
         if confirmed:
             LOG.info(f"    已点击确认按钮: {confirmed}")
@@ -4461,6 +4476,17 @@ def build_playbook(ui_result: dict) -> dict:
         if op_steps:
             # 使用 trigger_text 作为业务名称（如"创建用户"而非"create"）
             display_name = op_data.get("trigger_text") or op_data.get("description", action)
+            # 兜底：如果 display_name 仍然是英文 action key，使用中文映射
+            _ACTION_ZH = {
+                "create": "创建", "query": "查询", "update": "编辑",
+                "delete": "删除", "lock": "冻结", "unlock": "启用",
+                "reset": "重置密码", "import": "导入", "export": "导出",
+                "authorize": "授权", "migrate": "迁移", "detail": "详情",
+                "remove": "删除", "edit": "编辑", "freeze": "冻结",
+                "thaw": "启用",
+            }
+            if display_name in _ACTION_ZH or display_name == action:
+                display_name = _ACTION_ZH.get(action, action)
             entry = {
                 "display_name": display_name,
                 "description": op_data.get("description", action),

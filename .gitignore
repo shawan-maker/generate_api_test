@@ -71,3 +71,19 @@ module_discovery/debug_*.py
 .DS_Store
 Thumbs.db
 *.desktop
+
+# ============ 根目录 stray 文件 ============
+/_test_*.py
+/test_*.py
+/test_*.json
+/stage*.txt
+
+# ============ JSONL 日志 ============
+**/*.jsonl
+
+# ============ 项目级调试脚本 ============
+projects/*/scripts/*/debug_*.py
+
+# ============ HTML 报告（防止 stray） ============
+**/*_report_*.html
+**/*_ui_report_*.html

@@ -7,15 +7,14 @@
 ```
 v1.0.0/
 ├── api/                          ← API 自动化测试
-│   ├── lib/                      ← 运行时引擎（test_runtime, auth, slider）
-│   ├── config/                   ← cookies（自动生成，可删除后重新登录）
+│   ├── lib/                      ← 运行时引擎（test_runtime, test_report, cookie_client）
+│   ├── config/cookies.json       ← 登录凭据（需从浏览器导出或框架刷新）
 │   └── {模块}_API测试.py          ← 测试脚本
 ├── ui/                           ← UI 自动化测试
-│   ├── lib/                      ← 运行时引擎（replay_engine, button_driver, form_filler）
-│   ├── config/cookies.json       ← 登录凭据（自动生成）
+│   ├── lib/                      ← 运行时引擎（replay_engine, button_driver, form_filler, cookie_client, ui_report）
+│   ├── config/cookies.json       ← 登录凭据（需从浏览器导出或框架刷新）
 │   ├── kb/probe_knowledge.json   ← 表单填充知识库
 │   ├── {模块}_playbook.json      ← UI 操作步骤定义
-│   ├── {模块}_data.json          ← 测试数据
 │   └── {模块}.py                 ← 测试脚本
 └── README.md
 ```
@@ -27,15 +26,11 @@ v1.0.0/
 ### 1. 准备
 
 ```bash
-pip install requests httpx urllib3 opencv-python numpy playwright
-playwright install chromium
+pip install requests urllib3
 ```
 
 - `requests` — API 调用
-- `httpx` — 滑块登录鉴权
 - `urllib3` — 禁用 SSL 警告
-- `opencv-python` + `numpy` — 滑块缺口识别（cookie 有效时不需要）
-- `playwright` — 滑块验证自动登录（cookie 有效时不需要）
 
 ### 2. 执行
 
@@ -81,20 +76,42 @@ ui/output/reports/{模块}_ui_report_YYYYMMDD_HHMMSS.html
 
 ## 通用说明
 
+### Cookie 准备
+
+生成脚本使用 **纯 Cookie 鉴权**，不做自动登录。需要提供 `config/cookies.json`：
+
+1. **框架刷新**：运行框架 `--stage 1` 自动登录并保存 cookie
+2. **浏览器导出**：从 DevTools → Application → Cookies 导出为 Playwright JSON 数组格式
+3. **CI 定期刷新**：流水线中定期执行框架登录命令
+
+Cookie 文件格式（Playwright JSON 数组）：
+```json
+[
+  {
+    "name": "estackToken",
+    "value": "xxx...",
+    "domain": "10.151.61.248",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false
+  }
+]
+```
+
+### Cookie 过期处理
+
+- 如果运行时报 `❌ 鉴权失败`，说明 cookie 已过期
+- 需要重新执行上述"Cookie 准备"步骤刷新 `config/cookies.json`
+- 生成脚本不会自动执行登录（各项目登录方式不同，无法统一）
+
 ### 自定义登录账号
 
-设置环境变量：
+设置环境变量（仅在框架层 `--stage 1` 刷新 cookie 时使用）：
 ```bash
 set APP_USER=your_username
 set APP_PASS=your_password
 ```
 
-### Cookie 自动刷新
-
-- 首次运行或 cookie 过期时，脚本会自动执行滑块登录并保存 cookie 到 `config/`
-- 后续运行优先使用已有 cookie，无需重复登录
-- 如需强制重新登录，删除 `config/cookies.json` 即可
-
 ### 拷贝到其他机器
 
-将整个 `v1.0.0/` 目录拷贝即可，只需目标机器安装好 Python 和上述依赖。
+将整个 `v1.0.0/` 目录拷贝即可，只需目标机器安装好 Python 和上述依赖，并准备好有效的 `config/cookies.json`。
