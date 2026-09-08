@@ -137,7 +137,7 @@ class ButtonDriver:
     def _load_kb_templates(self) -> dict:
         """加载 KB 模板（统一使用 ProbeKB）"""
         try:
-            from .kb_loader import get_kb
+            from ..kb_loader import get_kb
             kb = get_kb()
             return kb._kb_data or {}
         except Exception as e:
@@ -158,7 +158,7 @@ class ButtonDriver:
         Returns:
             str: 覆盖层的 XPath 前缀，无活跃覆盖层时返回空串
         """
-        from .kb_loader import detect_active_overlay_js, get_overlay_prefix
+        from ..kb_loader import detect_active_overlay_js, get_overlay_prefix
 
         js = detect_active_overlay_js(self.framework)
         try:
@@ -212,7 +212,7 @@ class ButtonDriver:
         - 覆盖层前缀定位（弹窗/抽屉内的按钮）
         - 点击后等待加载完成
         """
-        from .kb_loader import get_kb, apply_overlay_scope
+        from ..kb_loader import get_kb, apply_overlay_scope
 
         row_index = await self._get_row_index(row)
         if row_index < 0:
@@ -281,7 +281,7 @@ class ButtonDriver:
         - 覆盖层前缀定位
         - 点击后等待加载完成
         """
-        from .kb_loader import get_kb, apply_overlay_scope
+        from ..kb_loader import get_kb, apply_overlay_scope
 
         row_index = await self._get_row_index(row)
         if row_index < 0:

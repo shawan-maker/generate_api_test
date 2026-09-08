@@ -1,6 +1,6 @@
 """
 用户管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-07 16:20:38
+生成时间: 2026-09-08 09:47:09
 目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/user
 
 执行流程:
@@ -88,12 +88,12 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userName": "autotest769045",
-        "password": "LqNt1/udEMxqhcNSCZn6dOS3e2AtRb9HTQQHOeAz9yejLtFjsJAwyKKNFhtZK6cl2s1u9BQO2b6EYmVzSgjR7kgH3Qv7UqyTEu72bX3ru+o8M3/7AvdaqaIfZJbz4Hcbsg7dnJ9OXTvZwFwujE74ztCj01RmWtXyko+75uNGbXs=",
-        "name": "test_769045",
-        "email": "NmzDcukaHt+pJywE5d33gPRXHHOpbwWfma1bjdilvKStEa3BmD2VP2GhHB3KSpE5yUfPNetzDXhwpRqT1/Bc86DkpsqNXPEM7/Zc5GDOKc8zuLY69wU1LRv9Orpqv8tufYbZGQvhjJiQ3K7FYHUceJrDEm9xwf0akWIs2vxMltY=",
-        "phone": "HEEiD9TFj8pnfc1bkWLr39JOzx6zG5yaPmqSC4jnCMCiYMgfret62RCkoTyMynZkKjscHtOx2DkQiXfmuDnvulMeMsaaiTmp/ckhQUIlR3Fv+IuqPI7H2DSy7bSJ3YRNfr+wemM3SS6BUQ/AUkdur5crulg0OLPvup29yLENz/4=",
-        "description": "auto_desc_769045",
+        "userName": "autotest831850",
+        "password": "TQ4UgiLtzYEplXZsmg5YGLpjkuF3TNEObPGa7dAxtUrqA2WT2ULSxUpixw6LZvueimxu3hC9LhS+vD0ZamEputvDKX+8TsHpOdJx31I5iVn6080CI1PWXFNMp2FMtYMzXrs+R70RgHGdmR9GiFEnGx5E3FqsS86mf2yFAmbpSfs=",
+        "name": "test_831850",
+        "email": "HXV7EkvyRMnEROAt3VqWCkxtqJS33F7wUcQeJ1XaOT66ygH8lq2HZ6yeIHp+Xol2qiuvZrzMYW1ixqtpqL+9ZrRmXVh5bCEx4CVdENPS0I9L7pJhqQhOqWkBxIKPWu4adxwH9Mnfjz2d9YXVkSVCOaQOtRVl9Loono6v2zx/DC4=",
+        "phone": "Xi3TBLxX/IzXltkR+DCADSK7pf5dK2VfNbYKDYS6sVG2M1y+5SU9W8GzyzwyCv6RUf1ralYcGie3Z/PL5ZBTlAISLoB6OpTXT97NEm5YZqEtr5fUT677oJzQuw018peutAE4mCQz9/PDuSAsZrZsCY5R+r/I2Ga8RnOu2eeXu6Y=",
+        "description": "auto_desc_831851",
         "policyIds": [
           "1f8e392309fc414c9d77d45d0315fedc"
         ],
@@ -169,13 +169,13 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "5d9af442c5c34a05ae8a76e24a4fefc6",
-        "name": "test_769072",
-        "description": "auto_desc_769072",
+        "userId": "96418148ac14443b961bb1d99d45163b",
+        "name": "test_831878",
+        "description": "auto_desc_831878",
         "tenantId": "34e2594fca9e44cd9e23b25474838c7f",
         "countryCode": "+86",
-        "phone": "hW5/uAgPOLing6HfLGoA+wlbO/iBTH+oc1XzVaXseSNE7nulqCm6OUNpAujsRiV196ETXnciD6TcRHn1nYo0xmqV4o/Gy42L1+YJak6ypldVYOORyu2XNCD96qOpkS2oW7Bh3cNVlh9wmwITvalNPL19Ve0fxTY7Ql5Rt9yF80I=",
-        "email": "MRAlLpsrDqoXEEUz8NCccjjimIZRezss5EH/FsgxUYhSVHPOlKzxYBkme1Mzb3qaoabmKSYgjbHmAli4Sthas6DLS5cRJH6hY8AL2xWQ/JRFJR3ML1uOGW3fi5l1XbD1cXsQiqzRzRPPslTt+omrJV+BRS6QvmDjmSNjR8Mpz4s=",
+        "phone": "c5JRCCO7IHKs3iUUshmrLacaV/KStx3BedX50w5uCxOt0NpR4UclLo3MbmXOwGjBcEq5py0nvVFW6IxTku5x35Zcnf9Q0qXgyXnQN2Eipf72tJgxa7f+EP1X4JNhvJC3dISZzP4eFqjjMTdBG1CwxaekCXicdAAGTU2S6+g8O1s=",
+        "email": "UpMfxrDdHEnRUlkQm/2JkeZlBO2+ApdeLXzTWnKQ0XlUvh6AVD2PbD8jLkKB9m+sYipC/DDgSMCLAmojKcmLVdIpJAO8paijdB7/DfZXeiB/meS8PCnqAqIGsvRw5K5Diwu2nAUyZmWS8XVUKp387+9Q0dYtJpfl7lyXs8CDox8=",
         "adminId": "93552edc908e4dadae761fff1fd0f24c"
       },
       "body_field_roles": {
@@ -235,7 +235,7 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "5d9af442c5c34a05ae8a76e24a4fefc6",
+        "userId": "96418148ac14443b961bb1d99d45163b",
         "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
         "adminId": "93552edc908e4dadae761fff1fd0f24c"
       },
@@ -323,7 +323,7 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "5d9af442c5c34a05ae8a76e24a4fefc6",
+        "userId": "96418148ac14443b961bb1d99d45163b",
         "passwordPolicy": {
           "id": "90542be67d584ab09daa12e697fb041a",
           "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
@@ -380,7 +380,7 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": [
-        "5d9af442c5c34a05ae8a76e24a4fefc6"
+        "96418148ac14443b961bb1d99d45163b"
       ],
       "body_field_roles": {
         "__array_items__": {

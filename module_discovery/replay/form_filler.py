@@ -28,7 +28,7 @@ class FormFiller:
     def _get_executor(self, framework="element-ui"):
         """获取 MultiStepExecutor 实例（延迟加载）"""
         if self._executor is None:
-            from .kb_loader import get_kb
+            from ..kb_loader import get_kb
             self._kb = get_kb()
             self._executor = MultiStepExecutor(self.page, self._kb, framework)
         return self._executor
@@ -67,7 +67,7 @@ class FormFiller:
             username: 用户名
             fill_data: 可选的预生成填充数据（用于覆盖默认值）
         """
-        from . import const
+        from .. import const
 
         if fill_data is None:
             fill_data = self._build_fill_data(fields, username)
@@ -168,7 +168,7 @@ class FormFiller:
             (成功处理的字段数, 详细信息列表)
             详细信息列表包含每个字段的 label, kb_category, selector, is_editable, option_text
         """
-        from . import const
+        from .. import const
 
         executor = self._get_executor(framework)
         filled = 0
@@ -281,7 +281,7 @@ class FormFiller:
         Returns:
             成功填充的字段数
         """
-        from . import const
+        from .. import const
 
         # 标识字段：不修改
         skip_labels = {"名称", "编码", "用户名", "姓名", "账号",
@@ -1529,7 +1529,7 @@ class MultiStepExecutor:
         Returns:
             str: 覆盖层的 XPath 前缀，无活跃覆盖层时返回空串
         """
-        from .kb_loader import detect_active_overlay_js, get_overlay_prefix
+        from ..kb_loader import detect_active_overlay_js, get_overlay_prefix
 
         js = detect_active_overlay_js(self.framework)
         try:
@@ -1556,7 +1556,7 @@ class MultiStepExecutor:
 
             # 如果有活跃覆盖层，先尝试在覆盖层内定位
             if overlay_prefix:
-                from .kb_loader import apply_overlay_scope
+                from ..kb_loader import apply_overlay_scope
                 scoped_xpath = apply_overlay_scope(xpath, overlay_prefix)
                 if await self._click_by_xpath(scoped_xpath):
                     return True

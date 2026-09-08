@@ -5,7 +5,7 @@
     "base_url": "https://10.151.61.248",
     "login_url": "https://10.151.61.248/estack/web/estack/login",
     "framework": "element-ui",
-    "generated_at": "2026-09-07 15:25:10",
+    "generated_at": "2026-09-08 09:54:00",
     "version": "1.0",
     "auth_config": {
       "token_key": "estackToken",
@@ -155,7 +155,7 @@
       "status": "success"
     },
     "query": {
-      "display_name": "query",
+      "display_name": "查询",
       "description": "query",
       "steps": [
         {
@@ -178,7 +178,7 @@
       "status": "success"
     },
     "update": {
-      "display_name": "update",
+      "display_name": "编辑",
       "description": "update",
       "steps": [
         {
@@ -267,7 +267,7 @@
       "status": "success"
     },
     "lock": {
-      "display_name": "lock",
+      "display_name": "冻结",
       "description": "lock",
       "steps": [
         {
@@ -293,7 +293,7 @@
       "status": "success"
     },
     "unlock": {
-      "display_name": "unlock",
+      "display_name": "启用",
       "description": "unlock",
       "steps": [
         {
@@ -319,7 +319,7 @@
       "status": "success"
     },
     "reset": {
-      "display_name": "reset",
+      "display_name": "重置密码",
       "description": "reset",
       "steps": [
         {
@@ -345,7 +345,7 @@
       "status": "success"
     },
     "import": {
-      "display_name": "import",
+      "display_name": "批量导入",
       "description": "import",
       "steps": [
         {
@@ -366,7 +366,7 @@
       "error_text": "导入操作需要上传文件，无法自动完成"
     },
     "authorize": {
-      "display_name": "authorize",
+      "display_name": "授权",
       "description": "authorize",
       "steps": [
         {
@@ -390,7 +390,7 @@
       "error_type": "required_field_empty",
       "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
       "nav_info": {
-        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=34e2594fca9e44cd9e23b25474838c7f&type=userList&rowId=f468f9d2b60d46b9a43358232340d4fb",
+        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=34e2594fca9e44cd9e23b25474838c7f&type=userList&rowId=6832bf4eb022457ba85dd6182e7497bf",
         "depth": 0,
         "page_title": "eStack Enterprise",
         "has_form": true,
@@ -428,30 +428,30 @@
         ],
         "fill_data": {
           "名称": "AT_test_auto",
-          "编码": "code_765869",
-          "描述": "自动测试创建于765869",
-          "备注": "自动创建于765869",
-          "说明": "自动测试创建于765869",
+          "编码": "code_832397",
+          "描述": "自动测试创建于832397",
+          "备注": "自动创建于832397",
+          "说明": "自动测试创建于832397",
           "用户名": "AT_test_auto",
           "姓名": "AT_test_auto",
-          "邮箱": "at_765869@test.com",
-          "手机": "13843380462",
+          "邮箱": "at_832397@test.com",
+          "手机": "13866858077",
           "密码": "Test@123456",
           "确认密码": "Test@123456",
           "角色名称": "AT_test_auto",
-          "角色编码": "role_code_765869",
-          "角色描述": "自动测试角色创建于765869",
+          "角色编码": "role_code_832397",
+          "角色描述": "自动测试角色创建于832397",
           "username": "AT_test_auto",
           "name": "AT_test_auto",
-          "email": "at_765869@test.com",
-          "phone": "13843380462",
+          "email": "at_832397@test.com",
+          "phone": "13866858077",
           "password": "Test@123456",
-          "description": "自动测试创建于765869",
-          "code": "code_765869",
-          "remark": "自动创建于765869",
-          "授权用户": "AT_AT_test_auto_765869",
-          "授权角色": "AT_AT_test_auto_765869",
-          "授权范围": "AT_AT_test_auto_765869"
+          "description": "自动测试创建于832397",
+          "code": "code_832397",
+          "remark": "自动创建于832397",
+          "授权用户": "AT_AT_test_auto_832397",
+          "授权角色": "AT_AT_test_auto_832397",
+          "授权范围": "AT_AT_test_auto_832397"
         },
         "submit_result": {},
         "error_type": "required_field_empty",
@@ -482,7 +482,7 @@
       }
     },
     "migrate": {
-      "display_name": "migrate",
+      "display_name": "批量迁移",
       "description": "migrate",
       "steps": [
         {
@@ -497,7 +497,7 @@
       "error_text": "弹窗中必填字段为空: 待迁移用户：, 待迁移部门："
     },
     "delete": {
-      "display_name": "delete",
+      "display_name": "批量删除",
       "description": "delete",
       "steps": [
         {
