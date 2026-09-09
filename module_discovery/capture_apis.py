@@ -16,6 +16,7 @@ Stage 2 直接执行 playbook 中的 steps，不再重新探测表单。
 
 import json
 import logging
+import re
 from pathlib import Path
 from .request_interceptor import RequestInterceptor
 from .replay.button_driver import ButtonDriver
@@ -232,4 +233,191 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
 
     LOG.info(f"[Stage 2] Playbook 回放完成: {result.get('stats', {})}")
 
+    # 新增：识别前置 API 候选（Phase A）
+    # 排除业务操作端点，保留其余端点作为前置 API 候选
+    business_pathnames = set()
+    for cat in ("create", "update", "delete", "execute",
+                "lock", "unlock", "reset", "import", "export"):
+        for ep in result.get("classified", {}).get(cat, []):
+            business_pathnames.add(ep.get("pathname", ""))
+    # 对 query/detail 类别：排除"模块自身资源"的查询，保留"辅助资源"查询
+    # 判断依据：query 端点路径是否包含 create/delete 端点的资源路径段
+    # 例如：create=/users → query=/tenants/users 包含 users → 排除（主查询）
+    #       而 /policies/list 不包含 users → 保留（前置 API 候选）
+    create_paths = [ep["pathname"] for ep in result.get("classified", {}).get("create", [])]
+    for ep in result.get("classified", {}).get("query", []):
+        p = ep.get("pathname", "")
+        is_main_query = False
+        for cp in create_paths:
+            # 提取 create 路径的最后一段资源名
+            resource_seg = cp.rstrip("/").split("/")[-1] if cp else ""
+            if resource_seg and resource_seg in p:
+                is_main_query = True
+                break
+        # detail 类别也类似排除
+        if is_main_query:
+            business_pathnames.add(p)
+    for ep in result.get("classified", {}).get("detail", []):
+        p = ep.get("pathname", "")
+        for cp in create_paths:
+            resource_seg = cp.rstrip("/").split("/")[-1] if cp else ""
+            if resource_seg and resource_seg in p:
+                business_pathnames.add(p)
+                break
+    pre_api_candidates = _identify_pre_api_candidates(calls, samples, business_pathnames)
+    result["pre_api_candidates"] = pre_api_candidates
+    LOG.info(f"[Phase A] 识别到 {len(pre_api_candidates)} 个前置 API 候选")
+
     return result
+
+
+# ========== Phase A: 前置 API 候选识别 ==========
+
+# 注意：不再使用硬编码模式匹配前置 API！
+# 正确做法：Stage 2 捕获所有 GET API 作为候选，Stage 3 通过数据反向追踪决定哪些是前置 API。
+# 这样任何项目的任何 API 都能被正确识别，无需维护路径模式列表。
+
+_PRE_API_PATTERNS = []  # 保留变量但清空，避免未来误用
+
+
+def _identify_pre_api_candidates(calls: list, samples: dict,
+                                  classified_pathnames: set = None) -> list:
+    """
+    收集非业务 API 作为前置 API 候选。
+
+    排除已分类为核心 CRUD 的 API，将剩余 API（有有效 JSON 响应的）
+    都作为候选传给 Stage 3，由 trace_pre_api_dependencies() 根据业务请求
+    数据反向追踪来决定哪些是真正的前置 API。
+
+    Args:
+        calls: RequestInterceptor 捕获的 API 调用列表
+        samples: 响应样本字典 {pathname: [{status, body}, ...]}
+        classified_pathnames: 已分类为核心 CRUD API 的路径集合（排除用）
+
+    Returns:
+        前置 API 候选列表
+    """
+    classified_pathnames = classified_pathnames or set()
+    candidates = []
+    seen_pathnames = set()
+
+    for call in calls:
+        pathname = call.get('pathname', '')
+
+        # 去重：同一路径只处理一次
+        if pathname in seen_pathnames:
+            continue
+
+        # 排除已分类为核心 CRUD 的业务 API
+        if pathname in classified_pathnames:
+            continue
+
+        # 获取响应样本
+        sample_list = samples.get(pathname, [])
+        if not sample_list:
+            continue
+
+        sample = sample_list[0]
+        body_text = sample.get('body', '')
+        if not body_text:
+            continue
+
+        # 解析响应，提取可提取字段
+        try:
+            body = json.loads(body_text) if isinstance(body_text, str) else body_text
+            if not isinstance(body, dict):
+                continue
+            extracted_fields = _extract_available_fields(body)
+        except Exception as e:
+            LOG.debug(f"  [Phase A] {pathname} JSON 解析失败: {e}")
+            continue
+
+        # 跳过没有有效字段的 API
+        if not extracted_fields:
+            continue
+
+        # 生成 API ID（使用路径最后一段，转换连字符为下划线）
+        last_segment = pathname.rstrip('/').split('/')[-1]
+        api_id = last_segment.replace('-', '_').replace(' ', '_')
+
+        # 生成人类可读名称
+        api_name = _generate_api_name(pathname)
+
+        candidates.append({
+            'name': api_name,
+            'id': api_id,
+            'method': call.get('method', 'GET'),
+            'pathname': pathname,
+            'response_sample': {'response_body': body_text},
+            'extracted_fields': extracted_fields,
+            'depends_on': []
+        })
+
+        seen_pathnames.add(pathname)
+        LOG.debug(f"  [Phase A] 收集候选: {api_name} ({pathname})")
+
+    LOG.info(f"  [Phase A] 共收集 {len(candidates)} 个 GET API 候选，将由 Stage 3 数据追踪筛选")
+    return candidates
+
+
+def _extract_available_fields(body: dict, prefix: str = '') -> list:
+    """
+    递归提取 JSON 响应中的可提取字段。
+
+    Args:
+        body: JSON 响应体
+        prefix: 路径前缀（用于递归）
+
+    Returns:
+        字段列表，每项包含 name 和 path
+        例如：[
+            {'name': 'entity_tenantId', 'path': 'entity.tenantId'},
+            {'name': 'entity_list_0_id', 'path': 'entity.list[0].id'}
+        ]
+    """
+    fields = []
+
+    def _walk(obj, current_path):
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                new_path = f"{current_path}.{key}" if current_path else key
+
+                # 提取基本类型字段（字符串、整数、布尔等）
+                if isinstance(value, (str, int, float, bool)) and value is not None:
+                    # 生成字段名：将路径中的特殊字符替换为下划线
+                    field_name = new_path.replace('.', '_').replace('[', '_').replace(']', '')
+                    fields.append({
+                        'name': field_name,
+                        'path': new_path,
+                        'type': type(value).__name__
+                    })
+
+                # 递归处理嵌套对象
+                if isinstance(value, (dict, list)):
+                    _walk(value, new_path)
+
+        elif isinstance(obj, list):
+            # 提取列表第一个元素的字段（用于列表响应）
+            if len(obj) > 0:
+                _walk(obj[0], f"{current_path}[0]")
+
+    _walk(body, prefix)
+    return fields
+
+
+def _generate_api_name(pathname: str) -> str:
+    """根据路径生成人类可读的 API 名称"""
+    mapping = {
+        'current-user': '获取当前用户信息',
+        'policies': '获取策略列表',
+        'roles': '获取角色列表',
+        'departments': '获取部门列表',
+        'users': '获取用户列表',
+        'tenants': '获取租户信息',
+        'organizations': '获取组织列表',
+        'dict': '获取字典',
+        'config': '获取配置',
+    }
+
+    last_segment = pathname.rstrip('/').split('/')[-1]
+    return mapping.get(last_segment, f'前置 API: {last_segment}')

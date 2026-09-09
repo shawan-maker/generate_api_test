@@ -168,8 +168,12 @@ def guess_crud(method: str, path: str, overrides: dict = None) -> str:
     if m == "POST":
         return "create"      # 国内系统 RPC 风格全 POST, 新增居多
     if m == "GET":
-        # GET /res/{id} -> detail; GET /res -> list
-        return "detail" if re.search(r"\{[^}]+\}/?$", path) else "list"
+        # 修复: 收紧兜底逻辑，避免所有无 {id} 的 GET 都被判为 list
+        # 只有路径末段是复数名词（含 s/es）才判为 list，否则判为 support
+        last_seg = path.rstrip("/").rsplit("/", 1)[-1] if "/" in path else ""
+        if last_seg.endswith(("s", "es")) and len(last_seg) > 3:
+            return "list"
+        return "detail"  # 单数名词或无意义路径默认为 detail/support
     return "action"
 
 

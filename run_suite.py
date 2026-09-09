@@ -53,6 +53,79 @@ def find_all_test_scripts(project_name: str = None) -> list:
     return scripts
 
 
+def _execute_and_persist_global_pre_apis(project_dir: Path) -> bool:
+    """执行全局前置 API，写入 .shared_context.json。
+
+    读取 scripts/<version>/api/pre_apis_config.json，
+    认证后执行所有前置 API，将提取的字段写入 .shared_context.json。
+    每个模块脚本启动时自动检测该文件并注入到 TestRunner。
+
+    Returns:
+        True 如果执行成功（或无前置 API 需要执行），False 如果失败
+    """
+    import json
+
+    # 查找 pre_apis_config.json
+    scripts_base = project_dir / "scripts"
+    config_path = None
+    for version_dir in sorted(scripts_base.glob("v*")):
+        candidate = version_dir / "api" / "pre_apis_config.json"
+        if candidate.exists():
+            config_path = candidate
+            break
+
+    if not config_path:
+        print("  ℹ️ 无全局前置 API 配置文件")
+        return True
+
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"  ⚠️ pre_apis_config.json 解析失败: {e}")
+        return True
+
+    pre_apis = config.get("pre_apis", [])
+    if not pre_apis:
+        print("  ℹ️ 无全局前置 API 需要执行")
+        return True
+
+    # 加载 profile 获取 base_url
+    profile_path = project_dir / "profile.yaml"
+    base_url = ""
+    if profile_path.exists():
+        try:
+            import yaml
+            profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+            base_url = (profile or {}).get("base_url", "")
+        except Exception:
+            pass
+
+    if not base_url:
+        print("  ⚠️ 无法获取 base_url，跳过全局前置 API")
+        return True
+
+    # 使用 cookie-based 认证
+    try:
+        from lib.auth.cookie_client import require_auth
+        config_dir = project_dir / "output" / "config"
+        auth_config = (profile or {}).get("auth", {})
+        session = require_auth(str(config_dir), auth_config)
+    except Exception as e:
+        print(f"  ⚠️ 认证失败，跳过全局前置 API: {e}")
+        return True
+
+    # 执行前置 API
+    from lib.runtime.global_pre_apis import GlobalPreApiExecutor
+    executor = GlobalPreApiExecutor(config_path, base_url, session)
+    context = executor.execute_all()
+
+    # 持久化
+    output_path = config_path.parent / ".shared_context.json"
+    executor.save_context(output_path)
+    print(f"  ✅ 全局前置 API 执行完成: {len(context)} 个字段 → {output_path.name}")
+    return True
+
+
 def run_suite(project_name: str = None, modules: list = None):
     """运行测试套件，生成一份汇总报告。
 
@@ -75,6 +148,13 @@ def run_suite(project_name: str = None, modules: list = None):
 
     print(f"Found {len(scripts)} module(s) to test")
     print("=" * 60)
+
+    # === Phase 1: 执行全局前置 API ===
+    if project_name:
+        project_dir = PROJECT_ROOT / "projects" / project_name
+        print("\n[Phase 1] 执行全局前置 API...")
+        print("-" * 60)
+        _execute_and_persist_global_pre_apis(project_dir)
 
     all_results = []
 

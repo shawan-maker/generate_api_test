@@ -92,13 +92,15 @@ def _is_list_query(pathname: str, response_samples: dict) -> bool:
 
 
 def analyze(classified_apis: dict, all_endpoints: list,
-            response_samples: dict, ui_result: dict) -> dict:
+            response_samples: dict, ui_result: dict,
+            pre_api_candidates: list = None) -> dict:
     """
     完整分析流程入口。
     :param classified_apis:   capture_apis 归类结果（by_category）
     :param all_endpoints:     所有去重端点列表
     :param response_samples:  响应样本 {pathname: [{status, body}, ...]}
     :param ui_result:         discover_ui 的输出
+    :param pre_api_candidates: 前置 API 候选列表（来自 Phase A）
     :return: FlowAnalysis
     """
     LOG.info("开始逻辑分析...")
@@ -134,12 +136,23 @@ def analyze(classified_apis: dict, all_endpoints: list,
     state_rules = _derive_state_rules(core_apis, response_samples)
     LOG.info(f"  Step 5: 状态断言字段: {state_rules.get('state_field') or 'success_only'}")
 
+    # Step 6: 前置 API 依赖链追踪（Phase B）
+    pre_api_candidates = pre_api_candidates or []
+    pre_api_result = None
+    if pre_api_candidates:
+        pre_api_result = trace_pre_api_dependencies(
+            core_apis, response_samples, pre_api_candidates,
+            context_fields={}, id_field_details=dep_chain.get("id_field_details", {})
+        )
+        LOG.info(f"  Step 6: 前置 API 追踪: {len(pre_api_result.get('pre_apis', []))} 个前置 API")
+
     return {
         "crud_order": execution_order,
         "core_apis": core_apis,
         "api_by_button": api_by_button,
         "dependencies": dep_chain,
         "state_assertions": state_rules,
+        "pre_api_chain": pre_api_result,
     }
 
 
@@ -244,11 +257,16 @@ def _filter_core_apis(classified: dict, response_samples: dict,
                 entity = _extract_entity_with_fallback(body)
                 if isinstance(entity, dict):
                     # 查找列表键（泛化：不再硬编码 "list"）
+                    # 修复: 排除 "data" 字段，避免非列表响应被误判为 query
                     for lk in const.LIST_KEY_CANDIDATES:
+                        if lk == "data":  # data 字段太通用，跳过
+                            continue
                         if lk in entity and isinstance(entity[lk], list):
-                            ep_cat = "query"
-                            reclassified[ep_cat].append(ep)
-                            break
+                            # 额外检查：列表元素应为 dict（典型列表响应结构）
+                            if entity[lk] and isinstance(entity[lk][0], dict):
+                                ep_cat = "query"
+                                reclassified[ep_cat].append(ep)
+                                break
                     else:
                         # 查找 ID 键
                         if "id" in entity:
@@ -1234,7 +1252,67 @@ def build_manifest(analysis: dict, capture_result: dict,
         if verify_action not in verify_endpoints and eps:
             LOG.warning(f"  验证端点 {verify_action} 的响应不含 entity ID，跳过自动验证")
 
+    def _resolve_search_param_source(search_param: str, query_ep: dict,
+                                     create_body: dict, resp_samples: dict) -> str:
+        """分析 search_param 值在 create body 中的来源字段。
+
+        通过对比搜索流量的参数值和 create body 字段值，确定映射关系。
+        例如：search_param="name" 的值实际来自 create_body["userName"]。
+
+        Args:
+            search_param: 搜索参数名（如 "name"）
+            query_ep: query 端点数据
+            create_body: create 请求体样本
+            resp_samples: 响应样本字典
+
+        Returns:
+            create body 中的源字段名，找不到则返回空字符串
+        """
+        if not create_body or not isinstance(create_body, dict):
+            return ""
+
+        # 从捕获的搜索流量中获取 search_param 的实际值
+        query_params_samples = query_ep.get("query_params_samples", [])
+        search_value = None
+        for sample in query_params_samples:
+            if isinstance(sample, dict) and search_param in sample:
+                search_value = sample[search_param]
+                break
+
+        if not search_value:
+            return ""
+
+        # 对比 create body 字段值，找出匹配项
+        for field_name, field_value in create_body.items():
+            if isinstance(field_value, str) and field_value == search_value:
+                return field_name
+
+        # 如果精确匹配失败，尝试部分匹配（如搜索值包含在字段值中）
+        for field_name, field_value in create_body.items():
+            if isinstance(field_value, str) and search_value in field_value:
+                return field_name
+
+        return ""
+
     steps = []
+
+    # 提前获取 field_resolutions（用于 verify 步骤 query_params 生成）
+    pre_api_chain = analysis.get("pre_api_chain")
+    field_resolutions = {}
+    if pre_api_chain and pre_api_chain.get("pre_apis"):
+        field_resolutions = pre_api_chain.get("field_resolutions", {})
+
+    def _get_create_pre_api_ref_source(field_name):
+        """检查 create 步骤中指定字段是否有 pre_api_ref 解析，返回其 source 或 None。
+
+        用于 verify 步骤的 query_params 生成：如果 create body 中某字段使用了
+        pre_api_ref（如 tenantId ← display_by_role.entity_0_id），verify 步骤
+        的 query_params 也应引用相同来源，确保 tenantId 一致。
+        """
+        key = f"create.{field_name}"
+        if key in field_resolutions:
+            return field_resolutions[key].get("source", "")
+        return None
 
     def _make_step(action, ep, body_sample, assertion=None):
         """构建单个步骤 dict。"""
@@ -1291,13 +1369,35 @@ def build_manifest(analysis: dict, capture_result: dict,
         )
         pathname = re.sub(r"[0-9a-f]{20,}", "{id}", ep["pathname"])
 
+        # 构建 query_params：从 samples 提取固定参数，映射到 state 引用
+        query_params = {}
+        samples = ep.get("query_params_samples", [])
+        if samples and isinstance(samples[0], dict):
+            # 取参数最多的样本作为基准
+            best_sample = max(samples, key=lambda s: len(s) if isinstance(s, dict) else 0)
+            # 排除搜索参数（search_param 会在运行时动态添加）
+            search_param_name = ep.get("search_param", "")
+            for pk, pv in best_sample.items():
+                if pk == search_param_name:
+                    continue
+                # 优先检查 create step 中同名字段是否为 pre_api_ref
+                # 如果 create 使用了 pre_api_ref 来源，verify 步骤也应使用相同来源
+                create_ref_source = _get_create_pre_api_ref_source(pk)
+                if create_ref_source:
+                    query_params[pk] = f"${create_ref_source}"
+                elif pk in context_field_names:
+                    query_params[pk] = f"${pk}"
+                else:
+                    # 保持原始值（如 pageNum=1, pageSize=10）
+                    query_params[pk] = pv
+
         step = {
             "action": ep["method"].lower(),
             "label": label,
             "api": {
                 "method": ep["method"],
                 "pathname": pathname,
-                "query_params": ep.get("query_params", {}),
+                "query_params": query_params if query_params else ep.get("query_params", {}),
             },
             "body_template": body_sample or {},
             "body_field_roles": field_roles,
@@ -1309,6 +1409,13 @@ def build_manifest(analysis: dict, capture_result: dict,
             search_param = ep.get("search_param", "")
             if search_param:
                 step["search_param"] = search_param
+                # 分析 search_param 值在 create body 中的来源字段
+                # 从捕获的搜索流量中获取参数值，匹配 create body 字段
+                search_param_source = _resolve_search_param_source(
+                    search_param, ep, create_body_sample, response_samples
+                )
+                if search_param_source:
+                    step["search_param_source"] = search_param_source
         return step
 
     def _plan_verify_steps(action):
@@ -1371,9 +1478,112 @@ def build_manifest(analysis: dict, capture_result: dict,
             if verify:
                 steps.append(verify)
 
-    # 5. 组装 manifest
+    # 5. 组装 manifest（增强版：包含前置 API）
+    manifest_version = "1.0"
+    pre_apis_list = []
+    # pre_api_chain 和 field_resolutions 已在前面获取
+
+    if pre_api_chain and pre_api_chain.get("pre_apis"):
+        manifest_version = "1.1"
+
+        # 构建 pre_apis 数组（带 extracts 信息）
+        for api_info in pre_api_chain["pre_apis"]:
+            pre_api_entry = {
+                "name": api_info.get("name", ""),
+                "id": api_info.get("id", ""),
+                "method": api_info.get("method", "GET"),
+                "pathname": api_info.get("pathname", ""),
+                "depends_on": api_info.get("depends_on", []),
+                "extracts": [],
+                "body_template": {},
+                "query_params": {}
+            }
+
+            # 从 field_resolutions 找出哪些字段是从这个 API 提取的
+            for key, resolution in field_resolutions.items():
+                # key 格式: "action.field"
+                step_action, field_name = key.split('.', 1)
+                source = resolution.get("source", "")
+                if source.startswith(api_info["id"] + "."):
+                    extract_name = source.split(".", 1)[1]
+                    # 查找对应的 extracted_fields 获取 path
+                    for ef in api_info.get("extracted_fields", []):
+                        if ef["name"] == extract_name:
+                            # 避免重复
+                            if not any(e["name"] == extract_name for e in pre_api_entry["extracts"]):
+                                # 收集 used_by 信息
+                                used_by = []
+                                for k, res in field_resolutions.items():
+                                    if res.get("source") == source:
+                                        action, _ = k.split('.', 1)
+                                        used_by.append(action)
+
+                                pre_api_entry["extracts"].append({
+                                    "name": extract_name,
+                                    "path": ef["path"],
+                                    "used_by": used_by if used_by else ["*"]
+                                })
+                            break
+
+            pre_apis_list.append(pre_api_entry)
+
+        # 补充 context_fields 提取：确保 query_params 引用的字段被提取
+        if context_fields:
+            for ctx_name, ctx_config in context_fields.items():
+                ctx_path = ctx_config.get("path", "")
+                if not ctx_path:
+                    continue
+                # 检查是否已有此字段提取
+                already_extracted = False
+                for pre_api in pre_apis_list:
+                    if any(e.get("name") == ctx_name for e in pre_api.get("extracts", [])):
+                        already_extracted = True
+                        break
+                if already_extracted:
+                    continue
+                # 找到能提供此字段的 pre_api（验证完整路径是否存在于响应中）
+                for pre_api in pre_apis_list:
+                    api_id = pre_api.get("id", "")
+                    # 查找对应的 pre_api_candidates 获取响应样本
+                    for candidate in capture_result.get("pre_api_candidates", []):
+                        if candidate.get("id") == api_id:
+                            body_text = candidate.get("response_sample", {}).get("response_body", "")
+                            if body_text:
+                                try:
+                                    body = json.loads(body_text) if isinstance(body_text, str) else body_text
+                                    # 验证完整路径是否存在（不仅是前缀）
+                                    test_value = _extract_by_path_generic(body, ctx_path)
+                                    if test_value is not None:
+                                        pre_api["extracts"].append({
+                                            "name": ctx_name,
+                                            "path": ctx_path,
+                                            "used_by": ["query"]
+                                        })
+                                        LOG.info(f"  补充 context_field 提取: {ctx_name} -> {ctx_path} (from {api_id})")
+                                        already_extracted = True
+                                except Exception:
+                                    pass
+                            break
+                    if already_extracted:
+                        break
+
+        # 应用 field_resolutions 到 steps 的 body_field_roles
+        for step in steps:
+            action = step.get("action", "")
+            field_roles = step.get("body_field_roles", {})
+            for field_name in list(field_roles.keys()):
+                key = f"{action}.{field_name}"
+                if key in field_resolutions:
+                    resolution = field_resolutions[key]
+                    field_roles[field_name] = {
+                        "role": "pre_api_ref",
+                        "source": resolution["source"],
+                    }
+                    if resolution.get("is_array"):
+                        field_roles[field_name]["is_array"] = True
+
     manifest = {
-        "manifest_version": "1.0",
+        "manifest_version": manifest_version,
         "module": {
             "name": module_name,
             "base_url": profile.get("base_url", ""),
@@ -1386,8 +1596,379 @@ def build_manifest(analysis: dict, capture_result: dict,
         "state_assertions": analysis.get("state_assertions", {}),
     }
 
+    # 添加 pre_apis（如果有）
+    if pre_apis_list:
+        manifest["pre_apis"] = pre_apis_list
+        # v1.2: 添加 pre_api_refs 列表（仅包含 ID，用于项目级共享）
+        manifest["pre_api_refs"] = [api["id"] for api in pre_apis_list]
+        manifest["manifest_version"] = "1.2"
+
     LOG.info(f"  Manifest 构建完成: {len(steps)} 个步骤, "
              f"信封键={response_contract['envelope_keys'][:3]}, "
-             f"ID字段={response_contract['id_field']}")
+             f"ID字段={response_contract['id_field']}, "
+             f"前置API={len(pre_apis_list)} 个")
 
     return manifest
+
+
+# ========== Phase B: 前置 API 依赖链追踪 ==========
+
+def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
+                               pre_api_candidates: list, context_fields: dict,
+                               id_field_details: dict) -> dict:
+    """
+    递归追踪参数依赖链，生成前置 API 列表。
+
+    分析业务 API 的请求体参数，识别哪些参数应从前置 API 动态获取。
+    使用三策略匹配算法：精确值匹配 → 字段名启发式 → 列表成员检查。
+
+    Args:
+        core_apis: 核心 CRUD API 字典 {category: [endpoints]}
+        response_samples: 响应样本字典
+        pre_api_candidates: 前置 API 候选列表（来自 Phase A）
+        context_fields: 上下文字段配置（预留参数）
+        id_field_details: ID 字段详情
+
+    Returns:
+        {
+            'pre_apis': [...],  # 排序后的前置 API 列表
+            'field_resolutions': {...}  # 字段解析映射
+        }
+    """
+    LOG.info(f"[Phase B] 开始前置 API 依赖链追踪...")
+
+    # Phase 1: 构建参数清单（从业务 API 的请求体中提取）
+    param_inventory = []
+    for category, endpoints in core_apis.items():
+        if category not in ('create', 'update', 'delete'):
+            continue
+        for ep in endpoints:
+            body_sample = _parse_body(ep)
+            if not body_sample or not isinstance(body_sample, dict):
+                continue
+            for field_name, field_value in body_sample.items():
+                # 追踪标量值和列表值
+                if isinstance(field_value, list):
+                    # 列表值：保留整个列表，_resolve_parameter_source 会处理
+                    if field_value:  # 非空列表
+                        param_inventory.append({
+                            'step_action': category,
+                            'field_name': field_name,
+                            'field_value': field_value,
+                            'pathname': ep.get('pathname', '')
+                        })
+                elif isinstance(field_value, (str, int, float, bool)):
+                    param_inventory.append({
+                        'step_action': category,
+                        'field_name': field_name,
+                        'field_value': field_value,
+                        'pathname': ep.get('pathname', '')
+                    })
+
+    LOG.info(f"  Phase 1: 收集到 {len(param_inventory)} 个参数")
+
+    # Phase 2: 构建前置 API 索引（扁平化所有前置 API 响应）
+    pre_api_index = {}  # {value_str: (api, field_info)}
+    for api in pre_api_candidates:
+        body_text = api.get('response_sample', {}).get('response_body', '')
+        if not body_text:
+            continue
+        try:
+            body = json.loads(body_text) if isinstance(body_text, str) else body_text
+        except Exception:
+            continue
+
+        # 提取所有可提取字段
+        for field_info in api.get('extracted_fields', []):
+            path = field_info.get('path', '')
+            value = _extract_by_path_generic(body, path)
+            if value is not None:
+                # 将值转换为字符串作为索引键
+                key = str(value)
+                if key not in pre_api_index:
+                    pre_api_index[key] = {
+                        'api': api,
+                        'field': field_info,
+                        'value': value
+                    }
+
+    LOG.info(f"  Phase 2: 前置 API 索引包含 {len(pre_api_index)} 个值")
+
+    # Phase 3: 三策略匹配
+    field_resolutions = {}
+    used_apis = {}  # {api_id: api_info}
+
+    for param in param_inventory:
+        resolution = _resolve_parameter_source(param, pre_api_index)
+        if resolution:
+            # 使用字符串键 "action.field" 而非元组，以便 JSON 序列化
+            key = f"{param['step_action']}.{param['field_name']}"
+            field_resolutions[key] = resolution
+            # 记录使用的前置 API
+            api_id = resolution['source'].split('.')[0]
+            if api_id not in used_apis:
+                used_apis[api_id] = resolution['api']
+
+    LOG.info(f"  Phase 3: 解析了 {len(field_resolutions)} 个字段来源")
+
+    # Phase 4: 拓扑排序（处理前置 API 之间的依赖）
+    pre_apis = _topological_sort_pre_apis(used_apis)
+
+    # Phase 5: 添加 context_fields 提取（确保 query_params 引用的字段被提取）
+    if context_fields:
+        for field_name, field_config in context_fields.items():
+            path = field_config.get('path', '')
+            if not path:
+                continue
+
+            # 检查是否已有字段提取
+            already_extracted = False
+            for pre_api in pre_apis:
+                for extract in pre_api.get('extracts', []):
+                    if extract.get('name') == field_name or extract.get('path') == path:
+                        already_extracted = True
+                        break
+                if already_extracted:
+                    break
+
+            if already_extracted:
+                continue
+
+            # 找到能提供此字段的 pre_api（根据 path 前缀匹配）
+            path_prefix = path.split('.')[0]  # 例如 "entity"
+            target_api = None
+            for pre_api in pre_apis:
+                # 检查该 pre_api 的响应是否包含此路径前缀
+                body_text = pre_api.get('response_sample', {}).get('response_body', '')
+                if body_text:
+                    try:
+                        body = json.loads(body_text) if isinstance(body_text, str) else body_text
+                        if path_prefix in body:
+                            target_api = pre_api
+                            break
+                    except Exception:
+                        continue
+
+            if target_api:
+                # 添加提取字段
+                if 'extracts' not in target_api:
+                    target_api['extracts'] = []
+                target_api['extracts'].append({
+                    'name': field_name,
+                    'path': path
+                })
+                LOG.info(f"  Phase 5: 添加 context_field 提取: {field_name} -> {path} (from {target_api.get('id')})")
+
+    return {
+        'pre_apis': pre_apis,
+        'field_resolutions': field_resolutions
+    }
+
+
+def _resolve_parameter_source(param: dict, pre_api_index: dict) -> dict:
+    """
+    使用三策略匹配解析参数来源。
+
+    策略 1: 精确值匹配
+    策略 2: 字段名启发式
+    策略 3: 列表成员检查
+
+    Args:
+        param: 参数信息 {step_action, field_name, field_value}
+        pre_api_index: 前置 API 索引 {value_str: {api, field, value}}
+
+    Returns:
+        解析结果 {source, api, strategy} 或 None
+    """
+    field_name = param['field_name']
+    field_value = param['field_value']
+
+    # 处理列表值：如果值是一个列表，检查第一个元素
+    is_array = False
+    if isinstance(field_value, list):
+        if not field_value:
+            return None
+        field_value = field_value[0]
+        is_array = True
+
+    field_value_str = str(field_value)
+
+    # 判断是否为上下文类字段（只对这些字段尝试前置 API 匹配）
+    _CONTEXT_SUFFIXES = ('id', 'Id', 'Ids', 'ids', 'code', 'Code', 'key', 'Key',
+                         'tenant', 'Tenant', 'org', 'Org', 'dept', 'Dept',
+                         'admin', 'Admin', 'role', 'Role', 'policy', 'Policy')
+    is_context_field = any(field_name.endswith(s) or field_name == s
+                           for s in _CONTEXT_SUFFIXES)
+
+    # 策略 1: 精确值匹配（最高优先级，仅限上下文类字段）
+    if is_context_field and field_value_str in pre_api_index:
+        info = pre_api_index[field_value_str]
+        api_id = info['api']['id']
+        field_name_in_api = info['field']['name']
+        return {
+            'source': f"{api_id}.{field_name_in_api}",
+            'api': info['api'],
+            'strategy': 'exact_value_match',
+            'is_array': is_array
+        }
+
+    # 策略 2: 字段名启发式（仅匹配上下文类字段）
+    # 只匹配名称中包含 Id/Code/Key/Tenant/Org 等上下文后缀的字段，
+    # 不做黑名单排除（黑名单不可通用），而是只放行上下文类字段
+    _CONTEXT_SUFFIXES = ('id', 'Id', 'code', 'Code', 'key', 'Key',
+                         'tenant', 'Tenant', 'org', 'Org', 'dept', 'Dept',
+                         'admin', 'Admin', 'role', 'Role', 'policy', 'Policy')
+    is_context_field = any(field_name.endswith(s) or field_name == s
+                           for s in _CONTEXT_SUFFIXES)
+    if is_context_field:
+        for value_str, info in pre_api_index.items():
+            api_field_name = info['field']['name']
+            # 精确字段名匹配（取路径最后一段），不做子串匹配
+            api_field_leaf = api_field_name.rsplit('_', 1)[-1].lower()
+            if field_name.lower() == api_field_leaf or field_name.lower() == api_field_name.lower():
+                api_id = info['api']['id']
+                return {
+                    'source': f"{api_id}.{api_field_name}",
+                    'api': info['api'],
+                    'strategy': 'field_name_heuristic',
+                    'is_array': False
+                }
+
+    # 策略 3: 列表成员检查（参数值是否在某个列表响应中）
+    # 检查前置 API 索引中的列表字段
+    for value_str, info in pre_api_index.items():
+        field_path = info['field']['path']
+        # 检查是否为列表字段（路径包含 [0]）
+        if '[0]' in field_path:
+            # 提取列表路径（去掉 [0] 部分）
+            list_path = field_path.split('[0]')[0]
+            api = info['api']
+            body_text = api.get('response_sample', {}).get('response_body', '')
+            if not body_text:
+                continue
+            try:
+                body = json.loads(body_text) if isinstance(body_text, str) else body_text
+                list_value = _extract_by_path_generic(body, list_path)
+                if isinstance(list_value, list):
+                    # 检查参数值是否在列表中
+                    for item in list_value:
+                        if isinstance(item, dict):
+                            item_id = item.get('id')
+                            if str(item_id) == field_value_str:
+                                api_id = api['id']
+                                field_name_in_api = info['field']['name']
+                                return {
+                                    'source': f"{api_id}.{field_name_in_api}",
+                                    'api': api,
+                                    'strategy': 'list_membership',
+                                    'is_array': True
+                                }
+            except Exception:
+                continue
+
+    return None
+
+
+def _topological_sort_pre_apis(used_apis: dict) -> list:
+    """
+    对前置 API 进行拓扑排序。
+
+    Args:
+        used_apis: {api_id: api_info} 字典
+
+    Returns:
+        排序后的前置 API 列表
+    """
+    # 构建依赖图
+    graph = {}
+    for api_id, api_info in used_apis.items():
+        graph[api_id] = api_info.get('depends_on', [])
+
+    # 拓扑排序（Kahn 算法）
+    in_degree = {node: 0 for node in graph}
+    for node in graph:
+        for dep in graph[node]:
+            if dep in in_degree:
+                in_degree[dep] += 1
+
+    queue = [node for node in in_degree if in_degree[node] == 0]
+    sorted_apis = []
+
+    while queue:
+        node = queue.pop(0)
+        sorted_apis.append(used_apis[node])
+
+        for dep in graph.get(node, []):
+            if dep in in_degree:
+                in_degree[dep] -= 1
+                if in_degree[dep] == 0:
+                    queue.append(dep)
+
+    return sorted_apis
+
+
+def _extract_by_path_generic(obj: dict, path: str):
+    """
+    通用的路径提取函数（支持数组索引）。
+
+    Args:
+        obj: JSON 对象
+        path: 路径字符串，例如 "entity.list[0].id"
+
+    Returns:
+        提取的值，或 None
+    """
+    if not path or obj is None:
+        return None
+
+    # 分割路径段
+    parts = []
+    current = ''
+    for char in path:
+        if char in '.[':
+            if current:
+                parts.append(current)
+                current = ''
+            if char == '[':
+                parts.append('[')
+        elif char == ']':
+            if current:
+                parts.append(current)
+                current = ''
+            parts.append(']')
+        else:
+            current += char
+    if current:
+        parts.append(current)
+
+    # 遍历提取
+    value = obj
+    i = 0
+    while i < len(parts):
+        part = parts[i]
+
+        if part == '[':
+            # 下一个部分是索引
+            i += 1
+            if i < len(parts):
+                try:
+                    index = int(parts[i])
+                    value = value[index]
+                except (ValueError, IndexError, TypeError):
+                    return None
+            i += 1
+            # 跳过 ']'
+            if i < len(parts) and parts[i] == ']':
+                i += 1
+        else:
+            # 普通字段访问
+            if isinstance(value, dict):
+                value = value.get(part)
+            else:
+                return None
+            i += 1
+
+        if value is None:
+            return None
+
+    return value

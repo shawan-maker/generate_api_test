@@ -66,7 +66,7 @@ def generate_manifest_script(manifest: dict, module_name: str) -> str:
     L.append('# 找到同目录的 lib/（脚本独立运行时使用）')
     L.append('_lib = Path(__file__).resolve().parent / "lib"')
     L.append('sys.path.insert(0, str(_lib.parent))')
-    L.append('from lib.test_runtime import TestRunner')
+    L.append('from lib.runtime.test_runtime import TestRunner')
     L.append('')
 
     # Manifest 数据 — 移除 cookie-only 模式不需要的字段
@@ -84,12 +84,26 @@ def generate_manifest_script(manifest: dict, module_name: str) -> str:
     L.append(f'MANIFEST = {manifest_json}')
     L.append('')
 
+    # 全局前置 API 支持
+    L.append('# --- 全局前置 API 支持 ---')
+    L.append('_shared_ctx_file = Path(__file__).resolve().parent / ".shared_context.json"')
+    L.append('SHARED_CONTEXT = {}')
+    L.append('if _shared_ctx_file.exists():')
+    L.append('    try:')
+    L.append('        from lib.runtime.global_pre_apis import GlobalPreApiExecutor')
+    L.append('        SHARED_CONTEXT = GlobalPreApiExecutor.load_context(_shared_ctx_file)')
+    L.append('        if SHARED_CONTEXT:')
+    L.append('            print("  ✅ 检测到共享上下文")')
+    L.append('    except ImportError:')
+    L.append('        pass')
+    L.append('')
+
     # 入口
     L.append('if __name__ == "__main__":')
     L.append('    import io')
     L.append("    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')")
     L.append("    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')")
-    L.append('    runner = TestRunner(MANIFEST)')
+    L.append('    runner = TestRunner(MANIFEST, shared_context=SHARED_CONTEXT)')
     L.append('    steps = sys.argv[1:] if len(sys.argv) > 1 else None')
     L.append('    runner.run(steps_filter=steps)')
 
@@ -120,18 +134,32 @@ def _sync_runtime_lib(api_dir: Path):
     dst_lib = api_dir / "lib"
     dst_lib.mkdir(parents=True, exist_ok=True)
 
-    # 生成脚本只同步精简版运行时（不含 auth.py / slider.py）
-    files = ["__init__.py", "test_runtime.py", "test_report.py", "cookie_client.py"]
-    for name in files:
-        src = src_lib / name
-        dst = dst_lib / name
+    # 生成脚本同步的运行时文件（相对于 src_lib 的路径）
+    # 包含子目录：runtime/、report/、auth/
+    files = [
+        "__init__.py",
+        "runtime/__init__.py",
+        "runtime/test_runtime.py",
+        "runtime/test_runner.py",
+        "runtime/run_history.py",
+        "runtime/global_pre_apis.py",
+        "report/__init__.py",
+        "report/test_report.py",
+        "auth/__init__.py",
+        "auth/cookie_client.py",
+    ]
+    for rel_path in files:
+        src = src_lib / rel_path
+        dst = dst_lib / rel_path
         if not src.exists():
             continue
+        # 确保目标目录存在
+        dst.parent.mkdir(parents=True, exist_ok=True)
         src_content = src.read_text(encoding="utf-8")
         if dst.exists() and dst.read_text(encoding="utf-8") == src_content:
             continue  # 内容相同，跳过
         dst.write_text(src_content, encoding="utf-8")
-        LOG.info(f"  运行时同步: {name}")
+        LOG.info(f"  运行时同步: {rel_path}")
 
     # 清理旧版登录文件（生成脚本不再包含滑块登录）
     for old_file in ["auth.py", "slider.py"]:

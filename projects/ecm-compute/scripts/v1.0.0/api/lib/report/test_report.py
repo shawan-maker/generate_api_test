@@ -93,9 +93,7 @@ def generate_postman_report(api_calls: list, events: list, module_name: str) -> 
     # 统计
     total = len(api_calls)
     passed = sum(1 for c in api_calls if c.get("assertion") == "passed")
-    failed = sum(1 for c in api_calls if c.get("assertion") == "failed")
-    skipped = sum(1 for c in api_calls if c.get("assertion") == "skipped")
-    error = sum(1 for c in api_calls if c.get("assertion") == "error")
+    failed = total - passed
     pass_rate = f"{passed / total * 100:.1f}%" if total > 0 else "0%"
 
     # 时间戳
@@ -124,7 +122,6 @@ def generate_postman_report(api_calls: list, events: list, module_name: str) -> 
            box-shadow: 0 1px 3px rgba(0,0,0,.08); border-top: 3px solid #e5e7eb; }}
   .stat.ok {{ border-top-color: #49cc90; }} .stat.warn {{ border-top-color: #fca130; }}
   .stat.fail {{ border-top-color: #f93e3e; }} .stat.total {{ border-top-color: #61affe; }}
-  .stat.skip {{ border-top-color: #9ca3af; }}
   .stat b {{ font-size: 26px; display: block; line-height: 1.2; }}
   .stat span {{ font-size: 12px; color: #6b7280; }}
   .stat.ok b {{ color: #1a7f37; }} .stat.warn b {{ color: #b45309; }}
@@ -155,7 +152,6 @@ def generate_postman_report(api_calls: list, events: list, module_name: str) -> 
   .b-warn {{ background: #fff4e5; color: #b45309; }}
   .b-info {{ background: #eef2f7; color: #4a6da7; }}
   .b-fail {{ background: #fdeaea; color: #dc2626; }}
-  .b-skip {{ background: #f3f4f6; color: #6b7280; border: 1px dashed #d1d5db; }}
   .req-body {{ padding: 12px 18px 14px; }}
   .mark {{ font-size: 13px; line-height: 1.9; color: #374151; }}
   .mark .mark-ic {{ margin-right: 8px; }}
@@ -196,14 +192,13 @@ def generate_postman_report(api_calls: list, events: list, module_name: str) -> 
     <div class="stat total"><b>{total}</b><span>总请求数</span></div>
     <div class="stat ok"><b>{passed}</b><span>通过</span></div>
     <div class="stat fail"><b>{failed}</b><span>失败</span></div>
-    <div class="stat skip"><b>{skipped}</b><span>跳过</span></div>
     <div class="stat donut-card">
       <div class="donut-wrap"><div class="donut"></div><div class="donut-val">{pass_rate}</div></div>
       <div class="donut-txt">通过率</div>
     </div>
   </div>
 
-  <div class="legend">共 {total} 个 API 调用 · 通过 {passed} · 失败 {failed} · 跳过 {skipped} · 通过率 {pass_rate}</div>
+  <div class="legend">共 {total} 个 API 调用 · 通过 {passed} · 通过率 {pass_rate}</div>
   <div class="requests">
 """
 
@@ -224,25 +219,13 @@ def generate_postman_report(api_calls: list, events: list, module_name: str) -> 
         label = call.get("step_label", "")
 
         # 判断是否成功
-        if assertion == "skipped":
-            badge_class = "b-skip"
-            badge_text = "⚠️ 跳过"
-            req_class = "skip"
-            mark_icon = "⚠️"
-        elif assertion == "passed" or (status >= 200 and status < 300):
-            badge_class = "b-ok"
-            badge_text = "✅ 通过"
-            req_class = "ok"
-            mark_icon = "✅"
-        else:
-            badge_class = "b-fail"
-            badge_text = "❌ 失败"
-            req_class = "fail"
-            mark_icon = "❌"
+        is_ok = assertion == "passed" or (status >= 200 and status < 300)
+        badge_class = "b-ok" if is_ok else "b-fail"
+        badge_text = "✅ 通过" if is_ok else "❌ 失败"
 
         method_color = method_colors.get(method, "#6b7280")
 
-        html += f"""    <div class="req {req_class}">
+        html += f"""    <div class="req {'ok' if is_ok else 'fail'}">
       <div class="req-head">
         <span class="req-no">{i}</span>
         <span class="method" style="background:{method_color}">{method}</span>
@@ -250,7 +233,7 @@ def generate_postman_report(api_calls: list, events: list, module_name: str) -> 
         <span class="badge {badge_class}">{badge_text}</span>
       </div>
       <div class="req-body">
-        <div class="marks"><div class="mark"><span class="mark-ic">{mark_icon}</span>{label}: HTTP {status}</div></div>
+        <div class="marks"><div class="mark"><span class="mark-ic">{'✅' if is_ok else '❌'}</span>{label}: HTTP {status}</div></div>
         <details class="detail"><summary>查看请求/响应详情</summary>
           <div class="detail-section">
             <div class="detail-title">📤 请求详情</div>

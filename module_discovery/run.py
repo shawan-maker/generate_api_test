@@ -72,6 +72,8 @@ def parse_args():
                     help="Stage 2 验证失败时的最大重试捕获次数（默认0禁用，重跑对 playbook 问题无用）")
     ap.add_argument("--capture-all", action="store_true", default=False,
                     help="捕获所有 XHR/fetch 请求（不限于 /estack/api）")
+    ap.add_argument("--export", action="store_true", default=False,
+                    help="Stage 5: 导出 Postman Collection / helpers.py / Excel 参数文件")
     return ap.parse_args()
 
 
@@ -458,6 +460,7 @@ async def run_stage2(page, project_dir: Path, module_name: str,
             "by_category": api_capture.get("classified", {}),
             "all_endpoints": api_capture.get("all_endpoints", []),
             "response_samples": api_capture.get("response_samples", {}),
+            "pre_api_candidates": api_capture.get("pre_api_candidates", []),  # Phase A 新增
         }
         out_path = project_dir / "kb" / "module_discovered" / f"{module_name}.json"
         _save_json(full_result, out_path)
@@ -520,9 +523,11 @@ def run_stage34(project_dir: Path, module_name: str,
     classified = capture_result.get("by_category", {})
     all_endpoints = capture_result.get("all_endpoints", [])
     response_samples = capture_result.get("response_samples", {})
+    pre_api_candidates = capture_result.get("pre_api_candidates", [])
 
-    # Stage 3: 分析
-    flow = analyze(classified, all_endpoints, response_samples, ui_result)
+    # Stage 3: 分析（传入前置 API 候选）
+    flow = analyze(classified, all_endpoints, response_samples, ui_result,
+                   pre_api_candidates=pre_api_candidates)
 
     # 阶段门控验证
     is_valid, issues = validate_stage3(flow)
@@ -575,7 +580,204 @@ def run_stage34(project_dir: Path, module_name: str,
         script, str(project_dir), module_name, version=version,
     )
 
-    return flow, script_path
+    return flow, script_path, manifest
+
+
+async def _run_stage4_verify(script_path: str, project_dir: Path, profile: dict,
+                             login_url: str, username: str, password: str,
+                             headless: bool = True) -> bool:
+    """运行 Stage 4 生成的脚本，Token 过期时自动刷新 cookie 并重试。
+
+    流程：
+    1. 运行脚本，检查退出码
+    2. 如果失败且检测到 Token 过期（HTTP 401），启动浏览器滑块登录刷新 cookie
+    3. 将新 cookie 复制到脚本的 config/cookies.json
+    4. 重新运行脚本
+
+    Returns:
+        True 如果脚本运行成功，False 如果失败
+    """
+    import subprocess
+
+    script = Path(script_path)
+    script_dir = script.parent
+
+    # 脚本的 config 目录（cookie 存放位置）
+    script_config = script_dir / "config"
+    script_config.mkdir(parents=True, exist_ok=True)
+
+    # 框架级的 cookie 目录
+    framework_config = project_dir / "output" / "config"
+    framework_config.mkdir(parents=True, exist_ok=True)
+
+    def _run_script() -> subprocess.CompletedProcess:
+        """运行脚本并返回结果。"""
+        LOG.info(f"  运行脚本: {script.name}")
+        result = subprocess.run(
+            [sys.executable, str(script)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            cwd=str(script_dir), timeout=120,
+        )
+        # 打印脚本输出（关键行）
+        for line in result.stdout.splitlines():
+            if any(k in line for k in ("✅", "❌", "⚠️", "HTTP", "401", "Token", "Cookie", "assertion")):
+                LOG.info(f"    {line.strip()}")
+        return result
+
+    def _is_token_expired(result: subprocess.CompletedProcess) -> bool:
+        """检测脚本输出是否表明 Token 过期。"""
+        output = result.stdout + result.stderr
+        return any(k in output for k in ("HTTP 401", "401", "Token 已过期", "probe_url 返回 HTTP 401",
+                                         "Cookie/Token 可能已过期"))
+
+    # 第一次运行
+    result = _run_script()
+
+    # 即使退出码为 0，也要检查输出中的失败标记
+    if result.returncode == 0:
+        output = result.stdout + result.stderr
+        # 检查是否有失败标记（但不包括 Token 过期相关的 401）
+        if "❌" in output:
+            # 统计失败次数
+            fail_count = output.count("❌")
+            # 检查是否是业务 API 失败（非 Token 过期）
+            if "HTTP 401" in output or "HTTP 403" in output or "HTTP 5" in output:
+                LOG.warning(f"  ⚠️ 脚本退出码为 0，但检测到 {fail_count} 个失败标记")
+                LOG.warning(f"  ❌ 脚本运行失败 (业务 API 调用失败)")
+                return False
+        LOG.info("  ✅ 脚本运行成功")
+        return True
+
+    if not _is_token_expired(result):
+        LOG.warning(f"  ❌ 脚本运行失败 (非 Token 问题，退出码={result.returncode})")
+        if result.stderr.strip():
+            LOG.warning(f"    stderr: {result.stderr[:500]}")
+        return False
+
+    # Token 过期 → 自动刷新
+    LOG.info("  🔄 检测到 Token 过期，启动浏览器刷新 cookie...")
+
+    if not username or not password:
+        creds = profile.get("credentials", {}) or {}
+        username = username or creds.get("username") or os.environ.get(creds.get("username_env", ""), "")
+        password = password or creds.get("password") or os.environ.get(creds.get("password_env", ""), "")
+
+    if not username or not password:
+        LOG.error("  ❌ 无法自动刷新: 缺少登录凭据 (--user/--pass 或 profile.yaml)")
+        return False
+
+    # 启动浏览器滑块登录
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(
+            headless=headless,
+            args=["--ignore-certificate-errors", "--disable-web-security",
+                  "--no-sandbox", "--disable-blink-features=AutomationControlled"],
+        )
+        context = await browser.new_context(
+            viewport={"width": 1600, "height": 1000},
+            locale="zh-CN",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        )
+        page = await context.new_page()
+
+        try:
+            ok = await _login_with_playwright(page, context, login_url, username, password,
+                                              project_profile=profile)
+            if not ok:
+                LOG.error("  ❌ 滑块登录失败")
+                return False
+
+            # 保存新 cookie 到框架目录
+            cookies = await context.cookies()
+            framework_cookie = framework_config / "cookies.json"
+            framework_cookie.write_text(json.dumps(cookies, ensure_ascii=False, indent=2), encoding="utf-8")
+            LOG.info(f"  ✅ 新 cookie 已保存: {framework_cookie} ({len(cookies)} 条)")
+
+            # 同步到脚本的 config/cookies.json
+            script_cookie = script_config / "cookies.json"
+            script_cookie.write_text(json.dumps(cookies, ensure_ascii=False, indent=2), encoding="utf-8")
+            LOG.info(f"  ✅ 已同步到脚本目录: {script_cookie}")
+
+        finally:
+            await browser.close()
+
+    # 第二次运行（用新 cookie）
+    LOG.info("  🔄 使用新 cookie 重新运行...")
+    result = _run_script()
+
+    if result.returncode == 0:
+        # 同样检查输出中的失败标记
+        output = result.stdout + result.stderr
+        if "❌" in output:
+            if "HTTP 401" in output or "HTTP 403" in output or "HTTP 5" in output:
+                LOG.warning(f"  ⚠️ 脚本退出码为 0，但检测到业务 API 调用失败")
+                LOG.error(f"  ❌ 脚本运行失败（刷新 Token 后业务 API 仍失败）")
+                return False
+        LOG.info("  ✅ 脚本运行成功（Token 已刷新）")
+        return True
+
+    LOG.error(f"  ❌ 脚本运行失败（即使刷新 Token 后仍失败，退出码={result.returncode})")
+    if result.stderr.strip():
+        LOG.error(f"    stderr: {result.stderr[:500]}")
+    return False
+
+
+def run_stage5(manifest: dict, project_dir: Path, module_name: str, version: str = ""):
+    """Stage 5: 导出 Postman Collection / helpers.py / Excel 参数文件。
+
+    Args:
+        manifest: 完整的 manifest 字典（包含 pre_apis 等增强字段）
+        project_dir: 项目目录
+        module_name: 模块名称
+        version: 版本号
+    """
+    LOG.info("=" * 50)
+    LOG.info("Stage 5: 导出 Artifacts (Postman / helpers / Excel)")
+    LOG.info("=" * 50)
+
+    try:
+        from .export_artifacts import (
+            export_postman_collection,
+            export_helpers,
+            export_excel_params
+        )
+    except ImportError as e:
+        LOG.error(f"无法导入 export_artifacts 模块: {e}")
+        return
+
+    # 导出目录
+    export_dir = project_dir / "output" / "api" / module_name
+    if version:
+        export_dir = export_dir / version
+    export_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Postman Collection
+    postman_path = export_dir / f"{module_name}.postman_collection.json"
+    try:
+        export_postman_collection(manifest, postman_path)
+        LOG.info(f"  ✅ Postman Collection: {postman_path}")
+    except Exception as e:
+        LOG.error(f"  ❌ Postman Collection 导出失败: {e}")
+
+    # 2. helpers.py
+    helpers_path = export_dir / "helpers.py"
+    try:
+        export_helpers(manifest, helpers_path)
+        LOG.info(f"  ✅ helpers.py: {helpers_path}")
+    except Exception as e:
+        LOG.error(f"  ❌ helpers.py 导出失败: {e}")
+
+    # 3. Excel 参数文件
+    excel_path = export_dir / f"{module_name}_params.xlsx"
+    try:
+        export_excel_params(manifest, excel_path)
+        LOG.info(f"  ✅ Excel 参数文件: {excel_path}")
+    except Exception as e:
+        LOG.error(f"  ❌ Excel 参数文件导出失败: {e}")
+
+    LOG.info(f"Stage 5 导出完成: {export_dir}")
 
 
 async def main():
@@ -687,10 +889,26 @@ async def main():
 
     target_url = base_url.rstrip("/") + args.url if not args.url.startswith("http") else args.url
 
-    # 离线模式: 只做 Stage 3+4
+    # 离线模式: Stage 3+4 → 运行脚本 → Stage 5（如果脚本成功）
     if args.offline:
-        run_stage34(project_dir, args.module, profile, target_url,
+        result = run_stage34(project_dir, args.module, profile, target_url,
                     version=args.version or ver_mod.resolve_version(project_dir))
+        if result:
+            flow, script_path, manifest = result
+
+            # 运行生成的脚本（如果失败且 Token 过期，自动刷新）
+            script_ok = await _run_stage4_verify(
+                script_path, project_dir, profile, login_url,
+                username=(args.user or ""), password=(args.password or ""),
+                headless=args.headless
+            )
+
+            # 只有脚本成功才执行 Stage 5
+            if script_ok and args.export:
+                run_stage5(manifest, project_dir, args.module,
+                           version=args.version or ver_mod.resolve_version(project_dir))
+            elif not script_ok:
+                LOG.warning("⚠️ 脚本运行失败，跳过 Stage 5 导出")
         return
 
     # 在线模式: 启动浏览器
@@ -809,6 +1027,7 @@ async def main():
         LOG.info("\n⚠️ 浏览器保持打开供检查确认。")
 
         # Stage 3+4（可以离线执行）
+        manifest = None
         if stage in ("34", "4", "all"):
             if not stage2_valid and not args.force_gen:
                 LOG.error("❌ Stage 2 验证失败，拒绝生成脚本（使用 --force-gen 强制覆盖）")
@@ -820,8 +1039,29 @@ async def main():
                 result = run_stage34(project_dir, args.module, profile, target_url,
                                      version=args.version or ver_mod.resolve_version(project_dir))
                 if result:
-                    _, script_path = result
+                    _, script_path, manifest = result
                     LOG.info(f"\n✅ 全部完成! 测试脚本: {script_path}")
+
+        # Stage 5（导出 artifacts）
+        if args.export:
+            if manifest is None:
+                # 尝试从文件加载 manifest
+                version = args.version or ver_mod.resolve_version(project_dir)
+                manifest_path = project_dir / "kb" / "module_discovered" / f"{args.module}_manifest.json"
+                if manifest_path.exists():
+                    manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+                    LOG.info(f"已从文件加载 manifest: {manifest_path}")
+                else:
+                    LOG.error(f"❌ 无法加载 manifest: {manifest_path}")
+                    LOG.error("   请先运行 Stage 3+4 生成 manifest")
+
+            if manifest:
+                run_stage5(
+                    manifest=manifest,
+                    project_dir=project_dir,
+                    module_name=args.module,
+                    version=args.version or ver_mod.resolve_version(project_dir)
+                )
 
         if not args.headless:
             LOG.info("\n⚠️ 浏览器保持打开，手动关闭后按 Ctrl+C 退出。")
@@ -907,6 +1147,19 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
         except Exception as e:
             LOG.error(f"  ❌ {name}: 发现失败 - {e}")
             results.append({"name": name, "status": "failed", "error": str(e)})
+
+    # 合并所有模块的前置 API（项目级共享）
+    processed_names = [name for name, _, _ in to_discover]
+    if processed_names:
+        try:
+            from .pre_api_merger import merge_pre_apis_across_modules
+            version = args.version or ver_mod.resolve_version(project_dir)
+            LOG.info(f"\n{'='*60}")
+            LOG.info(f"  合并前置 API（跨模块）")
+            LOG.info(f"{'='*60}")
+            merge_pre_apis_across_modules(project_dir, processed_names, version=version)
+        except Exception as e:
+            LOG.warning(f"  ⚠️ 前置 API 合并失败: {e}")
 
     # 汇总
     ok_count = sum(1 for r in results if r["status"] == "ok")

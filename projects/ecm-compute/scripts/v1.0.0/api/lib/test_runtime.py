@@ -325,6 +325,15 @@ class StepExecutor:
                     body[key] = value
             elif role == "mutable":
                 body[key] = f"自动修改_{self.ts}"
+            elif role == "pre_api_ref":
+                # 前置 API 引用：从前置 API 提取的字段
+                source = role_config.get("source", "")
+                # source 格式: "api_id.field_name"
+                if "." in source:
+                    field_name = source.split(".", 1)[1]
+                    body[key] = self.state.get(field_name, value)
+                else:
+                    body[key] = self.state.get(source, value)
             else:
                 body[key] = value
         return body
@@ -521,12 +530,13 @@ class StepExecutor:
 class TestRunner:
     """编排完整测试流程。"""
 
-    def __init__(self, manifest: dict):
+    def __init__(self, manifest: dict, shared_context: dict = None):
         self.manifest = manifest
         self.module_name = manifest.get("module", {}).get("name", "模块")
         self.base_url = manifest.get("module", {}).get("base_url", "")
         self.parser = ResponseParser(manifest.get("response_contract", {}))
         self.state = {}
+        self.shared_context = shared_context or {}
         self.ts = format(int(time.time() * 1000), "x")[-6:]
 
         # 设置日志文件
@@ -670,6 +680,153 @@ class TestRunner:
         else:
             print(f"  ⚠️ 未提取到任何上下文字段")
 
+    def execute_pre_apis(self, session: requests.Session):
+        """执行前置 API 链，提取字段到 state。
+
+        如果 manifest 包含 pre_apis 字段，则按依赖顺序执行前置 API，
+        提取响应字段到 state。否则回退到旧的 fetch_context() 逻辑。
+        """
+        pre_apis = self.manifest.get("pre_apis", [])
+
+        # 向后兼容：如果没有 pre_apis，使用旧的 fetch_context
+        if not pre_apis:
+            self.fetch_context(session)
+            return
+
+        print(f"\n📡 执行前置 API 链 ({len(pre_apis)} 个)")
+
+        for pre_api in pre_apis:
+            api_id = pre_api.get("id", "unknown")
+            api_name = pre_api.get("name", api_id)
+            pathname = pre_api.get("pathname", "")
+            method = pre_api.get("method", "GET")
+            extracts = pre_api.get("extracts", [])
+
+            if not pathname:
+                print(f"  ⚠️ 跳过 {api_name}: 缺少 pathname")
+                continue
+
+            url = self.base_url + pathname
+            print(f"  → {api_name}: {method} {pathname}")
+
+            try:
+                # 根据方法类型发送请求
+                if method.upper() == "GET":
+                    resp = session.get(url, timeout=10)
+                else:
+                    # POST/PUT 等，使用空 body
+                    body = pre_api.get("body_template", {})
+                    resp = session.request(method, url, json=body, timeout=10)
+
+                if resp.status_code >= 300:
+                    print(f"    ❌ HTTP {resp.status_code}")
+                    continue
+
+                try:
+                    resp_json = resp.json()
+                except Exception:
+                    print(f"    ❌ 响应不是 JSON")
+                    continue
+
+                # 提取字段
+                extracted = []
+                for extract in extracts:
+                    field_name = extract.get("name", "")
+                    field_path = extract.get("path", "")
+
+                    if not field_name or not field_path:
+                        continue
+
+                    # 支持数组索引路径 (如 entity.list[0].id)
+                    value = self._extract_with_array_index(resp_json, field_path)
+
+                    if value is not None:
+                        self.state[field_name] = value
+                        extracted.append(f"{field_name}={value}")
+                    else:
+                        print(f"    ⚠️ 无法提取 {field_name} (path: {field_path})")
+
+                if extracted:
+                    print(f"    ✅ 提取: {', '.join(extracted)}")
+
+            except Exception as e:
+                print(f"    ❌ 请求失败: {e}")
+
+        print(f"  ✅ 前置 API 执行完成")
+
+    def _extract_with_array_index(self, obj: Any, path: str) -> Optional[Any]:
+        """从嵌套对象中提取值，支持数组索引路径。
+
+        支持路径格式:
+          - "entity.id" -> obj["entity"]["id"]
+          - "entity.list[0].id" -> obj["entity"]["list"][0]["id"]
+
+        Args:
+            obj: 嵌套字典/列表对象
+            path: 点分隔路径，可包含数组索引 [n]
+
+        Returns:
+            提取的值，失败返回 None
+        """
+        if not path or obj is None:
+            return None
+
+        # 分割路径段
+        segments = []
+        current = ""
+
+        i = 0
+        while i < len(path):
+            char = path[i]
+
+            if char == '.':
+                if current:
+                    segments.append(current)
+                    current = ""
+            elif char == '[':
+                if current:
+                    segments.append(current)
+                    current = ""
+                # 解析数组索引
+                j = i + 1
+                while j < len(path) and path[j] != ']':
+                    j += 1
+                if j < len(path):
+                    index_str = path[i+1:j]
+                    segments.append(f"[{index_str}]")
+                    i = j
+            else:
+                current += char
+
+            i += 1
+
+        if current:
+            segments.append(current)
+
+        # 遍历路径段提取值
+        value = obj
+        for segment in segments:
+            if value is None:
+                return None
+
+            # 数组索引段
+            if segment.startswith("[") and segment.endswith("]"):
+                try:
+                    index = int(segment[1:-1])
+                    if isinstance(value, list) and 0 <= index < len(value):
+                        value = value[index]
+                    else:
+                        return None
+                except (ValueError, IndexError):
+                    return None
+            # 字典字段段
+            elif isinstance(value, dict):
+                value = value.get(segment)
+            else:
+                return None
+
+        return value
+
     def prepare_create_body(self, step_def: dict):
         body_template = step_def.get("body_template", {})
         field_roles = step_def.get("body_field_roles", {})
@@ -686,6 +843,12 @@ class TestRunner:
                 create_body[key] = value
         self.state["create_body"] = create_body
 
+    def _inject_shared_context(self):
+        """将共享上下文值注入到 self.state"""
+        for key, value in self.shared_context.items():
+            self.state[key] = value
+        print(f"  ✅ 已注入共享上下文: {list(self.shared_context.keys())}")
+
     def run(self, steps_filter: Optional[list] = None):
         print("=" * 60)
         print(f"  {self.module_name} API 测试")
@@ -695,7 +858,12 @@ class TestRunner:
         if session is None:
             return
 
-        self.fetch_context(session)
+        # 三路分支：共享上下文 > 模块级前置 API > fetch_context
+        if self.shared_context:
+            self._inject_shared_context()
+        else:
+            # 执行前置 API 链（如果有）或回退到 fetch_context
+            self.execute_pre_apis(session)
 
         steps = self.manifest.get("steps", [])
         create_step = next((s for s in steps if s.get("action") == "create"), None)

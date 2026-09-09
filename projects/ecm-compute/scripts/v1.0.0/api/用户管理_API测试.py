@@ -1,6 +1,6 @@
 """
 用户管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-08 09:47:09
+生成时间: 2026-09-09 09:26:41
 目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/user
 
 执行流程:
@@ -27,10 +27,10 @@ from pathlib import Path
 # 找到同目录的 lib/（脚本独立运行时使用）
 _lib = Path(__file__).resolve().parent / "lib"
 sys.path.insert(0, str(_lib.parent))
-from lib.test_runtime import TestRunner
+from lib.runtime.test_runtime import TestRunner
 
 MANIFEST = {
-  "manifest_version": "1.0",
+  "manifest_version": "1.2",
   "module": {
     "name": "用户管理",
     "base_url": "https://10.151.61.248",
@@ -88,12 +88,12 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userName": "autotest831850",
-        "password": "TQ4UgiLtzYEplXZsmg5YGLpjkuF3TNEObPGa7dAxtUrqA2WT2ULSxUpixw6LZvueimxu3hC9LhS+vD0ZamEputvDKX+8TsHpOdJx31I5iVn6080CI1PWXFNMp2FMtYMzXrs+R70RgHGdmR9GiFEnGx5E3FqsS86mf2yFAmbpSfs=",
-        "name": "test_831850",
-        "email": "HXV7EkvyRMnEROAt3VqWCkxtqJS33F7wUcQeJ1XaOT66ygH8lq2HZ6yeIHp+Xol2qiuvZrzMYW1ixqtpqL+9ZrRmXVh5bCEx4CVdENPS0I9L7pJhqQhOqWkBxIKPWu4adxwH9Mnfjz2d9YXVkSVCOaQOtRVl9Loono6v2zx/DC4=",
-        "phone": "Xi3TBLxX/IzXltkR+DCADSK7pf5dK2VfNbYKDYS6sVG2M1y+5SU9W8GzyzwyCv6RUf1ralYcGie3Z/PL5ZBTlAISLoB6OpTXT97NEm5YZqEtr5fUT677oJzQuw018peutAE4mCQz9/PDuSAsZrZsCY5R+r/I2Ga8RnOu2eeXu6Y=",
-        "description": "auto_desc_831851",
+        "userName": "autotest857756",
+        "password": "DUFeGshcmAM24rOt3XWi4azyOPoEGKkRF5F1p9uS6g/v50AvbijDMMKuXA8pYhxWhDYh01N9nrUgD024UCztYK1t2shSdhb2zUiJzhsG3hN2gYrcRaOFzgIV2N0uZ1iL0Mk1hBDqcG9Vj0mpfl1WhwSq/HkTCQ0RUZVTirIcJX4=",
+        "name": "test_857756",
+        "email": "Fz5UrLKe1bDXTK9V/bUOIMTIzKC2CayZNCfTlZX6WaRfi6U5W2DBjSWc07EGmLEBhF64n/uqrfxKr1Sx9qsz14TIU4KiFOrKicWi4p14x7mj//qgXT4TtQ4rZ5N82HH6YfxsDrgtBH7vQE5RcakTGHkmwUuWb2jlb01TjY2D9iY=",
+        "phone": "RA3scJUSAWcD7yI8V5LrHvNPYDA3Z03L9JwBze1F/ZzZLFFRd+te6ppyDSJQ+SKP5AluG9ksIOqqvFxFLXfODU6Uef5Tv9cBITdSwW+euOlgmoE53BC7K13h8dx76TA2G9AM0H0fVHal+IVfZyuWOcnNW/6fSWyT22XsnizRgmM=",
+        "description": "auto_desc_857756",
         "policyIds": [
           "1f8e392309fc414c9d77d45d0315fedc"
         ],
@@ -121,18 +121,21 @@ MANIFEST = {
           "role": "mutable"
         },
         "policyIds": {
-          "role": "static"
+          "role": "pre_api_ref",
+          "source": "list.entity_list_0_id",
+          "is_array": True
         },
         "adminId": {
-          "role": "context",
-          "source": "context.adminId"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_adminId"
         },
         "tenantId": {
-          "role": "context",
-          "source": "context.tenantId"
+          "role": "pre_api_ref",
+          "source": "display_by_role.entity_0_id"
         },
         "countryCode": {
-          "role": "static"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_countryCode"
         }
       },
       "requires": [],
@@ -150,7 +153,11 @@ MANIFEST = {
       "api": {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
-        "query_params": {}
+        "query_params": {
+          "tenantId": "$display_by_role.entity_0_id",
+          "pageNum": "1",
+          "pageSize": "10"
+        }
       },
       "body_template": {},
       "body_field_roles": {},
@@ -158,7 +165,8 @@ MANIFEST = {
         "id"
       ],
       "assertion": "search_verify",
-      "search_param": "name"
+      "search_param": "name",
+      "search_param_source": "userName"
     },
     {
       "action": "update",
@@ -169,13 +177,13 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "96418148ac14443b961bb1d99d45163b",
-        "name": "test_831878",
-        "description": "auto_desc_831878",
+        "userId": "63beec3400b840e3bf235765bce3c646",
+        "name": "test_857783",
+        "description": "auto_desc_857783",
         "tenantId": "34e2594fca9e44cd9e23b25474838c7f",
         "countryCode": "+86",
-        "phone": "c5JRCCO7IHKs3iUUshmrLacaV/KStx3BedX50w5uCxOt0NpR4UclLo3MbmXOwGjBcEq5py0nvVFW6IxTku5x35Zcnf9Q0qXgyXnQN2Eipf72tJgxa7f+EP1X4JNhvJC3dISZzP4eFqjjMTdBG1CwxaekCXicdAAGTU2S6+g8O1s=",
-        "email": "UpMfxrDdHEnRUlkQm/2JkeZlBO2+ApdeLXzTWnKQ0XlUvh6AVD2PbD8jLkKB9m+sYipC/DDgSMCLAmojKcmLVdIpJAO8paijdB7/DfZXeiB/meS8PCnqAqIGsvRw5K5Diwu2nAUyZmWS8XVUKp387+9Q0dYtJpfl7lyXs8CDox8=",
+        "phone": "OdypRG7boI9Bpe/KKZgnwq8OrfYk+NnXTo2SklImkQv1AL4GJGrPbgmHC/kukqktz2QrywRHzLLrQDm1jwNXzNe363DO7XcpFFpLHe8bQzvsYGRq9FAD30srFcPZhqAoZ9ulB5vWYc2g8G1v1m2PlXI4pdeqrlkH0esSETsCmF0=",
+        "email": "G0gOpIS4+SjVJb7UTvbwGHQW1aMEeBDmCJQmdr/fnTCQ25uAVvw95HBKH+aSaFQuyXn/nJsu7bLiJjWE8PhLQJ6xD9F8xBzv0gDaKKuNPPJuoTZTaGa2SkbB8DEsa1mfSt+wdXvQUlomq9eC5T/vzLnxnv7C9HhCmkyNYXl3xeE=",
         "adminId": "93552edc908e4dadae761fff1fd0f24c"
       },
       "body_field_roles": {
@@ -189,11 +197,12 @@ MANIFEST = {
           "role": "mutable"
         },
         "tenantId": {
-          "role": "context",
-          "source": "context.tenantId"
+          "role": "pre_api_ref",
+          "source": "display_by_role.entity_0_id"
         },
         "countryCode": {
-          "role": "static"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_countryCode"
         },
         "phone": {
           "role": "static"
@@ -202,8 +211,8 @@ MANIFEST = {
           "role": "static"
         },
         "adminId": {
-          "role": "context",
-          "source": "context.adminId"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_id"
         }
       },
       "requires": [
@@ -216,7 +225,11 @@ MANIFEST = {
       "api": {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
-        "query_params": {}
+        "query_params": {
+          "tenantId": "$display_by_role.entity_0_id",
+          "pageNum": "1",
+          "pageSize": "10"
+        }
       },
       "body_template": {},
       "body_field_roles": {},
@@ -224,7 +237,8 @@ MANIFEST = {
         "id"
       ],
       "assertion": "search_verify",
-      "search_param": "name"
+      "search_param": "name",
+      "search_param_source": "userName"
     },
     {
       "action": "lock",
@@ -235,7 +249,7 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "96418148ac14443b961bb1d99d45163b",
+        "userId": "63beec3400b840e3bf235765bce3c646",
         "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
         "adminId": "93552edc908e4dadae761fff1fd0f24c"
       },
@@ -262,7 +276,11 @@ MANIFEST = {
       "api": {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
-        "query_params": {}
+        "query_params": {
+          "tenantId": "$display_by_role.entity_0_id",
+          "pageNum": "1",
+          "pageSize": "10"
+        }
       },
       "body_template": {},
       "body_field_roles": {},
@@ -270,7 +288,8 @@ MANIFEST = {
         "id"
       ],
       "assertion": "search_verify",
-      "search_param": "name"
+      "search_param": "name",
+      "search_param_source": "userName"
     },
     {
       "action": "unlock",
@@ -304,7 +323,11 @@ MANIFEST = {
       "api": {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
-        "query_params": {}
+        "query_params": {
+          "tenantId": "$display_by_role.entity_0_id",
+          "pageNum": "1",
+          "pageSize": "10"
+        }
       },
       "body_template": {},
       "body_field_roles": {},
@@ -312,7 +335,8 @@ MANIFEST = {
         "id"
       ],
       "assertion": "search_verify",
-      "search_param": "name"
+      "search_param": "name",
+      "search_param_source": "userName"
     },
     {
       "action": "reset",
@@ -323,7 +347,7 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "96418148ac14443b961bb1d99d45163b",
+        "userId": "63beec3400b840e3bf235765bce3c646",
         "passwordPolicy": {
           "id": "90542be67d584ab09daa12e697fb041a",
           "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
@@ -361,7 +385,11 @@ MANIFEST = {
       "api": {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
-        "query_params": {}
+        "query_params": {
+          "tenantId": "$display_by_role.entity_0_id",
+          "pageNum": "1",
+          "pageSize": "10"
+        }
       },
       "body_template": {},
       "body_field_roles": {},
@@ -369,7 +397,8 @@ MANIFEST = {
         "id"
       ],
       "assertion": "search_verify",
-      "search_param": "name"
+      "search_param": "name",
+      "search_param_source": "userName"
     },
     {
       "action": "delete",
@@ -380,7 +409,7 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": [
-        "96418148ac14443b961bb1d99d45163b"
+        "63beec3400b840e3bf235765bce3c646"
       ],
       "body_field_roles": {
         "__array_items__": {
@@ -398,7 +427,11 @@ MANIFEST = {
       "api": {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
-        "query_params": {}
+        "query_params": {
+          "tenantId": "$display_by_role.entity_0_id",
+          "pageNum": "1",
+          "pageSize": "10"
+        }
       },
       "body_template": {},
       "body_field_roles": {},
@@ -406,7 +439,8 @@ MANIFEST = {
         "id"
       ],
       "assertion": "search_not_found",
-      "search_param": "name"
+      "search_param": "name",
+      "search_param_source": "userName"
     }
   ],
   "state_assertions": {
@@ -421,13 +455,116 @@ MANIFEST = {
     "after_lock": "DISABLE",
     "after_unlock": "ENABLE",
     "after_delete": "NOT_EXIST"
-  }
+  },
+  "pre_apis": [
+    {
+      "name": "前置 API: list",
+      "id": "list",
+      "method": "POST",
+      "pathname": "/estack/api/estack/draco/v1/policies/list",
+      "depends_on": [],
+      "extracts": [
+        {
+          "name": "entity_list_0_id",
+          "path": "entity.list[0].id",
+          "used_by": [
+            "create"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {}
+    },
+    {
+      "name": "获取当前用户信息",
+      "id": "current_user",
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/users/current-user",
+      "depends_on": [],
+      "extracts": [
+        {
+          "name": "entity_adminId",
+          "path": "entity.adminId",
+          "used_by": [
+            "create"
+          ]
+        },
+        {
+          "name": "entity_countryCode",
+          "path": "entity.countryCode",
+          "used_by": [
+            "create",
+            "update"
+          ]
+        },
+        {
+          "name": "entity_id",
+          "path": "entity.id",
+          "used_by": [
+            "update"
+          ]
+        },
+        {
+          "name": "tenantId",
+          "path": "entity.tenantId",
+          "used_by": [
+            "query"
+          ]
+        },
+        {
+          "name": "adminId",
+          "path": "entity.id",
+          "used_by": [
+            "query"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {}
+    },
+    {
+      "name": "前置 API: display-by-role",
+      "id": "display_by_role",
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/tenants/display-by-role",
+      "depends_on": [],
+      "extracts": [
+        {
+          "name": "entity_0_id",
+          "path": "entity[0].id",
+          "used_by": [
+            "create",
+            "update"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {}
+    }
+  ],
+  "pre_api_refs": [
+    "list",
+    "current_user",
+    "display_by_role"
+  ]
 }
+
+# --- 全局前置 API 支持 ---
+_shared_ctx_file = Path(__file__).resolve().parent / ".shared_context.json"
+SHARED_CONTEXT = {}
+if _shared_ctx_file.exists():
+    try:
+        from lib.runtime.global_pre_apis import GlobalPreApiExecutor
+        SHARED_CONTEXT = GlobalPreApiExecutor.load_context(_shared_ctx_file)
+        if SHARED_CONTEXT:
+            print("  ✅ 检测到共享上下文")
+    except ImportError:
+        pass
 
 if __name__ == "__main__":
     import io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
-    runner = TestRunner(MANIFEST)
+    runner = TestRunner(MANIFEST, shared_context=SHARED_CONTEXT)
     steps = sys.argv[1:] if len(sys.argv) > 1 else None
     runner.run(steps_filter=steps)

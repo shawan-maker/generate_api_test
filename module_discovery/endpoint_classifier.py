@@ -86,10 +86,19 @@ def classify_endpoint(method: str, pathname: str, contexts: List[str]) -> str:
     p = pathname.lower()
 
     # ① URL 查询/详情关键词（高优先）
-    for crud, kws in (("query", ("/list", "/page", "/search", "/query", "/find", "/all", "/select")),
-                      ("detail", ("/detail", "/get", "/info", "/view"))):
-        if any(k in p for k in kws):
-            return crud
+    # 修复: 从子串匹配改为段级匹配，避免 /target 被 /get 误判、
+    # /playlist 被 /list 误判、/preview 被 /view 误判
+    _path_segs = [s for s in p.split("/") if s]
+    _last2 = _path_segs[-2:] if len(_path_segs) >= 2 else _path_segs
+
+    _query_segs = {"list", "page", "search", "query", "find", "all", "select"}
+    _detail_segs = {"detail", "get", "info", "view"}
+
+    for seg in _last2:
+        if seg in _query_segs:
+            return "query"
+        if seg in _detail_segs:
+            return "detail"
 
     # ①b RESTful 详情兜底：GET /resources/{id} 或 GET /resources/32hex
     if method == "GET" and re.search(r"/\{[^}]+\}$", p):
@@ -113,15 +122,21 @@ def classify_endpoint(method: str, pathname: str, contexts: List[str]) -> str:
         if ctx_crud in ("create", "delete", "update", "lock", "unlock", "reset", "authorize", "migrate"):
             return ctx_crud
 
-    # ⑤ URL 写操作关键词
-    for crud, kws in (("create", ("/create", "/add", "/save", "/register", "/apply")),
-                      ("update", ("/update", "/edit", "/modify", "/change")),
-                      ("lock", ("/lock", "/freeze", "/disable", "/suspend")),
-                      ("unlock", ("/unlock", "/enable", "/activate", "/resume")),
-                      ("reset", ("/reset", "/reset-password")),
-                      ("delete", ("/delete", "/remove", "/destroy"))):
-        if any(k in p for k in kws):
-            return crud
+    # ⑤ URL 写操作关键词（段级匹配，避免子串误判）
+    _write_map = {
+        "create": {"create", "add", "save", "register", "apply"},
+        "update": {"update", "edit", "modify", "change"},
+        "lock": {"lock", "freeze", "disable", "suspend"},
+        "unlock": {"unlock", "enable", "activate", "resume"},
+        "reset": {"reset", "reset-password", "password-reset"},
+        "delete": {"delete", "remove", "destroy"},
+    }
+    # 段级匹配：关键词需完整出现在某个路径段中（允许连字符复合段如 batch-delete）
+    for seg in _last2:
+        seg_tokens = set(re.split(r"[-_.]", seg))
+        for crud, kws in _write_map.items():
+            if seg in kws or seg_tokens & kws:
+                return crud
 
     # ⑥ RESTful 资源路径兜底：POST /resources = 创建，PUT /resources/{id} = 更新
     # 识别模式：URL 末段是资源名（非 ID），且无明确 action 路径

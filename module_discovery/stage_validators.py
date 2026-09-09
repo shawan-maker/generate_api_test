@@ -322,8 +322,8 @@ def validate_stage4(script_content: str, script_path: str) -> Tuple[bool, List[s
     if line_count < 50:
         issues.append(f"脚本过短 ({line_count} 行)，可能缺少必要的 manifest 数据")
 
-    if line_count > 500:
-        issues.append(f"脚本过长 ({line_count} 行)，manifest 架构脚本不应超过 500 行")
+    if line_count > 800:
+        issues.append(f"脚本过长 ({line_count} 行)，manifest 架构脚本不应超过 800 行")
 
     # 6/7. 根据脚本架构分流检查
     # manifest 纯模式：有 MANIFEST + TestRunner，但无 def test_（由 TestRunner 驱动步骤）

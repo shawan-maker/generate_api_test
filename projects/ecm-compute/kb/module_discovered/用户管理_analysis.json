@@ -10,6 +10,36 @@
   "core_apis": {
     "query": [
       {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "contexts": [
+          "init",
+          "replay:create",
+          "replay:delete",
+          "replay:lock",
+          "replay:query",
+          "replay:unlock",
+          "replay:update"
+        ],
+        "bodies": [],
+        "request_body_sample": null,
+        "query_params": {},
+        "query_params_samples": [
+          {
+            "tenantId": "34e2594fca9e44cd9e23b25474838c7f",
+            "pageNum": "1",
+            "pageSize": "10"
+          },
+          {
+            "tenantId": "34e2594fca9e44cd9e23b25474838c7f",
+            "pageNum": "1",
+            "pageSize": "10",
+            "name": "autotest857756"
+          }
+        ],
+        "search_param": "name"
+      },
+      {
         "method": "POST",
         "pathname": "/estack/api/estack/draco/v1/policies/list",
         "contexts": [
@@ -32,9 +62,9 @@
           "replay:create"
         ],
         "bodies": [
-          "{\"userName\":\"autotest831850\",\"password\":\"TQ4UgiLtzYEplXZsmg5YGLpjkuF3TNEObPGa7dAxtUrqA2WT2ULSxUpixw6LZvueimxu3hC9LhS+vD0ZamEputvDKX+8TsHpOdJx31I5iVn6080CI1PWXFNMp2FMtYMzXrs+R70RgHGdmR9GiFEnGx5E3FqsS86mf2yFAmbpSfs=\",\"name\":\"test_831850\",\"email\":\"HXV7EkvyRMnEROAt3VqWCkxtqJS33F7wUcQeJ1XaOT66ygH8lq2HZ6yeIHp+Xol2qiuvZrzMYW1ixqtpqL+9ZrRmXVh5bCEx4CVdENPS0I9L7pJhqQhOqWkBxIKPWu4adxwH9Mnfjz2d9YXVkSVCOaQOtRVl9Loono6v2zx/DC4=\",\"phone\":\"Xi3TBLxX/IzXltkR+DCADSK7pf5dK2VfNbYKDYS6sVG2M1y+5SU9W8GzyzwyCv6RUf1ralYcGie3Z/PL5ZBTlAISLoB6OpTXT97NEm5YZqEtr5fUT677oJzQuw018peutAE4mCQz9/PDuSAsZrZsCY5R+r/I2Ga8RnOu2eeXu6Y=\",\"description\":\"auto_desc_831851\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\"}"
+          "{\"userName\":\"autotest857756\",\"password\":\"DUFeGshcmAM24rOt3XWi4azyOPoEGKkRF5F1p9uS6g/v50AvbijDMMKuXA8pYhxWhDYh01N9nrUgD024UCztYK1t2shSdhb2zUiJzhsG3hN2gYrcRaOFzgIV2N0uZ1iL0Mk1hBDqcG9Vj0mpfl1WhwSq/HkTCQ0RUZVTirIcJX4=\",\"name\":\"test_857756\",\"email\":\"Fz5UrLKe1bDXTK9V/bUOIMTIzKC2CayZNCfTlZX6WaRfi6U5W2DBjSWc07EGmLEBhF64n/uqrfxKr1Sx9qsz14TIU4KiFOrKicWi4p14x7mj//qgXT4TtQ4rZ5N82HH6YfxsDrgtBH7vQE5RcakTGHkmwUuWb2jlb01TjY2D9iY=\",\"phone\":\"RA3scJUSAWcD7yI8V5LrHvNPYDA3Z03L9JwBze1F/ZzZLFFRd+te6ppyDSJQ+SKP5AluG9ksIOqqvFxFLXfODU6Uef5Tv9cBITdSwW+euOlgmoE53BC7K13h8dx76TA2G9AM0H0fVHal+IVfZyuWOcnNW/6fSWyT22XsnizRgmM=\",\"description\":\"auto_desc_857756\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\"}"
         ],
-        "request_body_sample": "{\"userName\":\"autotest831850\",\"password\":\"TQ4UgiLtzYEplXZsmg5YGLpjkuF3TNEObPGa7dAxtUrqA2WT2ULSxUpixw6LZvueimxu3hC9LhS+vD0ZamEputvDKX+8TsHpOdJx31I5iVn6080CI1PWXFNMp2FMtYMzXrs+R70RgHGdmR9GiFEnGx5E3FqsS86mf2yFAmbpSfs=\",\"name\":\"test_831850\",\"email\":\"HXV7EkvyRMnEROAt3VqWCkxtqJS33F7wUcQeJ1XaOT66ygH8lq2HZ6yeIHp+Xol2qiuvZrzMYW1ixqtpqL+9ZrRmXVh5bCEx4CVdENPS0I9L7pJhqQhOqWkBxIKPWu4adxwH9Mnfjz2d9YXVkSVCOaQOtRVl9Loono6v2zx/DC4=\",\"phone\":\"Xi3TBLxX/IzXltkR+DCADSK7pf5dK2VfNbYKDYS6sVG2M1y+5SU9W8GzyzwyCv6RUf1ralYcGie3Z/PL5ZBTlAISLoB6OpTXT97NEm5YZqEtr5fUT677oJzQuw018peutAE4mCQz9/PDuSAsZrZsCY5R+r/I2Ga8RnOu2eeXu6Y=\",\"description\":\"auto_desc_831851\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\"}",
+        "request_body_sample": "{\"userName\":\"autotest857756\",\"password\":\"DUFeGshcmAM24rOt3XWi4azyOPoEGKkRF5F1p9uS6g/v50AvbijDMMKuXA8pYhxWhDYh01N9nrUgD024UCztYK1t2shSdhb2zUiJzhsG3hN2gYrcRaOFzgIV2N0uZ1iL0Mk1hBDqcG9Vj0mpfl1WhwSq/HkTCQ0RUZVTirIcJX4=\",\"name\":\"test_857756\",\"email\":\"Fz5UrLKe1bDXTK9V/bUOIMTIzKC2CayZNCfTlZX6WaRfi6U5W2DBjSWc07EGmLEBhF64n/uqrfxKr1Sx9qsz14TIU4KiFOrKicWi4p14x7mj//qgXT4TtQ4rZ5N82HH6YfxsDrgtBH7vQE5RcakTGHkmwUuWb2jlb01TjY2D9iY=\",\"phone\":\"RA3scJUSAWcD7yI8V5LrHvNPYDA3Z03L9JwBze1F/ZzZLFFRd+te6ppyDSJQ+SKP5AluG9ksIOqqvFxFLXfODU6Uef5Tv9cBITdSwW+euOlgmoE53BC7K13h8dx76TA2G9AM0H0fVHal+IVfZyuWOcnNW/6fSWyT22XsnizRgmM=\",\"description\":\"auto_desc_857756\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\"}",
         "query_params": {},
         "query_params_samples": []
       }
@@ -42,14 +72,14 @@
     "update": [
       {
         "method": "PUT",
-        "pathname": "/estack/api/estack/draco/v1/users/96418148ac14443b961bb1d99d45163b",
+        "pathname": "/estack/api/estack/draco/v1/users/63beec3400b840e3bf235765bce3c646",
         "contexts": [
           "replay:update"
         ],
         "bodies": [
-          "{\"userId\":\"96418148ac14443b961bb1d99d45163b\",\"name\":\"test_831878\",\"description\":\"auto_desc_831878\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\",\"phone\":\"c5JRCCO7IHKs3iUUshmrLacaV/KStx3BedX50w5uCxOt0NpR4UclLo3MbmXOwGjBcEq5py0nvVFW6IxTku5x35Zcnf9Q0qXgyXnQN2Eipf72tJgxa7f+EP1X4JNhvJC3dISZzP4eFqjjMTdBG1CwxaekCXicdAAGTU2S6+g8O1s=\",\"email\":\"UpMfxrDdHEnRUlkQm/2JkeZlBO2+ApdeLXzTWnKQ0XlUvh6AVD2PbD8jLkKB9m+sYipC/DDgSMCLAmojKcmLVdIpJAO8paijdB7/DfZXeiB/meS8PCnqAqIGsvRw5K5Diwu2nAUyZmWS8XVUKp387+9Q0dYtJpfl7lyXs8CDox8=\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+          "{\"userId\":\"63beec3400b840e3bf235765bce3c646\",\"name\":\"test_857783\",\"description\":\"auto_desc_857783\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\",\"phone\":\"OdypRG7boI9Bpe/KKZgnwq8OrfYk+NnXTo2SklImkQv1AL4GJGrPbgmHC/kukqktz2QrywRHzLLrQDm1jwNXzNe363DO7XcpFFpLHe8bQzvsYGRq9FAD30srFcPZhqAoZ9ulB5vWYc2g8G1v1m2PlXI4pdeqrlkH0esSETsCmF0=\",\"email\":\"G0gOpIS4+SjVJb7UTvbwGHQW1aMEeBDmCJQmdr/fnTCQ25uAVvw95HBKH+aSaFQuyXn/nJsu7bLiJjWE8PhLQJ6xD9F8xBzv0gDaKKuNPPJuoTZTaGa2SkbB8DEsa1mfSt+wdXvQUlomq9eC5T/vzLnxnv7C9HhCmkyNYXl3xeE=\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
         ],
-        "request_body_sample": "{\"userId\":\"96418148ac14443b961bb1d99d45163b\",\"name\":\"test_831878\",\"description\":\"auto_desc_831878\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\",\"phone\":\"c5JRCCO7IHKs3iUUshmrLacaV/KStx3BedX50w5uCxOt0NpR4UclLo3MbmXOwGjBcEq5py0nvVFW6IxTku5x35Zcnf9Q0qXgyXnQN2Eipf72tJgxa7f+EP1X4JNhvJC3dISZzP4eFqjjMTdBG1CwxaekCXicdAAGTU2S6+g8O1s=\",\"email\":\"UpMfxrDdHEnRUlkQm/2JkeZlBO2+ApdeLXzTWnKQ0XlUvh6AVD2PbD8jLkKB9m+sYipC/DDgSMCLAmojKcmLVdIpJAO8paijdB7/DfZXeiB/meS8PCnqAqIGsvRw5K5Diwu2nAUyZmWS8XVUKp387+9Q0dYtJpfl7lyXs8CDox8=\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
+        "request_body_sample": "{\"userId\":\"63beec3400b840e3bf235765bce3c646\",\"name\":\"test_857783\",\"description\":\"auto_desc_857783\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\",\"phone\":\"OdypRG7boI9Bpe/KKZgnwq8OrfYk+NnXTo2SklImkQv1AL4GJGrPbgmHC/kukqktz2QrywRHzLLrQDm1jwNXzNe363DO7XcpFFpLHe8bQzvsYGRq9FAD30srFcPZhqAoZ9ulB5vWYc2g8G1v1m2PlXI4pdeqrlkH0esSETsCmF0=\",\"email\":\"G0gOpIS4+SjVJb7UTvbwGHQW1aMEeBDmCJQmdr/fnTCQ25uAVvw95HBKH+aSaFQuyXn/nJsu7bLiJjWE8PhLQJ6xD9F8xBzv0gDaKKuNPPJuoTZTaGa2SkbB8DEsa1mfSt+wdXvQUlomq9eC5T/vzLnxnv7C9HhCmkyNYXl3xeE=\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
         "query_params": {},
         "query_params_samples": []
       }
@@ -57,14 +87,14 @@
     "lock": [
       {
         "method": "PUT",
-        "pathname": "/estack/api/estack/draco/v1/users/96418148ac14443b961bb1d99d45163b/suspend",
+        "pathname": "/estack/api/estack/draco/v1/users/63beec3400b840e3bf235765bce3c646/suspend",
         "contexts": [
           "replay:lock"
         ],
         "bodies": [
-          "{\"userId\":\"96418148ac14443b961bb1d99d45163b\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
+          "{\"userId\":\"63beec3400b840e3bf235765bce3c646\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}"
         ],
-        "request_body_sample": "{\"userId\":\"96418148ac14443b961bb1d99d45163b\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
+        "request_body_sample": "{\"userId\":\"63beec3400b840e3bf235765bce3c646\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
         "query_params": {},
         "query_params_samples": []
       }
@@ -72,7 +102,7 @@
     "unlock": [
       {
         "method": "PUT",
-        "pathname": "/estack/api/estack/draco/v1/users/96418148ac14443b961bb1d99d45163b/enable",
+        "pathname": "/estack/api/estack/draco/v1/users/63beec3400b840e3bf235765bce3c646/enable",
         "contexts": [
           "replay:unlock"
         ],
@@ -92,9 +122,9 @@
           "replay:reset"
         ],
         "bodies": [
-          "{\"userId\":\"96418148ac14443b961bb1d99d45163b\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}"
+          "{\"userId\":\"63beec3400b840e3bf235765bce3c646\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}"
         ],
-        "request_body_sample": "{\"userId\":\"96418148ac14443b961bb1d99d45163b\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}",
+        "request_body_sample": "{\"userId\":\"63beec3400b840e3bf235765bce3c646\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}",
         "query_params": {},
         "query_params_samples": []
       },
@@ -105,9 +135,9 @@
           "replay:reset"
         ],
         "bodies": [
-          "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"Rm50zTfoHz1TqC0+sew3DoIM6CZu3J9cZH9svFsLuoXGu72OlhRQYS+KMpD+o9v19KHW2RjomdE/lJUKbd9atp4PTvXdkmTt2XmeM+PRtRtLgaZyS/9r7gtHn9donmkCQ6cJswKO5ALcOiE7Q6hKGiXSMc0xJXuM11b3iTc2JGc=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"96418148ac14443b961bb1d99d45163b\",\"noticeType\":[]}"
+          "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"AFbc8u4Uy9BJt4cj8sUIQg4tx+bfhnhSRBpr6Rp+AgDmswtnIfPLDn1IEi+s4KHHy926xAQadsfG4klhA2RiCqEOUwPRTvJ7xu/ESGU6CdnFeqlm5Nh+jpvXEddhzon+EjlH28z0EV0yV3GEesiqE0tKWPZwcTE795s5ONuwjZc=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"63beec3400b840e3bf235765bce3c646\",\"noticeType\":[]}"
         ],
-        "request_body_sample": "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"Rm50zTfoHz1TqC0+sew3DoIM6CZu3J9cZH9svFsLuoXGu72OlhRQYS+KMpD+o9v19KHW2RjomdE/lJUKbd9atp4PTvXdkmTt2XmeM+PRtRtLgaZyS/9r7gtHn9donmkCQ6cJswKO5ALcOiE7Q6hKGiXSMc0xJXuM11b3iTc2JGc=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"96418148ac14443b961bb1d99d45163b\",\"noticeType\":[]}",
+        "request_body_sample": "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"AFbc8u4Uy9BJt4cj8sUIQg4tx+bfhnhSRBpr6Rp+AgDmswtnIfPLDn1IEi+s4KHHy926xAQadsfG4klhA2RiCqEOUwPRTvJ7xu/ESGU6CdnFeqlm5Nh+jpvXEddhzon+EjlH28z0EV0yV3GEesiqE0tKWPZwcTE795s5ONuwjZc=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"63beec3400b840e3bf235765bce3c646\",\"noticeType\":[]}",
         "query_params": {},
         "query_params_samples": []
       }
@@ -120,9 +150,9 @@
           "replay:delete"
         ],
         "bodies": [
-          "[\"96418148ac14443b961bb1d99d45163b\"]"
+          "[\"63beec3400b840e3bf235765bce3c646\"]"
         ],
-        "request_body_sample": "[\"96418148ac14443b961bb1d99d45163b\"]",
+        "request_body_sample": "[\"63beec3400b840e3bf235765bce3c646\"]",
         "query_params": {},
         "query_params_samples": []
       }
@@ -175,12 +205,12 @@
         "query_params": {},
         "query_params_samples": [
           {
-            "phone": "XlvaFVZHfBdYS9ASrH1070SbnKxOVmVRpLN7A+wmmquOPXuzDqxgcEn93ltmLaGlRcgMtKAcg9bIPoFbcK1X0l7Ayb2ga2TbltGsUD8gkfY612vKLlYcYyRQMoaEfEsF1fUdGLjzif8i39iNCpTvxTBhkNm91HYNMPE/WurIwwc=",
+            "phone": "K0b3e/uEIf2GVr8mEmCiXNinhH4zN4YU2Cw/5gdbgp/ieWBEZB8DjH6lJd4cEUaM5UTB7e4nVktl+eCy31ulK9faH0/ln1kZ0njU8t9NdytpPJOh4W83fxZftTowW4U83WM0+ggcavRgFw7btu81FWhwRFLBUxtzkrK9DHpMqNM=",
             "noloading": "true",
             "countryCode": "86"
           },
           {
-            "phone": "R8WBoOQ1GnTyZuJV6XKg08H1tfWwT2rooUrkA/RVo4pEVKsyE/lLrtY+Z5PznQBcYIklSGpNgnHoJLZ9FZ85iVfSDQN2YHlttmKs7jVOASOwdKOH+JdJZ1K6m/yOSV6F2aWfmg7KF5a151PlTwIPpKihxt7EXM3udfSyGxOKkxE=",
+            "phone": "LDFDuH8ULnUicI/fabE76sJpyq0/262SX+fM7wk6Uj/Kmqzvq7oPLbwrdDDWwAXPrN6QoXGu/wdfWFNS5vxPXF2LK+lsxSNHS+N2rrqjC71SwyHrg0YiLvzrgO0fVqoPRsjWxejtPFfM2P+n0v0yHTnsnS/xhRNlVmIRQwRLrDA=",
             "noloading": "true",
             "countryCode": "86"
           }
@@ -197,18 +227,18 @@
         "query_params": {},
         "query_params_samples": [
           {
-            "email": "UW4eZCbPy6tIapHKDF+jt2J3kyyXQ+CATzkb+Jlq506OGkzahD4EW1Hr/WEQJ8pfyEAsXLqBMcATCB08+zoMd4qJJNqRmroOwoj1p0uG7IYrwiFGONdnAd76/tDtjMcqENiGiLloeBryTKf9nyq5+Vd8zWcmf/BVwAvJb2MZvng=",
+            "email": "TqsAetJY1l9dm2oVCNIiJw4zGp330Ph9BVIpcB0oJMhrR+ZpPLqI8JKT/fqgXZaMiL5xT0dg0HJ64E2wGqUOFYnAbeavJ7PkdzJAZAuAkOTrrLcaG6VfADrZs7IOf/fDZWIdIppIXG7QWwdbVv/7kCmbfvsOc/pfPQ3timmMUF0=",
             "noloading": "true"
           },
           {
-            "email": "eDF234tKpEqSBuEJd/o/eoRMxefvzroAAof7CbPaKIKPcC2wcE92AiV2Yi9jnaRB3lxLon4XfP8P2iMKZdGX28rWmp9aRWfMJZ/SvcCBUXly0OYxjjjcZPfEWEdeH7VleeiSUY2Y0nY7wmjFjJ2ubpblTdjeM0DqWR+CNeZmWyY=",
+            "email": "V/kfq9IJOpEqik8nGoYzwEFcYVyPDl0ROjEk9cR9PppFgMj5YwZzUz+Ui/u/AdgH0zDIKjovvqXuxHMe1/v94t64wfYj7AjOKU4Y+PiS0r2B4aaMvIN8hfuSr7HXuPfkm+JsdmojFMZ3eeonBJBGwvXrxdRv6Btv8clYTs+lkVM=",
             "noloading": "true"
           }
         ]
       },
       {
         "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/users/96418148ac14443b961bb1d99d45163b/email/usability",
+        "pathname": "/estack/api/estack/draco/v1/users/63beec3400b840e3bf235765bce3c646/email/usability",
         "contexts": [
           "replay:update"
         ],
@@ -217,20 +247,20 @@
         "query_params": {},
         "query_params_samples": [
           {
-            "email": "KcBioErj67SaJJ46wrA1CaO7RkZOhwX2L22uPWAhHK0ZSe3fl1YnnfQCllvHr3N//udfdOJErszTUliWuF5RPWa85JwMng1JO5Iuu6XX4qNAv3h7Df3hQcciBIGmYZFckZPjrvUVE5F+qBsEr+Szm47KOAFpA6H1aLbEncoXo7M=",
-            "userId": "96418148ac14443b961bb1d99d45163b",
+            "email": "PcdACymWzcviMMI8+CgH4HCRntZof9+ys7zK/JPloS94/NG4N/M0lkxGHE7l0Cwn3BvKbvICPNwoqIstnssOp2y/O0cpH8RcJY91bcG0Sl/Jo89HlC9tShnRJbze21aGVZB3oQs3ByssIx4OTssOn/z/lZ1HmG8hJliPukC2qTo=",
+            "userId": "63beec3400b840e3bf235765bce3c646",
             "noloading": "true"
           },
           {
-            "email": "YREmLqfvvtZ3QiwOH5qrO7a9O2wQvhFQ87zZ4OjVZOCBb319pVRldu3H/aHcQIJgu9377vuUdTPUke/4BCa7ebJSwdX6kCoNko2KmX3tbjaMzMdbzmhKA5mPzd2Gx0/Y6NHTbenFLriUH86MlrKqL7qnON88RMrpU7h9qpzKvWE=",
-            "userId": "96418148ac14443b961bb1d99d45163b",
+            "email": "bPdW7n4y/OuhlFLdo/Y+mEYbvpvPGoTNSCyIxU/smS2sDFZqv9A6hiRyZf803+89ZXj9oIK3nFtx0zk3it6HgbgE5z+eINn7zRNCccGesiMXnbkHFH8YNTxe612T2r6X/lCLIiRw+W4jl2KvphLlksgNzOE5J53xg2J+7/rgNqQ=",
+            "userId": "63beec3400b840e3bf235765bce3c646",
             "noloading": "true"
           }
         ]
       },
       {
         "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/users/96418148ac14443b961bb1d99d45163b/phone/usability",
+        "pathname": "/estack/api/estack/draco/v1/users/63beec3400b840e3bf235765bce3c646/phone/usability",
         "contexts": [
           "replay:update"
         ],
@@ -239,16 +269,16 @@
         "query_params": {},
         "query_params_samples": [
           {
-            "phone": "Vz7YTSDVudDJWuqdMmtkxm7jFoz/NrqA6ZfYpkuh2DVRH//7m0ErOeYin/75QI+2EI9+PEGrCnvXtD7i8C/bnHCPFnN3mv8ksqszQEGoqH8YEmWut1ENLOL1ZnoNkkFNx6zSSvokSYFd4U/TTFWAOd00CZh45+/0x1NvuxfeaE4=",
+            "phone": "Lr3irOn80UEaaTH5OizhuN3KhkEeSV/mvk/KJuPjPWaOhouv7MPycx1zh3xf+wLJS0Lsr3FXrVCUbQFcvdaKOnvjbBYa1bJDKCGolrpkKg7ADoKNoxFL38GcueXZVEnoFdw3dC6YkQxUP5Xr3lSVyrU4cO8Jtx3VQvgpl0amVG0=",
             "noloading": "true",
             "countryCode": "86",
-            "userId": "96418148ac14443b961bb1d99d45163b"
+            "userId": "63beec3400b840e3bf235765bce3c646"
           },
           {
-            "phone": "WB/fWR0hlyFjSH5U2PwRWCLgXj0k5zIJe9B20dUPRZx/XwEjPUDGLwZzrCE+lsF/kgwScSHHvmu/onyCqY1guawYP+hGKrI7IahrLBKHh0WO9My9ExGsHNgEaZXRpdvUPkIbl1Tkk577UPT1Du1a3vthNZwAXzQv/+BBEoc+5xw=",
+            "phone": "H/BRA1rt6iANtzX5LCyrYlEfOwl9I/mgGNRZd0BVs8JlSxyz4T21Otct5exfw//gcMDMiuMvTXIWlqEHNEXyckRm5euEU3awTZqjBkVkD9w1uKkISuDpR8Ou70gH04STvjnhIu0EBfmFVGr7j1QiesZZlarnmwClEoUWduSTxIw=",
             "noloading": "true",
             "countryCode": "86",
-            "userId": "96418148ac14443b961bb1d99d45163b"
+            "userId": "63beec3400b840e3bf235765bce3c646"
           }
         ]
       }
@@ -256,6 +286,13 @@
   },
   "api_by_button": {
     "create": [
+      {
+        "category": "query",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "body_sample": null,
+        "query_params": {}
+      },
       {
         "category": "query",
         "method": "POST",
@@ -267,7 +304,7 @@
         "category": "create",
         "method": "POST",
         "pathname": "/estack/api/estack/draco/v1/users",
-        "body_sample": "{\"userName\":\"autotest831850\",\"password\":\"TQ4UgiLtzYEplXZsmg5YGLpjkuF3TNEObPGa7dAxtUrqA2WT2ULSxUpixw6LZvueimxu3hC9LhS+vD0ZamEputvDKX+8TsHpOdJx31I5iVn6080CI1PWXFNMp2FMtYMzXrs+R70RgHGdmR9GiFEnGx5E3FqsS86mf2yFAmbpSfs=\",\"name\":\"test_831850\",\"email\":\"HXV7EkvyRMnEROAt3VqWCkxtqJS33F7wUcQeJ1XaOT66ygH8lq2HZ6yeIHp+Xol2qiuvZrzMYW1ixqtpqL+9ZrRmXVh5bCEx4CVdENPS0I9L7pJhqQhOqWkBxIKPWu4adxwH9Mnfjz2d9YXVkSVCOaQOtRVl9Loono6v2zx/DC4=\",\"phone\":\"Xi3TBLxX/IzXltkR+DCADSK7pf5dK2VfNbYKDYS6sVG2M1y+5SU9W8GzyzwyCv6RUf1ralYcGie3Z/PL5ZBTlAISLoB6OpTXT97NEm5YZqEtr5fUT677oJzQuw018peutAE4mCQz9/PDuSAsZrZsCY5R+r/I2Ga8RnOu2eeXu6Y=\",\"description\":\"auto_desc_831851\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\"}",
+        "body_sample": "{\"userName\":\"autotest857756\",\"password\":\"DUFeGshcmAM24rOt3XWi4azyOPoEGKkRF5F1p9uS6g/v50AvbijDMMKuXA8pYhxWhDYh01N9nrUgD024UCztYK1t2shSdhb2zUiJzhsG3hN2gYrcRaOFzgIV2N0uZ1iL0Mk1hBDqcG9Vj0mpfl1WhwSq/HkTCQ0RUZVTirIcJX4=\",\"name\":\"test_857756\",\"email\":\"Fz5UrLKe1bDXTK9V/bUOIMTIzKC2CayZNCfTlZX6WaRfi6U5W2DBjSWc07EGmLEBhF64n/uqrfxKr1Sx9qsz14TIU4KiFOrKicWi4p14x7mj//qgXT4TtQ4rZ5N82HH6YfxsDrgtBH7vQE5RcakTGHkmwUuWb2jlb01TjY2D9iY=\",\"phone\":\"RA3scJUSAWcD7yI8V5LrHvNPYDA3Z03L9JwBze1F/ZzZLFFRd+te6ppyDSJQ+SKP5AluG9ksIOqqvFxFLXfODU6Uef5Tv9cBITdSwW+euOlgmoE53BC7K13h8dx76TA2G9AM0H0fVHal+IVfZyuWOcnNW/6fSWyT22XsnizRgmM=\",\"description\":\"auto_desc_857756\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\"}",
         "query_params": {}
       },
       {
@@ -306,44 +343,90 @@
         "query_params": {}
       }
     ],
-    "update": [
+    "delete": [
       {
-        "category": "update",
-        "method": "PUT",
-        "pathname": "/estack/api/estack/draco/v1/users/96418148ac14443b961bb1d99d45163b",
-        "body_sample": "{\"userId\":\"96418148ac14443b961bb1d99d45163b\",\"name\":\"test_831878\",\"description\":\"auto_desc_831878\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\",\"phone\":\"c5JRCCO7IHKs3iUUshmrLacaV/KStx3BedX50w5uCxOt0NpR4UclLo3MbmXOwGjBcEq5py0nvVFW6IxTku5x35Zcnf9Q0qXgyXnQN2Eipf72tJgxa7f+EP1X4JNhvJC3dISZzP4eFqjjMTdBG1CwxaekCXicdAAGTU2S6+g8O1s=\",\"email\":\"UpMfxrDdHEnRUlkQm/2JkeZlBO2+ApdeLXzTWnKQ0XlUvh6AVD2PbD8jLkKB9m+sYipC/DDgSMCLAmojKcmLVdIpJAO8paijdB7/DfZXeiB/meS8PCnqAqIGsvRw5K5Diwu2nAUyZmWS8XVUKp387+9Q0dYtJpfl7lyXs8CDox8=\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
-        "query_params": {}
-      },
-      {
-        "category": "execute",
+        "category": "query",
         "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/users/96418148ac14443b961bb1d99d45163b/email/usability",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "body_sample": null,
         "query_params": {}
       },
       {
-        "category": "execute",
-        "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/users/96418148ac14443b961bb1d99d45163b/phone/usability",
-        "body_sample": null,
+        "category": "delete",
+        "method": "DELETE",
+        "pathname": "/estack/api/estack/draco/v1/users/batch/delete",
+        "body_sample": "[\"63beec3400b840e3bf235765bce3c646\"]",
         "query_params": {}
       }
     ],
     "lock": [
       {
+        "category": "query",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "body_sample": null,
+        "query_params": {}
+      },
+      {
         "category": "lock",
         "method": "PUT",
-        "pathname": "/estack/api/estack/draco/v1/users/96418148ac14443b961bb1d99d45163b/suspend",
-        "body_sample": "{\"userId\":\"96418148ac14443b961bb1d99d45163b\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
+        "pathname": "/estack/api/estack/draco/v1/users/63beec3400b840e3bf235765bce3c646/suspend",
+        "body_sample": "{\"userId\":\"63beec3400b840e3bf235765bce3c646\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
+        "query_params": {}
+      }
+    ],
+    "query": [
+      {
+        "category": "query",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "body_sample": null,
         "query_params": {}
       }
     ],
     "unlock": [
       {
+        "category": "query",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "body_sample": null,
+        "query_params": {}
+      },
+      {
         "category": "unlock",
         "method": "PUT",
-        "pathname": "/estack/api/estack/draco/v1/users/96418148ac14443b961bb1d99d45163b/enable",
+        "pathname": "/estack/api/estack/draco/v1/users/63beec3400b840e3bf235765bce3c646/enable",
         "body_sample": "{\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
+        "query_params": {}
+      }
+    ],
+    "update": [
+      {
+        "category": "query",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "body_sample": null,
+        "query_params": {}
+      },
+      {
+        "category": "update",
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/users/63beec3400b840e3bf235765bce3c646",
+        "body_sample": "{\"userId\":\"63beec3400b840e3bf235765bce3c646\",\"name\":\"test_857783\",\"description\":\"auto_desc_857783\",\"tenantId\":\"34e2594fca9e44cd9e23b25474838c7f\",\"countryCode\":\"+86\",\"phone\":\"OdypRG7boI9Bpe/KKZgnwq8OrfYk+NnXTo2SklImkQv1AL4GJGrPbgmHC/kukqktz2QrywRHzLLrQDm1jwNXzNe363DO7XcpFFpLHe8bQzvsYGRq9FAD30srFcPZhqAoZ9ulB5vWYc2g8G1v1m2PlXI4pdeqrlkH0esSETsCmF0=\",\"email\":\"G0gOpIS4+SjVJb7UTvbwGHQW1aMEeBDmCJQmdr/fnTCQ25uAVvw95HBKH+aSaFQuyXn/nJsu7bLiJjWE8PhLQJ6xD9F8xBzv0gDaKKuNPPJuoTZTaGa2SkbB8DEsa1mfSt+wdXvQUlomq9eC5T/vzLnxnv7C9HhCmkyNYXl3xeE=\",\"adminId\":\"93552edc908e4dadae761fff1fd0f24c\"}",
+        "query_params": {}
+      },
+      {
+        "category": "execute",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/users/63beec3400b840e3bf235765bce3c646/email/usability",
+        "body_sample": null,
+        "query_params": {}
+      },
+      {
+        "category": "execute",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/users/63beec3400b840e3bf235765bce3c646/phone/usability",
+        "body_sample": null,
         "query_params": {}
       }
     ],
@@ -352,14 +435,14 @@
         "category": "reset",
         "method": "POST",
         "pathname": "/estack/api/estack/draco/v1/password-reset/generate",
-        "body_sample": "{\"userId\":\"96418148ac14443b961bb1d99d45163b\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}",
+        "body_sample": "{\"userId\":\"63beec3400b840e3bf235765bce3c646\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}",
         "query_params": {}
       },
       {
         "category": "reset",
         "method": "POST",
         "pathname": "/estack/api/estack/draco/v1/password-reset/reset",
-        "body_sample": "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"Rm50zTfoHz1TqC0+sew3DoIM6CZu3J9cZH9svFsLuoXGu72OlhRQYS+KMpD+o9v19KHW2RjomdE/lJUKbd9atp4PTvXdkmTt2XmeM+PRtRtLgaZyS/9r7gtHn9donmkCQ6cJswKO5ALcOiE7Q6hKGiXSMc0xJXuM11b3iTc2JGc=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"96418148ac14443b961bb1d99d45163b\",\"noticeType\":[]}",
+        "body_sample": "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"AFbc8u4Uy9BJt4cj8sUIQg4tx+bfhnhSRBpr6Rp+AgDmswtnIfPLDn1IEi+s4KHHy926xAQadsfG4klhA2RiCqEOUwPRTvJ7xu/ESGU6CdnFeqlm5Nh+jpvXEddhzon+EjlH28z0EV0yV3GEesiqE0tKWPZwcTE795s5ONuwjZc=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"63beec3400b840e3bf235765bce3c646\",\"noticeType\":[]}",
         "query_params": {}
       },
       {
@@ -374,15 +457,6 @@
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/password-policy",
         "body_sample": null,
-        "query_params": {}
-      }
-    ],
-    "delete": [
-      {
-        "category": "delete",
-        "method": "DELETE",
-        "pathname": "/estack/api/estack/draco/v1/users/batch/delete",
-        "body_sample": "[\"96418148ac14443b961bb1d99d45163b\"]",
         "query_params": {}
       }
     ]
@@ -410,7 +484,7 @@
     "id_field_details": {
       "id": {
         "source_crud": "create",
-        "sample_value": "96418148ac14443b961bb1d99d45163b",
+        "sample_value": "63beec3400b840e3bf235765bce3c646",
         "path": "entity.id"
       },
       "tenantId": {
@@ -420,7 +494,7 @@
       },
       "userId": {
         "source_crud": "reset",
-        "sample_value": "96418148ac14443b961bb1d99d45163b",
+        "sample_value": "63beec3400b840e3bf235765bce3c646",
         "path": "entity.userId"
       }
     }
@@ -437,5 +511,2041 @@
     "after_lock": "DISABLE",
     "after_unlock": "ENABLE",
     "after_delete": "NOT_EXIST"
+  },
+  "pre_api_chain": {
+    "pre_apis": [
+      {
+        "name": "前置 API: list",
+        "id": "list",
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/policies/list",
+        "response_sample": {
+          "response_body": "{\n  \"traceId\" : \"feb2905436158ffb\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"total\" : 1,\n    \"list\" : [ {\n      \"id\" : \"1f8e392309fc414c9d77d45d0315fedc\",\n      \"createdAt\" : \"2024-05-28 22:05:41\",\n      \"updatedAt\" : \"2024-06-04 03:05:39\",\n      \"mainAccountId\" : \"SYSTEM\",\n      \"tenantId\" : \"34e2594fca9e44cd9e23b25474838c7f\",\n      \"policyName\" : \"普通用户\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"ORGANIZATION\",\n      \"description\" : \"普通用户\",\n      \"attachmentCount\" : 15,\n      \"released\" : true,\n      \"deleted\" : false,\n      \"originalPolicyName\" : null\n    } ],\n    \"pageNum\" : 1,\n    \"pageSize\" : 1,\n    \"size\" : 1,\n    \"startRow\" : 0,\n    \"endRow\" : 0,\n    \"pages\" : 1,\n    \"prePage\" : 0,\n    \"nextPage\" : 0,\n    \"isFirstPage\" : true,\n    \"isLastPage\" : true,\n    \"hasPreviousPage\" : false,\n    \"hasNextPage\" : false,\n    \"navigatePages\" : 8,\n    \"navigatepageNums\" : [ 1 ],\n    \"navigateFirstPage\" : 1,\n    \"navigateLastPage\" : 1\n  }\n}"
+        },
+        "extracted_fields": [
+          {
+            "name": "traceId",
+            "path": "traceId",
+            "type": "str"
+          },
+          {
+            "name": "success",
+            "path": "success",
+            "type": "bool"
+          },
+          {
+            "name": "entity_total",
+            "path": "entity.total",
+            "type": "int"
+          },
+          {
+            "name": "entity_list_0_id",
+            "path": "entity.list[0].id",
+            "type": "str"
+          },
+          {
+            "name": "entity_list_0_createdAt",
+            "path": "entity.list[0].createdAt",
+            "type": "str"
+          },
+          {
+            "name": "entity_list_0_updatedAt",
+            "path": "entity.list[0].updatedAt",
+            "type": "str"
+          },
+          {
+            "name": "entity_list_0_mainAccountId",
+            "path": "entity.list[0].mainAccountId",
+            "type": "str"
+          },
+          {
+            "name": "entity_list_0_tenantId",
+            "path": "entity.list[0].tenantId",
+            "type": "str"
+          },
+          {
+            "name": "entity_list_0_policyName",
+            "path": "entity.list[0].policyName",
+            "type": "str"
+          },
+          {
+            "name": "entity_list_0_policyType",
+            "path": "entity.list[0].policyType",
+            "type": "str"
+          },
+          {
+            "name": "entity_list_0_policyCategory",
+            "path": "entity.list[0].policyCategory",
+            "type": "str"
+          },
+          {
+            "name": "entity_list_0_description",
+            "path": "entity.list[0].description",
+            "type": "str"
+          },
+          {
+            "name": "entity_list_0_attachmentCount",
+            "path": "entity.list[0].attachmentCount",
+            "type": "int"
+          },
+          {
+            "name": "entity_list_0_released",
+            "path": "entity.list[0].released",
+            "type": "bool"
+          },
+          {
+            "name": "entity_list_0_deleted",
+            "path": "entity.list[0].deleted",
+            "type": "bool"
+          },
+          {
+            "name": "entity_pageNum",
+            "path": "entity.pageNum",
+            "type": "int"
+          },
+          {
+            "name": "entity_pageSize",
+            "path": "entity.pageSize",
+            "type": "int"
+          },
+          {
+            "name": "entity_size",
+            "path": "entity.size",
+            "type": "int"
+          },
+          {
+            "name": "entity_startRow",
+            "path": "entity.startRow",
+            "type": "int"
+          },
+          {
+            "name": "entity_endRow",
+            "path": "entity.endRow",
+            "type": "int"
+          },
+          {
+            "name": "entity_pages",
+            "path": "entity.pages",
+            "type": "int"
+          },
+          {
+            "name": "entity_prePage",
+            "path": "entity.prePage",
+            "type": "int"
+          },
+          {
+            "name": "entity_nextPage",
+            "path": "entity.nextPage",
+            "type": "int"
+          },
+          {
+            "name": "entity_isFirstPage",
+            "path": "entity.isFirstPage",
+            "type": "bool"
+          },
+          {
+            "name": "entity_isLastPage",
+            "path": "entity.isLastPage",
+            "type": "bool"
+          },
+          {
+            "name": "entity_hasPreviousPage",
+            "path": "entity.hasPreviousPage",
+            "type": "bool"
+          },
+          {
+            "name": "entity_hasNextPage",
+            "path": "entity.hasNextPage",
+            "type": "bool"
+          },
+          {
+            "name": "entity_navigatePages",
+            "path": "entity.navigatePages",
+            "type": "int"
+          },
+          {
+            "name": "entity_navigateFirstPage",
+            "path": "entity.navigateFirstPage",
+            "type": "int"
+          },
+          {
+            "name": "entity_navigateLastPage",
+            "path": "entity.navigateLastPage",
+            "type": "int"
+          }
+        ],
+        "depends_on": []
+      },
+      {
+        "name": "获取当前用户信息",
+        "id": "current_user",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/users/current-user",
+        "response_sample": {
+          "response_body": "{\n  \"traceId\" : \"6d581e2c10372618\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"id\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"tenantId\" : \"cec63451f8bf4ceebb9ada0b87d829bf\",\n    \"tenantName\" : \"Super Management Department\",\n    \"adminId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n    \"ramId\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"name\" : \"estack-yy\",\n    \"userName\" : \"estack-yy\",\n    \"email\" : \"l*****u@163.com\",\n    \"phone\" : \"188***1683\",\n    \"encryptedEmail\" : \"d5DMRsWzfs9NOAiRMBvZMNq7TvsxOeiZ\",\n    \"encryptedPhone\" : \"3hmpCM+112+O+OaTCsGN9A==\",\n    \"countryCode\" : \"+86\",\n    \"description\" : \"\",\n    \"createdAt\" : \"2025-01-24 12:19:29\",\n    \"updatedAt\" : \"2025-03-11 17:24:50\",\n    \"deleted\" : false,\n    \"state\" : \"ENABLE\",\n    \"isAdmin\" : false,\n    \"isProjectManager\" : false,\n    \"isAuthentication\" : false,\n    \"roleId\" : null,\n    \"roleName\" : null,\n    \"ancestorList\" : [ \"Super Management Department\" ],\n    \"isPassword\" : true,\n    \"isEmail\" : true,\n    \"isPhone\" : true,\n    \"poolNameList\" : null,\n    \"isRootTenantUser\" : true,\n    \"isApproval\" : false,\n    \"tenantLevel\" : 0,\n    \"locked\" : false,\n    \"policyIdList\" : [ \"OPERATION\" ],\n    \"policyList\" : [ {\n      \"id\" : \"OPERATION\",\n      \"tenantId\" : null,\n      \"policyName\" : \"运营管理员\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"ORGANIZATION\",\n      \"description\" : null,\n      \"released\" : false,\n      \"deleted\" : null,\n      \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.OPERATIONS_ADMIN\"\n    } ],\n    \"countryCodePhone\" : \"+86 188***1683\",\n    \"password\" : \"6974d2bb056747082f6b7fcd01d61d0c9fcbc34f189a6c12d9a295891454d8e2\",\n    \"projectIdList\" : null,\n    \"needRamIdentity\" : null,\n    \"isInnerUser\" : null,\n    \"userType\" : null,\n    \"isForceChange\" : false,\n    \"isTempPassword\" : false,\n    \"mfLoginPolicy\" : null,\n    \"enableMultiFactLoginPolicy\" : null,\n    \"maintainAt\" : null\n  }\n}"
+        },
+        "extracted_fields": [
+          {
+            "name": "traceId",
+            "path": "traceId",
+            "type": "str"
+          },
+          {
+            "name": "success",
+            "path": "success",
+            "type": "bool"
+          },
+          {
+            "name": "entity_id",
+            "path": "entity.id",
+            "type": "str"
+          },
+          {
+            "name": "entity_tenantId",
+            "path": "entity.tenantId",
+            "type": "str"
+          },
+          {
+            "name": "entity_tenantName",
+            "path": "entity.tenantName",
+            "type": "str"
+          },
+          {
+            "name": "entity_adminId",
+            "path": "entity.adminId",
+            "type": "str"
+          },
+          {
+            "name": "entity_ramId",
+            "path": "entity.ramId",
+            "type": "str"
+          },
+          {
+            "name": "entity_name",
+            "path": "entity.name",
+            "type": "str"
+          },
+          {
+            "name": "entity_userName",
+            "path": "entity.userName",
+            "type": "str"
+          },
+          {
+            "name": "entity_email",
+            "path": "entity.email",
+            "type": "str"
+          },
+          {
+            "name": "entity_phone",
+            "path": "entity.phone",
+            "type": "str"
+          },
+          {
+            "name": "entity_encryptedEmail",
+            "path": "entity.encryptedEmail",
+            "type": "str"
+          },
+          {
+            "name": "entity_encryptedPhone",
+            "path": "entity.encryptedPhone",
+            "type": "str"
+          },
+          {
+            "name": "entity_countryCode",
+            "path": "entity.countryCode",
+            "type": "str"
+          },
+          {
+            "name": "entity_description",
+            "path": "entity.description",
+            "type": "str"
+          },
+          {
+            "name": "entity_createdAt",
+            "path": "entity.createdAt",
+            "type": "str"
+          },
+          {
+            "name": "entity_updatedAt",
+            "path": "entity.updatedAt",
+            "type": "str"
+          },
+          {
+            "name": "entity_deleted",
+            "path": "entity.deleted",
+            "type": "bool"
+          },
+          {
+            "name": "entity_state",
+            "path": "entity.state",
+            "type": "str"
+          },
+          {
+            "name": "entity_isAdmin",
+            "path": "entity.isAdmin",
+            "type": "bool"
+          },
+          {
+            "name": "entity_isProjectManager",
+            "path": "entity.isProjectManager",
+            "type": "bool"
+          },
+          {
+            "name": "entity_isAuthentication",
+            "path": "entity.isAuthentication",
+            "type": "bool"
+          },
+          {
+            "name": "entity_isPassword",
+            "path": "entity.isPassword",
+            "type": "bool"
+          },
+          {
+            "name": "entity_isEmail",
+            "path": "entity.isEmail",
+            "type": "bool"
+          },
+          {
+            "name": "entity_isPhone",
+            "path": "entity.isPhone",
+            "type": "bool"
+          },
+          {
+            "name": "entity_isRootTenantUser",
+            "path": "entity.isRootTenantUser",
+            "type": "bool"
+          },
+          {
+            "name": "entity_isApproval",
+            "path": "entity.isApproval",
+            "type": "bool"
+          },
+          {
+            "name": "entity_tenantLevel",
+            "path": "entity.tenantLevel",
+            "type": "int"
+          },
+          {
+            "name": "entity_locked",
+            "path": "entity.locked",
+            "type": "bool"
+          },
+          {
+            "name": "entity_policyList_0_id",
+            "path": "entity.policyList[0].id",
+            "type": "str"
+          },
+          {
+            "name": "entity_policyList_0_policyName",
+            "path": "entity.policyList[0].policyName",
+            "type": "str"
+          },
+          {
+            "name": "entity_policyList_0_policyType",
+            "path": "entity.policyList[0].policyType",
+            "type": "str"
+          },
+          {
+            "name": "entity_policyList_0_policyCategory",
+            "path": "entity.policyList[0].policyCategory",
+            "type": "str"
+          },
+          {
+            "name": "entity_policyList_0_released",
+            "path": "entity.policyList[0].released",
+            "type": "bool"
+          },
+          {
+            "name": "entity_policyList_0_originalPolicyName",
+            "path": "entity.policyList[0].originalPolicyName",
+            "type": "str"
+          },
+          {
+            "name": "entity_countryCodePhone",
+            "path": "entity.countryCodePhone",
+            "type": "str"
+          },
+          {
+            "name": "entity_password",
+            "path": "entity.password",
+            "type": "str"
+          },
+          {
+            "name": "entity_isForceChange",
+            "path": "entity.isForceChange",
+            "type": "bool"
+          },
+          {
+            "name": "entity_isTempPassword",
+            "path": "entity.isTempPassword",
+            "type": "bool"
+          }
+        ],
+        "depends_on": []
+      },
+      {
+        "name": "前置 API: display-by-role",
+        "id": "display_by_role",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/display-by-role",
+        "response_sample": {
+          "response_body": "{\n  \"traceId\" : \"d738315f7d6c83c7\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : [ {\n    \"id\" : \"34e2594fca9e44cd9e23b25474838c7f\",\n    \"name\" : \"cswt\",\n    \"description\" : \"本地接口自动化解决方案测试单位\",\n    \"root\" : \"34e2594fca9e44cd9e23b25474838c7f\",\n    \"ancestor\" : \"34e2594fca9e44cd9e23b25474838c7f\",\n    \"descendant\" : \"34e2594fca9e44cd9e23b25474838c7f\",\n    \"depth\" : 0,\n    \"level\" : 0,\n    \"isRoot\" : true,\n    \"isOpenRecycleBin\" : false,\n    \"hasChildren\" : true,\n    \"tenantType\" : \"PHYSICAL\",\n    \"createdAt\" : \"2026-09-01 13:49:27\",\n    \"updatedAt\" : null,\n    \"deleted\" : false,\n    \"ancestorList\" : [ ],\n    \"adminName\" : \"cswt\",\n    \"adminUserName\" : \"cswt\",\n    \"adminId\" : \"30202c8f0f554fbba782c2d6bcfe2d69\",\n    \"departmentLevel\" : \"Level-1 Department\",\n    \"poolNameList\" : null,\n    \"poolInfoList\" : null,\n    \"isFrozen\" : false,\n    \"isInner\" : false,\n    \"enableMultiFactLoginPolicy\" : false,\n    \"children\" : [ {\n      \"id\" : \"dc4c67cc1ca04d5eb781fcae046290b2\",\n      \"name\" : \"测试子部门20260904165706\",\n      \"description\" : \"这是一个测试子部门描述20260904165706\",\n      \"root\" : \"34e2594fca9e44cd9e23b25474838c7f\",\n      \"ancestor\" : \"34e2594fca9e44cd9e23b25474838c7f\",\n      \"descendant\" : \"dc4c67cc1ca04d5eb781fcae046290b2\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-09-04 16:57:09\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"cswt\" ],\n      \"adminName\" : null,\n      \"adminUserName\" : null,\n      \"adminId\" : null,\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : false,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    } ],\n    \"containJoinedProject\" : null,\n    \"isSuperiorTenant\" : null,\n    \"mfloginPolicy\" : null\n  }, {\n    \"id\" : \"99f2669bec95488fa40a49fc5be1ca34\",\n    \"name\" : \"org_202608311223\",\n    \"description\" : \"\",\n    \"root\" : \"99f2669bec95488fa40a49fc5be1ca34\",\n    \"ancestor\" : \"99f2669bec95488fa40a49fc5be1ca34\",\n    \"descendant\" : \"99f2669bec95488fa40a49fc5be1ca34\",\n    \"depth\" : 0,\n    \"level\" : 0,\n    \"isRoot\" : true,\n    \"isOpenRecycleBin\" : false,\n    \"hasChildren\" : true,\n    \"tenantType\" : \"PHYSICAL\",\n    \"createdAt\" : \"2026-08-31 12:23:16\",\n    \"updatedAt\" : null,\n    \"deleted\" : false,\n    \"ancestorList\" : [ ],\n    \"adminName\" : \"AI_202608311223\",\n    \"adminUserName\" : \"AI_202608311223\",\n    \"adminId\" : \"29b23290329d4cdba12d962b111303ab\",\n    \"departmentLevel\" : \"Level-1 Department\",\n    \"poolNameList\" : null,\n    \"poolInfoList\" : null,\n    \"isFrozen\" : false,\n    \"isInner\" : false,\n    \"enableMultiFactLoginPolicy\" : false,\n    \"children\" : [ {\n      \"id\" : \"c275788d1b344611ae4ba5bf48e75dd7\",\n      \"name\" : \"dep_202608311223\",\n      \"description\" : \"\",\n      \"root\" : \"99f2669bec95488fa40a49fc5be1ca34\",\n      \"ancestor\" : \"99f2669bec95488fa40a49fc5be1ca34\",\n      \"descendant\" : \"c275788d1b344611ae4ba5bf48e75dd7\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-31 12:23:28\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"org_202608311223\" ],\n      \"adminName\" : null,\n      \"adminUserName\" : null,\n      \"adminId\" : null,\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : false,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    } ],\n    \"containJoinedProject\" : null,\n    \"isSuperiorTenant\" : null,\n    \"mfloginPolicy\" : null\n  }, {\n    \"id\" : \"cf2ecc23183244d8959023943338ac98\",\n    \"name\" : \"smp-test\",\n    \"description\" : \"\",\n    \"root\" : \"cf2ecc23183244d8959023943338ac98\",\n    \"ancestor\" : \"cf2ecc23183244d8959023943338ac98\",\n    \"descendant\" : \"cf2ecc23183244d8959023943338ac98\",\n    \"depth\" : 0,\n    \"level\" : 0,\n    \"isRoot\" : true,\n    \"isOpenRecycleBin\" : false,\n    \"hasChildren\" : false,\n    \"tenantType\" : \"PHYSICAL\",\n    \"createdAt\" : \"2026-08-25 10:04:37\",\n    \"updatedAt\" : null,\n    \"deleted\" : false,\n    \"ancestorList\" : [ ],\n    \"adminName\" : \"smp-test\",\n    \"adminUserName\" : \"smp-test\",\n    \"adminId\" : \"34101ea9da3444fc8ea86dd2bb0201a3\",\n    \"departmentLevel\" : \"Level-1 Department\",\n    \"poolNameList\" : null,\n    \"poolInfoList\" : null,\n    \"isFrozen\" : false,\n    \"isInner\" : false,\n    \"enableMultiFactLoginPolicy\" : false,\n    \"children\" : [ ],\n    \"containJoinedProject\" : null,\n    \"isSuperiorTenant\" : null,\n    \"mfloginPolicy\" : null\n  }, {\n    \"id\" : \"d3ad685ed2004fcd883af658e389b32f\",\n    \"name\" : \"estack-admin-galaxy\",\n    \"description\" : \"\",\n    \"root\" : \"d3ad685ed2004fcd883af658e389b32f\",\n    \"ancestor\" : \"d3ad685ed2004fcd883af658e389b32f\",\n    \"descendant\" : \"d3ad685ed2004fcd883af658e389b32f\",\n    \"depth\" : 0,\n    \"level\" : 0,\n    \"isRoot\" : true,\n    \"isOpenRecycleBin\" : false,\n    \"hasChildren\" : false,\n    \"tenantType\" : \"PHYSICAL\",\n    \"createdAt\" : \"2026-08-24 13:48:20\",\n    \"updatedAt\" : null,\n    \"deleted\" : false,\n    \"ancestorList\" : [ ],\n    \"adminName\" : \"estack-admin-galaxy-0817\",\n    \"adminUserName\" : \"estack-admin-galaxy-0817\",\n    \"adminId\" : \"1c49021a60c14f2c9d2f058cde640cb0\",\n    \"departmentLevel\" : \"Level-1 Department\",\n    \"poolNameList\" : null,\n    \"poolInfoList\" : null,\n    \"isFrozen\" : false,\n    \"isInner\" : false,\n    \"enableMultiFactLoginPolicy\" : false,\n    \"children\" : [ ],\n    \"containJoinedProject\" : null,\n    \"isSuperiorTenant\" : null,\n    \"mfloginPolicy\" : null\n  }, {\n    \"id\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n    \"name\" : \"内循环账号管理\",\n    \"description\" : \"内循环单位\",\n    \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n    \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n    \"descendant\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n    \"depth\" : 0,\n    \"level\" : 0,\n    \"isRoot\" : true,\n    \"isOpenRecycleBin\" : false,\n    \"hasChildren\" : true,\n    \"tenantType\" : \"PHYSICAL\",\n    \"createdAt\" : \"2026-08-24 13:42:17\",\n    \"updatedAt\" : null,\n    \"deleted\" : false,\n    \"ancestorList\" : [ ],\n    \"adminName\" : \"estack-inner\",\n    \"adminUserName\" : \"estack-inner\",\n    \"adminId\" : \"bbb7ad47370d47bb8d694c5f9a73bb5d\",\n    \"departmentLevel\" : \"Level-1 Department\",\n    \"poolNameList\" : null,\n    \"poolInfoList\" : null,\n    \"isFrozen\" : false,\n    \"isInner\" : true,\n    \"enableMultiFactLoginPolicy\" : false,\n    \"children\" : [ {\n      \"id\" : \"ac0c39e5e3e545769120ad0174b567d3\",\n      \"name\" : \"私有云管理平台\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"ac0c39e5e3e545769120ad0174b567d3\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:29\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-ESTACK\",\n      \"adminUserName\" : \"estack-inner-ESTACK\",\n      \"adminId\" : \"6c8dedf224594916ad2fa7d8b8e27e63\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"69eaa5182cb04cdd83f600ce2f44ba89\",\n      \"name\" : \"云电脑产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"69eaa5182cb04cdd83f600ce2f44ba89\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:29\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-COMPUTER\",\n      \"adminUserName\" : \"estack-inner-COMPUTER\",\n      \"adminId\" : \"8526c56b76be45bf83624f40d0ef7dcb\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"c2239b0df1b54009a4b1df2197f08a12\",\n      \"name\" : \"神眼视觉产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"c2239b0df1b54009a4b1df2197f08a12\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:28\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-SEVP\",\n      \"adminUserName\" : \"estack-inner-SEVP\",\n      \"adminId\" : \"13ecb5ede8974427a631dc862e799f37\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"6dc157052aaa401caebcb29345dda35b\",\n      \"name\" : \"震泽智算平台产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"6dc157052aaa401caebcb29345dda35b\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:27\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-ZEZS\",\n      \"adminUserName\" : \"estack-inner-ZEZS\",\n      \"adminId\" : \"e1b7585a208942c79f79991db8169267\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"f5e92e54521a40cba92fd01dcb2ed872\",\n      \"name\" : \"云原生数据库分布式产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"f5e92e54521a40cba92fd01dcb2ed872\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:27\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-HE3DB\",\n      \"adminUserName\" : \"estack-inner-HE3DB\",\n      \"adminId\" : \"13fd49b587a94357b05955e1abf74d34\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"f7fa151f612d4010b8d74007bcc02386\",\n      \"name\" : \"裸金属产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"f7fa151f612d4010b8d74007bcc02386\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:26\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-BMS\",\n      \"adminUserName\" : \"estack-inner-BMS\",\n      \"adminId\" : \"b6059efe372648928e51e57b2c4bf4c7\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"550598cb8e8f4fd782b216a0db4320d7\",\n      \"name\" : \"弹性MapReduce产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"550598cb8e8f4fd782b216a0db4320d7\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:26\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-EMR\",\n      \"adminUserName\" : \"estack-inner-EMR\",\n      \"adminId\" : \"5ef55acd9c9a4562b3057ce557a2cf6c\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"c19c6f05aaec4c31b9f0cfa4e516f84e\",\n      \"name\" : \"云主机产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"c19c6f05aaec4c31b9f0cfa4e516f84e\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:25\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-ECS\",\n      \"adminUserName\" : \"estack-inner-ECS\",\n      \"adminId\" : \"66543f3833134354a79b4a40c0867296\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"13353d912c534caf9b6d41c867dccc2d\",\n      \"name\" : \"NFV产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"13353d912c534caf9b6d41c867dccc2d\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:25\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-NFV\",\n      \"adminUserName\" : \"estack-inner-NFV\",\n      \"adminId\" : \"046dd810dfb34a7eafe2a82960a40f94\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"67af3fcfc14c493492a34ba4812aa2c9\",\n      \"name\" : \"RabbitMQ产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"67af3fcfc14c493492a34ba4812aa2c9\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:24\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-AMQP\",\n      \"adminUserName\" : \"estack-inner-AMQP\",\n      \"adminId\" : \"f9b70a8290ae4325a4ab19cbdc46cda7\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"b3f169f2d95a4824807fff8a0e12e317\",\n      \"name\" : \"RocketMQ产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"b3f169f2d95a4824807fff8a0e12e317\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:23\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-ROCKETMQ\",\n      \"adminUserName\" : \"estack-inner-ROCKETMQ\",\n      \"adminId\" : \"3ed97116d43140b98effdb0227a54c4b\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"af9b9b22554d48c4b6af7905aa6cb261\",\n      \"name\" : \"Kafka产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"af9b9b22554d48c4b6af7905aa6cb261\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:23\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-KAFKA\",\n      \"adminUserName\" : \"estack-inner-KAFKA\",\n      \"adminId\" : \"ca5697b40307420eb9b16e44511f0a63\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"2a5408ed479d4d528b42991ea8c5f52a\",\n      \"name\" : \"MySQL产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"2a5408ed479d4d528b42991ea8c5f52a\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:22\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-MySQL\",\n      \"adminUserName\" : \"estack-inner-MySQL\",\n      \"adminId\" : \"84e7547875c54171b21f2d3615dd75ae\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"cbf5b30273434d63a3536a12f44c4dc3\",\n      \"name\" : \"VPC产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"cbf5b30273434d63a3536a12f44c4dc3\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:21\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-VPC\",\n      \"adminUserName\" : \"estack-inner-VPC\",\n      \"adminId\" : \"be7c96a634364f24bd2a53a8fb2f9ae7\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    } ],\n    \"containJoinedProject\" : null,\n    \"isSuperiorTenant\" : null,\n    \"mfloginPolicy\" : null\n  } ]\n}"
+        },
+        "extracted_fields": [
+          {
+            "name": "traceId",
+            "path": "traceId",
+            "type": "str"
+          },
+          {
+            "name": "success",
+            "path": "success",
+            "type": "bool"
+          },
+          {
+            "name": "entity_0_id",
+            "path": "entity[0].id",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_name",
+            "path": "entity[0].name",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_description",
+            "path": "entity[0].description",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_root",
+            "path": "entity[0].root",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_ancestor",
+            "path": "entity[0].ancestor",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_descendant",
+            "path": "entity[0].descendant",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_depth",
+            "path": "entity[0].depth",
+            "type": "int"
+          },
+          {
+            "name": "entity_0_level",
+            "path": "entity[0].level",
+            "type": "int"
+          },
+          {
+            "name": "entity_0_isRoot",
+            "path": "entity[0].isRoot",
+            "type": "bool"
+          },
+          {
+            "name": "entity_0_isOpenRecycleBin",
+            "path": "entity[0].isOpenRecycleBin",
+            "type": "bool"
+          },
+          {
+            "name": "entity_0_hasChildren",
+            "path": "entity[0].hasChildren",
+            "type": "bool"
+          },
+          {
+            "name": "entity_0_tenantType",
+            "path": "entity[0].tenantType",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_createdAt",
+            "path": "entity[0].createdAt",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_deleted",
+            "path": "entity[0].deleted",
+            "type": "bool"
+          },
+          {
+            "name": "entity_0_adminName",
+            "path": "entity[0].adminName",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_adminUserName",
+            "path": "entity[0].adminUserName",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_adminId",
+            "path": "entity[0].adminId",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_departmentLevel",
+            "path": "entity[0].departmentLevel",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_isFrozen",
+            "path": "entity[0].isFrozen",
+            "type": "bool"
+          },
+          {
+            "name": "entity_0_isInner",
+            "path": "entity[0].isInner",
+            "type": "bool"
+          },
+          {
+            "name": "entity_0_enableMultiFactLoginPolicy",
+            "path": "entity[0].enableMultiFactLoginPolicy",
+            "type": "bool"
+          },
+          {
+            "name": "entity_0_children_0_id",
+            "path": "entity[0].children[0].id",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_children_0_name",
+            "path": "entity[0].children[0].name",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_children_0_description",
+            "path": "entity[0].children[0].description",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_children_0_root",
+            "path": "entity[0].children[0].root",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_children_0_ancestor",
+            "path": "entity[0].children[0].ancestor",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_children_0_descendant",
+            "path": "entity[0].children[0].descendant",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_children_0_depth",
+            "path": "entity[0].children[0].depth",
+            "type": "int"
+          },
+          {
+            "name": "entity_0_children_0_level",
+            "path": "entity[0].children[0].level",
+            "type": "int"
+          },
+          {
+            "name": "entity_0_children_0_isRoot",
+            "path": "entity[0].children[0].isRoot",
+            "type": "bool"
+          },
+          {
+            "name": "entity_0_children_0_isOpenRecycleBin",
+            "path": "entity[0].children[0].isOpenRecycleBin",
+            "type": "bool"
+          },
+          {
+            "name": "entity_0_children_0_hasChildren",
+            "path": "entity[0].children[0].hasChildren",
+            "type": "bool"
+          },
+          {
+            "name": "entity_0_children_0_tenantType",
+            "path": "entity[0].children[0].tenantType",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_children_0_createdAt",
+            "path": "entity[0].children[0].createdAt",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_children_0_deleted",
+            "path": "entity[0].children[0].deleted",
+            "type": "bool"
+          },
+          {
+            "name": "entity_0_children_0_departmentLevel",
+            "path": "entity[0].children[0].departmentLevel",
+            "type": "str"
+          },
+          {
+            "name": "entity_0_children_0_isFrozen",
+            "path": "entity[0].children[0].isFrozen",
+            "type": "bool"
+          },
+          {
+            "name": "entity_0_children_0_isInner",
+            "path": "entity[0].children[0].isInner",
+            "type": "bool"
+          }
+        ],
+        "depends_on": []
+      }
+    ],
+    "field_resolutions": {
+      "create.policyIds": {
+        "source": "list.entity_list_0_id",
+        "api": {
+          "name": "前置 API: list",
+          "id": "list",
+          "method": "POST",
+          "pathname": "/estack/api/estack/draco/v1/policies/list",
+          "response_sample": {
+            "response_body": "{\n  \"traceId\" : \"feb2905436158ffb\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"total\" : 1,\n    \"list\" : [ {\n      \"id\" : \"1f8e392309fc414c9d77d45d0315fedc\",\n      \"createdAt\" : \"2024-05-28 22:05:41\",\n      \"updatedAt\" : \"2024-06-04 03:05:39\",\n      \"mainAccountId\" : \"SYSTEM\",\n      \"tenantId\" : \"34e2594fca9e44cd9e23b25474838c7f\",\n      \"policyName\" : \"普通用户\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"ORGANIZATION\",\n      \"description\" : \"普通用户\",\n      \"attachmentCount\" : 15,\n      \"released\" : true,\n      \"deleted\" : false,\n      \"originalPolicyName\" : null\n    } ],\n    \"pageNum\" : 1,\n    \"pageSize\" : 1,\n    \"size\" : 1,\n    \"startRow\" : 0,\n    \"endRow\" : 0,\n    \"pages\" : 1,\n    \"prePage\" : 0,\n    \"nextPage\" : 0,\n    \"isFirstPage\" : true,\n    \"isLastPage\" : true,\n    \"hasPreviousPage\" : false,\n    \"hasNextPage\" : false,\n    \"navigatePages\" : 8,\n    \"navigatepageNums\" : [ 1 ],\n    \"navigateFirstPage\" : 1,\n    \"navigateLastPage\" : 1\n  }\n}"
+          },
+          "extracted_fields": [
+            {
+              "name": "traceId",
+              "path": "traceId",
+              "type": "str"
+            },
+            {
+              "name": "success",
+              "path": "success",
+              "type": "bool"
+            },
+            {
+              "name": "entity_total",
+              "path": "entity.total",
+              "type": "int"
+            },
+            {
+              "name": "entity_list_0_id",
+              "path": "entity.list[0].id",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_createdAt",
+              "path": "entity.list[0].createdAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_updatedAt",
+              "path": "entity.list[0].updatedAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_mainAccountId",
+              "path": "entity.list[0].mainAccountId",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_tenantId",
+              "path": "entity.list[0].tenantId",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_policyName",
+              "path": "entity.list[0].policyName",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_policyType",
+              "path": "entity.list[0].policyType",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_policyCategory",
+              "path": "entity.list[0].policyCategory",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_description",
+              "path": "entity.list[0].description",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_attachmentCount",
+              "path": "entity.list[0].attachmentCount",
+              "type": "int"
+            },
+            {
+              "name": "entity_list_0_released",
+              "path": "entity.list[0].released",
+              "type": "bool"
+            },
+            {
+              "name": "entity_list_0_deleted",
+              "path": "entity.list[0].deleted",
+              "type": "bool"
+            },
+            {
+              "name": "entity_pageNum",
+              "path": "entity.pageNum",
+              "type": "int"
+            },
+            {
+              "name": "entity_pageSize",
+              "path": "entity.pageSize",
+              "type": "int"
+            },
+            {
+              "name": "entity_size",
+              "path": "entity.size",
+              "type": "int"
+            },
+            {
+              "name": "entity_startRow",
+              "path": "entity.startRow",
+              "type": "int"
+            },
+            {
+              "name": "entity_endRow",
+              "path": "entity.endRow",
+              "type": "int"
+            },
+            {
+              "name": "entity_pages",
+              "path": "entity.pages",
+              "type": "int"
+            },
+            {
+              "name": "entity_prePage",
+              "path": "entity.prePage",
+              "type": "int"
+            },
+            {
+              "name": "entity_nextPage",
+              "path": "entity.nextPage",
+              "type": "int"
+            },
+            {
+              "name": "entity_isFirstPage",
+              "path": "entity.isFirstPage",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isLastPage",
+              "path": "entity.isLastPage",
+              "type": "bool"
+            },
+            {
+              "name": "entity_hasPreviousPage",
+              "path": "entity.hasPreviousPage",
+              "type": "bool"
+            },
+            {
+              "name": "entity_hasNextPage",
+              "path": "entity.hasNextPage",
+              "type": "bool"
+            },
+            {
+              "name": "entity_navigatePages",
+              "path": "entity.navigatePages",
+              "type": "int"
+            },
+            {
+              "name": "entity_navigateFirstPage",
+              "path": "entity.navigateFirstPage",
+              "type": "int"
+            },
+            {
+              "name": "entity_navigateLastPage",
+              "path": "entity.navigateLastPage",
+              "type": "int"
+            }
+          ],
+          "depends_on": []
+        },
+        "strategy": "exact_value_match",
+        "is_array": true
+      },
+      "create.adminId": {
+        "source": "current_user.entity_adminId",
+        "api": {
+          "name": "获取当前用户信息",
+          "id": "current_user",
+          "method": "GET",
+          "pathname": "/estack/api/estack/draco/v1/users/current-user",
+          "response_sample": {
+            "response_body": "{\n  \"traceId\" : \"6d581e2c10372618\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"id\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"tenantId\" : \"cec63451f8bf4ceebb9ada0b87d829bf\",\n    \"tenantName\" : \"Super Management Department\",\n    \"adminId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n    \"ramId\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"name\" : \"estack-yy\",\n    \"userName\" : \"estack-yy\",\n    \"email\" : \"l*****u@163.com\",\n    \"phone\" : \"188***1683\",\n    \"encryptedEmail\" : \"d5DMRsWzfs9NOAiRMBvZMNq7TvsxOeiZ\",\n    \"encryptedPhone\" : \"3hmpCM+112+O+OaTCsGN9A==\",\n    \"countryCode\" : \"+86\",\n    \"description\" : \"\",\n    \"createdAt\" : \"2025-01-24 12:19:29\",\n    \"updatedAt\" : \"2025-03-11 17:24:50\",\n    \"deleted\" : false,\n    \"state\" : \"ENABLE\",\n    \"isAdmin\" : false,\n    \"isProjectManager\" : false,\n    \"isAuthentication\" : false,\n    \"roleId\" : null,\n    \"roleName\" : null,\n    \"ancestorList\" : [ \"Super Management Department\" ],\n    \"isPassword\" : true,\n    \"isEmail\" : true,\n    \"isPhone\" : true,\n    \"poolNameList\" : null,\n    \"isRootTenantUser\" : true,\n    \"isApproval\" : false,\n    \"tenantLevel\" : 0,\n    \"locked\" : false,\n    \"policyIdList\" : [ \"OPERATION\" ],\n    \"policyList\" : [ {\n      \"id\" : \"OPERATION\",\n      \"tenantId\" : null,\n      \"policyName\" : \"运营管理员\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"ORGANIZATION\",\n      \"description\" : null,\n      \"released\" : false,\n      \"deleted\" : null,\n      \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.OPERATIONS_ADMIN\"\n    } ],\n    \"countryCodePhone\" : \"+86 188***1683\",\n    \"password\" : \"6974d2bb056747082f6b7fcd01d61d0c9fcbc34f189a6c12d9a295891454d8e2\",\n    \"projectIdList\" : null,\n    \"needRamIdentity\" : null,\n    \"isInnerUser\" : null,\n    \"userType\" : null,\n    \"isForceChange\" : false,\n    \"isTempPassword\" : false,\n    \"mfLoginPolicy\" : null,\n    \"enableMultiFactLoginPolicy\" : null,\n    \"maintainAt\" : null\n  }\n}"
+          },
+          "extracted_fields": [
+            {
+              "name": "traceId",
+              "path": "traceId",
+              "type": "str"
+            },
+            {
+              "name": "success",
+              "path": "success",
+              "type": "bool"
+            },
+            {
+              "name": "entity_id",
+              "path": "entity.id",
+              "type": "str"
+            },
+            {
+              "name": "entity_tenantId",
+              "path": "entity.tenantId",
+              "type": "str"
+            },
+            {
+              "name": "entity_tenantName",
+              "path": "entity.tenantName",
+              "type": "str"
+            },
+            {
+              "name": "entity_adminId",
+              "path": "entity.adminId",
+              "type": "str"
+            },
+            {
+              "name": "entity_ramId",
+              "path": "entity.ramId",
+              "type": "str"
+            },
+            {
+              "name": "entity_name",
+              "path": "entity.name",
+              "type": "str"
+            },
+            {
+              "name": "entity_userName",
+              "path": "entity.userName",
+              "type": "str"
+            },
+            {
+              "name": "entity_email",
+              "path": "entity.email",
+              "type": "str"
+            },
+            {
+              "name": "entity_phone",
+              "path": "entity.phone",
+              "type": "str"
+            },
+            {
+              "name": "entity_encryptedEmail",
+              "path": "entity.encryptedEmail",
+              "type": "str"
+            },
+            {
+              "name": "entity_encryptedPhone",
+              "path": "entity.encryptedPhone",
+              "type": "str"
+            },
+            {
+              "name": "entity_countryCode",
+              "path": "entity.countryCode",
+              "type": "str"
+            },
+            {
+              "name": "entity_description",
+              "path": "entity.description",
+              "type": "str"
+            },
+            {
+              "name": "entity_createdAt",
+              "path": "entity.createdAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_updatedAt",
+              "path": "entity.updatedAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_deleted",
+              "path": "entity.deleted",
+              "type": "bool"
+            },
+            {
+              "name": "entity_state",
+              "path": "entity.state",
+              "type": "str"
+            },
+            {
+              "name": "entity_isAdmin",
+              "path": "entity.isAdmin",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isProjectManager",
+              "path": "entity.isProjectManager",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isAuthentication",
+              "path": "entity.isAuthentication",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isPassword",
+              "path": "entity.isPassword",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isEmail",
+              "path": "entity.isEmail",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isPhone",
+              "path": "entity.isPhone",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isRootTenantUser",
+              "path": "entity.isRootTenantUser",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isApproval",
+              "path": "entity.isApproval",
+              "type": "bool"
+            },
+            {
+              "name": "entity_tenantLevel",
+              "path": "entity.tenantLevel",
+              "type": "int"
+            },
+            {
+              "name": "entity_locked",
+              "path": "entity.locked",
+              "type": "bool"
+            },
+            {
+              "name": "entity_policyList_0_id",
+              "path": "entity.policyList[0].id",
+              "type": "str"
+            },
+            {
+              "name": "entity_policyList_0_policyName",
+              "path": "entity.policyList[0].policyName",
+              "type": "str"
+            },
+            {
+              "name": "entity_policyList_0_policyType",
+              "path": "entity.policyList[0].policyType",
+              "type": "str"
+            },
+            {
+              "name": "entity_policyList_0_policyCategory",
+              "path": "entity.policyList[0].policyCategory",
+              "type": "str"
+            },
+            {
+              "name": "entity_policyList_0_released",
+              "path": "entity.policyList[0].released",
+              "type": "bool"
+            },
+            {
+              "name": "entity_policyList_0_originalPolicyName",
+              "path": "entity.policyList[0].originalPolicyName",
+              "type": "str"
+            },
+            {
+              "name": "entity_countryCodePhone",
+              "path": "entity.countryCodePhone",
+              "type": "str"
+            },
+            {
+              "name": "entity_password",
+              "path": "entity.password",
+              "type": "str"
+            },
+            {
+              "name": "entity_isForceChange",
+              "path": "entity.isForceChange",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isTempPassword",
+              "path": "entity.isTempPassword",
+              "type": "bool"
+            }
+          ],
+          "depends_on": []
+        },
+        "strategy": "exact_value_match",
+        "is_array": false
+      },
+      "create.tenantId": {
+        "source": "display_by_role.entity_0_id",
+        "api": {
+          "name": "前置 API: display-by-role",
+          "id": "display_by_role",
+          "method": "GET",
+          "pathname": "/estack/api/estack/draco/v1/tenants/display-by-role",
+          "response_sample": {
+            "response_body": "{\n  \"traceId\" : \"d738315f7d6c83c7\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : [ {\n    \"id\" : \"34e2594fca9e44cd9e23b25474838c7f\",\n    \"name\" : \"cswt\",\n    \"description\" : \"本地接口自动化解决方案测试单位\",\n    \"root\" : \"34e2594fca9e44cd9e23b25474838c7f\",\n    \"ancestor\" : \"34e2594fca9e44cd9e23b25474838c7f\",\n    \"descendant\" : \"34e2594fca9e44cd9e23b25474838c7f\",\n    \"depth\" : 0,\n    \"level\" : 0,\n    \"isRoot\" : true,\n    \"isOpenRecycleBin\" : false,\n    \"hasChildren\" : true,\n    \"tenantType\" : \"PHYSICAL\",\n    \"createdAt\" : \"2026-09-01 13:49:27\",\n    \"updatedAt\" : null,\n    \"deleted\" : false,\n    \"ancestorList\" : [ ],\n    \"adminName\" : \"cswt\",\n    \"adminUserName\" : \"cswt\",\n    \"adminId\" : \"30202c8f0f554fbba782c2d6bcfe2d69\",\n    \"departmentLevel\" : \"Level-1 Department\",\n    \"poolNameList\" : null,\n    \"poolInfoList\" : null,\n    \"isFrozen\" : false,\n    \"isInner\" : false,\n    \"enableMultiFactLoginPolicy\" : false,\n    \"children\" : [ {\n      \"id\" : \"dc4c67cc1ca04d5eb781fcae046290b2\",\n      \"name\" : \"测试子部门20260904165706\",\n      \"description\" : \"这是一个测试子部门描述20260904165706\",\n      \"root\" : \"34e2594fca9e44cd9e23b25474838c7f\",\n      \"ancestor\" : \"34e2594fca9e44cd9e23b25474838c7f\",\n      \"descendant\" : \"dc4c67cc1ca04d5eb781fcae046290b2\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-09-04 16:57:09\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"cswt\" ],\n      \"adminName\" : null,\n      \"adminUserName\" : null,\n      \"adminId\" : null,\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : false,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    } ],\n    \"containJoinedProject\" : null,\n    \"isSuperiorTenant\" : null,\n    \"mfloginPolicy\" : null\n  }, {\n    \"id\" : \"99f2669bec95488fa40a49fc5be1ca34\",\n    \"name\" : \"org_202608311223\",\n    \"description\" : \"\",\n    \"root\" : \"99f2669bec95488fa40a49fc5be1ca34\",\n    \"ancestor\" : \"99f2669bec95488fa40a49fc5be1ca34\",\n    \"descendant\" : \"99f2669bec95488fa40a49fc5be1ca34\",\n    \"depth\" : 0,\n    \"level\" : 0,\n    \"isRoot\" : true,\n    \"isOpenRecycleBin\" : false,\n    \"hasChildren\" : true,\n    \"tenantType\" : \"PHYSICAL\",\n    \"createdAt\" : \"2026-08-31 12:23:16\",\n    \"updatedAt\" : null,\n    \"deleted\" : false,\n    \"ancestorList\" : [ ],\n    \"adminName\" : \"AI_202608311223\",\n    \"adminUserName\" : \"AI_202608311223\",\n    \"adminId\" : \"29b23290329d4cdba12d962b111303ab\",\n    \"departmentLevel\" : \"Level-1 Department\",\n    \"poolNameList\" : null,\n    \"poolInfoList\" : null,\n    \"isFrozen\" : false,\n    \"isInner\" : false,\n    \"enableMultiFactLoginPolicy\" : false,\n    \"children\" : [ {\n      \"id\" : \"c275788d1b344611ae4ba5bf48e75dd7\",\n      \"name\" : \"dep_202608311223\",\n      \"description\" : \"\",\n      \"root\" : \"99f2669bec95488fa40a49fc5be1ca34\",\n      \"ancestor\" : \"99f2669bec95488fa40a49fc5be1ca34\",\n      \"descendant\" : \"c275788d1b344611ae4ba5bf48e75dd7\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-31 12:23:28\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"org_202608311223\" ],\n      \"adminName\" : null,\n      \"adminUserName\" : null,\n      \"adminId\" : null,\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : false,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    } ],\n    \"containJoinedProject\" : null,\n    \"isSuperiorTenant\" : null,\n    \"mfloginPolicy\" : null\n  }, {\n    \"id\" : \"cf2ecc23183244d8959023943338ac98\",\n    \"name\" : \"smp-test\",\n    \"description\" : \"\",\n    \"root\" : \"cf2ecc23183244d8959023943338ac98\",\n    \"ancestor\" : \"cf2ecc23183244d8959023943338ac98\",\n    \"descendant\" : \"cf2ecc23183244d8959023943338ac98\",\n    \"depth\" : 0,\n    \"level\" : 0,\n    \"isRoot\" : true,\n    \"isOpenRecycleBin\" : false,\n    \"hasChildren\" : false,\n    \"tenantType\" : \"PHYSICAL\",\n    \"createdAt\" : \"2026-08-25 10:04:37\",\n    \"updatedAt\" : null,\n    \"deleted\" : false,\n    \"ancestorList\" : [ ],\n    \"adminName\" : \"smp-test\",\n    \"adminUserName\" : \"smp-test\",\n    \"adminId\" : \"34101ea9da3444fc8ea86dd2bb0201a3\",\n    \"departmentLevel\" : \"Level-1 Department\",\n    \"poolNameList\" : null,\n    \"poolInfoList\" : null,\n    \"isFrozen\" : false,\n    \"isInner\" : false,\n    \"enableMultiFactLoginPolicy\" : false,\n    \"children\" : [ ],\n    \"containJoinedProject\" : null,\n    \"isSuperiorTenant\" : null,\n    \"mfloginPolicy\" : null\n  }, {\n    \"id\" : \"d3ad685ed2004fcd883af658e389b32f\",\n    \"name\" : \"estack-admin-galaxy\",\n    \"description\" : \"\",\n    \"root\" : \"d3ad685ed2004fcd883af658e389b32f\",\n    \"ancestor\" : \"d3ad685ed2004fcd883af658e389b32f\",\n    \"descendant\" : \"d3ad685ed2004fcd883af658e389b32f\",\n    \"depth\" : 0,\n    \"level\" : 0,\n    \"isRoot\" : true,\n    \"isOpenRecycleBin\" : false,\n    \"hasChildren\" : false,\n    \"tenantType\" : \"PHYSICAL\",\n    \"createdAt\" : \"2026-08-24 13:48:20\",\n    \"updatedAt\" : null,\n    \"deleted\" : false,\n    \"ancestorList\" : [ ],\n    \"adminName\" : \"estack-admin-galaxy-0817\",\n    \"adminUserName\" : \"estack-admin-galaxy-0817\",\n    \"adminId\" : \"1c49021a60c14f2c9d2f058cde640cb0\",\n    \"departmentLevel\" : \"Level-1 Department\",\n    \"poolNameList\" : null,\n    \"poolInfoList\" : null,\n    \"isFrozen\" : false,\n    \"isInner\" : false,\n    \"enableMultiFactLoginPolicy\" : false,\n    \"children\" : [ ],\n    \"containJoinedProject\" : null,\n    \"isSuperiorTenant\" : null,\n    \"mfloginPolicy\" : null\n  }, {\n    \"id\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n    \"name\" : \"内循环账号管理\",\n    \"description\" : \"内循环单位\",\n    \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n    \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n    \"descendant\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n    \"depth\" : 0,\n    \"level\" : 0,\n    \"isRoot\" : true,\n    \"isOpenRecycleBin\" : false,\n    \"hasChildren\" : true,\n    \"tenantType\" : \"PHYSICAL\",\n    \"createdAt\" : \"2026-08-24 13:42:17\",\n    \"updatedAt\" : null,\n    \"deleted\" : false,\n    \"ancestorList\" : [ ],\n    \"adminName\" : \"estack-inner\",\n    \"adminUserName\" : \"estack-inner\",\n    \"adminId\" : \"bbb7ad47370d47bb8d694c5f9a73bb5d\",\n    \"departmentLevel\" : \"Level-1 Department\",\n    \"poolNameList\" : null,\n    \"poolInfoList\" : null,\n    \"isFrozen\" : false,\n    \"isInner\" : true,\n    \"enableMultiFactLoginPolicy\" : false,\n    \"children\" : [ {\n      \"id\" : \"ac0c39e5e3e545769120ad0174b567d3\",\n      \"name\" : \"私有云管理平台\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"ac0c39e5e3e545769120ad0174b567d3\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:29\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-ESTACK\",\n      \"adminUserName\" : \"estack-inner-ESTACK\",\n      \"adminId\" : \"6c8dedf224594916ad2fa7d8b8e27e63\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"69eaa5182cb04cdd83f600ce2f44ba89\",\n      \"name\" : \"云电脑产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"69eaa5182cb04cdd83f600ce2f44ba89\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:29\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-COMPUTER\",\n      \"adminUserName\" : \"estack-inner-COMPUTER\",\n      \"adminId\" : \"8526c56b76be45bf83624f40d0ef7dcb\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"c2239b0df1b54009a4b1df2197f08a12\",\n      \"name\" : \"神眼视觉产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"c2239b0df1b54009a4b1df2197f08a12\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:28\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-SEVP\",\n      \"adminUserName\" : \"estack-inner-SEVP\",\n      \"adminId\" : \"13ecb5ede8974427a631dc862e799f37\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"6dc157052aaa401caebcb29345dda35b\",\n      \"name\" : \"震泽智算平台产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"6dc157052aaa401caebcb29345dda35b\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:27\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-ZEZS\",\n      \"adminUserName\" : \"estack-inner-ZEZS\",\n      \"adminId\" : \"e1b7585a208942c79f79991db8169267\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"f5e92e54521a40cba92fd01dcb2ed872\",\n      \"name\" : \"云原生数据库分布式产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"f5e92e54521a40cba92fd01dcb2ed872\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:27\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-HE3DB\",\n      \"adminUserName\" : \"estack-inner-HE3DB\",\n      \"adminId\" : \"13fd49b587a94357b05955e1abf74d34\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"f7fa151f612d4010b8d74007bcc02386\",\n      \"name\" : \"裸金属产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"f7fa151f612d4010b8d74007bcc02386\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:26\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-BMS\",\n      \"adminUserName\" : \"estack-inner-BMS\",\n      \"adminId\" : \"b6059efe372648928e51e57b2c4bf4c7\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"550598cb8e8f4fd782b216a0db4320d7\",\n      \"name\" : \"弹性MapReduce产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"550598cb8e8f4fd782b216a0db4320d7\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:26\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-EMR\",\n      \"adminUserName\" : \"estack-inner-EMR\",\n      \"adminId\" : \"5ef55acd9c9a4562b3057ce557a2cf6c\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"c19c6f05aaec4c31b9f0cfa4e516f84e\",\n      \"name\" : \"云主机产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"c19c6f05aaec4c31b9f0cfa4e516f84e\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:25\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-ECS\",\n      \"adminUserName\" : \"estack-inner-ECS\",\n      \"adminId\" : \"66543f3833134354a79b4a40c0867296\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"13353d912c534caf9b6d41c867dccc2d\",\n      \"name\" : \"NFV产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"13353d912c534caf9b6d41c867dccc2d\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:25\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-NFV\",\n      \"adminUserName\" : \"estack-inner-NFV\",\n      \"adminId\" : \"046dd810dfb34a7eafe2a82960a40f94\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"67af3fcfc14c493492a34ba4812aa2c9\",\n      \"name\" : \"RabbitMQ产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"67af3fcfc14c493492a34ba4812aa2c9\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:24\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-AMQP\",\n      \"adminUserName\" : \"estack-inner-AMQP\",\n      \"adminId\" : \"f9b70a8290ae4325a4ab19cbdc46cda7\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"b3f169f2d95a4824807fff8a0e12e317\",\n      \"name\" : \"RocketMQ产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"b3f169f2d95a4824807fff8a0e12e317\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:23\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-ROCKETMQ\",\n      \"adminUserName\" : \"estack-inner-ROCKETMQ\",\n      \"adminId\" : \"3ed97116d43140b98effdb0227a54c4b\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"af9b9b22554d48c4b6af7905aa6cb261\",\n      \"name\" : \"Kafka产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"af9b9b22554d48c4b6af7905aa6cb261\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:23\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-KAFKA\",\n      \"adminUserName\" : \"estack-inner-KAFKA\",\n      \"adminId\" : \"ca5697b40307420eb9b16e44511f0a63\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"2a5408ed479d4d528b42991ea8c5f52a\",\n      \"name\" : \"MySQL产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"2a5408ed479d4d528b42991ea8c5f52a\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:22\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-MySQL\",\n      \"adminUserName\" : \"estack-inner-MySQL\",\n      \"adminId\" : \"84e7547875c54171b21f2d3615dd75ae\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"cbf5b30273434d63a3536a12f44c4dc3\",\n      \"name\" : \"VPC产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"cbf5b30273434d63a3536a12f44c4dc3\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:21\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-VPC\",\n      \"adminUserName\" : \"estack-inner-VPC\",\n      \"adminId\" : \"be7c96a634364f24bd2a53a8fb2f9ae7\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    } ],\n    \"containJoinedProject\" : null,\n    \"isSuperiorTenant\" : null,\n    \"mfloginPolicy\" : null\n  } ]\n}"
+          },
+          "extracted_fields": [
+            {
+              "name": "traceId",
+              "path": "traceId",
+              "type": "str"
+            },
+            {
+              "name": "success",
+              "path": "success",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_id",
+              "path": "entity[0].id",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_name",
+              "path": "entity[0].name",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_description",
+              "path": "entity[0].description",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_root",
+              "path": "entity[0].root",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_ancestor",
+              "path": "entity[0].ancestor",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_descendant",
+              "path": "entity[0].descendant",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_depth",
+              "path": "entity[0].depth",
+              "type": "int"
+            },
+            {
+              "name": "entity_0_level",
+              "path": "entity[0].level",
+              "type": "int"
+            },
+            {
+              "name": "entity_0_isRoot",
+              "path": "entity[0].isRoot",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_isOpenRecycleBin",
+              "path": "entity[0].isOpenRecycleBin",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_hasChildren",
+              "path": "entity[0].hasChildren",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_tenantType",
+              "path": "entity[0].tenantType",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_createdAt",
+              "path": "entity[0].createdAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_deleted",
+              "path": "entity[0].deleted",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_adminName",
+              "path": "entity[0].adminName",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_adminUserName",
+              "path": "entity[0].adminUserName",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_adminId",
+              "path": "entity[0].adminId",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_departmentLevel",
+              "path": "entity[0].departmentLevel",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_isFrozen",
+              "path": "entity[0].isFrozen",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_isInner",
+              "path": "entity[0].isInner",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_enableMultiFactLoginPolicy",
+              "path": "entity[0].enableMultiFactLoginPolicy",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_children_0_id",
+              "path": "entity[0].children[0].id",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_children_0_name",
+              "path": "entity[0].children[0].name",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_children_0_description",
+              "path": "entity[0].children[0].description",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_children_0_root",
+              "path": "entity[0].children[0].root",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_children_0_ancestor",
+              "path": "entity[0].children[0].ancestor",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_children_0_descendant",
+              "path": "entity[0].children[0].descendant",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_children_0_depth",
+              "path": "entity[0].children[0].depth",
+              "type": "int"
+            },
+            {
+              "name": "entity_0_children_0_level",
+              "path": "entity[0].children[0].level",
+              "type": "int"
+            },
+            {
+              "name": "entity_0_children_0_isRoot",
+              "path": "entity[0].children[0].isRoot",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_children_0_isOpenRecycleBin",
+              "path": "entity[0].children[0].isOpenRecycleBin",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_children_0_hasChildren",
+              "path": "entity[0].children[0].hasChildren",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_children_0_tenantType",
+              "path": "entity[0].children[0].tenantType",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_children_0_createdAt",
+              "path": "entity[0].children[0].createdAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_children_0_deleted",
+              "path": "entity[0].children[0].deleted",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_children_0_departmentLevel",
+              "path": "entity[0].children[0].departmentLevel",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_children_0_isFrozen",
+              "path": "entity[0].children[0].isFrozen",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_children_0_isInner",
+              "path": "entity[0].children[0].isInner",
+              "type": "bool"
+            }
+          ],
+          "depends_on": []
+        },
+        "strategy": "exact_value_match",
+        "is_array": false
+      },
+      "create.countryCode": {
+        "source": "current_user.entity_countryCode",
+        "api": {
+          "name": "获取当前用户信息",
+          "id": "current_user",
+          "method": "GET",
+          "pathname": "/estack/api/estack/draco/v1/users/current-user",
+          "response_sample": {
+            "response_body": "{\n  \"traceId\" : \"6d581e2c10372618\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"id\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"tenantId\" : \"cec63451f8bf4ceebb9ada0b87d829bf\",\n    \"tenantName\" : \"Super Management Department\",\n    \"adminId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n    \"ramId\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"name\" : \"estack-yy\",\n    \"userName\" : \"estack-yy\",\n    \"email\" : \"l*****u@163.com\",\n    \"phone\" : \"188***1683\",\n    \"encryptedEmail\" : \"d5DMRsWzfs9NOAiRMBvZMNq7TvsxOeiZ\",\n    \"encryptedPhone\" : \"3hmpCM+112+O+OaTCsGN9A==\",\n    \"countryCode\" : \"+86\",\n    \"description\" : \"\",\n    \"createdAt\" : \"2025-01-24 12:19:29\",\n    \"updatedAt\" : \"2025-03-11 17:24:50\",\n    \"deleted\" : false,\n    \"state\" : \"ENABLE\",\n    \"isAdmin\" : false,\n    \"isProjectManager\" : false,\n    \"isAuthentication\" : false,\n    \"roleId\" : null,\n    \"roleName\" : null,\n    \"ancestorList\" : [ \"Super Management Department\" ],\n    \"isPassword\" : true,\n    \"isEmail\" : true,\n    \"isPhone\" : true,\n    \"poolNameList\" : null,\n    \"isRootTenantUser\" : true,\n    \"isApproval\" : false,\n    \"tenantLevel\" : 0,\n    \"locked\" : false,\n    \"policyIdList\" : [ \"OPERATION\" ],\n    \"policyList\" : [ {\n      \"id\" : \"OPERATION\",\n      \"tenantId\" : null,\n      \"policyName\" : \"运营管理员\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"ORGANIZATION\",\n      \"description\" : null,\n      \"released\" : false,\n      \"deleted\" : null,\n      \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.OPERATIONS_ADMIN\"\n    } ],\n    \"countryCodePhone\" : \"+86 188***1683\",\n    \"password\" : \"6974d2bb056747082f6b7fcd01d61d0c9fcbc34f189a6c12d9a295891454d8e2\",\n    \"projectIdList\" : null,\n    \"needRamIdentity\" : null,\n    \"isInnerUser\" : null,\n    \"userType\" : null,\n    \"isForceChange\" : false,\n    \"isTempPassword\" : false,\n    \"mfLoginPolicy\" : null,\n    \"enableMultiFactLoginPolicy\" : null,\n    \"maintainAt\" : null\n  }\n}"
+          },
+          "extracted_fields": [
+            {
+              "name": "traceId",
+              "path": "traceId",
+              "type": "str"
+            },
+            {
+              "name": "success",
+              "path": "success",
+              "type": "bool"
+            },
+            {
+              "name": "entity_id",
+              "path": "entity.id",
+              "type": "str"
+            },
+            {
+              "name": "entity_tenantId",
+              "path": "entity.tenantId",
+              "type": "str"
+            },
+            {
+              "name": "entity_tenantName",
+              "path": "entity.tenantName",
+              "type": "str"
+            },
+            {
+              "name": "entity_adminId",
+              "path": "entity.adminId",
+              "type": "str"
+            },
+            {
+              "name": "entity_ramId",
+              "path": "entity.ramId",
+              "type": "str"
+            },
+            {
+              "name": "entity_name",
+              "path": "entity.name",
+              "type": "str"
+            },
+            {
+              "name": "entity_userName",
+              "path": "entity.userName",
+              "type": "str"
+            },
+            {
+              "name": "entity_email",
+              "path": "entity.email",
+              "type": "str"
+            },
+            {
+              "name": "entity_phone",
+              "path": "entity.phone",
+              "type": "str"
+            },
+            {
+              "name": "entity_encryptedEmail",
+              "path": "entity.encryptedEmail",
+              "type": "str"
+            },
+            {
+              "name": "entity_encryptedPhone",
+              "path": "entity.encryptedPhone",
+              "type": "str"
+            },
+            {
+              "name": "entity_countryCode",
+              "path": "entity.countryCode",
+              "type": "str"
+            },
+            {
+              "name": "entity_description",
+              "path": "entity.description",
+              "type": "str"
+            },
+            {
+              "name": "entity_createdAt",
+              "path": "entity.createdAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_updatedAt",
+              "path": "entity.updatedAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_deleted",
+              "path": "entity.deleted",
+              "type": "bool"
+            },
+            {
+              "name": "entity_state",
+              "path": "entity.state",
+              "type": "str"
+            },
+            {
+              "name": "entity_isAdmin",
+              "path": "entity.isAdmin",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isProjectManager",
+              "path": "entity.isProjectManager",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isAuthentication",
+              "path": "entity.isAuthentication",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isPassword",
+              "path": "entity.isPassword",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isEmail",
+              "path": "entity.isEmail",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isPhone",
+              "path": "entity.isPhone",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isRootTenantUser",
+              "path": "entity.isRootTenantUser",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isApproval",
+              "path": "entity.isApproval",
+              "type": "bool"
+            },
+            {
+              "name": "entity_tenantLevel",
+              "path": "entity.tenantLevel",
+              "type": "int"
+            },
+            {
+              "name": "entity_locked",
+              "path": "entity.locked",
+              "type": "bool"
+            },
+            {
+              "name": "entity_policyList_0_id",
+              "path": "entity.policyList[0].id",
+              "type": "str"
+            },
+            {
+              "name": "entity_policyList_0_policyName",
+              "path": "entity.policyList[0].policyName",
+              "type": "str"
+            },
+            {
+              "name": "entity_policyList_0_policyType",
+              "path": "entity.policyList[0].policyType",
+              "type": "str"
+            },
+            {
+              "name": "entity_policyList_0_policyCategory",
+              "path": "entity.policyList[0].policyCategory",
+              "type": "str"
+            },
+            {
+              "name": "entity_policyList_0_released",
+              "path": "entity.policyList[0].released",
+              "type": "bool"
+            },
+            {
+              "name": "entity_policyList_0_originalPolicyName",
+              "path": "entity.policyList[0].originalPolicyName",
+              "type": "str"
+            },
+            {
+              "name": "entity_countryCodePhone",
+              "path": "entity.countryCodePhone",
+              "type": "str"
+            },
+            {
+              "name": "entity_password",
+              "path": "entity.password",
+              "type": "str"
+            },
+            {
+              "name": "entity_isForceChange",
+              "path": "entity.isForceChange",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isTempPassword",
+              "path": "entity.isTempPassword",
+              "type": "bool"
+            }
+          ],
+          "depends_on": []
+        },
+        "strategy": "exact_value_match",
+        "is_array": false
+      },
+      "update.tenantId": {
+        "source": "display_by_role.entity_0_id",
+        "api": {
+          "name": "前置 API: display-by-role",
+          "id": "display_by_role",
+          "method": "GET",
+          "pathname": "/estack/api/estack/draco/v1/tenants/display-by-role",
+          "response_sample": {
+            "response_body": "{\n  \"traceId\" : \"d738315f7d6c83c7\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : [ {\n    \"id\" : \"34e2594fca9e44cd9e23b25474838c7f\",\n    \"name\" : \"cswt\",\n    \"description\" : \"本地接口自动化解决方案测试单位\",\n    \"root\" : \"34e2594fca9e44cd9e23b25474838c7f\",\n    \"ancestor\" : \"34e2594fca9e44cd9e23b25474838c7f\",\n    \"descendant\" : \"34e2594fca9e44cd9e23b25474838c7f\",\n    \"depth\" : 0,\n    \"level\" : 0,\n    \"isRoot\" : true,\n    \"isOpenRecycleBin\" : false,\n    \"hasChildren\" : true,\n    \"tenantType\" : \"PHYSICAL\",\n    \"createdAt\" : \"2026-09-01 13:49:27\",\n    \"updatedAt\" : null,\n    \"deleted\" : false,\n    \"ancestorList\" : [ ],\n    \"adminName\" : \"cswt\",\n    \"adminUserName\" : \"cswt\",\n    \"adminId\" : \"30202c8f0f554fbba782c2d6bcfe2d69\",\n    \"departmentLevel\" : \"Level-1 Department\",\n    \"poolNameList\" : null,\n    \"poolInfoList\" : null,\n    \"isFrozen\" : false,\n    \"isInner\" : false,\n    \"enableMultiFactLoginPolicy\" : false,\n    \"children\" : [ {\n      \"id\" : \"dc4c67cc1ca04d5eb781fcae046290b2\",\n      \"name\" : \"测试子部门20260904165706\",\n      \"description\" : \"这是一个测试子部门描述20260904165706\",\n      \"root\" : \"34e2594fca9e44cd9e23b25474838c7f\",\n      \"ancestor\" : \"34e2594fca9e44cd9e23b25474838c7f\",\n      \"descendant\" : \"dc4c67cc1ca04d5eb781fcae046290b2\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-09-04 16:57:09\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"cswt\" ],\n      \"adminName\" : null,\n      \"adminUserName\" : null,\n      \"adminId\" : null,\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : false,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    } ],\n    \"containJoinedProject\" : null,\n    \"isSuperiorTenant\" : null,\n    \"mfloginPolicy\" : null\n  }, {\n    \"id\" : \"99f2669bec95488fa40a49fc5be1ca34\",\n    \"name\" : \"org_202608311223\",\n    \"description\" : \"\",\n    \"root\" : \"99f2669bec95488fa40a49fc5be1ca34\",\n    \"ancestor\" : \"99f2669bec95488fa40a49fc5be1ca34\",\n    \"descendant\" : \"99f2669bec95488fa40a49fc5be1ca34\",\n    \"depth\" : 0,\n    \"level\" : 0,\n    \"isRoot\" : true,\n    \"isOpenRecycleBin\" : false,\n    \"hasChildren\" : true,\n    \"tenantType\" : \"PHYSICAL\",\n    \"createdAt\" : \"2026-08-31 12:23:16\",\n    \"updatedAt\" : null,\n    \"deleted\" : false,\n    \"ancestorList\" : [ ],\n    \"adminName\" : \"AI_202608311223\",\n    \"adminUserName\" : \"AI_202608311223\",\n    \"adminId\" : \"29b23290329d4cdba12d962b111303ab\",\n    \"departmentLevel\" : \"Level-1 Department\",\n    \"poolNameList\" : null,\n    \"poolInfoList\" : null,\n    \"isFrozen\" : false,\n    \"isInner\" : false,\n    \"enableMultiFactLoginPolicy\" : false,\n    \"children\" : [ {\n      \"id\" : \"c275788d1b344611ae4ba5bf48e75dd7\",\n      \"name\" : \"dep_202608311223\",\n      \"description\" : \"\",\n      \"root\" : \"99f2669bec95488fa40a49fc5be1ca34\",\n      \"ancestor\" : \"99f2669bec95488fa40a49fc5be1ca34\",\n      \"descendant\" : \"c275788d1b344611ae4ba5bf48e75dd7\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-31 12:23:28\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"org_202608311223\" ],\n      \"adminName\" : null,\n      \"adminUserName\" : null,\n      \"adminId\" : null,\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : false,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    } ],\n    \"containJoinedProject\" : null,\n    \"isSuperiorTenant\" : null,\n    \"mfloginPolicy\" : null\n  }, {\n    \"id\" : \"cf2ecc23183244d8959023943338ac98\",\n    \"name\" : \"smp-test\",\n    \"description\" : \"\",\n    \"root\" : \"cf2ecc23183244d8959023943338ac98\",\n    \"ancestor\" : \"cf2ecc23183244d8959023943338ac98\",\n    \"descendant\" : \"cf2ecc23183244d8959023943338ac98\",\n    \"depth\" : 0,\n    \"level\" : 0,\n    \"isRoot\" : true,\n    \"isOpenRecycleBin\" : false,\n    \"hasChildren\" : false,\n    \"tenantType\" : \"PHYSICAL\",\n    \"createdAt\" : \"2026-08-25 10:04:37\",\n    \"updatedAt\" : null,\n    \"deleted\" : false,\n    \"ancestorList\" : [ ],\n    \"adminName\" : \"smp-test\",\n    \"adminUserName\" : \"smp-test\",\n    \"adminId\" : \"34101ea9da3444fc8ea86dd2bb0201a3\",\n    \"departmentLevel\" : \"Level-1 Department\",\n    \"poolNameList\" : null,\n    \"poolInfoList\" : null,\n    \"isFrozen\" : false,\n    \"isInner\" : false,\n    \"enableMultiFactLoginPolicy\" : false,\n    \"children\" : [ ],\n    \"containJoinedProject\" : null,\n    \"isSuperiorTenant\" : null,\n    \"mfloginPolicy\" : null\n  }, {\n    \"id\" : \"d3ad685ed2004fcd883af658e389b32f\",\n    \"name\" : \"estack-admin-galaxy\",\n    \"description\" : \"\",\n    \"root\" : \"d3ad685ed2004fcd883af658e389b32f\",\n    \"ancestor\" : \"d3ad685ed2004fcd883af658e389b32f\",\n    \"descendant\" : \"d3ad685ed2004fcd883af658e389b32f\",\n    \"depth\" : 0,\n    \"level\" : 0,\n    \"isRoot\" : true,\n    \"isOpenRecycleBin\" : false,\n    \"hasChildren\" : false,\n    \"tenantType\" : \"PHYSICAL\",\n    \"createdAt\" : \"2026-08-24 13:48:20\",\n    \"updatedAt\" : null,\n    \"deleted\" : false,\n    \"ancestorList\" : [ ],\n    \"adminName\" : \"estack-admin-galaxy-0817\",\n    \"adminUserName\" : \"estack-admin-galaxy-0817\",\n    \"adminId\" : \"1c49021a60c14f2c9d2f058cde640cb0\",\n    \"departmentLevel\" : \"Level-1 Department\",\n    \"poolNameList\" : null,\n    \"poolInfoList\" : null,\n    \"isFrozen\" : false,\n    \"isInner\" : false,\n    \"enableMultiFactLoginPolicy\" : false,\n    \"children\" : [ ],\n    \"containJoinedProject\" : null,\n    \"isSuperiorTenant\" : null,\n    \"mfloginPolicy\" : null\n  }, {\n    \"id\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n    \"name\" : \"内循环账号管理\",\n    \"description\" : \"内循环单位\",\n    \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n    \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n    \"descendant\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n    \"depth\" : 0,\n    \"level\" : 0,\n    \"isRoot\" : true,\n    \"isOpenRecycleBin\" : false,\n    \"hasChildren\" : true,\n    \"tenantType\" : \"PHYSICAL\",\n    \"createdAt\" : \"2026-08-24 13:42:17\",\n    \"updatedAt\" : null,\n    \"deleted\" : false,\n    \"ancestorList\" : [ ],\n    \"adminName\" : \"estack-inner\",\n    \"adminUserName\" : \"estack-inner\",\n    \"adminId\" : \"bbb7ad47370d47bb8d694c5f9a73bb5d\",\n    \"departmentLevel\" : \"Level-1 Department\",\n    \"poolNameList\" : null,\n    \"poolInfoList\" : null,\n    \"isFrozen\" : false,\n    \"isInner\" : true,\n    \"enableMultiFactLoginPolicy\" : false,\n    \"children\" : [ {\n      \"id\" : \"ac0c39e5e3e545769120ad0174b567d3\",\n      \"name\" : \"私有云管理平台\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"ac0c39e5e3e545769120ad0174b567d3\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:29\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-ESTACK\",\n      \"adminUserName\" : \"estack-inner-ESTACK\",\n      \"adminId\" : \"6c8dedf224594916ad2fa7d8b8e27e63\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"69eaa5182cb04cdd83f600ce2f44ba89\",\n      \"name\" : \"云电脑产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"69eaa5182cb04cdd83f600ce2f44ba89\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:29\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-COMPUTER\",\n      \"adminUserName\" : \"estack-inner-COMPUTER\",\n      \"adminId\" : \"8526c56b76be45bf83624f40d0ef7dcb\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"c2239b0df1b54009a4b1df2197f08a12\",\n      \"name\" : \"神眼视觉产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"c2239b0df1b54009a4b1df2197f08a12\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:28\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-SEVP\",\n      \"adminUserName\" : \"estack-inner-SEVP\",\n      \"adminId\" : \"13ecb5ede8974427a631dc862e799f37\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"6dc157052aaa401caebcb29345dda35b\",\n      \"name\" : \"震泽智算平台产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"6dc157052aaa401caebcb29345dda35b\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:27\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-ZEZS\",\n      \"adminUserName\" : \"estack-inner-ZEZS\",\n      \"adminId\" : \"e1b7585a208942c79f79991db8169267\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"f5e92e54521a40cba92fd01dcb2ed872\",\n      \"name\" : \"云原生数据库分布式产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"f5e92e54521a40cba92fd01dcb2ed872\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:27\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-HE3DB\",\n      \"adminUserName\" : \"estack-inner-HE3DB\",\n      \"adminId\" : \"13fd49b587a94357b05955e1abf74d34\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"f7fa151f612d4010b8d74007bcc02386\",\n      \"name\" : \"裸金属产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"f7fa151f612d4010b8d74007bcc02386\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:26\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-BMS\",\n      \"adminUserName\" : \"estack-inner-BMS\",\n      \"adminId\" : \"b6059efe372648928e51e57b2c4bf4c7\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"550598cb8e8f4fd782b216a0db4320d7\",\n      \"name\" : \"弹性MapReduce产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"550598cb8e8f4fd782b216a0db4320d7\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:26\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-EMR\",\n      \"adminUserName\" : \"estack-inner-EMR\",\n      \"adminId\" : \"5ef55acd9c9a4562b3057ce557a2cf6c\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"c19c6f05aaec4c31b9f0cfa4e516f84e\",\n      \"name\" : \"云主机产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"c19c6f05aaec4c31b9f0cfa4e516f84e\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:25\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-ECS\",\n      \"adminUserName\" : \"estack-inner-ECS\",\n      \"adminId\" : \"66543f3833134354a79b4a40c0867296\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"13353d912c534caf9b6d41c867dccc2d\",\n      \"name\" : \"NFV产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"13353d912c534caf9b6d41c867dccc2d\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:25\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-NFV\",\n      \"adminUserName\" : \"estack-inner-NFV\",\n      \"adminId\" : \"046dd810dfb34a7eafe2a82960a40f94\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"67af3fcfc14c493492a34ba4812aa2c9\",\n      \"name\" : \"RabbitMQ产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"67af3fcfc14c493492a34ba4812aa2c9\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:24\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-AMQP\",\n      \"adminUserName\" : \"estack-inner-AMQP\",\n      \"adminId\" : \"f9b70a8290ae4325a4ab19cbdc46cda7\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"b3f169f2d95a4824807fff8a0e12e317\",\n      \"name\" : \"RocketMQ产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"b3f169f2d95a4824807fff8a0e12e317\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:23\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-ROCKETMQ\",\n      \"adminUserName\" : \"estack-inner-ROCKETMQ\",\n      \"adminId\" : \"3ed97116d43140b98effdb0227a54c4b\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"af9b9b22554d48c4b6af7905aa6cb261\",\n      \"name\" : \"Kafka产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"af9b9b22554d48c4b6af7905aa6cb261\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:23\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-KAFKA\",\n      \"adminUserName\" : \"estack-inner-KAFKA\",\n      \"adminId\" : \"ca5697b40307420eb9b16e44511f0a63\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"2a5408ed479d4d528b42991ea8c5f52a\",\n      \"name\" : \"MySQL产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"2a5408ed479d4d528b42991ea8c5f52a\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:22\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-MySQL\",\n      \"adminUserName\" : \"estack-inner-MySQL\",\n      \"adminId\" : \"84e7547875c54171b21f2d3615dd75ae\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    }, {\n      \"id\" : \"cbf5b30273434d63a3536a12f44c4dc3\",\n      \"name\" : \"VPC产品\",\n      \"description\" : \"内循环部门\",\n      \"root\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"ancestor\" : \"47e1bf19d4c04a55aa94cab3a36839f6\",\n      \"descendant\" : \"cbf5b30273434d63a3536a12f44c4dc3\",\n      \"depth\" : 1,\n      \"level\" : 1,\n      \"isRoot\" : false,\n      \"isOpenRecycleBin\" : false,\n      \"hasChildren\" : false,\n      \"tenantType\" : \"PHYSICAL\",\n      \"createdAt\" : \"2026-08-24 13:42:21\",\n      \"updatedAt\" : null,\n      \"deleted\" : false,\n      \"ancestorList\" : [ \"内循环账号管理\" ],\n      \"adminName\" : \"estack-inner-VPC\",\n      \"adminUserName\" : \"estack-inner-VPC\",\n      \"adminId\" : \"be7c96a634364f24bd2a53a8fb2f9ae7\",\n      \"departmentLevel\" : \"Level-2 Department\",\n      \"poolNameList\" : null,\n      \"poolInfoList\" : null,\n      \"isFrozen\" : false,\n      \"isInner\" : true,\n      \"enableMultiFactLoginPolicy\" : null,\n      \"children\" : [ ],\n      \"containJoinedProject\" : null,\n      \"isSuperiorTenant\" : null,\n      \"mfloginPolicy\" : null\n    } ],\n    \"containJoinedProject\" : null,\n    \"isSuperiorTenant\" : null,\n    \"mfloginPolicy\" : null\n  } ]\n}"
+          },
+          "extracted_fields": [
+            {
+              "name": "traceId",
+              "path": "traceId",
+              "type": "str"
+            },
+            {
+              "name": "success",
+              "path": "success",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_id",
+              "path": "entity[0].id",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_name",
+              "path": "entity[0].name",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_description",
+              "path": "entity[0].description",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_root",
+              "path": "entity[0].root",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_ancestor",
+              "path": "entity[0].ancestor",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_descendant",
+              "path": "entity[0].descendant",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_depth",
+              "path": "entity[0].depth",
+              "type": "int"
+            },
+            {
+              "name": "entity_0_level",
+              "path": "entity[0].level",
+              "type": "int"
+            },
+            {
+              "name": "entity_0_isRoot",
+              "path": "entity[0].isRoot",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_isOpenRecycleBin",
+              "path": "entity[0].isOpenRecycleBin",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_hasChildren",
+              "path": "entity[0].hasChildren",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_tenantType",
+              "path": "entity[0].tenantType",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_createdAt",
+              "path": "entity[0].createdAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_deleted",
+              "path": "entity[0].deleted",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_adminName",
+              "path": "entity[0].adminName",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_adminUserName",
+              "path": "entity[0].adminUserName",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_adminId",
+              "path": "entity[0].adminId",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_departmentLevel",
+              "path": "entity[0].departmentLevel",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_isFrozen",
+              "path": "entity[0].isFrozen",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_isInner",
+              "path": "entity[0].isInner",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_enableMultiFactLoginPolicy",
+              "path": "entity[0].enableMultiFactLoginPolicy",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_children_0_id",
+              "path": "entity[0].children[0].id",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_children_0_name",
+              "path": "entity[0].children[0].name",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_children_0_description",
+              "path": "entity[0].children[0].description",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_children_0_root",
+              "path": "entity[0].children[0].root",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_children_0_ancestor",
+              "path": "entity[0].children[0].ancestor",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_children_0_descendant",
+              "path": "entity[0].children[0].descendant",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_children_0_depth",
+              "path": "entity[0].children[0].depth",
+              "type": "int"
+            },
+            {
+              "name": "entity_0_children_0_level",
+              "path": "entity[0].children[0].level",
+              "type": "int"
+            },
+            {
+              "name": "entity_0_children_0_isRoot",
+              "path": "entity[0].children[0].isRoot",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_children_0_isOpenRecycleBin",
+              "path": "entity[0].children[0].isOpenRecycleBin",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_children_0_hasChildren",
+              "path": "entity[0].children[0].hasChildren",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_children_0_tenantType",
+              "path": "entity[0].children[0].tenantType",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_children_0_createdAt",
+              "path": "entity[0].children[0].createdAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_children_0_deleted",
+              "path": "entity[0].children[0].deleted",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_children_0_departmentLevel",
+              "path": "entity[0].children[0].departmentLevel",
+              "type": "str"
+            },
+            {
+              "name": "entity_0_children_0_isFrozen",
+              "path": "entity[0].children[0].isFrozen",
+              "type": "bool"
+            },
+            {
+              "name": "entity_0_children_0_isInner",
+              "path": "entity[0].children[0].isInner",
+              "type": "bool"
+            }
+          ],
+          "depends_on": []
+        },
+        "strategy": "exact_value_match",
+        "is_array": false
+      },
+      "update.countryCode": {
+        "source": "current_user.entity_countryCode",
+        "api": {
+          "name": "获取当前用户信息",
+          "id": "current_user",
+          "method": "GET",
+          "pathname": "/estack/api/estack/draco/v1/users/current-user",
+          "response_sample": {
+            "response_body": "{\n  \"traceId\" : \"6d581e2c10372618\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"id\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"tenantId\" : \"cec63451f8bf4ceebb9ada0b87d829bf\",\n    \"tenantName\" : \"Super Management Department\",\n    \"adminId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n    \"ramId\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"name\" : \"estack-yy\",\n    \"userName\" : \"estack-yy\",\n    \"email\" : \"l*****u@163.com\",\n    \"phone\" : \"188***1683\",\n    \"encryptedEmail\" : \"d5DMRsWzfs9NOAiRMBvZMNq7TvsxOeiZ\",\n    \"encryptedPhone\" : \"3hmpCM+112+O+OaTCsGN9A==\",\n    \"countryCode\" : \"+86\",\n    \"description\" : \"\",\n    \"createdAt\" : \"2025-01-24 12:19:29\",\n    \"updatedAt\" : \"2025-03-11 17:24:50\",\n    \"deleted\" : false,\n    \"state\" : \"ENABLE\",\n    \"isAdmin\" : false,\n    \"isProjectManager\" : false,\n    \"isAuthentication\" : false,\n    \"roleId\" : null,\n    \"roleName\" : null,\n    \"ancestorList\" : [ \"Super Management Department\" ],\n    \"isPassword\" : true,\n    \"isEmail\" : true,\n    \"isPhone\" : true,\n    \"poolNameList\" : null,\n    \"isRootTenantUser\" : true,\n    \"isApproval\" : false,\n    \"tenantLevel\" : 0,\n    \"locked\" : false,\n    \"policyIdList\" : [ \"OPERATION\" ],\n    \"policyList\" : [ {\n      \"id\" : \"OPERATION\",\n      \"tenantId\" : null,\n      \"policyName\" : \"运营管理员\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"ORGANIZATION\",\n      \"description\" : null,\n      \"released\" : false,\n      \"deleted\" : null,\n      \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.OPERATIONS_ADMIN\"\n    } ],\n    \"countryCodePhone\" : \"+86 188***1683\",\n    \"password\" : \"6974d2bb056747082f6b7fcd01d61d0c9fcbc34f189a6c12d9a295891454d8e2\",\n    \"projectIdList\" : null,\n    \"needRamIdentity\" : null,\n    \"isInnerUser\" : null,\n    \"userType\" : null,\n    \"isForceChange\" : false,\n    \"isTempPassword\" : false,\n    \"mfLoginPolicy\" : null,\n    \"enableMultiFactLoginPolicy\" : null,\n    \"maintainAt\" : null\n  }\n}"
+          },
+          "extracted_fields": [
+            {
+              "name": "traceId",
+              "path": "traceId",
+              "type": "str"
+            },
+            {
+              "name": "success",
+              "path": "success",
+              "type": "bool"
+            },
+            {
+              "name": "entity_id",
+              "path": "entity.id",
+              "type": "str"
+            },
+            {
+              "name": "entity_tenantId",
+              "path": "entity.tenantId",
+              "type": "str"
+            },
+            {
+              "name": "entity_tenantName",
+              "path": "entity.tenantName",
+              "type": "str"
+            },
+            {
+              "name": "entity_adminId",
+              "path": "entity.adminId",
+              "type": "str"
+            },
+            {
+              "name": "entity_ramId",
+              "path": "entity.ramId",
+              "type": "str"
+            },
+            {
+              "name": "entity_name",
+              "path": "entity.name",
+              "type": "str"
+            },
+            {
+              "name": "entity_userName",
+              "path": "entity.userName",
+              "type": "str"
+            },
+            {
+              "name": "entity_email",
+              "path": "entity.email",
+              "type": "str"
+            },
+            {
+              "name": "entity_phone",
+              "path": "entity.phone",
+              "type": "str"
+            },
+            {
+              "name": "entity_encryptedEmail",
+              "path": "entity.encryptedEmail",
+              "type": "str"
+            },
+            {
+              "name": "entity_encryptedPhone",
+              "path": "entity.encryptedPhone",
+              "type": "str"
+            },
+            {
+              "name": "entity_countryCode",
+              "path": "entity.countryCode",
+              "type": "str"
+            },
+            {
+              "name": "entity_description",
+              "path": "entity.description",
+              "type": "str"
+            },
+            {
+              "name": "entity_createdAt",
+              "path": "entity.createdAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_updatedAt",
+              "path": "entity.updatedAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_deleted",
+              "path": "entity.deleted",
+              "type": "bool"
+            },
+            {
+              "name": "entity_state",
+              "path": "entity.state",
+              "type": "str"
+            },
+            {
+              "name": "entity_isAdmin",
+              "path": "entity.isAdmin",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isProjectManager",
+              "path": "entity.isProjectManager",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isAuthentication",
+              "path": "entity.isAuthentication",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isPassword",
+              "path": "entity.isPassword",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isEmail",
+              "path": "entity.isEmail",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isPhone",
+              "path": "entity.isPhone",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isRootTenantUser",
+              "path": "entity.isRootTenantUser",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isApproval",
+              "path": "entity.isApproval",
+              "type": "bool"
+            },
+            {
+              "name": "entity_tenantLevel",
+              "path": "entity.tenantLevel",
+              "type": "int"
+            },
+            {
+              "name": "entity_locked",
+              "path": "entity.locked",
+              "type": "bool"
+            },
+            {
+              "name": "entity_policyList_0_id",
+              "path": "entity.policyList[0].id",
+              "type": "str"
+            },
+            {
+              "name": "entity_policyList_0_policyName",
+              "path": "entity.policyList[0].policyName",
+              "type": "str"
+            },
+            {
+              "name": "entity_policyList_0_policyType",
+              "path": "entity.policyList[0].policyType",
+              "type": "str"
+            },
+            {
+              "name": "entity_policyList_0_policyCategory",
+              "path": "entity.policyList[0].policyCategory",
+              "type": "str"
+            },
+            {
+              "name": "entity_policyList_0_released",
+              "path": "entity.policyList[0].released",
+              "type": "bool"
+            },
+            {
+              "name": "entity_policyList_0_originalPolicyName",
+              "path": "entity.policyList[0].originalPolicyName",
+              "type": "str"
+            },
+            {
+              "name": "entity_countryCodePhone",
+              "path": "entity.countryCodePhone",
+              "type": "str"
+            },
+            {
+              "name": "entity_password",
+              "path": "entity.password",
+              "type": "str"
+            },
+            {
+              "name": "entity_isForceChange",
+              "path": "entity.isForceChange",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isTempPassword",
+              "path": "entity.isTempPassword",
+              "type": "bool"
+            }
+          ],
+          "depends_on": []
+        },
+        "strategy": "exact_value_match",
+        "is_array": false
+      },
+      "update.adminId": {
+        "source": "current_user.entity_id",
+        "api": {
+          "name": "获取当前用户信息",
+          "id": "current_user",
+          "method": "GET",
+          "pathname": "/estack/api/estack/draco/v1/users/current-user",
+          "response_sample": {
+            "response_body": "{\n  \"traceId\" : \"6d581e2c10372618\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"id\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"tenantId\" : \"cec63451f8bf4ceebb9ada0b87d829bf\",\n    \"tenantName\" : \"Super Management Department\",\n    \"adminId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n    \"ramId\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"name\" : \"estack-yy\",\n    \"userName\" : \"estack-yy\",\n    \"email\" : \"l*****u@163.com\",\n    \"phone\" : \"188***1683\",\n    \"encryptedEmail\" : \"d5DMRsWzfs9NOAiRMBvZMNq7TvsxOeiZ\",\n    \"encryptedPhone\" : \"3hmpCM+112+O+OaTCsGN9A==\",\n    \"countryCode\" : \"+86\",\n    \"description\" : \"\",\n    \"createdAt\" : \"2025-01-24 12:19:29\",\n    \"updatedAt\" : \"2025-03-11 17:24:50\",\n    \"deleted\" : false,\n    \"state\" : \"ENABLE\",\n    \"isAdmin\" : false,\n    \"isProjectManager\" : false,\n    \"isAuthentication\" : false,\n    \"roleId\" : null,\n    \"roleName\" : null,\n    \"ancestorList\" : [ \"Super Management Department\" ],\n    \"isPassword\" : true,\n    \"isEmail\" : true,\n    \"isPhone\" : true,\n    \"poolNameList\" : null,\n    \"isRootTenantUser\" : true,\n    \"isApproval\" : false,\n    \"tenantLevel\" : 0,\n    \"locked\" : false,\n    \"policyIdList\" : [ \"OPERATION\" ],\n    \"policyList\" : [ {\n      \"id\" : \"OPERATION\",\n      \"tenantId\" : null,\n      \"policyName\" : \"运营管理员\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"ORGANIZATION\",\n      \"description\" : null,\n      \"released\" : false,\n      \"deleted\" : null,\n      \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.OPERATIONS_ADMIN\"\n    } ],\n    \"countryCodePhone\" : \"+86 188***1683\",\n    \"password\" : \"6974d2bb056747082f6b7fcd01d61d0c9fcbc34f189a6c12d9a295891454d8e2\",\n    \"projectIdList\" : null,\n    \"needRamIdentity\" : null,\n    \"isInnerUser\" : null,\n    \"userType\" : null,\n    \"isForceChange\" : false,\n    \"isTempPassword\" : false,\n    \"mfLoginPolicy\" : null,\n    \"enableMultiFactLoginPolicy\" : null,\n    \"maintainAt\" : null\n  }\n}"
+          },
+          "extracted_fields": [
+            {
+              "name": "traceId",
+              "path": "traceId",
+              "type": "str"
+            },
+            {
+              "name": "success",
+              "path": "success",
+              "type": "bool"
+            },
+            {
+              "name": "entity_id",
+              "path": "entity.id",
+              "type": "str"
+            },
+            {
+              "name": "entity_tenantId",
+              "path": "entity.tenantId",
+              "type": "str"
+            },
+            {
+              "name": "entity_tenantName",
+              "path": "entity.tenantName",
+              "type": "str"
+            },
+            {
+              "name": "entity_adminId",
+              "path": "entity.adminId",
+              "type": "str"
+            },
+            {
+              "name": "entity_ramId",
+              "path": "entity.ramId",
+              "type": "str"
+            },
+            {
+              "name": "entity_name",
+              "path": "entity.name",
+              "type": "str"
+            },
+            {
+              "name": "entity_userName",
+              "path": "entity.userName",
+              "type": "str"
+            },
+            {
+              "name": "entity_email",
+              "path": "entity.email",
+              "type": "str"
+            },
+            {
+              "name": "entity_phone",
+              "path": "entity.phone",
+              "type": "str"
+            },
+            {
+              "name": "entity_encryptedEmail",
+              "path": "entity.encryptedEmail",
+              "type": "str"
+            },
+            {
+              "name": "entity_encryptedPhone",
+              "path": "entity.encryptedPhone",
+              "type": "str"
+            },
+            {
+              "name": "entity_countryCode",
+              "path": "entity.countryCode",
+              "type": "str"
+            },
+            {
+              "name": "entity_description",
+              "path": "entity.description",
+              "type": "str"
+            },
+            {
+              "name": "entity_createdAt",
+              "path": "entity.createdAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_updatedAt",
+              "path": "entity.updatedAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_deleted",
+              "path": "entity.deleted",
+              "type": "bool"
+            },
+            {
+              "name": "entity_state",
+              "path": "entity.state",
+              "type": "str"
+            },
+            {
+              "name": "entity_isAdmin",
+              "path": "entity.isAdmin",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isProjectManager",
+              "path": "entity.isProjectManager",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isAuthentication",
+              "path": "entity.isAuthentication",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isPassword",
+              "path": "entity.isPassword",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isEmail",
+              "path": "entity.isEmail",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isPhone",
+              "path": "entity.isPhone",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isRootTenantUser",
+              "path": "entity.isRootTenantUser",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isApproval",
+              "path": "entity.isApproval",
+              "type": "bool"
+            },
+            {
+              "name": "entity_tenantLevel",
+              "path": "entity.tenantLevel",
+              "type": "int"
+            },
+            {
+              "name": "entity_locked",
+              "path": "entity.locked",
+              "type": "bool"
+            },
+            {
+              "name": "entity_policyList_0_id",
+              "path": "entity.policyList[0].id",
+              "type": "str"
+            },
+            {
+              "name": "entity_policyList_0_policyName",
+              "path": "entity.policyList[0].policyName",
+              "type": "str"
+            },
+            {
+              "name": "entity_policyList_0_policyType",
+              "path": "entity.policyList[0].policyType",
+              "type": "str"
+            },
+            {
+              "name": "entity_policyList_0_policyCategory",
+              "path": "entity.policyList[0].policyCategory",
+              "type": "str"
+            },
+            {
+              "name": "entity_policyList_0_released",
+              "path": "entity.policyList[0].released",
+              "type": "bool"
+            },
+            {
+              "name": "entity_policyList_0_originalPolicyName",
+              "path": "entity.policyList[0].originalPolicyName",
+              "type": "str"
+            },
+            {
+              "name": "entity_countryCodePhone",
+              "path": "entity.countryCodePhone",
+              "type": "str"
+            },
+            {
+              "name": "entity_password",
+              "path": "entity.password",
+              "type": "str"
+            },
+            {
+              "name": "entity_isForceChange",
+              "path": "entity.isForceChange",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isTempPassword",
+              "path": "entity.isTempPassword",
+              "type": "bool"
+            }
+          ],
+          "depends_on": []
+        },
+        "strategy": "exact_value_match",
+        "is_array": false
+      }
+    }
   }
 }
