@@ -2,7 +2,7 @@
 """
 用户管理 - UI 自动化测试脚本
 
-生成时间: 2026-09-09 15:50:37
+生成时间: 2026-09-09 17:00:38
 生成工具: API AI Test Framework - Stage 2
 版本: v1.0.0
 
@@ -284,6 +284,14 @@ async def main():
         print(f"导航到: {CONFIG['target_url']}")
         await page.goto(CONFIG["target_url"], wait_until="networkidle")
         await page.wait_for_timeout(2000)
+
+        # 等待表格渲染完成（与 Stage 1 发现环境一致）
+        from lib.wait_helpers import wait_for_table_ready
+        try:
+            await wait_for_table_ready(page, timeout=15000)
+            print("  ✅ 表格已就绪")
+        except Exception as e:
+            print(f"  \u26a0\ufe0f \u7b49\u5f85\u8868\u683c\u8d85\u65f6: {e}")
 
         marker = None
         results = []

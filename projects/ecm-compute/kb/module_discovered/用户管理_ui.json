@@ -22,7 +22,7 @@
       "text": "批量导入",
       "tag": "BUTTON",
       "className": "el-button el-button--default el-button--small",
-      "rect": "69x30",
+      "rect": "70x31",
       "location": "toolbar",
       "source": "main",
       "action": "import"
@@ -31,7 +31,7 @@
       "text": "批量删除",
       "tag": "BUTTON",
       "className": "el-button el-tooltip el-button--default el-button--small is-",
-      "rect": "69x30",
+      "rect": "70x31",
       "location": "toolbar",
       "source": "main",
       "action": "delete"
@@ -40,7 +40,7 @@
       "text": "批量迁移",
       "tag": "BUTTON",
       "className": "el-button el-tooltip el-button--default el-button--small is-",
-      "rect": "69x30",
+      "rect": "70x31",
       "location": "toolbar",
       "source": "main",
       "action": "migrate"
@@ -49,7 +49,7 @@
       "text": "GO",
       "tag": "BUTTON",
       "className": "el-button pagination-jumper el-button--default el-button--mi",
-      "rect": "50x27",
+      "rect": "51x28",
       "location": "toolbar",
       "source": "main",
       "action": "unknown"
@@ -60,7 +60,7 @@
       "text": "编辑",
       "tag": "BUTTON",
       "className": "el-button el-button--text el-button--small",
-      "rect": "25x13",
+      "rect": "26x14",
       "location": "row_action",
       "source": "main",
       "action": "update"
@@ -68,8 +68,8 @@
     {
       "text": "删除",
       "tag": "BUTTON",
-      "className": "el-button el-tooltip el-button--text el-button--small",
-      "rect": "25x13",
+      "className": "el-button el-tooltip el-button--text el-button--small cmss-d",
+      "rect": "26x14",
       "location": "row_action",
       "source": "main",
       "action": "delete"
@@ -78,7 +78,7 @@
       "text": "更多",
       "tag": "SPAN",
       "className": "el-dropdown-link el-dropdown-selfdefine",
-      "rect": "44x13",
+      "rect": "44x14",
       "location": "row_action",
       "source": "main",
       "action": "execute"
@@ -90,10 +90,10 @@
       "tag": "button",
       "className": "el-button el-button--default el-button--small",
       "rect": {
-        "x": 1472.6458740234375,
+        "x": 1471.3125,
         "y": 945,
-        "width": 48.677085876464844,
-        "height": 29.33333396911621
+        "width": 49.34375,
+        "height": 30
       },
       "location": "dialog",
       "source": "create_page_scan",
@@ -104,10 +104,10 @@
       "tag": "button",
       "className": "el-button el-button--primary el-button--small",
       "rect": {
-        "x": 1531.322998046875,
+        "x": 1530.65625,
         "y": 945,
-        "width": 48.677085876464844,
-        "height": 29.33333396911621
+        "width": 49.34375,
+        "height": 30
       },
       "location": "dialog",
       "source": "create_page_scan",
@@ -397,30 +397,30 @@
       "success": true,
       "fill_data": {
         "名称": "test",
-        "编码": "code_939959",
-        "描述": "自动测试创建于939959",
-        "备注": "自动创建于939959",
-        "说明": "自动测试创建于939959",
+        "编码": "code_944535",
+        "描述": "自动测试创建于944535",
+        "备注": "自动创建于944535",
+        "说明": "自动测试创建于944535",
         "用户名": "test",
         "姓名": "test",
-        "邮箱": "at_939959@test.com",
-        "手机": "13824154649",
+        "邮箱": "at_944535@test.com",
+        "手机": "13819265065",
         "密码": "Test@123456",
         "确认密码": "Test@123456",
         "角色名称": "test",
-        "角色编码": "role_code_939959",
-        "角色描述": "自动测试角色创建于939959",
+        "角色编码": "role_code_944535",
+        "角色描述": "自动测试角色创建于944535",
         "username": "test",
         "name": "test",
-        "email": "at_939959@test.com",
-        "phone": "13824154649",
+        "email": "at_944535@test.com",
+        "phone": "13819265065",
         "password": "Test@123456",
-        "description": "自动测试创建于939959",
-        "code": "code_939959",
-        "remark": "自动创建于939959",
-        "账号": "AT_test_939959",
-        "系统角色": "AT_test_939959",
-        "部门角色": "AT_test_939959"
+        "description": "自动测试创建于944535",
+        "code": "code_944535",
+        "remark": "自动创建于944535",
+        "账号": "AT_test_944535",
+        "系统角色": "AT_test_944535",
+        "部门角色": "AT_test_944535"
       },
       "fill_rules": {
         "账号": {
@@ -755,7 +755,7 @@
       "error_text": "Page.evaluate: ReferenceError: FORM_ITEM_SEL is not defined\n    at _buildComponentSelector (eval at evaluate (:303:30), <anonymous>:154:13)\n    at eval (eval at evaluate (:303:30), <anonymous>:51:40)\n",
       "trigger_text": "授权",
       "nav_info": {
-        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=34e2594fca9e44cd9e23b25474838c7f&type=userList&rowId=63e05b93e0b642869221b20a8788f877",
+        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=34e2594fca9e44cd9e23b25474838c7f&type=userList&rowId=3cd70511d3b4480faa36c845953ba7f3",
         "depth": 0,
         "page_title": "eStack Enterprise",
         "has_form": true,

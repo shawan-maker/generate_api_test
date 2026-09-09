@@ -5,7 +5,7 @@
     "base_url": "https://10.151.61.248",
     "login_url": "https://10.151.61.248/estack/web/estack/login",
     "framework": "element-ui",
-    "generated_at": "2026-09-09 15:48:07",
+    "generated_at": "2026-09-09 16:37:55",
     "version": "1.0",
     "auth_config": {
       "token_key": "estackToken",
@@ -390,7 +390,7 @@
       "error_type": "exception",
       "error_text": "Page.evaluate: ReferenceError: FORM_ITEM_SEL is not defined\n    at _buildComponentSelector (eval at evaluate (:303:30), <anonymous>:154:13)\n    at eval (eval at evaluate (:303:30), <anonymous>:51:40)\n",
       "nav_info": {
-        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=34e2594fca9e44cd9e23b25474838c7f&type=userList&rowId=63e05b93e0b642869221b20a8788f877",
+        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=34e2594fca9e44cd9e23b25474838c7f&type=userList&rowId=06eb517b4b5c429db699924dbedfb092",
         "depth": 0,
         "page_title": "eStack Enterprise",
         "has_form": true,

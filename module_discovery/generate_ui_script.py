@@ -465,6 +465,14 @@ async def main():
         await page.goto(CONFIG["target_url"], wait_until="networkidle")
         await page.wait_for_timeout(2000)
 
+        # 等待表格渲染完成（与 Stage 1 发现环境一致）
+        from lib.wait_helpers import wait_for_table_ready
+        try:
+            await wait_for_table_ready(page, timeout=15000)
+            print("  ✅ 表格已就绪")
+        except Exception as e:
+            print(f"  \\u26a0\\ufe0f \\u7b49\\u5f85\\u8868\\u683c\\u8d85\\u65f6: {{e}}")
+
         marker = None
         results = []
         for op_name in ops:
