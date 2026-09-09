@@ -19,6 +19,21 @@ from . import const
 LOG = logging.getLogger("analyze_flow")
 
 
+def _get_supporting_keywords(profile: dict) -> list:
+    """
+    从 profile.yaml 获取辅助 API 关键词列表。
+
+    优先级：
+    1. profile.api.supporting_keywords（如果存在）
+    2. const.SUPPORTING_API_KEYWORDS（默认值）
+    """
+    api_cfg = profile.get("api", {}) if profile else {}
+    custom_keywords = api_cfg.get("supporting_keywords")
+    if custom_keywords is not None:
+        return custom_keywords
+    return const.SUPPORTING_API_KEYWORDS
+
+
 def _filter_by_cooccurrence(all_endpoints: list, threshold: float = 0.6,
                             response_samples: dict = None) -> set:
     """
@@ -80,7 +95,12 @@ def _is_list_query(pathname: str, response_samples: dict) -> bool:
     for s in samples[:1]:
         try:
             body = json.loads(s["body"]) if isinstance(s["body"], str) else s["body"]
-            entity = body.get("entity", body)
+            # 尝试所有候选信封键，而非硬编码 "entity"
+            entity = body
+            for ek in const.ENVELOPE_KEY_CANDIDATES:
+                if ek in body and isinstance(body[ek], (dict, list)):
+                    entity = body[ek]
+                    break
             if isinstance(entity, dict):
                 has_list = any(k in entity for k in const.LIST_KEY_CANDIDATES)
                 has_total = any(k in entity for k in const.TOTAL_KEY_CANDIDATES)
@@ -93,7 +113,7 @@ def _is_list_query(pathname: str, response_samples: dict) -> bool:
 
 def analyze(classified_apis: dict, all_endpoints: list,
             response_samples: dict, ui_result: dict,
-            pre_api_candidates: list = None) -> dict:
+            pre_api_candidates: list = None, profile: dict = None) -> dict:
     """
     完整分析流程入口。
     :param classified_apis:   capture_apis 归类结果（by_category）
@@ -101,6 +121,7 @@ def analyze(classified_apis: dict, all_endpoints: list,
     :param response_samples:  响应样本 {pathname: [{status, body}, ...]}
     :param ui_result:         discover_ui 的输出
     :param pre_api_candidates: 前置 API 候选列表（来自 Phase A）
+    :param profile:           profile.yaml 配置字典（用于读取 configurable 参数）
     :return: FlowAnalysis
     """
     LOG.info("开始逻辑分析...")
@@ -117,7 +138,7 @@ def analyze(classified_apis: dict, all_endpoints: list,
         LOG.info(f"  Step 0: 同现频率过滤: {len(cooccurrence_support)} 个 API 被标记为辅助")
 
     # Step 1: 过滤辅助 API，找核心 CRUD API
-    core_apis = _filter_core_apis(classified_apis, response_samples, cooccurrence_support)
+    core_apis = _filter_core_apis(classified_apis, response_samples, cooccurrence_support, profile)
     LOG.info(f"  Step 1: 核心 API 类别: {list(core_apis.keys())}")
 
     # Step 2: 按钮-API 关联
@@ -203,7 +224,7 @@ def _reclassify_all_endpoints(classified_apis: dict, all_endpoints: list) -> dic
 
 
 def _filter_core_apis(classified: dict, response_samples: dict,
-                      cooccurrence_support: set = None) -> dict:
+                      cooccurrence_support: set = None, profile: dict = None) -> dict:
     """
     Step 1: 过滤辅助 API。
 
@@ -213,7 +234,7 @@ def _filter_core_apis(classified: dict, response_samples: dict,
     - GET 类查询且路径不含核心资源名
     """
     core = {}
-    supporting_patterns = const.SUPPORTING_API_KEYWORDS
+    supporting_patterns = _get_supporting_keywords(profile)
     cooccurrence_support = cooccurrence_support or set()
 
     for category, endpoints in classified.items():
@@ -268,8 +289,8 @@ def _filter_core_apis(classified: dict, response_samples: dict,
                                 reclassified[ep_cat].append(ep)
                                 break
                     else:
-                        # 查找 ID 键
-                        if "id" in entity:
+                        # 查找 ID 键（使用通用 ID 字段列表，而非硬编码 "id"）
+                        if any(id_field in entity for id_field in const.COMMON_ID_FIELDS):
                             reclassified["execute"].append(ep)
                         elif isinstance(entity, list) and len(entity) > 0:
                             reclassified["query"].append(ep)
@@ -1079,23 +1100,14 @@ def _build_auth_profile(profile: dict) -> dict:
     captcha_cfg = profile.get("captcha", {})
     creds_cfg = profile.get("credentials", {}) or {}
 
-    # 获取 probe_url 和 context_fields
+    # 获取 probe_url 和 context_fields（必须从 profile 读取，无业务特定默认值）
     probe_url = profile.get("probe_url", auth_cfg.get("probe_url", ""))
     context_fields = profile.get("context_fields", {})
 
-    # 为 estack 类项目设置默认值（如果未显式配置）
-    base_url = profile.get("base_url", "")
-    api_base = profile.get("api_base", "")
-    is_estack_like = "estack" in base_url.lower() or "estack" in api_base.lower()
-
-    if is_estack_like:
-        if not probe_url:
-            probe_url = "/estack/api/estack/draco/v1/users/current-user"
-        if not context_fields:
-            context_fields = {
-                "tenantId": {"path": "entity.tenantId"},
-                "adminId": {"path": "entity.id"}
-            }
+    if not probe_url:
+        LOG.warning("profile.yaml 缺少 probe_url，auth 探活将不可用")
+    if not context_fields:
+        LOG.warning("profile.yaml 缺少 context_fields，上下文注入将不可用")
 
     return {
         "header_name": auth_cfg.get("header_name", "Authorization"),
@@ -1104,9 +1116,9 @@ def _build_auth_profile(profile: dict) -> dict:
         "fixed_headers": auth_cfg.get("fixed_headers", {}),
         "probe_url": probe_url,
         "context_fields": context_fields,
-        "token_key": auth_cfg.get("token_key", "estackToken"),
+        "token_key": auth_cfg.get("token_key", ""),
         "token_storage": auth_cfg.get("token_storage", "localStorage"),
-        "cookie_token_key": auth_cfg.get("cookie_token_key", "accessToken"),
+        "cookie_token_key": auth_cfg.get("cookie_token_key", ""),
         "captcha": {
             "auth_button_text": captcha_cfg.get("auth_button_text",
                                                  profile.get("captcha_auth_button", "")),
@@ -1178,9 +1190,16 @@ def build_manifest(analysis: dict, capture_result: dict,
             for s in create_resp_samples:
                 try:
                     body = json.loads(s["body"]) if isinstance(s["body"], str) else s["body"]
-                    entity = body.get("entity", {})
-                    if isinstance(entity, dict) and "id" in entity:
-                        create_id_sample = entity["id"]
+                    # 使用 response_contract 发现的信封键和 ID 字段，而非硬编码
+                    envelope_keys = response_contract.get("envelope_keys", const.ENVELOPE_KEY_CANDIDATES)
+                    id_field = response_contract.get("id_field", const.DEFAULT_ID_FIELD)
+                    entity = body
+                    for ek in envelope_keys:
+                        if ek in body and isinstance(body[ek], dict):
+                            entity = body[ek]
+                            break
+                    if isinstance(entity, dict) and id_field in entity:
+                        create_id_sample = entity[id_field]
                         break
                 except Exception:
                     pass
@@ -1219,7 +1238,7 @@ def build_manifest(analysis: dict, capture_result: dict,
         # 过滤掉明显的辅助 API（菜单、主题等）
         for ep in raw_eps:
             p = ep["pathname"].lower()
-            if any(kw in p for kw in const.SUPPORTING_API_KEYWORDS):
+            if any(kw in p for kw in _get_supporting_keywords(profile)):
                 continue
             if _endpoint_returns_entity_id(ep):
                 verify_endpoints[verify_action] = {
@@ -1236,7 +1255,7 @@ def build_manifest(analysis: dict, capture_result: dict,
             fallback_eps = raw_classified.get(fallback_cat, [])
             for ep in fallback_eps:
                 p = ep["pathname"].lower()
-                if any(kw in p for kw in const.SUPPORTING_API_KEYWORDS):
+                if any(kw in p for kw in _get_supporting_keywords(profile)):
                     continue
                 if _endpoint_returns_entity_id(ep):
                     verify_endpoints[verify_action] = {
@@ -1436,7 +1455,7 @@ def build_manifest(analysis: dict, capture_result: dict,
                        or _STEP_LABELS.get(action, action)
 
         # 写操作后验证：有 query/detail 端点才插入
-        if action in ("create", "update", "delete", "lock", "unlock", "reset"):
+        if action in const.WRITE_OPERATIONS:
             # 优先用 query（列表验证），其次 detail（详情验证）
             if "query" in verify_endpoints:
                 query_ep = verify_endpoints["query"]["ep"]
@@ -1793,15 +1812,11 @@ def _resolve_parameter_source(param: dict, pre_api_index: dict) -> dict:
 
     field_value_str = str(field_value)
 
-    # 判断是否为上下文类字段（只对这些字段尝试前置 API 匹配）
-    _CONTEXT_SUFFIXES = ('id', 'Id', 'Ids', 'ids', 'code', 'Code', 'key', 'Key',
-                         'tenant', 'Tenant', 'org', 'Org', 'dept', 'Dept',
-                         'admin', 'Admin', 'role', 'Role', 'policy', 'Policy')
-    is_context_field = any(field_name.endswith(s) or field_name == s
-                           for s in _CONTEXT_SUFFIXES)
+    # ── 纯值驱动匹配：不再用字段名后缀做门卫 ──
+    # 值本身就是最好的标识，匹配上了自然就知道来源，不需要关心字段叫什么
 
-    # 策略 1: 精确值匹配（最高优先级，仅限上下文类字段）
-    if is_context_field and field_value_str in pre_api_index:
+    # 策略 1: 精确值匹配（最高优先级，直接按值搜索，不做字段名过滤）
+    if field_value_str in pre_api_index:
         info = pre_api_index[field_value_str]
         api_id = info['api']['id']
         field_name_in_api = info['field']['name']
@@ -1812,27 +1827,19 @@ def _resolve_parameter_source(param: dict, pre_api_index: dict) -> dict:
             'is_array': is_array
         }
 
-    # 策略 2: 字段名启发式（仅匹配上下文类字段）
-    # 只匹配名称中包含 Id/Code/Key/Tenant/Org 等上下文后缀的字段，
-    # 不做黑名单排除（黑名单不可通用），而是只放行上下文类字段
-    _CONTEXT_SUFFIXES = ('id', 'Id', 'code', 'Code', 'key', 'Key',
-                         'tenant', 'Tenant', 'org', 'Org', 'dept', 'Dept',
-                         'admin', 'Admin', 'role', 'Role', 'policy', 'Policy')
-    is_context_field = any(field_name.endswith(s) or field_name == s
-                           for s in _CONTEXT_SUFFIXES)
-    if is_context_field:
-        for value_str, info in pre_api_index.items():
-            api_field_name = info['field']['name']
-            # 精确字段名匹配（取路径最后一段），不做子串匹配
-            api_field_leaf = api_field_name.rsplit('_', 1)[-1].lower()
-            if field_name.lower() == api_field_leaf or field_name.lower() == api_field_name.lower():
-                api_id = info['api']['id']
-                return {
-                    'source': f"{api_id}.{api_field_name}",
-                    'api': info['api'],
-                    'strategy': 'field_name_heuristic',
-                    'is_array': False
-                }
+    # 策略 2: 字段名启发式（降级方案，仅当值匹配失败时尝试）
+    # 字段名完全匹配（取路径最后一段），不做子串匹配
+    for value_str, info in pre_api_index.items():
+        api_field_name = info['field']['name']
+        api_field_leaf = api_field_name.rsplit('_', 1)[-1].lower()
+        if field_name.lower() == api_field_leaf or field_name.lower() == api_field_name.lower():
+            api_id = info['api']['id']
+            return {
+                'source': f"{api_id}.{api_field_name}",
+                'api': info['api'],
+                'strategy': 'field_name_heuristic',
+                'is_array': False
+            }
 
     # 策略 3: 列表成员检查（参数值是否在某个列表响应中）
     # 检查前置 API 索引中的列表字段

@@ -1,0 +1,47 @@
+# Failure Pattern Classification Rules
+# 用于自动分类测试失败原因的配置规则
+
+# Environment failures - 环境相关问题
+env_patterns:
+  - "connection.*refused"
+  - "timeout.*exceeded"
+  - "network.*error"
+  - "ECONNREFUSED"
+  - "ENOTFOUND"
+  - "proxy.*error"
+  - "firewall"
+  - "permission.*denied"
+  - "access.*denied"
+
+# Product failures - 产品缺陷相关问题
+product_patterns:
+  - "assertion.*failed"
+  - "expected.*but.*got"
+  - "should.*be"
+  - "invalid.*response"
+  - "unexpected.*status"
+  - "data.*mismatch"
+  - "validation.*failed"
+  - "business.*logic.*error"
+  - "incorrect.*result"
+
+# Script failures - 脚本相关问题
+script_patterns:
+  - "selector.*not.*found"
+  - "element.*not.*visible"
+  - "timeout.*waiting.*for"
+  - "locator.*failed"
+  - "navigation.*failed"
+  - "page.*closed"
+  - "browser.*crashed"
+  - "playwright.*error"
+
+# Flaky test indicators - 不稳定测试指标
+flaky_patterns:
+  - "intermittent"
+  - "race.*condition"
+  - "timing.*issue"
+  - "flaky"
+  - "unstable"
+  - "sometimes.*fails"
+  - "random.*failure"

@@ -6,27 +6,32 @@ wait_helpers.py — 事件驱动等待辅助函数
 
 import logging
 from playwright.async_api import Page, TimeoutError as PlaywrightTimeout
+from .. import const
 
 LOG = logging.getLogger("wait_helpers")
 
 
-async def wait_for_table_ready(page: Page, timeout: int = 10000) -> bool:
+async def wait_for_table_ready(page: Page, timeout: int = 10000, ui_framework: str = "element-ui") -> bool:
     """等待表格加载就绪（loading mask 消失 + 有数据行）。
 
     替代: wait_for_timeout(3000~5000) after navigation
     """
+    selectors = const.get_ui_selectors(ui_framework)
+
     try:
         # 等待 loading mask 消失
+        loading_mask = selectors["loading"]["mask"]
         await page.wait_for_selector(
-            '.el-loading-mask', state='hidden', timeout=timeout
+            loading_mask, state='hidden', timeout=timeout
         )
     except PlaywrightTimeout:
         pass  # 可能没有 loading mask
 
     try:
         # 等待表格行出现
+        table_row = selectors["table"]["body_row"]
         await page.wait_for_selector(
-            '.el-table__body-wrapper tbody tr', state='visible', timeout=timeout
+            table_row, state='visible', timeout=timeout
         )
         return True
     except PlaywrightTimeout:
@@ -35,14 +40,20 @@ async def wait_for_table_ready(page: Page, timeout: int = 10000) -> bool:
         return False
 
 
-async def wait_for_dialog(page: Page, timeout: int = 8000) -> bool:
-    """等待弹窗出现（el-dialog / el-message-box）。
+async def wait_for_dialog(page: Page, timeout: int = 8000, ui_framework: str = "element-ui") -> bool:
+    """等待弹窗出现（dialog / message-box）。
 
     替代: wait_for_timeout(1000~2000) after button click
     """
+    selectors = const.get_ui_selectors(ui_framework)
+
     try:
+        dialog_sel = selectors["dialog"]["visible_dialog"]
+        messagebox_sel = selectors["message_box"]["visible_selector"]
+        combined = f"{dialog_sel}, {messagebox_sel}"
+
         await page.wait_for_selector(
-            '.el-dialog:visible, .el-message-box:visible, .el-dialog__wrapper[style*=""] .el-dialog',
+            combined,
             state='visible', timeout=timeout
         )
         await page.wait_for_timeout(300)  # 等弹窗动画完成
@@ -52,15 +63,20 @@ async def wait_for_dialog(page: Page, timeout: int = 8000) -> bool:
         return False
 
 
-async def wait_for_dropdown(page: Page, timeout: int = 5000) -> bool:
+async def wait_for_dropdown(page: Page, timeout: int = 5000, ui_framework: str = "element-ui") -> bool:
     """等待下拉菜单展开。
 
     替代: wait_for_timeout(800~1000) after dropdown click
     """
+    selectors = const.get_ui_selectors(ui_framework)
+
     try:
+        dropdown_menu = selectors["dropdown"]["menu_visible"]
+        select_dropdown = selectors["select"]["dropdown_visible"]
+        combined = f"{dropdown_menu}, {select_dropdown}"
+
         await page.wait_for_selector(
-            '.el-dropdown-menu:not([style*="display: none"]), '
-            '.el-select-dropdown:not([style*="display: none"])',
+            combined,
             state='visible', timeout=timeout
         )
         await page.wait_for_timeout(200)  # 等菜单动画
@@ -84,14 +100,20 @@ async def wait_for_navigation_complete(page: Page, timeout: int = 15000) -> bool
         return False
 
 
-async def wait_for_dialog_dismissed(page: Page, timeout: int = 8000) -> bool:
+async def wait_for_dialog_dismissed(page: Page, timeout: int = 8000, ui_framework: str = "element-ui") -> bool:
     """等待弹窗关闭（dialog 消失或隐藏）。
 
     替代: wait_for_timeout(500~1000) after close/confirm
     """
+    selectors = const.get_ui_selectors(ui_framework)
+
     try:
+        dialog_sel = selectors["dialog"]["visible_dialog"]
+        messagebox_sel = selectors["message_box"]["visible_selector"]
+        combined = f"{dialog_sel}, {messagebox_sel}"
+
         await page.wait_for_selector(
-            '.el-dialog:visible, .el-message-box:visible',
+            combined,
             state='hidden', timeout=timeout
         )
         return True

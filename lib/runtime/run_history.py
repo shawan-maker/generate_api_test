@@ -31,33 +31,84 @@ run_history.py - 历史运行结果记录与失败分类（对齐 EcsCloud run_h
 
 import json
 import re
+import yaml
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 
 
-# ---------------- 分类正则 ----------------
-ENV_RE = re.compile(
+# ---------------- 分类正则（可配置化） ----------------
+
+def _load_failure_patterns():
+    """
+    从 config/failure_patterns.yaml 加载失败分类模式。
+
+    Returns:
+        Dict[str, List[str]]: 包含 env_patterns, product_patterns, script_patterns, flaky_patterns
+    """
+    config_path = Path(__file__).parent.parent.parent / 'config' / 'failure_patterns.yaml'
+    if not config_path.exists():
+        return {}
+
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            patterns = yaml.safe_load(f)
+        return patterns or {}
+    except Exception as e:
+        print(f"⚠️  加载 failure_patterns.yaml 失败，使用默认模式: {e}")
+        return {}
+
+
+def _build_regex(hardcoded_pattern: str, config_patterns: List[str]) -> re.Pattern:
+    """
+    合并硬编码模式和配置模式，构建正则表达式。
+
+    Args:
+        hardcoded_pattern: 硬编码的正则模式（作为 fallback）
+        config_patterns: 从配置文件加载的模式列表
+
+    Returns:
+        re.Pattern: 编译后的正则表达式
+    """
+    if config_patterns:
+        # 将配置模式用 | 连接
+        config_regex = '|'.join(config_patterns)
+        # 与硬编码模式合并
+        combined = f"(?:{config_regex})|(?:{hardcoded_pattern})"
+        return re.compile(combined, re.IGNORECASE)
+    else:
+        # 仅使用硬编码模式
+        return re.compile(hardcoded_pattern, re.IGNORECASE)
+
+
+# 加载配置模式
+_config_patterns = _load_failure_patterns()
+
+# 构建分类正则（配置优先，硬编码作为 fallback）
+ENV_RE = _build_regex(
     r'配额|quota|未开通|证书配额|资源不足|欠费|余额|第二项目|跨项目|文件存储|服务未开通|'
     r'环境限制|可订购配额为\s*0|无法下单|无法构造|未开通订购',
-    re.IGNORECASE
+    _config_patterns.get('env_patterns', [])
 )
 
-PRODUCT_RE = re.compile(
+PRODUCT_RE = _build_regex(
     r'服务端(异常|错误)|系统异常|后台报错|接口.*(报错|失败|异常)|API.*(error|fail)|'
     r'业务异常|服务内部错误|网关错误|502|503|504|panic|NullPointer|产品缺陷|代码问题|'
     r'秘密创建失败|该服务|服务故障',
-    re.IGNORECASE
+    _config_patterns.get('product_patterns', [])
 )
 
-SCRIPT_RE = re.compile(
+SCRIPT_RE = _build_regex(
     r'Assignment to constant|重新赋值|定位失败|未出现.*按钮|Cannot read|TypeError|'
     r'ReferenceError|is not (?:a )?function|is not defined|SyntaxError|选择器|selector|'
     r'脚本错误|await.*timeout|超时.*wait|Timeout',
-    re.IGNORECASE
+    _config_patterns.get('script_patterns', [])
 )
 
-FLAKY_RE = re.compile(r'偶发|偶爾|flaky|网络波动|波动', re.IGNORECASE)
+FLAKY_RE = _build_regex(
+    r'偶发|偶爾|flaky|网络波动|波动',
+    _config_patterns.get('flaky_patterns', [])
+)
 
 OVERRIDE_EXPIRY_DAYS = 90
 

@@ -20,6 +20,28 @@ from typing import Optional, Any
 import requests
 import urllib3
 
+# 导入常量和业务规则
+# test_runtime.py 可能在两个位置运行：
+#   - 框架内：lib/runtime/test_runtime.py
+#   - 生成脚本：projects/.../api/lib/runtime/test_runtime.py
+# 需要动态定位 module_discovery 的路径
+try:
+    from module_discovery import const
+except ImportError:
+    # 尝试从框架根目录导入
+    _framework_root = Path(__file__).resolve().parent.parent.parent
+    if (_framework_root / "module_discovery").exists():
+        sys.path.insert(0, str(_framework_root))
+    else:
+        # 生成脚本场景：向上搜索 module_discovery
+        _p = Path(__file__).resolve().parent
+        while _p != _p.parent:
+            if (_p / "module_discovery").exists():
+                sys.path.insert(0, str(_p))
+                break
+            _p = _p.parent
+    from module_discovery import const
+
 # 禁用 SSL 警告（自签证书环境）
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -44,15 +66,11 @@ class ResponseParser:
     """根据 response_contract 解析 API 响应。"""
 
     def __init__(self, contract: dict):
-        self.envelope_keys = contract.get("envelope_keys", ["entity", "data", "result", "payload"])
-        self.success_check = contract.get("success_check", {
-            "type": "field_and_absence",
-            "success_field": "success",
-            "error_field": "errorCode"
-        })
-        self.list_keys = contract.get("list_keys", ["list", "records", "rows", "items"])
-        self.total_keys = contract.get("total_keys", ["total", "totalCount", "count"])
-        self.id_field = contract.get("id_field", "id")
+        self.envelope_keys = contract.get("envelope_keys", const.ENVELOPE_KEY_DEFAULTS)
+        self.success_check = contract.get("success_check", const.SUCCESS_CHECK_DEFAULT)
+        self.list_keys = contract.get("list_keys", const.LIST_KEY_DEFAULTS)
+        self.total_keys = contract.get("total_keys", const.TOTAL_KEY_DEFAULTS)
+        self.id_field = contract.get("id_field", const.DEFAULT_ID_FIELD)
         self._success_field = self.success_check.get("success_field", "success")
         self._error_field = self.success_check.get("error_field", "errorCode")
 
@@ -471,9 +489,26 @@ class StepExecutor:
                     raise AssertionError(f"列表中仍存在 ID={target_id}")
 
         elif assertion == "field_changed":
-            # Fix: check for both "_Updated" and "自动修改_" patterns
+            # 从 body_field_roles 中查找 role="name" 的字段，而非硬编码 policyName/userName
             if isinstance(entity, dict):
-                name_val = entity.get("policyName") or entity.get("userName") or entity.get("name")
+                field_roles = step_def.get("body_field_roles", {})
+                name_fields = [
+                    field_name for field_name, role_info in field_roles.items()
+                    if isinstance(role_info, dict) and role_info.get("role") == "name"
+                ]
+
+                # 按优先级尝试：先找到的字段优先
+                name_val = None
+                for field_name in name_fields:
+                    val = entity.get(field_name)
+                    if val is not None:
+                        name_val = val
+                        break
+
+                # 降级：如果 body_field_roles 中没有 name 字段，尝试通用字段
+                if name_val is None:
+                    name_val = entity.get("name") or entity.get("title") or entity.get("label")
+
                 if name_val and ("_Updated" in str(name_val) or "自动修改_" in str(name_val)):
                     return f"验证通过: 名称已更新为 {name_val}"
 
@@ -906,10 +941,11 @@ class TestRunner:
             create_body_raw[key] = value
 
             if role == "name" and isinstance(value, str):
-                if not value.startswith("AT_"):
-                    create_body[key] = f"AT_{self.ts}_{value}"
+                if not value.startswith(const.DEFAULT_TEST_NAME_PREFIX):
+                    create_body[key] = f"{const.DEFAULT_TEST_NAME_PREFIX}{self.ts}_{value}"
                 else:
-                    create_body[key] = f"AT_{self.ts}_{value[3:]}"
+                    prefix_len = len(const.DEFAULT_TEST_NAME_PREFIX)
+                    create_body[key] = f"{const.DEFAULT_TEST_NAME_PREFIX}{self.ts}_{value[prefix_len:]}"
             else:
                 create_body[key] = value
 

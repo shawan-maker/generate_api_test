@@ -11,7 +11,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import pytest
 
-from lib.run_history import classify, check_expired_overrides, load_json
+from lib.runtime.run_history import classify, check_expired_overrides, load_json
 
 
 class TestClassify:

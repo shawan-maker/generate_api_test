@@ -63,6 +63,19 @@ ACTION_KEYWORDS = {
     "execute":   ["执行", "运行", "触发", "操作", "更多"],
 }
 
+# 提交按钮文本（表单提交时按优先级尝试）
+SUBMIT_BUTTON_TEXTS = ['确定', '保存', '提交', '确认', '立即创建',
+                       '完成', '更新', '修改', 'OK', 'Update', 'Save']
+
+# 提交按钮文本子集（Playwright locator 回退用）
+SUBMIT_BUTTON_TEXTS_FALLBACK = ['确定', '保存', '提交', '确认', '完成', '更新', 'OK']
+
+# 确认对话框按钮文本
+CONFIRM_BUTTON_TEXTS = ['确定', '确认', '是', 'OK', 'Yes']
+
+# 取消对话框按钮文本
+CANCEL_BUTTON_TEXTS = ['取消', 'Cancel', '否']
+
 # 按优先级排序的 CRUD 执行顺序
 CRUD_EXECUTION_ORDER = [
     "create",    # 必须第一
@@ -79,6 +92,10 @@ CRUD_EXECUTION_ORDER = [
     "migrate",   # 迁移
     "delete",    # 必须最后
 ]
+
+# 写操作集合（用于判断是否需要后置验证）
+WRITE_OPERATIONS = ("create", "update", "delete", "lock", "unlock", "reset")
+
 
 # ============================================================
 # Stage 1: 表单元素类型 → KB category 映射
@@ -195,10 +212,10 @@ STATE_LIKE_VALUES = {
 # ============================================================
 # Stage 3: 依赖注入字段名
 # ============================================================
+# 只保留通用 ID 字段，业务特定字段（tenantId, roleId, policyId 等）
+# 通过策略 1（精确值匹配）自动发现，不再硬编码
 COMMON_ID_FIELDS = [
-    "id", "userId", "ids", "resourceId", "projectId",
-    "tenantId", "groupId", "roleId", "policyId",
-    "instanceId", "volumeId", "networkId",
+    "id", "ids",
 ]
 
 
@@ -234,3 +251,82 @@ ENVELOPE_KEY_DEFAULTS = ["entity", "data", "result", "payload"]
 LIST_KEY_DEFAULTS = ["list", "records", "rows", "items"]
 TOTAL_KEY_DEFAULTS = ["total", "totalCount", "count"]
 DEFAULT_ID_FIELD = "id"
+
+# ============================================================
+# 登录表单选择器默认值（可通过 profile.yaml 的 login_flow 覆盖）
+# ============================================================
+DEFAULT_LOGIN_USERNAME_SELECTOR = 'input[placeholder="用户名"]'
+DEFAULT_LOGIN_PASSWORD_SELECTOR = 'input[placeholder="登录密码"]'
+
+# ============================================================
+# 测试数据生成 — 默认值
+# （可通过 profile.yaml 的 test_data 字段覆盖）
+# ============================================================
+DEFAULT_TEST_PASSWORD = "Test@123456"
+DEFAULT_TEST_EMAIL_DOMAIN = "test.com"
+DEFAULT_TEST_PHONE_PREFIX = "138"
+DEFAULT_TEST_NAME_PREFIX = "AT_"
+
+# 响应成功检查默认值（当 response_contract 未提供时使用）
+SUCCESS_CHECK_DEFAULT = {
+    "type": "field_and_absence",
+    "success_field": "success",
+    "error_field": "errorCode",
+}
+
+
+# ============================================================
+# UI 选择器注册表加载器
+# ============================================================
+import json as _json
+from pathlib import Path as _Path
+
+_UI_SELECTORS_DIR = _Path(__file__).parent / "ui_selectors"
+_ui_selectors_cache = {}
+
+
+def get_ui_selectors(framework: str = "element-ui") -> dict:
+    """
+    从 ui_selectors/ 目录加载指定框架的选择器配置。
+
+    Args:
+        framework: UI 框架名称，如 "element-ui" 或 "ant-design"
+
+    Returns:
+        选择器配置字典
+
+    Raises:
+        FileNotFoundError: 如果指定的框架配置文件不存在
+    """
+    if framework in _ui_selectors_cache:
+        return _ui_selectors_cache[framework]
+
+    config_path = _UI_SELECTORS_DIR / f"{framework}.json"
+    if not config_path.exists():
+        raise FileNotFoundError(f"UI 选择器配置文件不存在：{config_path}")
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        selectors = _json.load(f)
+
+    _ui_selectors_cache[framework] = selectors
+    return selectors
+
+
+def get_button_selectors_str(framework: str = "element-ui") -> str:
+    """
+    获取按钮选择器字符串（用于 Playwright page.locator）。
+
+    Args:
+        framework: UI 框架名称
+
+    Returns:
+        逗号分隔的选择器字符串
+    """
+    selectors = get_ui_selectors(framework)
+    generic = selectors.get("button", {}).get("generic_selectors", [])
+    base = selectors.get("button", {}).get("base", "")
+    text = selectors.get("button", {}).get("text", "")
+
+    all_selectors = [base, text] + generic
+    return ", ".join(s for s in all_selectors if s)
+

@@ -149,8 +149,8 @@ class RequestInterceptor:
         self.base_url = base_url
         self.target_url = target_url
         self.capture_all_mode = capture_all_mode
-        # API 路径前缀（默认 /estack/api，可从项目配置覆盖）
-        self.api_path_prefix = api_path_prefix or "/estack/api"
+        # API 路径前缀（从 profile.yaml 的 api_base 传入，无业务特定默认值）
+        self.api_path_prefix = api_path_prefix or ""
         self.calls: List[Dict] = []
         self.samples: Dict[str, List] = {}
         self.permission_gates: List[Dict] = []

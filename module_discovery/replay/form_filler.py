@@ -14,16 +14,25 @@ import time
 from playwright.async_api import Page, Locator
 from typing import Dict, List, Tuple
 
+from .. import const
+
 LOG = logging.getLogger("form_filler")
 
 
 class FormFiller:
     """表单填充封装类，供 capture_apis 调用"""
 
-    def __init__(self, page: Page):
+    def __init__(self, page: Page, ui_framework: str = "element-ui"):
         self.page = page
         self._kb = None
         self._executor = None
+        self.framework = ui_framework
+        # 加载 UI 选择器配置
+        try:
+            self.selectors = const.get_ui_selectors(ui_framework)
+        except FileNotFoundError:
+            # 回退到 element-ui
+            self.selectors = const.get_ui_selectors("element-ui")
 
     def _get_executor(self, framework="element-ui"):
         """获取 MultiStepExecutor 实例（延迟加载）"""
@@ -329,10 +338,13 @@ class FormFiller:
                     filled += 1
                     LOG.info(f"    编辑字段: {label} = {value}")
                 else:
+                    # 从选择器注册表获取 form item 选择器
+                    form_item = self.selectors["form"]["item"]
+                    form_label = self.selectors["form"]["label"]
                     if field_type == "textarea":
-                        css = f'.el-form-item:has(.el-form-item__label:has-text("{label}")) textarea'
+                        css = f'{form_item}:has({form_label}:has-text("{label}")) textarea'
                     else:
-                        css = f'.el-form-item:has(.el-form-item__label:has-text("{label}")) input:not([readonly])'
+                        css = f'{form_item}:has({form_label}:has-text("{label}")) input:not([readonly])'
                     await self.page.fill(css, "", timeout=3000)
                     await self.page.fill(css, value, timeout=3000)
                     filled += 1
@@ -358,7 +370,10 @@ class FormFiller:
         """
         ts = str(int(time.time()))[-6:]
         import random as _rand
-        _phone = f"138{_rand.randint(10000000, 99999999)}"
+        from .. import const
+        _phone = f"{const.DEFAULT_TEST_PHONE_PREFIX}{_rand.randint(10000000, 99999999)}"
+        _email = f"at_{ts}@{const.DEFAULT_TEST_EMAIL_DOMAIN}"
+        _password = const.DEFAULT_TEST_PASSWORD
 
         # 通用字段映射（保留现有逻辑）
         fill_data = {
@@ -368,15 +383,15 @@ class FormFiller:
             "说明": f"自动测试创建于{ts}",
             # 用户管理
             "用户名": username, "姓名": username,
-            "邮箱": f"at_{ts}@test.com", "手机": _phone, "手机号": _phone, "电话": _phone,
-            "密码": "Test@123456", "确认密码": "Test@123456",
+            "邮箱": _email, "手机": _phone, "手机号": _phone, "电话": _phone,
+            "密码": _password, "确认密码": _password,
             # 角色管理
             "角色名称": username, "角色编码": f"role_code_{ts}",
             "角色描述": f"自动测试角色创建于{ts}",
             # 英文字段
             "username": username, "name": username,
-            "email": f"at_{ts}@test.com", "phone": _phone, "mobile": _phone, "tel": _phone,
-            "password": "Test@123456", "description": f"自动测试创建于{ts}",
+            "email": _email, "phone": _phone, "mobile": _phone, "tel": _phone,
+            "password": _password, "description": f"自动测试创建于{ts}",
             "code": f"code_{ts}", "remark": f"自动创建于{ts}",
         }
 
@@ -397,35 +412,40 @@ class FormFiller:
     @staticmethod
     def _default_for_type(field_type: str, input_type: str, ts: str, username: str) -> str:
         """根据字段类型生成合理的默认填充值。"""
+        from .. import const
         if field_type == "textarea":
             return f"自动测试创建于{ts}"
         if input_type == "number":
             return "1"
         if input_type == "email":
-            return f"at_{ts}@test.com"
+            return f"at_{ts}@{const.DEFAULT_TEST_EMAIL_DOMAIN}"
         if input_type == "tel":
             import random as _rand
-            return f"138{_rand.randint(10000000, 99999999)}"
+            return f"{const.DEFAULT_TEST_PHONE_PREFIX}{_rand.randint(10000000, 99999999)}"
         if input_type == "password":
-            return "Test@123456"
+            return const.DEFAULT_TEST_PASSWORD
         if input_type == "url":
             return f"https://test-{ts}.example.com"
         # 默认文本
-        return f"AT_{username}_{ts}"
+        return f"{const.DEFAULT_TEST_NAME_PREFIX}{username}_{ts}"
 
     async def select_dropdowns(self) -> int:
         """选择所有下拉框（包括 el-select 和 el-tree）的第一个选项，返回成功选择的数量"""
         selected = 0
         try:
-            # 查找所有 el-select
-            selects = await self.page.query_selector_all('.el-select')
+            # 从选择器注册表获取 select 选择器
+            select_container = self.selectors["select"]["container"]
+            select_item = self.selectors["select"]["item"]
+
+            # 查找所有 select
+            selects = await self.page.query_selector_all(select_container)
             for sel in selects:
                 try:
                     await sel.click()
                     await self.page.wait_for_timeout(500)
 
                     # 选择第一个可见选项
-                    options = await self.page.query_selector_all('.el-select-dropdown__item:visible')
+                    options = await self.page.query_selector_all(f'{select_item}:visible')
                     if options:
                         await options[0].click()
                         selected += 1
@@ -453,7 +473,14 @@ class FormFiller:
         Returns:
             成功勾选的 checkbox 数量
         """
-        trees = await self.page.query_selector_all('.el-tree')
+        # 从选择器注册表获取 tree 选择器
+        tree_container = self.selectors["tree"]["container"]
+        tree_node = self.selectors["tree"]["node"]
+        expand_icon = self.selectors["tree"]["expand_icon"]
+        checkbox = self.selectors["tree"]["checkbox"]
+        checkbox_input = self.selectors["tree"]["checkbox_input"]
+
+        trees = await self.page.query_selector_all(tree_container)
         if not trees:
             return 0
 
@@ -461,13 +488,13 @@ class FormFiller:
         for tree in trees:
             try:
                 # 先诊断树的状态
-                tree_info = await tree.evaluate("""el => {
-                    const nodes = el.querySelectorAll('.el-tree-node');
-                    const expandIcons = el.querySelectorAll('.el-tree-node__expand-icon');
-                    const checkboxes = el.querySelectorAll('.el-checkbox');
+                tree_info = await tree.evaluate(f"""el => {{
+                    const nodes = el.querySelectorAll('{tree_node}');
+                    const expandIcons = el.querySelectorAll('{expand_icon}');
+                    const checkboxes = el.querySelectorAll('{checkbox}');
                     const visibleCheckboxes = Array.from(checkboxes).filter(cb => cb.offsetWidth > 0);
 
-                    return {
+                    return {{
                         nodeCount: nodes.length,
                         expandIconCount: expandIcons.length,
                         checkboxCount: checkboxes.length,
@@ -476,8 +503,8 @@ class FormFiller:
                         checkedCount: Array.from(checkboxes).filter(cb => cb.classList.contains('is-checked')).length,
                         treeVisible: el.offsetWidth > 0,
                         treeRect: el.getBoundingClientRect(),
-                    };
-                }""")
+                    }};
+                }}""")
 
                 LOG.info(f"    树形诊断: nodes={tree_info['nodeCount']} checkboxes={tree_info['checkboxCount']} "
                         f"visible={tree_info['visibleCheckboxCount']} collapsed={tree_info['collapsedIcons']} "
@@ -486,44 +513,44 @@ class FormFiller:
                 # 如果 checkbox 不可见但有折叠的节点，先展开
                 if tree_info['visibleCheckboxCount'] == 0 and tree_info['collapsedIcons'] > 0:
                     LOG.info(f"    树节点已折叠，尝试展开...")
-                    expand_result = await self.page.evaluate("""el => {
-                        const icons = el.querySelectorAll('.el-tree-node__expand-icon:not(.expanded):not(.is-leaf)');
+                    expand_result = await self.page.evaluate(f"""el => {{
+                        const icons = el.querySelectorAll('{expand_icon}:not(.expanded):not(.is-leaf)');
                         let expanded = 0;
-                        icons.forEach(icon => {
-                            try {
+                        icons.forEach(icon => {{
+                            try {{
                                 icon.click();
                                 expanded++;
-                            } catch(e) {}
-                        });
-                        return { attempted: icons.length, expanded };
-                    }""", tree)
+                            }} catch(e) {{}}
+                        }});
+                        return {{ attempted: icons.length, expanded }};
+                    }}""", tree)
                     LOG.info(f"    展开结果: {expand_result}")
                     await self.page.wait_for_timeout(500)
 
                 # 使用 JavaScript 点击 checkbox（绕过可见性检查）
-                js_click_result = await self.page.evaluate("""el => {
-                    const result = { attempted: 0, clicked: 0, errors: [] };
-                    const checkboxes = el.querySelectorAll('.el-checkbox__input');
+                js_click_result = await self.page.evaluate(f"""el => {{
+                    const result = {{ attempted: 0, clicked: 0, errors: [] }};
+                    const checkboxes = el.querySelectorAll('{checkbox_input}');
 
-                    for (const cb of checkboxes) {
+                    for (const cb of checkboxes) {{
                         result.attempted++;
                         if (result.clicked >= 3) break;  // 最多勾选3个
 
                         // 检查是否已选中
-                        if (cb.closest('.el-checkbox')?.classList.contains('is-checked')) {
+                        if (cb.closest('{checkbox}')?.classList.contains('is-checked')) {{
                             continue;
-                        }
+                        }}
 
-                        try {
+                        try {{
                             // 使用 JavaScript click 绕过 Playwright 可见性检查
                             cb.click();
                             result.clicked++;
-                        } catch(e) {
+                        }} catch(e) {{
                             result.errors.push(e.message);
-                        }
-                    }
+                        }}
+                    }}
                     return result;
-                }""", tree)
+                }}""", tree)
 
                 checked += js_click_result['clicked']
                 if js_click_result['clicked'] > 0:
@@ -553,22 +580,22 @@ class FormFiller:
 
         # JavaScript 方式：去掉空格后匹配常见提交按钮文本，返回原始文本
         try:
-            clicked = await self.page.evaluate("""() => {
-                const submitTexts = ['确定', '保存', '提交', '确认', '立即创建',
-                    '完成', '更新', '修改', 'OK', 'Update', 'Save'];
+            _submit_texts_js = json.dumps(const.SUBMIT_BUTTON_TEXTS)
+            clicked = await self.page.evaluate(f"""(() => {{
+                const submitTexts = {_submit_texts_js};
                 const buttons = Array.from(document.querySelectorAll('button'));
                 // 优先找可见的按钮
                 const visible = buttons.filter(b => b.offsetWidth > 0 && b.offsetHeight > 0);
-                for (const btn of visible) {
+                for (const btn of visible) {{
                     const originalText = btn.textContent.trim();
                     const normalized = originalText.replace(/\\s+/g, '');
-                    if (submitTexts.some(t => normalized === t || normalized.includes(t))) {
+                    if (submitTexts.some(t => normalized === t || normalized.includes(t))) {{
                         btn.click();
-                        return {normalized: normalized, original: originalText};
-                    }
-                }
+                        return {{normalized: normalized, original: originalText}};
+                    }}
+                }}
                 return null;
-            }""")
+            }})()""")
             if clicked:
                 await wait_for_loading_complete(self.page)
                 # 使用原始文本（保留空格），供 build_playbook 生成精确 locator
@@ -577,7 +604,7 @@ class FormFiller:
             LOG.debug(f"JavaScript 提交按钮匹配失败: {e}")
 
         # Playwright locator 回退
-        for text in ['确定', '保存', '提交', '确认', '完成', '更新', 'OK']:
+        for text in const.SUBMIT_BUTTON_TEXTS_FALLBACK:
             try:
                 btn = self.page.locator(f'button:has-text("{text}"):visible').first
                 if await btn.count() > 0:
@@ -601,11 +628,15 @@ class FormFiller:
         return "not_found"
 
 
-async def scan_form_fields(page: Page) -> List[Dict]:
-    """扫描页面表单字段，按 .el-form-item 遍历，检测组件类型。
+async def scan_form_fields(page: Page, ui_framework: str = "element-ui") -> List[Dict]:
+    """扫描页面表单字段，按 form-item 遍历，检测组件类型。
 
     以表单项为单位遍历，检测子元素的 DOM 类名判断组件类型。
     每个字段携带 kb_category，对应 probe_knowledge.json 的类别名。
+
+    Args:
+        page: Playwright 页面对象
+        ui_framework: UI 框架名称
 
     Returns:
         表单字段列表，每个字段包含：
@@ -617,17 +648,29 @@ async def scan_form_fields(page: Page) -> List[Dict]:
         - required: 是否必填
         - firstOptionText: 第一个选项文本（仅 radio 有值）
     """
-    script = """
-    () => {
+    # 从选择器注册表注入 JS
+    selectors = const.get_ui_selectors(ui_framework)
+    form_item = selectors["form"]["item"]
+    form_label = selectors["form"]["label"]
+    select_container = selectors["select"]["container"]
+    cascader_container = selectors["cascader"]["container"]
+    date_picker = selectors["date_picker"]["editor"]
+    radio_group = selectors["radio"]["group"]
+    radio_button = selectors["radio"]["button_inner"]
+    radio_label = selectors["radio"]["label"]
+    checkbox_container = selectors["checkbox"]["container"]
+    table_container = selectors["table"]["container"]
+
+    script = f"""
+    () => {{
         const fields = [];
 
-        // 以 .el-form-item / .ant-form-item 为单位遍历
-        const formItems = document.querySelectorAll('.el-form-item, .ant-form-item');
+        // 以 form-item 为单位遍历
+        const formItems = document.querySelectorAll('{form_item}');
 
-        formItems.forEach(fi => {
+        formItems.forEach(fi => {{
             // 1. 提取 label
-            const labelEl = fi.querySelector(
-                '.el-form-item__label, .ant-form-item-label label');
+            const labelEl = fi.querySelector('{form_label}');
             const label = labelEl ? labelEl.textContent.trim().replace(/[：:]/g, '') : '';
             if (!label) return;
 
@@ -640,50 +683,50 @@ async def scan_form_fields(page: Page) -> List[Dict]:
 
             // 2. 按优先级检测组件类型
 
-            // 2.1 复合组件检测：el-select + 独立 input（如手机号带国家编码）
-            const selectEl = fi.querySelector('.el-select, .ant-select');
+            // 2.1 复合组件检测：select + 独立 input（如手机号带国家编码）
+            const selectEl = fi.querySelector('{select_container}');
             const independentInputs = Array.from(fi.querySelectorAll('input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"])'))
                 .filter(inp => !inp.readOnly && !selectEl?.contains(inp) && inp.offsetWidth > 0);
 
-            if (selectEl && independentInputs.length > 0) {
+            if (selectEl && independentInputs.length > 0) {{
                 // 复合组件：先添加 select，再添加独立 input
                 const selectIdx = fields.length;
-                fields.push({ label: label + '(下拉)', type: 'select', kb_category: 'el-select',
-                             selector: _buildComponentSelector(fi, '.el-select', selectIdx), required });
-                independentInputs.forEach(inp => {
-                    fields.push({ label, type: 'input', kb_category: 'input-generic',
+                fields.push({{ label: label + '(下拉)', type: 'select', kb_category: 'el-select',
+                             selector: _buildComponentSelector(fi, '{select_container}', selectIdx), required }});
+                independentInputs.forEach(inp => {{
+                    fields.push({{ label, type: 'input', kb_category: 'input-generic',
                                  selector: _buildSelector(inp),
-                                 inputType: inp.type || 'text', required });
-                });
-            }
-            else if (fi.querySelector('.el-cascader')) {
+                                 inputType: inp.type || 'text', required }});
+                }});
+            }}
+            else if (fi.querySelector('{cascader_container}')) {{
                 const cascaderIdx = fields.length;
-                fields.push({ label, type: 'cascader', kb_category: 'el-cascader',
-                             selector: _buildComponentSelector(fi, '.el-cascader', cascaderIdx), required });
-            }
-            else if (fi.querySelector('.el-date-editor, .ant-picker')) {
+                fields.push({{ label, type: 'cascader', kb_category: 'el-cascader',
+                             selector: _buildComponentSelector(fi, '{cascader_container}', cascaderIdx), required }});
+            }}
+            else if (fi.querySelector('{date_picker}')) {{
                 const datePickerIdx = fields.length;
-                fields.push({ label, type: 'date-picker', kb_category: 'date-picker',
-                             selector: _buildComponentSelector(fi, '.el-date-editor, .ant-picker', datePickerIdx), required });
-            }
-            else if (selectEl) {
+                fields.push({{ label, type: 'date-picker', kb_category: 'date-picker',
+                             selector: _buildComponentSelector(fi, '{date_picker}', datePickerIdx), required }});
+            }}
+            else if (selectEl) {{
                 const selectIdx = fields.length;
-                fields.push({ label, type: 'select', kb_category: 'el-select',
-                             selector: _buildComponentSelector(fi, '.el-select', selectIdx), required });
-            }
-            else if (fi.querySelector('.el-radio-group')) {
+                fields.push({{ label, type: 'select', kb_category: 'el-select',
+                             selector: _buildComponentSelector(fi, '{select_container}', selectIdx), required }});
+            }}
+            else if (fi.querySelector('{radio_group}')) {{
                 const radioIdx = fields.length;
-                const firstRadio = fi.querySelector('.el-radio-button__inner, .el-radio__label');
-                fields.push({ label, type: 'radio', kb_category: 'radio',
-                             selector: _buildComponentSelector(fi, '.el-radio-group', radioIdx), required,
-                             firstOptionText: firstRadio ? firstRadio.textContent.trim() : '' });
-            }
-            else if (fi.querySelector('.el-checkbox') && !fi.closest('.el-table')) {
+                const firstRadio = fi.querySelector('{radio_button}, {radio_label}');
+                fields.push({{ label, type: 'radio', kb_category: 'radio',
+                             selector: _buildComponentSelector(fi, '{radio_group}', radioIdx), required,
+                             firstOptionText: firstRadio ? firstRadio.textContent.trim() : '' }});
+            }}
+            else if (fi.querySelector('{checkbox_container}') && !fi.closest('{table_container}')) {{
                 const checkboxIdx = fields.length;
-                fields.push({ label, type: 'checkbox', kb_category: 'form-checkbox',
-                             selector: _buildComponentSelector(fi, '.el-checkbox', checkboxIdx), required });
-            }
-            else {
+                fields.push({{ label, type: 'checkbox', kb_category: 'form-checkbox',
+                             selector: _buildComponentSelector(fi, '{checkbox_container}', checkboxIdx), required }});
+            }}
+            else {{
                 // 通用 input / textarea
                 // 检测复合输入组：多个可见 input（如手机号 = 国家编码 + 手机号）
                 const allInputs = Array.from(fi.querySelectorAll(
@@ -692,71 +735,71 @@ async def scan_form_fields(page: Page) -> List[Dict]:
 
                 const ta = fi.querySelector('textarea');
 
-                if (allInputs.length >= 2) {
+                if (allInputs.length >= 2) {{
                     // 复合输入组：过滤辅助输入，选择主输入
-                    const mainInput = allInputs.find(inp => {
+                    const mainInput = allInputs.find(inp => {{
                         // 优先选择 placeholder 包含"请输入"的
-                        if (inp.placeholder && (inp.placeholder.includes('请输入') || inp.placeholder.includes('Enter'))) {
+                        if (inp.placeholder && (inp.placeholder.includes('请输入') || inp.placeholder.includes('Enter'))) {{
                             return true;
-                        }
+                        }}
                         // 或选择宽度最大的
                         return false;
-                    }) || allInputs.reduce((max, inp) => inp.offsetWidth > max.offsetWidth ? inp : max, allInputs[0]);
+                    }}) || allInputs.reduce((max, inp) => inp.offsetWidth > max.offsetWidth ? inp : max, allInputs[0]);
 
                     const ir = mainInput.getBoundingClientRect();
-                    if (ir.width > 0 && ir.height > 0) {
-                        fields.push({ label, type: 'input', kb_category: 'input-generic',
+                    if (ir.width > 0 && ir.height > 0) {{
+                        fields.push({{ label, type: 'input', kb_category: 'input-generic',
                                      selector: _buildSelector(mainInput),
-                                     inputType: mainInput.type || 'text', required });
-                    }
-                } else if (allInputs.length === 1) {
+                                     inputType: mainInput.type || 'text', required }});
+                    }}
+                }} else if (allInputs.length === 1) {{
                     // 单个 input
                     const inp = allInputs[0];
                     const ir = inp.getBoundingClientRect();
-                    if (ir.width > 0 && ir.height > 0) {
-                        fields.push({ label, type: 'input', kb_category: 'input-generic',
+                    if (ir.width > 0 && ir.height > 0) {{
+                        fields.push({{ label, type: 'input', kb_category: 'input-generic',
                                      selector: _buildSelector(inp),
-                                     inputType: inp.type || 'text', required });
-                    }
-                } else if (ta) {
-                    fields.push({ label, type: 'textarea', kb_category: 'textarea-generic',
-                                 selector: _buildSelector(ta), required });
-                }
-            }
-        });
+                                     inputType: inp.type || 'text', required }});
+                    }}
+                }} else if (ta) {{
+                    fields.push({{ label, type: 'textarea', kb_category: 'textarea-generic',
+                                 selector: _buildSelector(ta), required }});
+                }}
+            }}
+        }});
 
         return fields;
 
-        function _buildSelector(element) {
-            if (element.id) return `#${element.id}`;
-            if (element.name) return `[name="${element.name}"]`;
+        function _buildSelector(element) {{
+            if (element.id) return `#${{element.id}}`;
+            if (element.name) return `[name="${{element.name}}"]`;
 
             const path = [];
             let current = element;
-            while (current && current.nodeType === Node.ELEMENT_NODE) {
+            while (current && current.nodeType === Node.ELEMENT_NODE) {{
                 let selector = current.nodeName.toLowerCase();
-                if (current.id) {
-                    selector = `#${current.id}`;
+                if (current.id) {{
+                    selector = `#${{current.id}}`;
                     path.unshift(selector);
                     break;
-                } else {
+                }} else {{
                     let sibling = current;
                     let nth = 1;
-                    while (sibling.previousElementSibling) {
+                    while (sibling.previousElementSibling) {{
                         sibling = sibling.previousElementSibling;
                         if (sibling.nodeName === current.nodeName) nth++;
-                    }
-                    if (nth > 1 || current.nextElementSibling) {
-                        selector += `:nth-of-type(${nth})`;
-                    }
-                }
+                    }}
+                    if (nth > 1 || current.nextElementSibling) {{
+                        selector += `:nth-of-type(${{nth}})`;
+                    }}
+                }}
                 path.unshift(selector);
                 current = current.parentElement;
-            }
+            }}
             return path.join(' > ');
-        }
+        }}
 
-        function _buildComponentSelector(formItem, componentSelector, fieldIndex) {
+        function _buildComponentSelector(formItem, componentSelector, fieldIndex) {{
             // 为复杂组件（select/cascader/date-picker/radio/checkbox）生成 CSS selector
             const component = formItem.querySelector(componentSelector);
             if (!component) return null;
@@ -766,15 +809,15 @@ async def scan_form_fields(page: Page) -> List[Dict]:
             // 对于多卡片表单（.el-card 包裹），必须用 children 而非 querySelectorAll
             const directChildren = formItem.parentElement.children;
             let nth = 1;
-            for (let i = 0; i < directChildren.length; i++) {
-                if (directChildren[i] === formItem) {
+            for (let i = 0; i < directChildren.length; i++) {{
+                if (directChildren[i] === formItem) {{
                     nth = i + 1;
                     break;
-                }
-            }
-            return `.el-form-item:nth-child(${nth}) ${componentSelector}`;
-        }
-    }
+                }}
+            }}
+            return FORM_ITEM_SEL + ':nth-child(' + nth + ') ' + componentSelector;
+        }}
+    }}
     """
 
     return await page.evaluate(script)
@@ -887,7 +930,7 @@ async def submit_form(page: Page, button_text: str = "提交") -> bool:
                 return True
 
         # 尝试常见提交按钮文本
-        for text in ['确定', '保存', '提交', '确认']:
+        for text in const.SUBMIT_BUTTON_TEXTS_FALLBACK:
             buttons = await page.query_selector_all(f'button:has-text("{text}"):visible')
             if buttons:
                 await buttons[0].click()
@@ -1026,6 +1069,7 @@ def generate_fill_rules(fields: List[Dict]) -> dict:
 
 def _infer_fill_rule(label: str, field_type: str, input_type: str, required: bool) -> dict:
     """推断字段的填充规则。"""
+    from .. import const
     label_lower = label.lower()
 
     # 用户名相关
@@ -1038,15 +1082,15 @@ def _infer_fill_rule(label: str, field_type: str, input_type: str, required: boo
 
     # 邮箱
     if any(kw in label_lower for kw in ["邮箱", "email", "邮件"]):
-        return {"rule": "email_pattern", "params": {"domain": "test.com"}}
+        return {"rule": "email_pattern", "params": {"domain": const.DEFAULT_TEST_EMAIL_DOMAIN}}
 
     # 手机号
     if any(kw in label_lower for kw in ["手机", "电话", "phone", "mobile", "tel"]):
-        return {"rule": "phone_pattern", "params": {"prefix": "138"}}
+        return {"rule": "phone_pattern", "params": {"prefix": const.DEFAULT_TEST_PHONE_PREFIX}}
 
     # 密码
     if any(kw in label_lower for kw in ["密码", "password", "pwd"]):
-        return {"rule": "password_fixed", "params": {"value": "Test@123456"}}
+        return {"rule": "password_fixed", "params": {"value": const.DEFAULT_TEST_PASSWORD}}
 
     # 编码
     if any(kw in label_lower for kw in ["编码", "code", "编号"]):
@@ -1058,11 +1102,11 @@ def _infer_fill_rule(label: str, field_type: str, input_type: str, required: boo
 
     # 根据 inputType 推断
     if input_type == "email":
-        return {"rule": "email_pattern", "params": {"domain": "test.com"}}
+        return {"rule": "email_pattern", "params": {"domain": const.DEFAULT_TEST_EMAIL_DOMAIN}}
     if input_type == "tel":
-        return {"rule": "phone_pattern", "params": {"prefix": "138"}}
+        return {"rule": "phone_pattern", "params": {"prefix": const.DEFAULT_TEST_PHONE_PREFIX}}
     if input_type == "password":
-        return {"rule": "password_fixed", "params": {"value": "Test@123456"}}
+        return {"rule": "password_fixed", "params": {"value": const.DEFAULT_TEST_PASSWORD}}
     if input_type == "number":
         return {"rule": "number_pattern", "params": {"min": 1, "max": 100}}
 
@@ -1094,16 +1138,16 @@ def apply_fill_rule(rule: dict, timestamp: str = None) -> str:
         return f"{prefix}{timestamp}"
 
     if rule_type == "email_pattern":
-        domain = params.get("domain", "test.com")
+        domain = params.get("domain", const.DEFAULT_TEST_EMAIL_DOMAIN)
         return f"at_{timestamp}@{domain}"
 
     if rule_type == "phone_pattern":
-        prefix = params.get("prefix", "138")
+        prefix = params.get("prefix", const.DEFAULT_TEST_PHONE_PREFIX)
         import random
         return f"{prefix}{random.randint(10000000, 99999999)}"
 
     if rule_type == "password_fixed":
-        return params.get("value", "Test@123456")
+        return params.get("value", const.DEFAULT_TEST_PASSWORD)
 
     if rule_type == "code_pattern":
         prefix = params.get("prefix", "code")
@@ -1148,10 +1192,13 @@ def generate_fill_data(fields: List[Dict], username: str = "test") -> dict:
         {label: value} 字典
     """
     import random
+    from .. import const
     ts = str(int(time.time()))[-6:]
 
     # 生成 11 位手机号
-    phone = f"138{random.randint(10000000, 99999999)}"
+    phone = f"{const.DEFAULT_TEST_PHONE_PREFIX}{random.randint(10000000, 99999999)}"
+    email = f"at_{ts}@{const.DEFAULT_TEST_EMAIL_DOMAIN}"
+    password = const.DEFAULT_TEST_PASSWORD
 
     # 通用字段映射
     fill_data = {
@@ -1161,15 +1208,15 @@ def generate_fill_data(fields: List[Dict], username: str = "test") -> dict:
         "说明": f"自动测试创建于{ts}",
         # 用户管理
         "用户名": username, "姓名": username,
-        "邮箱": f"at_{ts}@test.com", "手机": phone,
-        "密码": "Test@123456", "确认密码": "Test@123456",
+        "邮箱": email, "手机": phone,
+        "密码": password, "确认密码": password,
         # 角色管理
         "角色名称": username, "角色编码": f"role_code_{ts}",
         "角色描述": f"自动测试角色创建于{ts}",
         # 英文字段
         "username": username, "name": username,
-        "email": f"at_{ts}@test.com", "phone": phone,
-        "password": "Test@123456", "description": f"自动测试创建于{ts}",
+        "email": email, "phone": phone,
+        "password": password, "description": f"自动测试创建于{ts}",
         "code": f"code_{ts}", "remark": f"自动创建于{ts}",
     }
 

@@ -6,11 +6,11 @@
   * meta.json 记录 savedAt，用于「新鲜度」判断，避免无谓的探活/登录。
   * 是否登录成功以「服务端探测」为准（current-user 接口 success=true 即有效），绝不靠本地猜测。
   * 仅在服务端证伪时才调用滑块登录；登录带外层重试（滑块不稳）。
-  * 真实鉴权 token = cookies.json 中的 accessToken（前端实际就是用它拼 Bearer，localStorage.estackToken 多为空）。
+  * 真实鉴权 token = cookies.json 中的 cookie_token_key（配置在 auth_config 中）。
   * 对外同步接口 ensure_client()：cookie 有效就用；失效才自动登录并回写 cookie；调用方无需关心细节。
 
 ⚠️ 早期版本 get_client 把本地 token 恢复成占位符 "***restored***" 再去 Bearer，导致探活必失败、脚本拿不到 client。
-   本版彻底修正：token 一律从 accessToken cookie 取真实值；get_client 直接委托 ensure_client（失效自动登录）。
+   本版彻底修正：token 一律从 cookie 取真实值；get_client 直接委托 ensure_client（失效自动登录）。
 """
 import os
 import re
@@ -23,6 +23,10 @@ from pathlib import Path
 from typing import Optional
 
 from . import slider
+try:
+    from module_discovery import const as _const
+except ImportError:
+    _const = None
 
 
 class AuthSession:
@@ -30,6 +34,7 @@ class AuthSession:
         self.profile = profile or {}
         self.auth_cfg = self.profile.get("auth", {})
         self.cap_cfg = self.profile.get("captcha", {})
+        self.login_flow_cfg = self.profile.get("login_flow", {})
         _creds = self.profile.get("credentials", {}) or {}
         self.username = (username
                         or os.environ.get(_creds.get("username_env", ""), "")
@@ -39,7 +44,7 @@ class AuthSession:
                         or os.environ.get(_creds.get("password_env", ""), "")
                         or _creds.get("password")
                         or "")
-        self.token = None                 # 真实 token = accessToken cookie 值
+        self.token = None                 # 真实 token = cookie_token_key 配置的 cookie 值
         self.token_issued_at = 0
         self._cookies = []                # cookie 列表（唯一可信源）
         self.ttl = int(self.auth_cfg.get("freshness_ttl_seconds", 1800))
@@ -158,13 +163,25 @@ class AuthSession:
             return []
 
     def _extract_token(self, cookies) -> Optional[str]:
-        """真实 token = accessToken cookie 值（前端用它拼 Bearer）。"""
+        """从 cookie 中提取 token 值，cookie_token_key 从 auth_cfg 读取。"""
+        cookie_token_key = self.auth_cfg.get("cookie_token_key", "")
+        token_key = self.auth_cfg.get("token_key", "")
+
+        # 主查找：使用 profile 中配置的 cookie_token_key
+        if cookie_token_key:
+            for c in cookies or []:
+                if c.get("name") == cookie_token_key:
+                    return c.get("value")
+
+        # 次查找：使用 token_key（localStorage key 有时与 cookie key 相同）
+        if token_key:
+            for c in cookies or []:
+                if c.get("name") == token_key:
+                    return c.get("value")
+
+        # 兜底：常见通用 token cookie 名称
         for c in cookies or []:
-            if c.get("name") == "accessToken":
-                return c.get("value")
-        # 兜底：estackToken / Authorization
-        for c in cookies or []:
-            if c.get("name") in ("estackToken", "Authorization"):
+            if c.get("name") in ("access_token", "Authorization", "session_id", "sid"):
                 return c.get("value")
         return None
 
@@ -200,7 +217,7 @@ class AuthSession:
         """
         从本地读取 cookie（唯一可信源）。
         返回 True 表示 cookie 文件存在（是否新鲜由 is_fresh / 探活决定）。
-        token 直接取 accessToken 真实值（不再用占位符）。
+        token 直接取 cookie_token_key 配置的真实值（不再用占位符）。
         """
         if path:
             self.set_context_path(path)
@@ -227,8 +244,10 @@ class AuthSession:
         if not self.token or not self._cookies:
             self._log_fn(f"[auth] 探活: 缺 token={bool(self.token)} cookies={bool(self._cookies)}")
             return False
-        probe_path = (self.profile.get("probe_url")
-                      or "/estack/api/estack/draco/v1/users/current-user")
+        probe_path = self.profile.get("probe_url", "")
+        if not probe_path:
+            self._log_fn("[auth] 探活: profile.yaml 缺少 probe_url，跳过")
+            return False
         target = (base_url or "").rstrip("/") + probe_path
         try:
             header_name = self.auth_cfg.get("header_name", "Authorization")
@@ -425,8 +444,18 @@ class AuthSession:
 
         await self._switch_to_chinese(page)
 
-        await page.fill('input[placeholder="用户名"]', self.username)
-        await page.fill('input[placeholder="登录密码"]', self.password)
+        # 登录表单选择器：优先 login_flow 配置，回退到 const 默认值
+        if _const:
+            default_user_sel = _const.DEFAULT_LOGIN_USERNAME_SELECTOR
+            default_pass_sel = _const.DEFAULT_LOGIN_PASSWORD_SELECTOR
+        else:
+            default_user_sel = 'input[placeholder="用户名"]'
+            default_pass_sel = 'input[placeholder="登录密码"]'
+        username_selector = self.login_flow_cfg.get("username_selector", default_user_sel)
+        password_selector = self.login_flow_cfg.get("password_selector", default_pass_sel)
+
+        await page.fill(username_selector, self.username)
+        await page.fill(password_selector, self.password)
         await page.wait_for_timeout(800)
         self._log_fn("[auth] 已填用户名密码")
 
@@ -493,17 +522,37 @@ class AuthSession:
 
         self._log_fn(f"[auth] 登录按钮点击后 URL: {page.url}")
         await page.wait_for_timeout(1000)
-        token = await page.evaluate("() => localStorage.getItem('estackToken')")
-        self._log_fn(f"[auth] localStorage.token: {'✅' if token else '❌ 空(尝试从 cookie 注入)'}")
+
+        # 从 auth_cfg 读取 token_key（localStorage key）和 cookie_token_key
+        token_key = self.auth_cfg.get("token_key", "")
+        cookie_token_key = self.auth_cfg.get("cookie_token_key", "")
+
+        # 尝试从 localStorage 读取 token
+        token = None
+        if token_key:
+            token = await page.evaluate(f"() => localStorage.getItem('{token_key}')")
+        self._log_fn(f"[auth] localStorage.{token_key or 'token'}: {'✅' if token else '❌ 空(尝试从 cookie 注入)'}")
+
         if not token:
             try:
                 cookies = await context.cookies()
-                t = next((c["value"] for c in cookies if c["name"] in ("accessToken", "estackToken", "Authorization")), None)
+                # 主查找：cookie_token_key
+                t = None
+                if cookie_token_key:
+                    t = next((c["value"] for c in cookies if c["name"] == cookie_token_key), None)
+                # 次查找：token_key
+                if not t and token_key:
+                    t = next((c["value"] for c in cookies if c["name"] == token_key), None)
+                # 兜底：常见通用 cookie 名称
+                if not t:
+                    t = next((c["value"] for c in cookies if c["name"] in ("access_token", "Authorization", "session_id", "sid")), None)
+
                 if t:
                     # 注入到 localStorage，让前端 SPA 能正常使用
-                    await page.evaluate(f"() => localStorage.setItem('estackToken', '{t}')")
+                    if token_key:
+                        await page.evaluate(f"() => localStorage.setItem('{token_key}', '{t}')")
                     token = t
-                    self._log_fn("[auth] ✅ 已从 cookie 注入 estackToken 到 localStorage")
+                    self._log_fn(f"[auth] ✅ 已从 cookie 注入 token 到 localStorage.{token_key}")
                 else:
                     token = None
             except Exception as e:

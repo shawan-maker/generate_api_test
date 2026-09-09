@@ -17,12 +17,12 @@ from pathlib import Path
 from typing import Optional
 
 
-def load_cookies(cookie_path, token_key: str = "accessToken") -> tuple:
+def load_cookies(cookie_path, token_key: str = "") -> tuple:
     """读取 cookies.json，返回 (cookies_list, token_value_or_None)。
 
     Args:
         cookie_path: cookies.json 的路径（str 或 Path）
-        token_key: 优先查找的 cookie name
+        token_key: 优先查找的 cookie name（从 auth_config 传入，不使用硬编码默认值）
 
     Returns:
         (cookies, token) 元组。文件不存在或解析失败返回 ([], None)。
@@ -40,12 +40,12 @@ def load_cookies(cookie_path, token_key: str = "accessToken") -> tuple:
         return [], None
 
 
-def get_token(cookies: list, token_key: str = "accessToken") -> Optional[str]:
+def get_token(cookies: list, token_key: str = "") -> Optional[str]:
     """从 cookie 列表提取 token 值。
 
     查找优先级:
-    1. token_key 参数指定的 cookie name（默认 accessToken）
-    2. 兜底: estackToken / Authorization
+    1. token_key 参数指定的 cookie name（从 auth_config 传入）
+    2. 兜底: 常见的 token cookie 名称
 
     Args:
         cookies: Playwright 格式的 cookie 列表
@@ -57,11 +57,14 @@ def get_token(cookies: list, token_key: str = "accessToken") -> Optional[str]:
     if not cookies:
         return None
     # 主查找
-    for c in cookies:
-        if c.get("name") == token_key:
-            return c.get("value")
-    # 兜底
-    fallback_names = {"estackToken", "Authorization"} - {token_key}
+    if token_key:
+        for c in cookies:
+            if c.get("name") == token_key:
+                return c.get("value")
+    # 兜底：常见的 token cookie 名称（不再硬编码业务特定的 estackToken）
+    fallback_names = {"token", "access_token", "Authorization", "session_id", "sid"}
+    if token_key:
+        fallback_names -= {token_key}
     for c in cookies:
         if c.get("name") in fallback_names:
             return c.get("value")
@@ -122,16 +125,16 @@ async def apply_to_playwright_context(context, cookies: list):
 
 
 async def inject_token_to_storage(page, token: str, storage_type: str = "localStorage",
-                            token_key: str = "estackToken"):
+                            token_key: str = ""):
     """注入 token 到 localStorage / sessionStorage（UI 脚本用）。
 
     Args:
         page: Playwright Page 实例
         token: token 值
         storage_type: "localStorage" 或 "sessionStorage"
-        token_key: 存储的 key 名
+        token_key: 存储的 key 名（从 auth_config 传入）
     """
-    if token and storage_type:
+    if token and storage_type and token_key:
         await page.evaluate(
             f"() => {storage_type}.setItem('{token_key}', '{token}')"
         )
@@ -150,7 +153,7 @@ def require_auth(config_dir, auth_config: dict):
         (requests.Session, cookies_list) 元组
     """
     cookie_path = Path(config_dir) / "cookies.json"
-    cookie_token_key = auth_config.get("cookie_token_key", "accessToken")
+    cookie_token_key = auth_config.get("cookie_token_key", "")
     cookies, token = load_cookies(cookie_path, token_key=cookie_token_key)
 
     if not cookies or not token:
@@ -177,7 +180,7 @@ async def require_auth_for_ui(config_dir, auth_config: dict, target_url: str = "
         (cookies_list, token, page) 元组，page 已验证鉴权
     """
     cookie_path = Path(config_dir) / "cookies.json"
-    cookies, token = load_cookies(cookie_path, token_key=auth_config.get("cookie_token_key", "accessToken"))
+    cookies, token = load_cookies(cookie_path, token_key=auth_config.get("cookie_token_key", ""))
 
     if not cookies:
         _auth_fail_exit(cookie_path)
@@ -195,7 +198,7 @@ async def apply_auth_to_playwright(context, page, cookies, token, auth_config):
         token: token 值
         auth_config: 鉴权配置 dict
     """
-    token_key = auth_config.get("token_key", "estackToken")
+    token_key = auth_config.get("token_key", "")
     token_storage = auth_config.get("token_storage", "localStorage")
     login_url = auth_config.get("login_url", "")
     target_url = auth_config.get("target_url", "")
@@ -210,11 +213,12 @@ async def apply_auth_to_playwright(context, page, cookies, token, auth_config):
         await page.wait_for_timeout(500)
 
     # 3. 注入 token 到 storage
-    if token:
+    if token and token_key:
         await inject_token_to_storage(page, token, token_storage, token_key)
         print(f"  ✅ 已注入 {token_key} 到 {token_storage}")
     else:
-        print(f"  ⚠️ 未找到 token (cookie_token_key={auth_config.get('cookie_token_key', 'accessToken')})")
+        cookie_token_key = auth_config.get('cookie_token_key', '')
+        print(f"  ⚠️ 未找到 token (cookie_token_key={cookie_token_key}, token_key={token_key})")
 
     # 4. 验证
     if target_url:

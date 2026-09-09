@@ -30,7 +30,7 @@ from module_discovery.feedback_loop import (
     patch_ui_result,
     save_fix_to_experience
 )
-from module_discovery.form_filler import (
+from module_discovery.replay.form_filler import (
     generate_fill_data,
     read_form_errors,
 )

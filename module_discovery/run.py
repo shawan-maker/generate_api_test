@@ -260,15 +260,15 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str)
     ui_result["base_url"] = base_url
     # 从 profile 加载 login_url
     profile = _load_profile(project_dir)
-    login_url = profile.get("login_url", f"{base_url}/estack/web/estack/login")
+    login_url = profile.get("login_url", "")
     ui_result["login_url"] = login_url
 
     # 注入 auth_config（供 UI 脚本生成使用）
     profile_auth = profile.get("auth", {})
     ui_result["auth_config"] = {
-        "token_key": profile_auth.get("token_key", "estackToken"),
+        "token_key": profile_auth.get("token_key", ""),
         "token_storage": profile_auth.get("token_storage", "localStorage"),
-        "cookie_token_key": profile_auth.get("cookie_token_key", "accessToken"),
+        "cookie_token_key": profile_auth.get("cookie_token_key", ""),
     }
 
     # 生成并保存 playbook
@@ -415,11 +415,16 @@ async def run_stage2(page, project_dir: Path, module_name: str,
                      ui_result: dict, base_url: str, target_url: str,
                      max_recapture: int = 2,
                      capture_all_mode: bool = False,
-                     version: str = "") -> tuple:
+                     version: str = "",
+                     api_path_prefix: str = None) -> tuple:
     """Stage 2: API 捕获。
 
     Stage 1 已验证所有操作可成功，Stage 2 只做 API 捕获。
     保留重试机制以应对瞬时网络问题。
+
+    Args:
+        api_path_prefix: API 路径前缀，从 profile.yaml 的 api_base 读取。
+                         若为 None 则自动从 profile 加载。
 
     Returns:
         (full_result, is_valid) 元组
@@ -427,6 +432,11 @@ async def run_stage2(page, project_dir: Path, module_name: str,
     LOG.info("=" * 50)
     LOG.info("Stage 2: API 捕获")
     LOG.info("=" * 50)
+
+    # 自动从 profile 加载 api_path_prefix（若未显式传入）
+    if api_path_prefix is None:
+        profile = _load_profile(project_dir)
+        api_path_prefix = profile.get("api_base", "")
 
     max_recapture = min(max_recapture, 5)
 
@@ -447,7 +457,8 @@ async def run_stage2(page, project_dir: Path, module_name: str,
         api_capture = await capture_all(
             page, ui_result, base_url, target_url,
             project_dir=project_dir, module_name=module_name,
-            capture_all_mode=capture_all_mode
+            capture_all_mode=capture_all_mode,
+            api_path_prefix=api_path_prefix
         )
 
         is_valid, issues = validate_stage2(api_capture)
@@ -527,7 +538,7 @@ def run_stage34(project_dir: Path, module_name: str,
 
     # Stage 3: 分析（传入前置 API 候选）
     flow = analyze(classified, all_endpoints, response_samples, ui_result,
-                   pre_api_candidates=pre_api_candidates)
+                   pre_api_candidates=pre_api_candidates, profile=profile)
 
     # 阶段门控验证
     is_valid, issues = validate_stage3(flow)
@@ -1019,7 +1030,8 @@ async def main():
                 page, project_dir, args.module, ui_result or {}, base_url, target_url,
                 max_recapture=args.max_recapture,
                 capture_all_mode=args.capture_all,
-                version=args.version or ver_mod.resolve_version(project_dir))
+                version=args.version or ver_mod.resolve_version(project_dir),
+                api_path_prefix=profile.get("api_base", ""))
         else:
             capture_result = _load_capture_result(project_dir, args.module)
             stage2_valid = bool(capture_result and capture_result.get("by_category"))
@@ -1028,6 +1040,7 @@ async def main():
 
         # Stage 3+4（可以离线执行）
         manifest = None
+        script_path = None
         if stage in ("34", "4", "all"):
             if not stage2_valid and not args.force_gen:
                 LOG.error("❌ Stage 2 验证失败，拒绝生成脚本（使用 --force-gen 强制覆盖）")
@@ -1040,10 +1053,24 @@ async def main():
                                      version=args.version or ver_mod.resolve_version(project_dir))
                 if result:
                     _, script_path, manifest = result
-                    LOG.info(f"\n✅ 全部完成! 测试脚本: {script_path}")
+                    LOG.info(f"\n✅ Stage 3+4 完成! 测试脚本: {script_path}")
 
-        # Stage 5（导出 artifacts）
-        if args.export:
+        # Stage 4 验证：运行生成的脚本并检查结果
+        script_ok = False
+        if script_path and args.export:
+            LOG.info("\n" + "=" * 60)
+            LOG.info("Stage 4 验证: 运行生成的 API 测试脚本")
+            LOG.info("=" * 60)
+            script_ok = await _run_stage4_verify(
+                str(script_path), project_dir, profile, login_url,
+                username=(args.user or ""), password=(args.password or ""),
+                headless=args.headless
+            )
+            if not script_ok:
+                LOG.warning("⚠️ 脚本运行失败，跳过 Stage 5 导出")
+
+        # Stage 5（导出 artifacts）- 仅在脚本运行成功时执行
+        if args.export and script_ok:
             if manifest is None:
                 # 尝试从文件加载 manifest
                 version = args.version or ver_mod.resolve_version(project_dir)
@@ -1123,12 +1150,15 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
                     page, project_dir, name, ui_result or {}, base_url, target_url,
                     max_recapture=args.max_recapture,
                     capture_all_mode=args.capture_all,
-                    version=args.version or ver_mod.resolve_version(project_dir))
+                    version=args.version or ver_mod.resolve_version(project_dir),
+                    api_path_prefix=profile.get("api_base", ""))
             else:
                 capture_result = _load_capture_result(project_dir, name)
                 stage2_valid = bool(capture_result and capture_result.get("by_category"))
 
             # Stage 3+4
+            script_path = None
+            manifest = None
             if stage in ("34", "4", "all"):
                 if not stage2_valid and not args.force_gen:
                     LOG.error(f"  ❌ {name}: Stage 2 验证失败，跳过脚本生成"
@@ -1140,8 +1170,27 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
                 result = run_stage34(project_dir, name, profile, target_url,
                                      version=args.version or ver_mod.resolve_version(project_dir))
                 if result:
-                    _, script_path = result
+                    script_path, _, manifest = result
                     LOG.info(f"  ✅ {name}: 脚本已生成 → {script_path}")
+
+            # Stage 4 验证：运行脚本并检查结果
+            script_ok = False
+            if script_path and args.export:
+                LOG.info(f"\n  Stage 4 验证: 运行 {name} 的 API 测试脚本")
+                script_ok = await _run_stage4_verify(
+                    str(script_path), project_dir, profile, login_url,
+                    username=(args.user or ""), password=(args.password or ""),
+                    headless=args.headless
+                )
+                if not script_ok:
+                    LOG.warning(f"  ⚠️ {name}: 脚本运行失败，跳过 Stage 5 导出")
+                    results.append({"name": name, "status": "script_failed"})
+                    continue
+
+            # Stage 5：导出 artifacts（仅在脚本成功时）
+            if args.export and manifest and (script_ok or not script_path):
+                run_stage5(manifest, project_dir, name,
+                           version=args.version or ver_mod.resolve_version(project_dir))
 
             results.append({"name": name, "status": "ok"})
         except Exception as e:

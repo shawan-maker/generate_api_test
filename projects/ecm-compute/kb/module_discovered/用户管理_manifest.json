@@ -65,12 +65,12 @@
         "query_params": {}
       },
       "body_template": {
-        "userName": "autotest857756",
-        "password": "DUFeGshcmAM24rOt3XWi4azyOPoEGKkRF5F1p9uS6g/v50AvbijDMMKuXA8pYhxWhDYh01N9nrUgD024UCztYK1t2shSdhb2zUiJzhsG3hN2gYrcRaOFzgIV2N0uZ1iL0Mk1hBDqcG9Vj0mpfl1WhwSq/HkTCQ0RUZVTirIcJX4=",
-        "name": "test_857756",
-        "email": "Fz5UrLKe1bDXTK9V/bUOIMTIzKC2CayZNCfTlZX6WaRfi6U5W2DBjSWc07EGmLEBhF64n/uqrfxKr1Sx9qsz14TIU4KiFOrKicWi4p14x7mj//qgXT4TtQ4rZ5N82HH6YfxsDrgtBH7vQE5RcakTGHkmwUuWb2jlb01TjY2D9iY=",
-        "phone": "RA3scJUSAWcD7yI8V5LrHvNPYDA3Z03L9JwBze1F/ZzZLFFRd+te6ppyDSJQ+SKP5AluG9ksIOqqvFxFLXfODU6Uef5Tv9cBITdSwW+euOlgmoE53BC7K13h8dx76TA2G9AM0H0fVHal+IVfZyuWOcnNW/6fSWyT22XsnizRgmM=",
-        "description": "auto_desc_857756",
+        "userName": "autotest940091",
+        "password": "TksFfso6oJHGuiyz1o5/mvm99wPUkrjOb18FoEew6KPlH5GngmbNUvKkQvb5Bq34sQX3V/bv6eOpxksEF0SxqiUARmtLzUew+AH90DXoaubZ2cGbd6uNg1joGjX1OkfiRnXW/iV3sk+MuhOYy9k9jnPDlfC7ZfKCOLPj0wTPHKA=",
+        "name": "test_940091",
+        "email": "MmFyZy2zteoWTjLqMmtfddJJ8KJL2v6v94jtoMemwVBEdlAO7StP35gPqyjyy2LMm2H/pOHUJD7zB/4HRI9ghydu++pRSP+EC6Kik88udTZYF5RjtESl2Om515Rmhy5H9mxCOFrI0CaYO0O8EVKvXRWbP8WRg9NYWdcBVT7tppU=",
+        "phone": "RxMRQQI5QjNa+Tz0imq+Y2P0W2f7uwLHSJu0spwB3VZ8NwpMRGzIn0kmuX2wn4/SRYxMCYwJnyH40vy/f3YNjyqABZQX2DBkMfOH+LVZAh+XBAOzhOnOFcBWhcndHl5WWhNCzRiKMyyKmcC0c5E5YRO6mxjPeLQJhIKOiZn958k=",
+        "description": "auto_desc_940091",
         "policyIds": [
           "1f8e392309fc414c9d77d45d0315fedc"
         ],
@@ -83,19 +83,24 @@
           "role": "name"
         },
         "password": {
-          "role": "static"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_password"
         },
         "name": {
-          "role": "name"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_name"
         },
         "email": {
-          "role": "static"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_email"
         },
         "phone": {
-          "role": "static"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_phone"
         },
         "description": {
-          "role": "mutable"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_description"
         },
         "policyIds": {
           "role": "pre_api_ref",
@@ -154,13 +159,13 @@
         "query_params": {}
       },
       "body_template": {
-        "userId": "63beec3400b840e3bf235765bce3c646",
-        "name": "test_857783",
-        "description": "auto_desc_857783",
+        "userId": "35df6561f43a49878246aba4ff69cc37",
+        "name": "test_940118",
+        "description": "auto_desc_940118",
         "tenantId": "34e2594fca9e44cd9e23b25474838c7f",
         "countryCode": "+86",
-        "phone": "OdypRG7boI9Bpe/KKZgnwq8OrfYk+NnXTo2SklImkQv1AL4GJGrPbgmHC/kukqktz2QrywRHzLLrQDm1jwNXzNe363DO7XcpFFpLHe8bQzvsYGRq9FAD30srFcPZhqAoZ9ulB5vWYc2g8G1v1m2PlXI4pdeqrlkH0esSETsCmF0=",
-        "email": "G0gOpIS4+SjVJb7UTvbwGHQW1aMEeBDmCJQmdr/fnTCQ25uAVvw95HBKH+aSaFQuyXn/nJsu7bLiJjWE8PhLQJ6xD9F8xBzv0gDaKKuNPPJuoTZTaGa2SkbB8DEsa1mfSt+wdXvQUlomq9eC5T/vzLnxnv7C9HhCmkyNYXl3xeE=",
+        "phone": "dA4HQP5xe3KMIMi9QydzD3dEPzCZUhlddndsdl7eyuydLki1/v7r5lL1EDztrLlzHIN4n9BScNUPJRSYWsYdy8Vc80cPvwORlZu5uRaDBtyxVveoqH6hPzOvnJW8r4XBg6eNlThGhOrh9Z1Lokt++uDx2N3keo+EYAJKvA+octs=",
+        "email": "S/cSTzpiTmXvdHJwRaH1WFfmOqlSo3ED0rQy3FxI8TxZ10Tpo82mUzXC9jgugJeKNcX6v8voBq955aDThXB1pP7lHxZJNnxcbW53eqVmFf13mYVwvEoMG7sKhnef0MvWkAeGdRvRv+lVi20rfaZwJDeaXE9vbqOi3w8FDzvH1FM=",
         "adminId": "93552edc908e4dadae761fff1fd0f24c"
       },
       "body_field_roles": {
@@ -168,10 +173,12 @@
           "role": "id_ref"
         },
         "name": {
-          "role": "name"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_name"
         },
         "description": {
-          "role": "mutable"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_description"
         },
         "tenantId": {
           "role": "pre_api_ref",
@@ -182,10 +189,12 @@
           "source": "current_user.entity_countryCode"
         },
         "phone": {
-          "role": "static"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_phone"
         },
         "email": {
-          "role": "static"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_email"
         },
         "adminId": {
           "role": "pre_api_ref",
@@ -226,7 +235,7 @@
         "query_params": {}
       },
       "body_template": {
-        "userId": "63beec3400b840e3bf235765bce3c646",
+        "userId": "35df6561f43a49878246aba4ff69cc37",
         "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
         "adminId": "93552edc908e4dadae761fff1fd0f24c"
       },
@@ -324,7 +333,7 @@
         "query_params": {}
       },
       "body_template": {
-        "userId": "63beec3400b840e3bf235765bce3c646",
+        "userId": "35df6561f43a49878246aba4ff69cc37",
         "passwordPolicy": {
           "id": "90542be67d584ab09daa12e697fb041a",
           "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
@@ -386,7 +395,7 @@
         "query_params": {}
       },
       "body_template": [
-        "63beec3400b840e3bf235765bce3c646"
+        "35df6561f43a49878246aba4ff69cc37"
       ],
       "body_field_roles": {
         "__array_items__": {
@@ -435,30 +444,51 @@
   },
   "pre_apis": [
     {
-      "name": "前置 API: list",
-      "id": "list",
-      "method": "POST",
-      "pathname": "/estack/api/estack/draco/v1/policies/list",
-      "depends_on": [],
-      "extracts": [
-        {
-          "name": "entity_list_0_id",
-          "path": "entity.list[0].id",
-          "used_by": [
-            "create"
-          ]
-        }
-      ],
-      "body_template": {},
-      "query_params": {}
-    },
-    {
       "name": "获取当前用户信息",
       "id": "current_user",
       "method": "GET",
       "pathname": "/estack/api/estack/draco/v1/users/current-user",
       "depends_on": [],
       "extracts": [
+        {
+          "name": "entity_password",
+          "path": "entity.password",
+          "used_by": [
+            "create"
+          ]
+        },
+        {
+          "name": "entity_name",
+          "path": "entity.name",
+          "used_by": [
+            "create",
+            "update"
+          ]
+        },
+        {
+          "name": "entity_email",
+          "path": "entity.email",
+          "used_by": [
+            "create",
+            "update"
+          ]
+        },
+        {
+          "name": "entity_phone",
+          "path": "entity.phone",
+          "used_by": [
+            "create",
+            "update"
+          ]
+        },
+        {
+          "name": "entity_description",
+          "path": "entity.description",
+          "used_by": [
+            "create",
+            "update"
+          ]
+        },
         {
           "name": "entity_adminId",
           "path": "entity.adminId",
@@ -500,6 +530,24 @@
       "query_params": {}
     },
     {
+      "name": "前置 API: list",
+      "id": "list",
+      "method": "POST",
+      "pathname": "/estack/api/estack/draco/v1/policies/list",
+      "depends_on": [],
+      "extracts": [
+        {
+          "name": "entity_list_0_id",
+          "path": "entity.list[0].id",
+          "used_by": [
+            "create"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {}
+    },
+    {
       "name": "前置 API: display-by-role",
       "id": "display_by_role",
       "method": "GET",
@@ -520,8 +568,8 @@
     }
   ],
   "pre_api_refs": [
-    "list",
     "current_user",
+    "list",
     "display_by_role"
   ]
 }

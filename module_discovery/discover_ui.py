@@ -2614,12 +2614,16 @@ async def _ensure_row_selected(page, marker: str | None = None) -> bool:
 
 async def _do_edit(page, context: dict) -> dict:
     """执行编辑操作：点击编辑 → 修改字段 → 提交 → 验证。"""
+    import logging
+    _log = logging.getLogger("discover_ui")
     btn = context["btn"]
     marker = context.get("marker")
     form_filler = context["form_filler"]
     framework = context.get("framework", "element-ui")
     btn_text = btn.get("text", "")
     btn_location = btn.get("location", "toolbar")
+
+    _log.debug(f"    [_do_edit] START: btn_text='{btn_text}', marker='{marker}', location='{btn_location}'")
 
     # 找到行并点击编辑（带重试）
     max_locate_retries = 2
@@ -2704,10 +2708,17 @@ async def _do_edit(page, context: dict) -> dict:
     submit_text_normalized = " ".join(submit_text.split())
     trigger_text_normalized = " ".join(btn_text.split())
 
-    dialog_detected = await page.evaluate("""() => {
+    import json as _json
+    _js_code = """() => {
         const dialog = document.querySelector('.el-dialog__wrapper:not([style*="display: none"]), .el-dialog:not([style*="display: none"])');
         return dialog && dialog.offsetWidth > 0;
-    }""")
+    }"""
+    LOG.debug(f"    [_do_edit] evaluate JS: {_js_code[:200]}...")
+    try:
+        dialog_detected = await page.evaluate(_js_code)
+    except Exception as e:
+        LOG.error(f"    [_do_edit] evaluate FAILED: {e}")
+        dialog_detected = False
 
     if dialog_detected:
         submit_locator = f".el-dialog__footer button:has-text('{submit_text}')"

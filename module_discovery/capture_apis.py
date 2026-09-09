@@ -119,30 +119,31 @@ def _build_playbook_from_ui_result(ui_result: dict) -> dict | None:
     return build_playbook(ui_result)
 
 
-async def _cleanup_after_operation(page):
+async def _cleanup_after_operation(page, ui_framework: str = "element-ui"):
     """操作后清理：关闭残留弹窗，确保回到列表页状态。
 
     Stage 2 回放时，失败操作（如 import 打开上传对话框）可能留下未关闭的弹窗，
     阻挡后续操作的点击。此函数在每个操作回放后调用。
     """
+    from . import const
+
     # 1. 按 Escape 尝试关闭
     await page.keyboard.press("Escape")
     await page.wait_for_timeout(300)
 
     # 2. JS 清理：关闭所有可见的对话框/抽屉/消息框
-    await page.evaluate("""() => {
-        // el-dialog: 点击关闭按钮
-        document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"]) .el-dialog__close').forEach(btn => btn.click());
+    try:
+        selectors = const.get_ui_selectors(ui_framework)
+        cleanup_scripts = selectors.get("cleanup", {})
 
-        // el-message-box: 点击取消按钮
-        document.querySelectorAll('.el-message-box__wrapper:not([style*="display: none"]) .el-message-box__btns button:not(.el-button--primary)').forEach(btn => btn.click());
+        # 执行各类型的清理脚本
+        for script_key in ["dialog_close_js", "messagebox_cancel_js", "drawer_close_js"]:
+            script = cleanup_scripts.get(script_key)
+            if script:
+                await page.evaluate(f"() => {{ {script} }}")
+    except Exception as e:
+        LOG.debug(f"UI 选择器清理失败: {e}")
 
-        // el-drawer: 点击关闭按钮
-        document.querySelectorAll('.el-drawer__close-btn').forEach(btn => btn.click());
-
-        // ant-modal: 点击关闭按钮
-        document.querySelectorAll('.ant-modal-close').forEach(btn => btn.click());
-    }""")
     await page.wait_for_timeout(500)
 
     # 3. 再次按 Escape（兜底）
@@ -153,7 +154,8 @@ async def _cleanup_after_operation(page):
 async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: str,
                                project_dir: Path = None, module_name: str = "",
                                capture_all_mode: bool = False,
-                               api_path_prefix: str = None) -> dict:
+                               api_path_prefix: str = None,
+                               ui_framework: str = "element-ui") -> dict:
     """通过回放 playbook 来捕获 API"""
     # 加载知识库配置
     from .request_interceptor import load_kb
@@ -163,7 +165,7 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
     interceptor = RequestInterceptor(page, base_url, target_url,
                                      capture_all_mode=capture_all_mode,
                                      api_path_prefix=api_path_prefix)
-    button_driver = ButtonDriver(page)
+    button_driver = ButtonDriver(page, ui_framework)
     classifier = EndpointClassifier(kb_config)
 
     # 1. 安装请求拦截器
@@ -216,7 +218,7 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
 
         # 操作间清理：关闭残留弹窗，确保回到列表页
         try:
-            await _cleanup_after_operation(page)
+            await _cleanup_after_operation(page, ui_framework)
         except Exception as e:
             LOG.debug(f"  操作间清理异常（不影响后续）: {e}")
 
