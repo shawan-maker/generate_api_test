@@ -101,9 +101,12 @@ class FormFiller:
                 try:
                     first_text = field.get("firstOptionText", "")
                     if first_text:
+                        from .locator_helpers import safe_css
                         radio_label = self.page.locator(
-                            f'.el-radio-group .el-radio-button__inner:has-text("{first_text}"), '
-                            f'.el-radio-group .el-radio__label:has-text("{first_text}")'
+                            safe_css(
+                                f'.el-radio-group .el-radio-button__inner:has-text("{first_text}"), '
+                                f'.el-radio-group .el-radio__label:has-text("{first_text}")'
+                            )
                         ).first
                         if await radio_label.count() > 0:
                             await radio_label.click()
@@ -124,20 +127,24 @@ class FormFiller:
                 continue
 
             try:
+                from .locator_helpers import safe_css
                 # 优先使用 scan 返回的精确 selector
                 if selector:
-                    await self.page.fill(selector, value, timeout=3000)
+                    enhanced = safe_css(selector)
+                    await self.page.fill(enhanced, value, timeout=3000)
                     filled += 1
                     continue
 
                 # 回退：通过 label 在 el-form-item 结构中定位 input/textarea
                 if field_type == "textarea":
                     css = f'.el-form-item:has(.el-form-item__label:has-text("{label}")) textarea'
-                    await self.page.fill(css, value, timeout=3000)
+                    enhanced = safe_css(css)
+                    await self.page.fill(enhanced, value, timeout=3000)
                 else:
                     # 复合输入组检测：检查单个 form-item 内是否有多个可见 input
                     form_item_css = f'.el-form-item:has(.el-form-item__label:has-text("{label}"))'
-                    form_items = await self.page.locator(form_item_css).all()
+                    enhanced_form_css = safe_css(form_item_css)
+                    form_items = await self.page.locator(enhanced_form_css).all()
 
                     composite_found = False
                     for fi in form_items:
@@ -155,7 +162,8 @@ class FormFiller:
                     if not composite_found:
                         # 普通单 input 字段
                         css = f'{form_item_css} input:not([readonly])'
-                        await self.page.fill(css, value, timeout=3000)
+                        enhanced = safe_css(css)
+                        await self.page.fill(enhanced, value, timeout=3000)
                 filled += 1
             except Exception as e:
                 LOG.warning(f"填充字段 {label} 失败: {e}")
@@ -233,15 +241,17 @@ class FormFiller:
             bool: 是否成功
         """
         try:
+            from .locator_helpers import safe_css
+
             # 取第一个 selector（可能有多个逗号分隔的备选）
             primary_selector = selector.split(",")[0].strip()
 
             # 点击 el-select 内部的 input 展开下拉框
             input_selector = f"{primary_selector} input.el-input__inner"
-            input_el = self.page.locator(input_selector).first
+            input_el = self.page.locator(safe_css(input_selector)).first
             if await input_el.count() == 0:
                 # 回退：直接点击 .el-select
-                input_el = self.page.locator(primary_selector).first
+                input_el = self.page.locator(safe_css(primary_selector)).first
             if await input_el.count() == 0:
                 LOG.debug(f"    CSS selector 回退: 未找到元素 {primary_selector}")
                 return False
@@ -251,7 +261,7 @@ class FormFiller:
 
             # 选择第一个可见的下拉选项
             first_option = self.page.locator(
-                '.el-select-dropdown:visible .el-select-dropdown__item:not(.is-disabled):visible'
+                safe_css('.el-select-dropdown:visible .el-select-dropdown__item:not(.is-disabled):visible')
             ).first
             if await first_option.count() > 0:
                 await first_option.click(timeout=2000)
@@ -260,7 +270,7 @@ class FormFiller:
 
             # 兜底：任何可见的 dropdown item
             any_option = self.page.locator(
-                '.el-select-dropdown__item:visible'
+                safe_css('.el-select-dropdown__item:visible')
             ).first
             if await any_option.count() > 0:
                 await any_option.click(timeout=2000)
@@ -332,9 +342,11 @@ class FormFiller:
                 continue
 
             try:
+                from .locator_helpers import safe_css
                 if selector:
-                    await self.page.fill(selector, "", timeout=3000)
-                    await self.page.fill(selector, value, timeout=3000)
+                    enhanced = safe_css(selector)
+                    await self.page.fill(enhanced, "", timeout=3000)
+                    await self.page.fill(enhanced, value, timeout=3000)
                     filled += 1
                     LOG.info(f"    编辑字段: {label} = {value}")
                 else:
@@ -345,8 +357,9 @@ class FormFiller:
                         css = f'{form_item}:has({form_label}:has-text("{label}")) textarea'
                     else:
                         css = f'{form_item}:has({form_label}:has-text("{label}")) input:not([readonly])'
-                    await self.page.fill(css, "", timeout=3000)
-                    await self.page.fill(css, value, timeout=3000)
+                    enhanced = safe_css(css)
+                    await self.page.fill(enhanced, "", timeout=3000)
+                    await self.page.fill(enhanced, value, timeout=3000)
                     filled += 1
                     LOG.info(f"    编辑字段(回退): {label} = {value}")
             except Exception as e:
@@ -584,8 +597,14 @@ class FormFiller:
             clicked = await self.page.evaluate(f"""(() => {{
                 const submitTexts = {_submit_texts_js};
                 const buttons = Array.from(document.querySelectorAll('button'));
-                // 优先找可见的按钮
-                const visible = buttons.filter(b => b.offsetWidth > 0 && b.offsetHeight > 0);
+                // 优先找可见的按钮（过滤 hidden/disabled）
+                const visible = buttons.filter(b =>
+                    b.offsetWidth > 0 && b.offsetHeight > 0
+                    && !b.disabled
+                    && !b.classList.contains('is-disabled')
+                    && !b.closest('.is-hidden')
+                    && !b.closest('[style*="display: none"]')
+                );
                 for (const btn of visible) {{
                     const originalText = btn.textContent.trim();
                     const normalized = originalText.replace(/\\s+/g, '');
@@ -603,10 +622,12 @@ class FormFiller:
         except Exception as e:
             LOG.debug(f"JavaScript 提交按钮匹配失败: {e}")
 
-        # Playwright locator 回退
+        # Playwright locator 回退（带隐藏过滤）
+        from .locator_helpers import safe_css
         for text in const.SUBMIT_BUTTON_TEXTS_FALLBACK:
             try:
-                btn = self.page.locator(f'button:has-text("{text}"):visible').first
+                enhanced = safe_css(f'button:has-text("{text}"):visible')
+                btn = self.page.locator(enhanced).first
                 if await btn.count() > 0:
                     await btn.click()
                     await wait_for_loading_complete(self.page)
@@ -615,9 +636,10 @@ class FormFiller:
                 LOG.debug(f"尝试提交按钮 {text} 失败: {e}")
                 continue
 
-        # 最终回退: primary 按钮
+        # 最终回退: primary 按钮（带隐藏过滤）
         try:
-            primary_btn = self.page.locator('button.el-button--primary:visible').first
+            enhanced_primary = safe_css('button.el-button--primary:visible')
+            primary_btn = self.page.locator(enhanced_primary).first
             if await primary_btn.count() > 0:
                 await primary_btn.click()
                 await wait_for_loading_complete(self.page)
@@ -663,6 +685,7 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui") -> List
 
     script = f"""
     () => {{
+        const FORM_ITEM_SEL = '{form_item}';
         const fields = [];
 
         // 以 form-item 为单位遍历
@@ -836,6 +859,7 @@ async def fill_form(page: Page, fields: List[Dict], data: Dict[str, str]) -> Tup
     """
     filled = 0
     total = len(fields)
+    from .locator_helpers import safe_css
 
     for field in fields:
         label = field['label']
@@ -847,19 +871,21 @@ async def fill_form(page: Page, fields: List[Dict], data: Dict[str, str]) -> Tup
         field_type = field['type']
 
         try:
+            enhanced = safe_css(selector)
             if field_type == 'input' or field_type == 'textarea':
                 # 清空并填充
-                await page.fill(selector, '')
-                await page.fill(selector, value)
+                await page.fill(enhanced, '')
+                await page.fill(enhanced, value)
                 filled += 1
 
             elif field_type == 'select':
                 # Element UI 下拉框
-                await page.click(selector)
+                await page.click(enhanced)
                 await page.wait_for_timeout(500)
 
-                # 选择匹配的选项
-                options = await page.query_selector_all('.el-select-dropdown__item:visible')
+                # 选择匹配的选项（带隐藏过滤）
+                hidden_css = const.HIDDEN_FILTERS_CSS.get('element-ui', const.HIDDEN_FILTERS_CSS['_universal'])
+                options = await page.query_selector_all(f'.el-select-dropdown__item:visible{hidden_css}')
                 for opt in options:
                     text = await opt.inner_text()
                     if value in text:
@@ -887,12 +913,15 @@ async def select_dropdown_option(page: Page, selector: str, value: str) -> bool:
         是否成功选择
     """
     try:
+        from .locator_helpers import safe_css
+        enhanced = safe_css(selector)
         # 点击下拉框
-        await page.click(selector)
+        await page.click(enhanced)
         await page.wait_for_timeout(500)
 
-        # 查找并选择选项
-        options = await page.query_selector_all('.el-select-dropdown__item:visible')
+        # 查找并选择选项（带隐藏过滤）
+        hidden_css = const.HIDDEN_FILTERS_CSS.get('element-ui', const.HIDDEN_FILTERS_CSS['_universal'])
+        options = await page.query_selector_all(f'.el-select-dropdown__item:visible{hidden_css}')
         for opt in options:
             text = await opt.inner_text()
             if value in text:
@@ -920,8 +949,9 @@ async def submit_form(page: Page, button_text: str = "提交") -> bool:
         是否成功点击提交按钮
     """
     try:
-        # 查找提交按钮
-        buttons = await page.query_selector_all('button:visible')
+        hidden_css = const.HIDDEN_FILTERS_CSS.get('element-ui', const.HIDDEN_FILTERS_CSS['_universal'])
+        # 查找提交按钮（带隐藏过滤）
+        buttons = await page.query_selector_all(f'button:visible{hidden_css}')
         for btn in buttons:
             text = await btn.inner_text()
             if button_text in text:
@@ -931,7 +961,7 @@ async def submit_form(page: Page, button_text: str = "提交") -> bool:
 
         # 尝试常见提交按钮文本
         for text in const.SUBMIT_BUTTON_TEXTS_FALLBACK:
-            buttons = await page.query_selector_all(f'button:has-text("{text}"):visible')
+            buttons = await page.query_selector_all(f'button:has-text("{text}"):visible{hidden_css}')
             if buttons:
                 await buttons[0].click()
                 await page.wait_for_timeout(1000)
@@ -1442,7 +1472,14 @@ class MultiStepExecutor:
             if not selected:
                 selected = await self._click_visible_option(option_text)
                 LOG.info(f"    el-select {label}: direct click result={selected}")
-            return selected, detail
+            # Post-fill verification
+            await self.page.wait_for_timeout(500)
+            verify = await self._verify_select_filled(label, selector)
+            if not verify.get("filled"):
+                LOG.warning(f"    ⚠️ select 填充后验证失败: {label} 仍为空")
+                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True}
+            LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
+            return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text)}
         else:
             # 不可编辑：等待选项加载，再选择第一个选项
             await self._wait_for_options_loaded()
@@ -1453,7 +1490,14 @@ class MultiStepExecutor:
             if not selected:
                 selected = await self._click_visible_option(option_text)
                 LOG.info(f"    el-select {label}: direct click result={selected}")
-            return selected, detail
+            # Post-fill verification
+            await self.page.wait_for_timeout(500)
+            verify = await self._verify_select_filled(label, selector)
+            if not verify.get("filled"):
+                LOG.warning(f"    ⚠️ select 填充后验证失败: {label} 仍为空")
+                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True}
+            LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
+            return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text)}
 
     async def _execute_select(self, label: str, option_text: str, _options, selector: str = "") -> bool:
         """el-select 多步交互：使用 Stage 1 提供的 selector 展开"""
@@ -1569,6 +1613,49 @@ class MultiStepExecutor:
         return await self._try_fallback(label)
 
     # ---- 内部工具方法 ----
+
+    async def _verify_select_filled(self, label: str, selector: str = "") -> dict:
+        """验证 select 字段填充后是否有值。
+
+        支持单选（input.value）、多选 tag 模式（.el-tag）、tree-select（.el-select__selected-item）。
+
+        Returns:
+            dict: {"filled": bool, "displayed_value": str, "is_empty": bool}
+        """
+        js = """(label) => {
+            const formItems = document.querySelectorAll('.el-form-item');
+            for (const fi of formItems) {
+                const labelEl = fi.querySelector('.el-form-item__label');
+                if (!labelEl || !labelEl.textContent.includes(label)) continue;
+
+                const sel = fi.querySelector('.el-select');
+                if (!sel) return {filled: false, reason: 'no_select_found'};
+
+                const tags = sel.querySelectorAll('.el-tag');
+                const input = sel.querySelector('.el-input__inner');
+                const selectedLabel = sel.querySelector('.el-select__selected-item, .el-select__tags-text');
+
+                const hasTags = tags.length > 0;
+                const hasValue = input && input.value.trim().length > 0;
+                const hasSelectedText = selectedLabel && selectedLabel.textContent.trim().length > 0;
+
+                const displayed = hasTags
+                    ? Array.from(tags).map(t => t.textContent.trim()).join(', ')
+                    : (input ? input.value : '') || (selectedLabel ? selectedLabel.textContent.trim() : '');
+
+                return {
+                    filled: hasTags || hasValue || hasSelectedText,
+                    displayed_value: displayed,
+                    is_empty: !(hasTags || hasValue || hasSelectedText)
+                };
+            }
+            return {filled: false, reason: 'no_form_item_found'};
+        }"""
+        try:
+            return await self.page.evaluate(js, label)
+        except Exception as e:
+            LOG.debug(f"    _verify_select_filled exception: {e}")
+            return {"filled": False, "reason": "js_exception"}
 
     async def _detect_active_overlay(self) -> str:
         """检测当前页面上活跃的覆盖层（弹窗/抽屉）。
@@ -1714,9 +1801,12 @@ class MultiStepExecutor:
             }"""
         else:
             # 等待 Element UI 下拉选项出现（teleport 到 <body>）
+            # 支持标准 el-select 和 tree-select（含 custom-tree-node）
             try:
                 await self.page.wait_for_selector(
-                    '.el-select-dropdown .el-select-dropdown__item:not(.is-disabled)',
+                    '.el-select-dropdown .el-select-dropdown__item:not(.is-disabled), '
+                    '.el-select-dropdown .el-tree-node__content, '
+                    '.el-select-dropdown .custom-tree-node',
                     state='visible',
                     timeout=timeout
                 )
@@ -1724,25 +1814,48 @@ class MultiStepExecutor:
                 pass  # 继续尝试读取，可能已经出现
 
             js = """() => {
-                const result = {found: false, text: '', debug: {dropdowns: []}};
+                const result = {found: false, text: '', debug: {dropdowns: [], treeSelect: false}};
                 const dropdowns = document.querySelectorAll('.el-select-dropdown');
                 for (const dd of dropdowns) {
                     const ddInfo = {
                         visible: dd.offsetWidth > 0 && dd.offsetHeight > 0,
                         width: dd.offsetWidth,
                         height: dd.offsetHeight,
-                        items: []
+                        items: [],
+                        isTree: false
                     };
-                    const items = dd.querySelectorAll('.el-select-dropdown__item:not(.is-disabled)');
-                    for (const item of items) {
-                        const itemInfo = {
-                            text: item.textContent.trim(),
-                            visible: item.offsetWidth > 0 && item.offsetHeight > 0
-                        };
-                        ddInfo.items.push(itemInfo);
-                        if (!result.found && item.offsetWidth > 0 && item.offsetHeight > 0) {
-                            result.found = true;
-                            result.text = item.textContent.trim();
+
+                    // 先检查是否是 tree-select（检查 el-tree 结构）
+                    const tree = dd.querySelector('.el-tree');
+                    if (tree) {
+                        ddInfo.isTree = true;
+                        result.treeSelect = true;
+                        // 优先查找 custom-tree-node（叶子节点），再回退到 el-tree-node__content（父节点）
+                        const leafNodes = dd.querySelectorAll('.custom-tree-node');
+                        const parentNodes = dd.querySelectorAll('.el-tree-node__content:not(.is-current)');
+                        const allNodes = leafNodes.length > 0 ? leafNodes : parentNodes;
+                        for (const node of allNodes) {
+                            const text = node.textContent.trim();
+                            const visible = node.offsetWidth > 0 && node.offsetHeight > 0;
+                            ddInfo.items.push({text, visible});
+                            if (!result.found && visible && text) {
+                                result.found = true;
+                                result.text = text;
+                            }
+                        }
+                    } else {
+                        // 标准 el-select
+                        const items = dd.querySelectorAll('.el-select-dropdown__item:not(.is-disabled)');
+                        for (const item of items) {
+                            const itemInfo = {
+                                text: item.textContent.trim(),
+                                visible: item.offsetWidth > 0 && item.offsetHeight > 0
+                            };
+                            ddInfo.items.push(itemInfo);
+                            if (!result.found && itemInfo.visible) {
+                                result.found = true;
+                                result.text = item.textContent.trim();
+                            }
                         }
                     }
                     result.debug.dropdowns.push(ddInfo);
@@ -1832,6 +1945,8 @@ class MultiStepExecutor:
     async def _click_visible_option(self, option_text: str = "") -> bool:
         """直接点击可见的下拉选项（KB XPath 失败时的回退）。
 
+        支持标准 el-select 和 tree-select（含 .el-tree 结构）。
+
         Args:
             option_text: 要选择的选项文本，为空则选择第一个可见选项
 
@@ -1840,11 +1955,36 @@ class MultiStepExecutor:
         """
         try:
             if option_text:
-                # 点击指定文本的选项
+                # 点击指定文本的选项（支持标准 item 和 tree node）
                 clicked = await self.page.evaluate("""(text) => {
                     const dds = document.querySelectorAll('.el-select-dropdown');
                     for (const dd of dds) {
                         if (dd.offsetWidth === 0 || dd.offsetHeight === 0) continue;
+
+                        // 检查是否是 tree-select
+                        const tree = dd.querySelector('.el-tree');
+                        if (tree) {
+                            // 优先查找 custom-tree-node（叶子节点）
+                            const leafNodes = tree.querySelectorAll('.custom-tree-node');
+                            if (leafNodes.length > 0) {
+                                for (const node of leafNodes) {
+                                    if (node.textContent.trim() === text) {
+                                        node.click();
+                                        return true;
+                                    }
+                                }
+                            }
+                            // 回退到 el-tree-node__label
+                            const labels = tree.querySelectorAll('.el-tree-node__label');
+                            for (const label of labels) {
+                                if (label.textContent.trim() === text) {
+                                    label.click();
+                                    return true;
+                                }
+                            }
+                        }
+
+                        // 标准 el-select
                         const items = dd.querySelectorAll('.el-select-dropdown__item');
                         for (const item of items) {
                             if (item.textContent.trim() === text) {
@@ -1856,11 +1996,44 @@ class MultiStepExecutor:
                     return false;
                 }""", option_text)
             else:
-                # 点击第一个可见选项
+                # 点击第一个可见选项（支持标准 item 和 tree node）
                 clicked = await self.page.evaluate("""() => {
                     const dds = document.querySelectorAll('.el-select-dropdown');
                     for (const dd of dds) {
                         if (dd.offsetWidth === 0 || dd.offsetHeight === 0) continue;
+
+                        // 检查是否是 tree-select
+                        const tree = dd.querySelector('.el-tree');
+                        if (tree) {
+                            // 优先查找 custom-tree-node（叶子节点）
+                            const leafNodes = tree.querySelectorAll('.custom-tree-node');
+                            if (leafNodes.length > 0) {
+                                for (const node of leafNodes) {
+                                    if (node.offsetWidth > 0 && node.offsetHeight > 0) {
+                                        node.click();
+                                        return true;
+                                    }
+                                }
+                            }
+                            // 尝试展开第一个未展开的树节点
+                            const expandIcons = tree.querySelectorAll('.el-tree-node__expand-icon:not(.is-leaf)');
+                            for (const icon of expandIcons) {
+                                if (icon.offsetWidth > 0 && icon.offsetHeight > 0) {
+                                    icon.click();
+                                    return false; // 已展开，返回 false 让外层重试
+                                }
+                            }
+                            // 回退到 el-tree-node__label
+                            const labels = tree.querySelectorAll('.el-tree-node__label');
+                            for (const label of labels) {
+                                if (label.offsetWidth > 0 && label.offsetHeight > 0) {
+                                    label.click();
+                                    return true;
+                                }
+                            }
+                        }
+
+                        // 标准 el-select
                         const items = dd.querySelectorAll('.el-select-dropdown__item:not(.is-disabled)');
                         for (const item of items) {
                             if (item.offsetWidth > 0 && item.offsetHeight > 0) {
@@ -1879,6 +2052,8 @@ class MultiStepExecutor:
     async def _wait_for_options_loaded(self) -> bool:
         """等待下拉选项加载完成（最多 4 秒）。
 
+        同时支持标准 el-select 和 tree-select（含 .el-tree 结构）。
+
         Returns:
             bool: 是否成功加载选项
         """
@@ -1887,19 +2062,52 @@ class MultiStepExecutor:
                 const dds = document.querySelectorAll('.el-select-dropdown');
                 for (const dd of dds) {
                     if (dd.offsetWidth === 0 || dd.offsetHeight === 0) continue;
+
+                    // 检查是否是 tree-select
+                    const tree = dd.querySelector('.el-tree');
+                    if (tree) {
+                        const treeNodes = tree.querySelectorAll('.el-tree-node');
+                        const emptyText = tree.querySelector('.el-tree__empty-text');
+                        const isEmpty = emptyText && emptyText.offsetWidth > 0;
+                        return {
+                            found: true,
+                            visible: true,
+                            itemCount: treeNodes.length,
+                            isTree: true,
+                            isEmpty: isEmpty,
+                            emptyText: emptyText ? emptyText.textContent.trim() : null,
+                            firstItemText: treeNodes.length > 0
+                                ? (treeNodes[0].querySelector('.el-tree-node__label')
+                                    || treeNodes[0]).textContent.trim()
+                                : null
+                        };
+                    }
+
+                    // 标准 el-select
                     const items = dd.querySelectorAll('.el-select-dropdown__item');
                     return {
                         found: true,
                         visible: true,
                         itemCount: items.length,
+                        isTree: false,
+                        isEmpty: false,
                         firstItemText: items.length > 0 ? items[0].textContent.trim() : null
                     };
                 }
-                return {found: false, visible: false, itemCount: 0, firstItemText: null};
+                return {found: false, visible: false, itemCount: 0, isTree: false, isEmpty: false, firstItemText: null};
             }""")
-            if state['found'] and state['itemCount'] > 0:
-                LOG.debug(f"    选项加载完成: {state['itemCount']} 个选项, 第一个: '{state['firstItemText']}'")
-                return True
+            if state['found']:
+                if state['isTree']:
+                    if state['itemCount'] > 0:
+                        LOG.debug(f"    tree-select 加载完成: {state['itemCount']} 个节点, 第一个: '{state['firstItemText']}'")
+                        return True
+                    if state['isEmpty']:
+                        LOG.info(f"    tree-select 为空: {state['emptyText']}")
+                        return False
+                else:
+                    if state['itemCount'] > 0:
+                        LOG.debug(f"    选项加载完成: {state['itemCount']} 个选项, 第一个: '{state['firstItemText']}'")
+                        return True
             LOG.debug(f"    等待选项加载... 第 {i+1}/8 次检查, 当前状态: {state}")
             await self.page.wait_for_timeout(500)
         LOG.warning(f"    等待选项加载超时 (4 秒)")

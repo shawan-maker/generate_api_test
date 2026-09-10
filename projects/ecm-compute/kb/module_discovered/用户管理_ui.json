@@ -22,7 +22,7 @@
       "text": "批量导入",
       "tag": "BUTTON",
       "className": "el-button el-button--default el-button--small",
-      "rect": "70x31",
+      "rect": "69x30",
       "location": "toolbar",
       "source": "main",
       "action": "import"
@@ -31,7 +31,7 @@
       "text": "批量删除",
       "tag": "BUTTON",
       "className": "el-button el-tooltip el-button--default el-button--small is-",
-      "rect": "70x31",
+      "rect": "69x30",
       "location": "toolbar",
       "source": "main",
       "action": "delete"
@@ -40,7 +40,7 @@
       "text": "批量迁移",
       "tag": "BUTTON",
       "className": "el-button el-tooltip el-button--default el-button--small is-",
-      "rect": "70x31",
+      "rect": "69x30",
       "location": "toolbar",
       "source": "main",
       "action": "migrate"
@@ -49,7 +49,7 @@
       "text": "GO",
       "tag": "BUTTON",
       "className": "el-button pagination-jumper el-button--default el-button--mi",
-      "rect": "51x28",
+      "rect": "50x27",
       "location": "toolbar",
       "source": "main",
       "action": "unknown"
@@ -60,7 +60,7 @@
       "text": "编辑",
       "tag": "BUTTON",
       "className": "el-button el-button--text el-button--small",
-      "rect": "26x14",
+      "rect": "25x13",
       "location": "row_action",
       "source": "main",
       "action": "update"
@@ -68,8 +68,8 @@
     {
       "text": "删除",
       "tag": "BUTTON",
-      "className": "el-button el-tooltip el-button--text el-button--small cmss-d",
-      "rect": "26x14",
+      "className": "el-button el-tooltip el-button--text el-button--small",
+      "rect": "25x13",
       "location": "row_action",
       "source": "main",
       "action": "delete"
@@ -78,7 +78,7 @@
       "text": "更多",
       "tag": "SPAN",
       "className": "el-dropdown-link el-dropdown-selfdefine",
-      "rect": "44x14",
+      "rect": "44x13",
       "location": "row_action",
       "source": "main",
       "action": "execute"
@@ -90,10 +90,10 @@
       "tag": "button",
       "className": "el-button el-button--default el-button--small",
       "rect": {
-        "x": 1471.3125,
+        "x": 1472.6458740234375,
         "y": 945,
-        "width": 49.34375,
-        "height": 30
+        "width": 48.677085876464844,
+        "height": 29.33333396911621
       },
       "location": "dialog",
       "source": "create_page_scan",
@@ -104,10 +104,10 @@
       "tag": "button",
       "className": "el-button el-button--primary el-button--small",
       "rect": {
-        "x": 1530.65625,
+        "x": 1531.322998046875,
         "y": 945,
-        "width": 49.34375,
-        "height": 30
+        "width": 48.677085876464844,
+        "height": 29.33333396911621
       },
       "location": "dialog",
       "source": "create_page_scan",
@@ -397,30 +397,30 @@
       "success": true,
       "fill_data": {
         "名称": "test",
-        "编码": "code_944535",
-        "描述": "自动测试创建于944535",
-        "备注": "自动创建于944535",
-        "说明": "自动测试创建于944535",
+        "编码": "code_022087",
+        "描述": "自动测试创建于022087",
+        "备注": "自动创建于022087",
+        "说明": "自动测试创建于022087",
         "用户名": "test",
         "姓名": "test",
-        "邮箱": "at_944535@test.com",
-        "手机": "13819265065",
+        "邮箱": "at_022087@test.com",
+        "手机": "13840618978",
         "密码": "Test@123456",
         "确认密码": "Test@123456",
         "角色名称": "test",
-        "角色编码": "role_code_944535",
-        "角色描述": "自动测试角色创建于944535",
+        "角色编码": "role_code_022087",
+        "角色描述": "自动测试角色创建于022087",
         "username": "test",
         "name": "test",
-        "email": "at_944535@test.com",
-        "phone": "13819265065",
+        "email": "at_022087@test.com",
+        "phone": "13840618978",
         "password": "Test@123456",
-        "description": "自动测试创建于944535",
-        "code": "code_944535",
-        "remark": "自动创建于944535",
-        "账号": "AT_test_944535",
-        "系统角色": "AT_test_944535",
-        "部门角色": "AT_test_944535"
+        "description": "自动测试创建于022087",
+        "code": "code_022087",
+        "remark": "自动创建于022087",
+        "账号": "AT_test_022087",
+        "系统角色": "AT_test_022087",
+        "部门角色": "AT_test_022087"
       },
       "fill_rules": {
         "账号": {
@@ -751,11 +751,11 @@
     },
     "authorize": {
       "success": false,
-      "error_type": "exception",
-      "error_text": "Page.evaluate: ReferenceError: FORM_ITEM_SEL is not defined\n    at _buildComponentSelector (eval at evaluate (:303:30), <anonymous>:154:13)\n    at eval (eval at evaluate (:303:30), <anonymous>:51:40)\n",
+      "error_type": "required_field_empty",
+      "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
       "trigger_text": "授权",
       "nav_info": {
-        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=34e2594fca9e44cd9e23b25474838c7f&type=userList&rowId=3cd70511d3b4480faa36c845953ba7f3",
+        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=d82bf75c780a45dfa0d26bfc01cab59f",
         "depth": 0,
         "page_title": "eStack Enterprise",
         "has_form": true,
@@ -791,10 +791,59 @@
             "firstOptionText": "全部"
           }
         ],
-        "fill_data": {},
+        "fill_data": {
+          "名称": "AT_test_auto",
+          "编码": "code_022204",
+          "描述": "自动测试创建于022204",
+          "备注": "自动创建于022204",
+          "说明": "自动测试创建于022204",
+          "用户名": "AT_test_auto",
+          "姓名": "AT_test_auto",
+          "邮箱": "at_022204@test.com",
+          "手机": "13831587904",
+          "密码": "Test@123456",
+          "确认密码": "Test@123456",
+          "角色名称": "AT_test_auto",
+          "角色编码": "role_code_022204",
+          "角色描述": "自动测试角色创建于022204",
+          "username": "AT_test_auto",
+          "name": "AT_test_auto",
+          "email": "at_022204@test.com",
+          "phone": "13831587904",
+          "password": "Test@123456",
+          "description": "自动测试创建于022204",
+          "code": "code_022204",
+          "remark": "自动创建于022204",
+          "授权用户": "AT_AT_test_auto_022204",
+          "授权角色": "AT_AT_test_auto_022204",
+          "授权范围": "AT_AT_test_auto_022204"
+        },
         "submit_result": {},
-        "error_type": "exception",
-        "error_text": "Page.evaluate: ReferenceError: FORM_ITEM_SEL is not defined\n    at _buildComponentSelector (eval at evaluate (:303:30), <anonymous>:154:13)\n    at eval (eval at evaluate (:303:30), <anonymous>:51:40)\n"
+        "error_type": "required_field_empty",
+        "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
+        "field_states": [
+          {
+            "label": "授权用户",
+            "type": "select",
+            "value": "",
+            "isDisabled": true,
+            "hasValue": false
+          },
+          {
+            "label": "授权用户组",
+            "type": "select",
+            "value": "",
+            "isDisabled": false,
+            "hasValue": false
+          },
+          {
+            "label": "授权角色",
+            "type": "radio",
+            "value": "组织架构",
+            "isDisabled": false,
+            "hasValue": true
+          }
+        ]
       },
       "selectors": {
         "trigger": "授权",
@@ -802,10 +851,20 @@
       }
     },
     "migrate": {
-      "success": false,
-      "error_type": "required_field_empty",
+      "success": true,
+      "selectors": {
+        "trigger": "批量迁移",
+        "confirm": "确 定"
+      },
+      "confirmed": "确 定",
       "trigger_text": "批量迁移",
-      "error_text": "弹窗中必填字段为空: 待迁移用户：, 待迁移部门："
+      "post_confirm_state": {
+        "dialog_remains": false,
+        "has_form_in_dialog": false
+      },
+      "trigger_locator_verified": "button:has-text('批量迁移')",
+      "needs_checkbox": true,
+      "checkbox_locator": ".el-checkbox__input"
     },
     "delete": {
       "success": true,

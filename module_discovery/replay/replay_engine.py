@@ -141,13 +141,18 @@ async def _step_click_button(page, step: dict, button_driver: ButtonDriver, ctx:
     if not locator:
         raise Exception("click_button 步骤缺少 playwright_locator（Stage 1 未提供）")
 
+    # 增强：为 CSS 选择器添加隐藏过滤（防止匹配到 hidden/disabled 按钮）
+    from .locator_helpers import safe_css
+    ui_framework = getattr(button_driver, 'framework', 'element-ui')
+    enhanced_locator = safe_css(locator, ui_framework)
+
     try:
-        # 直接使用 Stage 1 提供的已验证 locator
-        await page.click(locator, timeout=5000)
+        # 直接使用 Stage 1 提供的已验证 locator（带隐藏过滤）
+        await page.click(enhanced_locator, timeout=5000)
     except Exception as e:
         # 轻量级空格容错：仅针对中文 has-text 的空格变体
         import re
-        has_text_match = re.search(r"has-text\(['\"](.+?)['\"]\)", locator)
+        has_text_match = re.search(r"has-text\(['\"](.+?)['\"]\)", enhanced_locator)
         if has_text_match:
             original_text = has_text_match.group(1)
             # 检查是否包含中文字符
@@ -155,7 +160,7 @@ async def _step_click_button(page, step: dict, button_driver: ButtonDriver, ctx:
                 # 尝试去空格后的版本
                 normalized_text = original_text.replace(' ', '')
                 if normalized_text != original_text:
-                    normalized_locator = locator.replace(
+                    normalized_locator = enhanced_locator.replace(
                         f"has-text('{original_text}')",
                         f"has-text('{normalized_text}')"
                     ).replace(
@@ -226,6 +231,9 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver) -> str 
             simple_fields.append(field)
 
     # --- 1. 处理普通字段 (input/textarea/radio) ---
+    from .locator_helpers import safe_css
+    ui_framework = step.get("framework", "element-ui")
+
     for field in simple_fields:
         label = field.get("label")
         locator = field.get("playwright_locator")
@@ -236,7 +244,8 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver) -> str 
         # Radio 字段：Stage 1 已提供精确的 option_locator
         if kb_category == "radio":
             try:
-                await page.click(locator, timeout=3000)
+                enhanced = safe_css(locator, ui_framework) if locator else locator
+                await page.click(enhanced, timeout=3000)
                 filled_count += 1
                 LOG.debug(f"      选择 radio: {label}")
             except Exception as e:
@@ -254,7 +263,8 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver) -> str 
             continue
 
         try:
-            await page.fill(locator, str(value), timeout=3000)
+            enhanced = safe_css(locator, ui_framework) if locator else locator
+            await page.fill(enhanced, str(value), timeout=3000)
             filled_count += 1
             LOG.debug(f"      填充: {label} = {value}")
             if is_marker and not marker_value:
@@ -364,10 +374,22 @@ async def _step_confirm_dialog(page, step: dict):
     调用 button_driver.confirm_dialog 点击确认按钮。
     支持 MessageBox/Popconfirm/Generic 三种类型。
     """
-    from .button_driver import confirm_dialog
+    from .button_driver import confirm_dialog, close_dialog
     confirmed = await confirm_dialog(page)
     if not confirmed:
-        LOG.warning("    未检测到确认对话框或确认按钮")
+        raise Exception("确认按钮未找到或点击失败")
+
+    # 验证 dialog 消失
+    await page.wait_for_timeout(1000)
+    dialog_remains = await page.evaluate("""() => {
+        const dialogs = document.querySelectorAll(
+            '.el-dialog__wrapper:not([style*="display: none"]), '
+            + '.el-message-box__wrapper:not([style*="display: none"])');
+        return Array.from(dialogs).some(d => d.offsetWidth > 0);
+    }""")
+    if dialog_remains:
+        LOG.warning("    确认后 dialog 仍存在，尝试再次关闭")
+        await close_dialog(page)
 
 
 async def _step_close_dialog(page, step: dict):
@@ -417,7 +439,9 @@ async def _step_click_dropdown_item_legacy(page, step: dict):
     if not locator:
         raise Exception("click_dropdown_item 步骤缺少 locator")
 
-    await page.click(locator, timeout=3000)
+    from .locator_helpers import safe_css
+    enhanced = safe_css(locator)
+    await page.click(enhanced, timeout=3000)
 
 
 async def _step_click_confirm_dialog_legacy(page, step: dict):
@@ -427,9 +451,11 @@ async def _step_click_confirm_dialog_legacy(page, step: dict):
     if not confirm_locator:
         raise Exception("click_confirm_dialog 步骤缺少 confirm_locator（Stage 1 未提供）")
 
-    # 直接使用 Stage 1 提供的已验证 locator
-    await page.wait_for_selector(confirm_locator, state="visible", timeout=3000)
-    await page.click(confirm_locator)
+    # 直接使用 Stage 1 提供的已验证 locator（带隐藏过滤）
+    from .locator_helpers import safe_css
+    enhanced = safe_css(confirm_locator)
+    await page.wait_for_selector(enhanced, state="visible", timeout=3000)
+    await page.click(enhanced)
 
     # 不再调用通用的 confirm_dialog() 回退
 
@@ -444,8 +470,9 @@ async def _step_assert_success(page, step: dict):
 
     try:
         await page.wait_for_selector(locator, state="visible", timeout=5000)
-    except Exception:
-        LOG.warning(f"    未检测到成功消息: {locator}")
+        LOG.debug(f"    ✓ 操作成功验证通过: {locator}")
+    except Exception as e:
+        raise Exception(f"操作成功验证失败: 未检测到 '{locator}'") from e
 
 
 async def _step_assert_row_disappeared(page, step: dict, button_driver: ButtonDriver, marker: str):
@@ -459,7 +486,8 @@ async def _step_assert_row_disappeared(page, step: dict, button_driver: ButtonDr
     # 检查行是否还在
     row = await button_driver.find_data_row(marker)
     if row:
-        LOG.warning(f"    数据行仍然存在: {marker}")
+        raise Exception(f"删除验证失败: 数据行仍存在: {marker}")
+    LOG.debug(f"    ✓ 数据行已消失验证通过: {marker}")
 
 
 async def _step_wait_for_table_ready(page, step: dict):
@@ -519,7 +547,9 @@ async def _step_fill_input(page, step: dict, marker: str):
         return
 
     try:
-        await page.fill(locator, value, timeout=3000)
+        from .locator_helpers import safe_css
+        enhanced = safe_css(locator)
+        await page.fill(enhanced, value, timeout=3000)
         LOG.info(f"    搜索框已填充: {value}")
     except Exception as e:
         LOG.warning(f"    fill_input 失败: {e}")

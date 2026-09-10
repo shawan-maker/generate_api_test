@@ -71,7 +71,7 @@ SUBMIT_BUTTON_TEXTS = ['确定', '保存', '提交', '确认', '立即创建',
 SUBMIT_BUTTON_TEXTS_FALLBACK = ['确定', '保存', '提交', '确认', '完成', '更新', 'OK']
 
 # 确认对话框按钮文本
-CONFIRM_BUTTON_TEXTS = ['确定', '确认', '是', 'OK', 'Yes']
+CONFIRM_BUTTON_TEXTS = ['确定', '确认', '是', 'OK', 'Yes', '迁移', '授权', '提交', '保存']
 
 # 取消对话框按钮文本
 CANCEL_BUTTON_TEXTS = ['取消', 'Cancel', '否']
@@ -137,6 +137,13 @@ HIDDEN_FILTERS = {
         "not(ancestor-or-self::*[contains(@style,'display: none')])"
         " and not(@disabled)"
     ),
+}
+
+# CSS 选择器等价隐藏过滤（用于 Playwright CSS locator）
+HIDDEN_FILTERS_CSS = {
+    'element-ui': ':not(.is-hidden):not(.is-disabled):not([disabled]):not([style*="display: none"])',
+    'ant-design': ':not(.ant-drawer-hidden):not(.ant-modal-hidden):not([aria-hidden="true"]):not([disabled]):not([style*="display: none"])',
+    '_universal': ':not([disabled]):not([style*="display: none"])',
 }
 
 # ============================================================

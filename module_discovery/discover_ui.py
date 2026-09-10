@@ -1540,19 +1540,22 @@ async def _retry_precondition(page, trigger_btn: dict, max_retries: int = 3) -> 
 
         try:
             if attempt == 1:
-                # 方式 1: Playwright force click
+                # 方式 1: Playwright force click（带隐藏过滤）
                 LOG.debug(f"    尝试方式 1: force click")
-                selector = f"button:has-text('{btn_text}'), span:has-text('{btn_text}')"
+                from .replay.locator_helpers import safe_css
+                selector = safe_css(f"button:has-text('{btn_text}'), span:has-text('{btn_text}')")
                 await page.click(selector, force=True, timeout=3000)
                 clicked = True
 
             elif attempt == 2:
-                # 方式 2: JS 原生点击
+                # 方式 2: JS 原生点击（带隐藏/disabled 检查）
                 LOG.debug(f"    尝试方式 2: JS click")
                 clicked = await page.evaluate(f"""() => {{
                     const all = document.querySelectorAll('button, span, a, .el-button');
                     for (const el of all) {{
-                        if ((el.textContent || '').trim() === '{btn_text}' && el.offsetWidth > 0) {{
+                        if ((el.textContent || '').trim() === '{btn_text}' && el.offsetWidth > 0
+                            && !el.disabled && !el.classList.contains('is-disabled')
+                            && !el.closest('.is-hidden') && !el.closest('[style*="display: none"]')) {{
                             el.click(); return true;
                         }}
                     }}
@@ -1560,12 +1563,14 @@ async def _retry_precondition(page, trigger_btn: dict, max_retries: int = 3) -> 
                 }}""")
 
             elif attempt == 3:
-                # 方式 3: 坐标点击
+                # 方式 3: 坐标点击（带隐藏/disabled 检查）
                 LOG.debug(f"    尝试方式 3: 坐标点击")
                 rect = await page.evaluate(f"""() => {{
                     const all = document.querySelectorAll('button, span, a, .el-button');
                     for (const el of all) {{
-                        if ((el.textContent || '').trim() === '{btn_text}' && el.offsetWidth > 0) {{
+                        if ((el.textContent || '').trim() === '{btn_text}' && el.offsetWidth > 0
+                            && !el.disabled && !el.classList.contains('is-disabled')
+                            && !el.closest('.is-hidden') && !el.closest('[style*="display: none"]')) {{
                             const r = el.getBoundingClientRect();
                             return {{x: r.x + r.width/2, y: r.y + r.height/2}};
                         }}
@@ -2018,7 +2023,7 @@ TERMINAL_ERRORS = {
     "env_dependency",           # 需要上传文件（import）
     "permission_denied",        # 权限不足
     "resource_not_found",       # 资源不存在
-    "required_field_empty",     # 必填字段为空或无可选项（select 无数据）
+    # "required_field_empty",  # 已移除：让重试循环有机会自愈（重新填充 select）
     "confirm_button_disabled",  # 确认按钮被禁用
 }
 
@@ -3064,11 +3069,54 @@ async def _do_generic_operation(page, context: dict) -> dict:
                     "trigger_text": trigger_text_normalized,
                     "selectors": selectors}
 
-    # 如果有确认弹窗，点击确认
+    # 如果有确认弹窗，先填充空 select 字段，再点击确认
     state = await _check_precondition_state(page, {"type": "dialog"})
     confirmed = ""
     if state["success"]:
         LOG.info(f"    检测到确认弹窗: {state.get('actual_state', 'dialog')}")
+
+        # 点击确认前先诊断并填充空 select 字段（如"待迁移部门"）
+        pre_fill_diag = await page.evaluate("""() => {
+            const containers = [];
+            document.querySelectorAll(
+                '.el-dialog__wrapper:not([style*="display: none"]), '
+                + '.el-message-box__wrapper:not([style*="display: none"])'
+            ).forEach(d => {
+                if (d.offsetWidth > 0) containers.push(d);
+            });
+            if (containers.length === 0) return { empty_selects: [] };
+
+            const emptySelects = [];
+            for (const el of containers) {
+                el.querySelectorAll('.el-select').forEach(sel => {
+                    // 检查是否 disabled（disabled 的跳过，不填）
+                    const innerInput = sel.querySelector('.el-input__inner');
+                    if (innerInput && innerInput.disabled) return;
+
+                    const tags = sel.querySelectorAll('.el-tag');
+                    const hasTags = tags && tags.length > 0;
+                    const hasValue = innerInput && innerInput.value;
+                    const selectedLabel = sel.querySelector('.el-select__selected-item, .el-select__tags-text');
+                    const hasSelectedText = selectedLabel && selectedLabel.textContent.trim().length > 0;
+
+                    if (!hasTags && !hasValue && !hasSelectedText) {
+                        const label = sel.closest('.el-form-item')
+                            ?.querySelector('.el-form-item__label')
+                            ?.textContent?.trim();
+                        if (label) emptySelects.push(label);
+                    }
+                });
+            }
+            return { empty_selects: emptySelects };
+        }""")
+
+        empty_sels = pre_fill_diag.get("empty_selects", [])
+        if empty_sels:
+            LOG.info(f"    确认前有 {len(empty_sels)} 个空 select 字段，先填充: {empty_sels}")
+            await _try_fill_empty_selects(page, empty_sels)
+            # _try_fill_empty_selects 内部每个字段填充后点击 label 关闭下拉面板（不按 Escape）
+            await page.wait_for_timeout(500)
+
         from .replay.button_driver import confirm_dialog
         confirmed = await confirm_dialog(page)
         if confirmed:
@@ -3110,10 +3158,19 @@ async def _do_generic_operation(page, context: dict) -> dict:
                 const result = { has_dialog: true, dialog_type: c.type };
 
                 // 检查空的 select 字段（最常见的导致无法确认的原因）
+                // 需要同时检查 input.value 和 tag 模式（多选 el-select）
                 const emptySelects = [];
                 el.querySelectorAll('.el-select').forEach(sel => {
                     const input = sel.querySelector('.el-input__inner');
-                    const isEmpty = !input || !input.value;
+                    const tags = sel.querySelectorAll('.el-tag');
+                    // 多选模式：有 tag 则不为空
+                    const hasTags = tags && tags.length > 0;
+                    // 单选模式：input 有值则不为空
+                    const hasValue = input && input.value;
+                    // 检查是否有选中显示文本（某些自定义 tree-select）
+                    const selectedLabel = sel.querySelector('.el-select__selected-item, .el-select__tags-text');
+                    const hasSelectedText = selectedLabel && selectedLabel.textContent.trim().length > 0;
+                    const isEmpty = !hasTags && !hasValue && !hasSelectedText;
                     if (isEmpty) {
                         const label = sel.closest('.el-form-item')?.querySelector('.el-form-item__label')?.textContent?.trim();
                         emptySelects.push(label || '未知字段');
@@ -3163,10 +3220,35 @@ async def _do_generic_operation(page, context: dict) -> dict:
 
         if diag.get("has_dialog"):
             empty_fields = diag.get("empty_selects", [])
+
+            # 如果有空 select 字段，尝试自动填充而不是直接放弃
             if empty_fields:
-                return {"success": False, "error_type": "required_field_empty",
-                        "trigger_text": trigger_text_normalized,
-                        "error_text": f"弹窗中必填字段为空: {', '.join(empty_fields)}"}
+                LOG.info(f"    检测到 {len(empty_fields)} 个空 select 字段，尝试自动填充: {empty_fields}")
+                fill_success = await _try_fill_empty_selects(page, empty_fields)
+
+                if fill_success:
+                    LOG.info("    空 select 字段填充成功，直接点击确认按钮")
+                    await page.wait_for_timeout(1000)
+
+                    # 弹窗已知存在（刚在里面填充了字段），直接点击确认按钮
+                    from .replay.button_driver import confirm_dialog
+                    confirmed = await confirm_dialog(page)
+                    if confirmed:
+                        LOG.info(f"    重新点击确认按钮: {confirmed}")
+                        await wait_for_loading_complete(page)
+                        await page.wait_for_timeout(1000)
+                        # 继续执行后续的成功检测逻辑
+                    else:
+                        LOG.warning(f"    确认弹窗存在但未找到确认按钮")
+                        return {"success": False, "error_type": "no_confirm_button",
+                                "trigger_text": trigger_text_normalized,
+                                "error_text": f"{action} 弹窗中未找到确认按钮"}
+                else:
+                    LOG.warning("    空 select 字段填充失败，返回错误")
+                    return {"success": False, "error_type": "required_field_empty",
+                            "trigger_text": trigger_text_normalized,
+                            "error_text": f"弹窗中必填字段为空且无法自动填充: {', '.join(empty_fields)}"}
+
             if diag.get("confirm_disabled"):
                 return {"success": False, "error_type": "confirm_button_disabled",
                         "trigger_text": trigger_text_normalized,
@@ -3257,13 +3339,105 @@ async def _do_generic_operation(page, context: dict) -> dict:
 # 辅助函数
 # ============================================================
 
+async def _try_fill_empty_selects(page, empty_field_labels: list) -> bool:
+    """尝试填充弹窗中的空 select 字段。
+
+    使用 FormFiller 扫描表单 → 过滤出空 select → 调用 MultiStepExecutor 填充。
+    只有所有字段都填充失败时才返回 False。
+
+    Args:
+        page: Playwright page 对象
+        empty_field_labels: 空字段 label 列表（来自诊断 JS）
+
+    Returns:
+        True 表示至少成功填充了一个字段
+    """
+    from .replay.form_filler import FormFiller
+
+    try:
+        form_filler = FormFiller(page)
+
+        # 扫描当前弹窗中的表单字段
+        fields = await form_filler.scan_form_fields_v2()
+
+        # 过滤出需要填充的空 select 字段
+        target_fields = []
+        for field in fields:
+            label = field.get("label", "")
+            kb_cat = field.get("kb_category", "")
+
+            # 只处理 el-select / el-cascader 类型
+            if kb_cat not in ("el-select", "el-cascader"):
+                continue
+
+            # 匹配空字段列表中的 label（去除冒号后模糊匹配）
+            label_clean = label.replace("：", "").replace(":", "")
+            matched = any(
+                label_clean in empty_label or empty_label in label_clean
+                for empty_label in empty_field_labels
+            )
+            if matched:
+                target_fields.append(field)
+
+        if not target_fields:
+            LOG.debug(f"    未找到匹配的空 select 字段（扫描到 {len(fields)} 个字段）")
+            return False
+
+        LOG.info(f"    找到 {len(target_fields)} 个空 select 字段，开始填充...")
+
+        # 逐个填充，每填一个点击该字段 label 关闭下拉面板，防止遮挡下一个 select
+        # 注意：不能按 Escape，因为 el-dialog 默认 close-on-press-escape=true 会关闭整个对话框
+        filled_count = 0
+        details = []
+        for field in target_fields:
+            single_filled, single_details = await form_filler.fill_multi_step_fields(
+                [field], framework="element-ui"
+            )
+            filled_count += single_filled
+            details.extend(single_details)
+
+            # 填充后点击该字段的 label 关闭下拉面板
+            label_text = field.get("label", "").replace("：", "").replace(":", "")
+            try:
+                await page.evaluate(f"""(labelText) => {{
+                    const labels = document.querySelectorAll('.el-form-item__label');
+                    for (const l of labels) {{
+                        if (l.textContent.trim().includes(labelText)) {{
+                            l.click();
+                            return true;
+                        }}
+                    }}
+                    return false;
+                }}""", label_text)
+                await page.wait_for_timeout(300)
+            except Exception:
+                pass
+
+        for d in details:
+            if d.get("option_text"):
+                LOG.info(f"    ✓ 成功填充 {d['label']} → {d['option_text']}")
+            elif d.get("skipped_reason") == "no_options":
+                LOG.warning(f"    ✗ {d['label']} 无可选选项")
+            else:
+                LOG.warning(f"    ✗ 填充 {d['label']} 失败")
+
+        return filled_count > 0
+
+    except Exception as e:
+        LOG.warning(f"    尝试填充 select 时出错: {e}")
+        return False
+
+
 async def _click_button_escalating(page, btn_text: str) -> dict:
-    """降级策略点击按钮：Playwright → force → JS → 坐标。
+    """降级策略点击按钮：Playwright CSS → XPath 拆字符 → JS 去空格 → force → 坐标。
+
+    优先使用 CSS has-text 子串匹配；若失败则使用 XPath 拆字符匹配
+    (处理 "确 定" 等带空格的按钮文本)；再失败则 JS 去空格匹配。
 
     Returns:
         dict: {"clicked": bool, "strategy": str, "tag": str, "text": str}
         - clicked: 是否成功点击
-        - strategy: 使用的策略 (playwright/force/js/coord)
+        - strategy: 使用的策略 (playwright/xpath/js/force/coord)
         - tag: 成功点击的元素标签
         - text: 按钮原始文本
     """
@@ -3271,12 +3445,16 @@ async def _click_button_escalating(page, btn_text: str) -> dict:
     if not btn_text:
         return result
 
-    # 策略 1: Playwright 原生点击
+    from .replay.locator_helpers import safe_css
+    hidden_css = const.HIDDEN_FILTERS_CSS.get('element-ui', const.HIDDEN_FILTERS_CSS['_universal'])
+
+    # 策略 1: Playwright 原生点击（CSS has-text，带隐藏过滤）
     try:
-        locator = page.locator(
+        enhanced = safe_css(
             f'button:has-text("{btn_text}"), span:has-text("{btn_text}"), '
             f'a:has-text("{btn_text}")'
-        ).first
+        )
+        locator = page.locator(enhanced).first
         if await locator.count() > 0:
             await locator.click(timeout=3000)
             result.update({"clicked": True, "strategy": "playwright", "tag": "button"})
@@ -3284,47 +3462,70 @@ async def _click_button_escalating(page, btn_text: str) -> dict:
     except Exception:
         pass
 
-    # 策略 2: force click
+    # 策略 2: XPath 拆字符匹配 (处理 "确 定" 等带空格的按钮文本)
     try:
-        await page.click(
-            f'button:has-text("{btn_text}"), span:has-text("{btn_text}")',
-            force=True, timeout=3000
-        )
-        result.update({"clicked": True, "strategy": "force", "tag": "button"})
-        return result
+        hidden_filter = const.HIDDEN_FILTERS.get('element-ui', const.HIDDEN_FILTERS['_universal'])
+        chars_match = " and ".join(f"contains(.,'{c}')" for c in btn_text)
+        xpath = f"//button[{chars_match} and {hidden_filter}]"
+        xpath_btn = page.locator(f"xpath={xpath}").first
+        if await xpath_btn.count() > 0:
+            await xpath_btn.click(timeout=3000)
+            result.update({"clicked": True, "strategy": "xpath", "tag": "button"})
+            return result
     except Exception:
         pass
 
-    # 策略 3: JS click
+    # 策略 3: JS 去空格匹配 (strip all whitespace then compare)
     try:
-        clicked_info = await page.evaluate(f"""(text) => {{
+        clicked_info = await page.evaluate("""(text) => {
+            const target = text.replace(/\\s+/g, '');
             const elements = document.querySelectorAll('button, span, a, .el-button');
-            for (const el of elements) {{
-                if (el.textContent.trim().includes(text) && el.offsetWidth > 0) {{
+            for (const el of elements) {
+                if (el.offsetWidth === 0 || el.offsetHeight === 0) continue;
+                if (el.disabled || el.classList.contains('is-disabled')) continue;
+                if (el.closest('.is-hidden') || el.closest('[style*="display: none"]')) continue;
+                const elText = el.textContent.trim().replace(/\\s+/g, '');
+                if (elText.includes(target)) {
                     el.click();
-                    return {{clicked: true, tag: el.tagName.toLowerCase()}};
-                }}
-            }}
+                    return {clicked: true, tag: el.tagName.toLowerCase()};
+                }
+            }
             return null;
-        }}""", btn_text)
+        }""", btn_text)
         if clicked_info:
             result.update({"clicked": True, "strategy": "js", "tag": clicked_info["tag"]})
             return result
     except Exception:
         pass
 
-    # 策略 4: 坐标点击
+    # 策略 4: force click（CSS，带隐藏过滤）
     try:
-        rect = await page.evaluate(f"""(text) => {{
+        enhanced = safe_css(
+            f'button:has-text("{btn_text}"), span:has-text("{btn_text}")'
+        )
+        await page.click(enhanced, force=True, timeout=3000)
+        result.update({"clicked": True, "strategy": "force", "tag": "button"})
+        return result
+    except Exception:
+        pass
+
+    # 策略 5: 坐标点击（JS 去空格 + 坐标）
+    try:
+        rect = await page.evaluate("""(text) => {
+            const target = text.replace(/\\s+/g, '');
             const elements = document.querySelectorAll('button, span, a, .el-button');
-            for (const el of elements) {{
-                if (el.textContent.trim().includes(text) && el.offsetWidth > 0) {{
+            for (const el of elements) {
+                if (el.offsetWidth === 0 || el.offsetHeight === 0) continue;
+                if (el.disabled || el.classList.contains('is-disabled')) continue;
+                if (el.closest('.is-hidden') || el.closest('[style*="display: none"]')) continue;
+                const elText = el.textContent.trim().replace(/\\s+/g, '');
+                if (elText.includes(target)) {
                     const r = el.getBoundingClientRect();
-                    return {{x: r.x + r.width / 2, y: r.y + r.height / 2, tag: el.tagName.toLowerCase()}};
-                }}
-            }}
+                    return {x: r.x + r.width / 2, y: r.y + r.height / 2, tag: el.tagName.toLowerCase()};
+                }
+            }
             return null;
-        }}""", btn_text)
+        }""", btn_text)
         if rect:
             await page.mouse.click(rect["x"], rect["y"])
             result.update({"clicked": True, "strategy": "coord", "tag": rect["tag"]})
@@ -4192,6 +4393,12 @@ def _apply_fix(error_result: dict, context: dict) -> dict:
     elif error_type == "no_dialog":
         # 弹窗未出现：可能需要先执行前置操作
         pass
+
+    elif error_type == "required_field_empty":
+        # 必填字段为空：标记需要重新填充空的 select 字段
+        # 这个标记会在 _do_generic_operation 的重试循环中被检查
+        context["retry_fill_empty_selects"] = True
+        LOG.debug(f"    [_apply_fix] 标记需要重新填充空的 select 字段")
 
     return context
 
