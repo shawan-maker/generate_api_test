@@ -122,6 +122,27 @@
       }
     },
     {
+      "action": "get",
+      "label": "搜索验证（创建用户后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "query_params": {
+          "pageNum": "1",
+          "pageSize": "10",
+          "name": "autotest112205"
+        }
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_verify",
+      "search_param": "tenantId",
+      "search_param_source": "tenantId"
+    },
+    {
       "action": "update",
       "label": "编辑",
       "api": {
@@ -172,6 +193,27 @@
       ]
     },
     {
+      "action": "get",
+      "label": "搜索验证（编辑后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "query_params": {
+          "pageNum": "1",
+          "pageSize": "10",
+          "name": "autotest112205"
+        }
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_verify",
+      "search_param": "tenantId",
+      "search_param_source": "tenantId"
+    },
+    {
       "action": "lock",
       "label": "冻结",
       "api": {
@@ -202,6 +244,27 @@
       ]
     },
     {
+      "action": "get",
+      "label": "搜索验证（冻结后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "query_params": {
+          "pageNum": "1",
+          "pageSize": "10",
+          "name": "autotest112205"
+        }
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_verify",
+      "search_param": "tenantId",
+      "search_param_source": "tenantId"
+    },
+    {
       "action": "unlock",
       "label": "启用",
       "api": {
@@ -226,6 +289,27 @@
       "requires": [
         "id"
       ]
+    },
+    {
+      "action": "get",
+      "label": "搜索验证（启用后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "query_params": {
+          "pageNum": "1",
+          "pageSize": "10",
+          "name": "autotest112205"
+        }
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_verify",
+      "search_param": "tenantId",
+      "search_param_source": "tenantId"
     },
     {
       "action": "reset",
@@ -269,6 +353,27 @@
       ]
     },
     {
+      "action": "get",
+      "label": "搜索验证（重置密码后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "query_params": {
+          "pageNum": "1",
+          "pageSize": "10",
+          "name": "autotest112205"
+        }
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_verify",
+      "search_param": "tenantId",
+      "search_param_source": "tenantId"
+    },
+    {
       "action": "delete",
       "label": "批量删除",
       "api": {
@@ -288,6 +393,27 @@
       "requires": [
         "id"
       ]
+    },
+    {
+      "action": "get",
+      "label": "搜索验证（删除后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "query_params": {
+          "pageNum": "1",
+          "pageSize": "10",
+          "name": "autotest112205"
+        }
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_not_found",
+      "search_param": "tenantId",
+      "search_param_source": "tenantId"
     }
   ],
   "state_assertions": {

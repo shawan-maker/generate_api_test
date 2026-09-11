@@ -1031,41 +1031,6 @@
         "query_params_samples": []
       },
       {
-        "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/tenants/users",
-        "contexts": [
-          "init",
-          "replay:create",
-          "replay:delete",
-          "replay:lock",
-          "replay:migrate",
-          "replay:query",
-          "replay:unlock",
-          "replay:update"
-        ],
-        "bodies": [],
-        "request_body_sample": null,
-        "query_params": {},
-        "query_params_samples": [
-          {
-            "tenantId": "42ffdba38c58484f9be2bc1adf1672e6",
-            "pageNum": "1",
-            "pageSize": "10"
-          },
-          {
-            "tenantId": "42ffdba38c58484f9be2bc1adf1672e6",
-            "depth": "1"
-          },
-          {
-            "tenantId": "42ffdba38c58484f9be2bc1adf1672e6",
-            "pageNum": "1",
-            "pageSize": "10",
-            "name": "autotest112205"
-          }
-        ],
-        "search_param": "tenantId"
-      },
-      {
         "method": "POST",
         "pathname": "/estack/api/estack/draco/v1/policies/list",
         "contexts": [
@@ -1290,6 +1255,43 @@
             "userId": "1c44fd6a191d40b3bafa17b0ad0c6cdf"
           }
         ]
+      }
+    ],
+    "query": [
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "contexts": [
+          "init",
+          "replay:create",
+          "replay:delete",
+          "replay:lock",
+          "replay:migrate",
+          "replay:query",
+          "replay:unlock",
+          "replay:update"
+        ],
+        "bodies": [],
+        "request_body_sample": null,
+        "query_params": {},
+        "query_params_samples": [
+          {
+            "tenantId": "42ffdba38c58484f9be2bc1adf1672e6",
+            "pageNum": "1",
+            "pageSize": "10"
+          },
+          {
+            "tenantId": "42ffdba38c58484f9be2bc1adf1672e6",
+            "depth": "1"
+          },
+          {
+            "tenantId": "42ffdba38c58484f9be2bc1adf1672e6",
+            "pageNum": "1",
+            "pageSize": "10",
+            "name": "autotest112205"
+          }
+        ],
+        "search_param": "tenantId"
       }
     ],
     "support": [

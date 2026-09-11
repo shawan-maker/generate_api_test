@@ -244,6 +244,10 @@ def _reclassify_all_endpoints(classified_apis: dict, all_endpoints: list) -> dic
     Stage 2 保存的 by_category 可能由旧版分类器生成。在 analyze() 入口
     重新分类，确保分类逻辑修复（如 replay context 匹配）立即生效。
 
+    注意：Stage 2 的时间戳优先分类法是 query/detail 分类的唯一可靠来源
+    （classify_endpoint 兜底逻辑不会产生 query 类别），因此对于
+    Stage 2 已分类为 query/detail 的端点，直接保留原始分类。
+
     Args:
         classified_apis: Stage 2 保存的 by_category
         all_endpoints: 所有去重端点列表（含 method/pathname/contexts）
@@ -253,12 +257,26 @@ def _reclassify_all_endpoints(classified_apis: dict, all_endpoints: list) -> dic
     """
     from .endpoint_classifier import classify_endpoint
 
+    # ★ 构建端点到原始类别的映射（用于保留 Stage 2 的 query/detail 分类）
+    original_cat_map = {}  # {(method, pathname): category}
+    for cat, eps in classified_apis.items():
+        for ep in eps:
+            key = (ep.get("method", "GET"), ep.get("pathname", ""))
+            original_cat_map[key] = cat
+
     reclassified = {}
     for ep in all_endpoints:
         method = ep.get("method", "GET")
         pathname = ep.get("pathname", "")
         contexts = ep.get("contexts", [])
-        new_cat = classify_endpoint(method, pathname, contexts)
+
+        # ★ 保留 Stage 2 的 query/detail 分类（时间戳优先分类法的结果）
+        original_cat = original_cat_map.get((method, pathname))
+        if original_cat in ("query", "detail"):
+            new_cat = original_cat
+        else:
+            new_cat = classify_endpoint(method, pathname, contexts)
+
         if new_cat not in reclassified:
             reclassified[new_cat] = []
         # 从原分类中找到完整的 endpoint dict（保留 bodies 等字段）
@@ -314,6 +332,11 @@ def _filter_core_apis(classified: dict, response_samples: dict,
             # 同现频率过滤：在 60%+ 的按钮上下文中都出现的 API 是辅助 API
             if ep["pathname"] in cooccurrence_support:
                 LOG.debug(f"  同现过滤跳过: {ep['pathname']}")
+                continue
+
+            # ★ 豁免验证类别：query/detail 是验证专用，保留 GET 端点
+            if category in ("query", "detail"):
+                real_eps.append(ep)
                 continue
 
             # 关键：只保留 POST/PUT/DELETE 方法作为核心业务 API

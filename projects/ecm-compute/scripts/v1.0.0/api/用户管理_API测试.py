@@ -1,15 +1,21 @@
 """
 用户管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-11 15:39:28
+生成时间: 2026-09-11 16:31:04
 目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/user
 
 执行流程:
   1. 创建用户
-  2. 编辑
-  3. 冻结
-  4. 启用
-  5. 重置密码
-  6. 批量删除
+  2. 搜索验证（创建用户后）
+  3. 编辑
+  4. 搜索验证（编辑后）
+  5. 冻结
+  6. 搜索验证（冻结后）
+  7. 启用
+  8. 搜索验证（启用后）
+  9. 重置密码
+  10. 搜索验证（重置密码后）
+  11. 批量删除
+  12. 搜索验证（删除后）
 
 状态断言:
   - 删除后数据不应出现
@@ -139,6 +145,27 @@ MANIFEST = {
       }
     },
     {
+      "action": "get",
+      "label": "搜索验证（创建用户后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "query_params": {
+          "pageNum": "1",
+          "pageSize": "10",
+          "name": "autotest112205"
+        }
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_verify",
+      "search_param": "tenantId",
+      "search_param_source": "tenantId"
+    },
+    {
       "action": "update",
       "label": "编辑",
       "api": {
@@ -189,6 +216,27 @@ MANIFEST = {
       ]
     },
     {
+      "action": "get",
+      "label": "搜索验证（编辑后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "query_params": {
+          "pageNum": "1",
+          "pageSize": "10",
+          "name": "autotest112205"
+        }
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_verify",
+      "search_param": "tenantId",
+      "search_param_source": "tenantId"
+    },
+    {
       "action": "lock",
       "label": "冻结",
       "api": {
@@ -219,6 +267,27 @@ MANIFEST = {
       ]
     },
     {
+      "action": "get",
+      "label": "搜索验证（冻结后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "query_params": {
+          "pageNum": "1",
+          "pageSize": "10",
+          "name": "autotest112205"
+        }
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_verify",
+      "search_param": "tenantId",
+      "search_param_source": "tenantId"
+    },
+    {
       "action": "unlock",
       "label": "启用",
       "api": {
@@ -243,6 +312,27 @@ MANIFEST = {
       "requires": [
         "id"
       ]
+    },
+    {
+      "action": "get",
+      "label": "搜索验证（启用后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "query_params": {
+          "pageNum": "1",
+          "pageSize": "10",
+          "name": "autotest112205"
+        }
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_verify",
+      "search_param": "tenantId",
+      "search_param_source": "tenantId"
     },
     {
       "action": "reset",
@@ -286,6 +376,27 @@ MANIFEST = {
       ]
     },
     {
+      "action": "get",
+      "label": "搜索验证（重置密码后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "query_params": {
+          "pageNum": "1",
+          "pageSize": "10",
+          "name": "autotest112205"
+        }
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_verify",
+      "search_param": "tenantId",
+      "search_param_source": "tenantId"
+    },
+    {
       "action": "delete",
       "label": "批量删除",
       "api": {
@@ -305,6 +416,27 @@ MANIFEST = {
       "requires": [
         "id"
       ]
+    },
+    {
+      "action": "get",
+      "label": "搜索验证（删除后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "query_params": {
+          "pageNum": "1",
+          "pageSize": "10",
+          "name": "autotest112205"
+        }
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_not_found",
+      "search_param": "tenantId",
+      "search_param_source": "tenantId"
     }
   ],
   "state_assertions": {
