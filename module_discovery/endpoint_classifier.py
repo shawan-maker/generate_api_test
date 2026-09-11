@@ -22,9 +22,10 @@ class EndpointClassifier:
         """根据按钮文本分类 CRUD 类别"""
         return _classify_by_text(text)
 
-    def deduplicate(self, all_calls: List[Dict], samples: Dict) -> Dict:
+    def deduplicate(self, all_calls: List[Dict], samples: Dict,
+                    replay_windows: Dict = None) -> Dict:
         """去重合并并分类端点"""
-        return deduplicate_calls(all_calls, samples)
+        return deduplicate_calls(all_calls, samples, replay_windows=replay_windows)
 
 
 def _classify_by_text(text: str) -> str:
@@ -71,118 +72,56 @@ def _crud_from_contexts(contexts: List[str]) -> str | None:
 
 
 def classify_endpoint(method: str, pathname: str, contexts: List[str]) -> str:
-    """综合分类端点（修复：纯 URL 关键词错配 estack 扁平资源风格）。
+    """综合分类端点（兜底逻辑，供 core_api_map 未命中时使用）。
 
-    优先级: ① URL 查询/详情关键词(高优先，防止被 create 上下文误标)
-           ② 写方法专属关键词(lock/unlock/reset 等路径语义，先于 DELETE 兜底)
-           ③ DELETE → delete（仅真正的删除接口；unlock 已在②处理）
-           ④ 按钮上下文的写操作类别(仅对 POST/PUT/DELETE 生效——GET 请求
-              (下拉数据源/校验)无论上下文是什么都绝不可能是 create/update/lock 等写操作)
-           ⑤ URL 写操作关键词
-           ⑥ RESTful 资源路径兜底（POST=创建, PUT=更新, DELETE=删除）
-           ⑦ 上下文推断（replay:query 等）
-           ⑧ 兜底 other_post / other_get
+    优先级:
+    ① 校验类 API（/check, /valid 等 → support）— 最高优先，明确不是 CRUD
+    ② Context-first（replay:{action} 或按钮文本）→ 直接返回类别
+    ③ DELETE → delete
+    ④ RESTful 兜底（POST=other_post, PUT=update, GET=other_get）
     """
     p = pathname.lower()
 
-    # ① URL 查询/详情关键词（高优先）
-    # 修复: 从子串匹配改为段级匹配，避免 /target 被 /get 误判、
-    # /playlist 被 /list 误判、/preview 被 /view 误判
-    _path_segs = [s for s in p.split("/") if s]
-    _last2 = _path_segs[-2:] if len(_path_segs) >= 2 else _path_segs
-
-    _query_segs = {"list", "page", "search", "query", "find", "all", "select"}
-    _detail_segs = {"detail", "get", "info", "view"}
-
-    for seg in _last2:
-        if seg in _query_segs:
-            return "query"
-        if seg in _detail_segs:
-            return "detail"
-
-    # ①b RESTful 详情兜底：GET /resources/{id} 或 GET /resources/32hex
-    if method == "GET" and re.search(r"/\{[^}]+\}$", p):
-        return "detail"
-    if method == "GET" and re.search(r"/[0-9a-f]{20,}$", p):
-        return "detail"
-
-    # ② 校验类 API（账号/手机号/邮箱校验等）永远不是写操作，即使 POST+create 上下文
+    # ① 校验类 API（通用模式，不是项目特定关键词）— 最高优先
+    # 这些 URL 明确是验证/检查接口，不是 CRUD 操作
     if any(k in p for k in ("/check", "/usability", "/valid", "/exist", "/unique")):
         return "support" if method == "POST" else "other_get"
 
-    # ③ 写方法专属语义（先于 DELETE 兜底，避免 unlock 被误判 delete）
-    if method == "DELETE" and "/unlock" in p:
-        return "unlock"
+    # ② Context-first: 从 contexts 提取 action
+    ctx_crud = _crud_from_contexts(contexts)
+    if ctx_crud:
+        return ctx_crud
+
+    # ③ DELETE 方法
     if method == "DELETE":
         return "delete"
 
-    # ④ 按钮上下文的写操作类别：仅对写方法生效（GET 不可能是写操作）
-    if method in ("POST", "PUT", "PATCH"):
-        ctx_crud = _crud_from_contexts(contexts)
-        if ctx_crud in ("create", "delete", "update", "lock", "unlock", "reset", "authorize", "migrate"):
-            return ctx_crud
-
-    # ⑤ URL 写操作关键词（段级匹配，避免子串误判）
-    _write_map = {
-        "create": {"create", "add", "save", "register", "apply"},
-        "update": {"update", "edit", "modify", "change"},
-        "lock": {"lock", "freeze", "disable", "suspend"},
-        "unlock": {"unlock", "enable", "activate", "resume"},
-        "reset": {"reset", "reset-password", "password-reset"},
-        "delete": {"delete", "remove", "destroy"},
-    }
-    # 段级匹配：关键词需完整出现在某个路径段中（允许连字符复合段如 batch-delete）
-    for seg in _last2:
-        seg_tokens = set(re.split(r"[-_.]", seg))
-        for crud, kws in _write_map.items():
-            if seg in kws or seg_tokens & kws:
-                return crud
-
-    # ⑥ RESTful 资源路径兜底：POST /resources = 创建，PUT /resources/{id} = 更新
-    # 识别模式：URL 末段是资源名（非 ID），且无明确 action 路径
-    if method == "POST" and not any(k in p for k in ("/list", "/page", "/search", "/check")):
-        # 排除已知的基础设施 API（菜单、主题、字典等）
-        if not any(k in p for k in ("/menu/", "/theme", "/favorite", "/dynamic-dictionary",
-                                     "/notice/", "/access-log", "/system-theme")):
-            # 末段看起来像动作（含连字符/下划线/已知动词）→ 不兜底 create
-            last_seg = p.rstrip("/").rsplit("/", 1)[-1]
-            if "-" not in last_seg and "_" not in last_seg and last_seg.isalpha():
-                return "create"
+    # ④ RESTful 兜底（HTTP 方法语义）
     if method == "PUT":
         return "update"
     if method == "PATCH":
         return "update"
-
-    # ⑦ 上下文推断（replay:query 等）
-    # 判断逻辑：
-    #   - 列表查询 API（/tenants/users）只在 CRUD 操作中触发：
-    #     create, update, delete, lock, unlock + query → 6 个 replay 上下文
-    #   - 工具类 API（current-user）在每个操作回放时都会被调用，
-    #     额外出现在 import, migrate, reset 等"基础设施"操作中
-    # 策略：有 replay:query 且不在 import/migrate/reset 中出现 → 列表查询 API
-    if method == "GET" and "replay:query" in contexts:
-        infra_ctxs = {"replay:import", "replay:migrate", "replay:reset"}
-        if not any(c in contexts for c in infra_ctxs):
-            return "query"
-
-    # ⑧ 兜底
     if method == "POST":
         return "other_post"
     if method == "GET":
         return "other_get"
+
     return "other"
 
 
-def deduplicate_calls(all_calls: List[Dict], samples: Dict) -> Dict:
+def deduplicate_calls(all_calls: List[Dict], samples: Dict,
+                      replay_windows: Dict = None) -> Dict:
     """去重合并相同端点的多次调用。
 
     Args:
         all_calls: 所有捕获的 API 调用列表
         samples: 响应样本 {pathname: [{status, body}, ...]}
+        replay_windows: 每个操作的时间窗口 {action: {"start": ts, "end": ts}}
 
     Returns:
         {classified, all_endpoints, response_samples, stats}
     """
+    # 去重合并
     uniq = {}
     for api in all_calls:
         key = api["method"] + " " + api["pathname"]
@@ -196,9 +135,44 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict) -> Dict:
         if qp and qp not in uniq[key]["query_params_list"]:
             uniq[key]["query_params_list"].append(qp)
 
+    # ★ 基于时间窗口构建 core_api_map
+    core_api_map = {}  # {action: (method, pathname)}
+    if replay_windows:
+        for action, window in replay_windows.items():
+            start, end = window["start"], window["end"]
+            # 筛选时间窗口内的 API 调用，按时间排序
+            window_calls = sorted(
+                [c for c in all_calls if start <= c.get("ts", 0) <= end],
+                key=lambda c: c.get("ts", 0)
+            )
+            # 第一个业务 API 就是核心 API（排除静态资源和心跳）
+            for call in window_calls:
+                if not _is_static_or_heartbeat(call):
+                    core_api_map[action] = (call["method"], call["pathname"])
+                    break
+
+    # 构建反向索引：(method, pathname) → set of actions
+    endpoint_actions = {}  # {(method, pathname): set(actions)}
+    for action, ep_key in core_api_map.items():
+        endpoint_actions.setdefault(ep_key, set()).add(action)
+
+    # 分类端点
     classified = {}
     for ep in uniq.values():
-        cat = classify_endpoint(ep["method"], ep["pathname"], list(ep["contexts"]))
+        ep_key = (ep["method"], ep["pathname"])
+        actions = endpoint_actions.get(ep_key, set())
+
+        # ★ 分类逻辑：优先使用 core_api_map
+        if "query" in actions:
+            # 如果该端点是 query 操作的核心 API，优先归为 query
+            cat = "query"
+        elif actions:
+            # 取第一个非 query 操作作为类别
+            cat = next((a for a in actions if a != "query"), list(actions)[0])
+        else:
+            # 兜底：使用传统分类逻辑
+            cat = classify_endpoint(ep["method"], ep["pathname"], list(ep["contexts"]))
+
         ep_data = {
             "method": ep["method"], "pathname": ep["pathname"],
             "contexts": sorted(ep["contexts"]),
@@ -222,6 +196,22 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict) -> Dict:
         "response_samples": samples,
         "stats": {"total_calls": len(all_calls), "unique_endpoints": len(uniq)},
     }
+
+
+def _is_static_or_heartbeat(call: dict) -> bool:
+    """排除非业务 API（静态资源、心跳、基础设施 GET）。"""
+    pn = call.get("pathname", "")
+    # 静态资源
+    if any(pn.endswith(ext) for ext in const.SKIP_STATIC_EXTENSIONS):
+        return True
+    # 心跳/主题等基础设施 GET
+    if call["method"] == "GET" and any(k in pn for k in (
+        "/system-theme", "/access-log", "/favorite/list",
+        "/notice/new/count", "/menu/tree", "/menu/side-tree",
+        "/draco/v1/users/current-user",  # 当前用户信息
+    )):
+        return True
+    return False
 
 
 # 分页参数（排除后剩余的才可能是搜索参数）

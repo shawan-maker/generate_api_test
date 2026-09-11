@@ -19,19 +19,73 @@ from . import const
 LOG = logging.getLogger("analyze_flow")
 
 
-def _get_supporting_keywords(profile: dict) -> list:
-    """
-    从 profile.yaml 获取辅助 API 关键词列表。
+def _identify_infrastructure_apis(all_endpoints: list, threshold: float = 0.6) -> set:
+    """统计每个 GET 端点出现在多少不同操作 context 中。
 
-    优先级：
-    1. profile.api.supporting_keywords（如果存在）
-    2. const.SUPPORTING_API_KEYWORDS（默认值）
+    如果一个 GET 端点出现在 ≥threshold 的不同操作中 → 基础设施 API。
+    例如 /current-user 在 create/update/delete/migrate 中都出现 → 基础设施。
+    而 /display-unit-tree 只在 migrate 中出现 → 业务 API。
+
+    额外规则：如果一个端点只在 init 上下文中出现（无任何 replay: 上下文），
+    也视为基础设施 API（页面初始化加载的资源）。
+
+    操作总数 ≤ 2 时降级为保守策略：只排除已知的全局基础设施路径
+    （/current-user, /access-log 等），避免频率统计不可靠。
+
+    Args:
+        all_endpoints: 所有去重端点列表（含 method/context 字段）
+        threshold: 出现比例阈值（默认 60%）
+
+    Returns:
+        set: 基础设施 API 的 pathname 集合
     """
-    api_cfg = profile.get("api", {}) if profile else {}
-    custom_keywords = api_cfg.get("supporting_keywords")
-    if custom_keywords is not None:
-        return custom_keywords
-    return const.SUPPORTING_API_KEYWORDS
+    path_contexts = defaultdict(set)
+    all_contexts = set()
+    init_only_paths = set()  # 只在 init 上下文出现的端点
+
+    for ep in all_endpoints:
+        pathname = ep.get("pathname", "")
+        contexts = ep.get("contexts", [])
+
+        has_replay = False
+        for ctx in contexts:
+            if ctx.startswith("replay:"):
+                has_replay = True
+                action = ctx.split(":", 1)[1]
+                path_contexts[pathname].add(action)
+                all_contexts.add(action)
+
+        # 记录只在 init 上下文出现的端点
+        if not has_replay:
+            init_only_paths.add(pathname)
+
+    # 规则 1：只在 init 上下文出现 → 基础设施 API
+    infra = set(init_only_paths)
+    if init_only_paths:
+        LOG.debug(f"  基础设施 API（init-only）: {init_only_paths}")
+
+    # 规则 2：频率统计（出现在多个 replay 操作中）
+    total = len(all_contexts)
+    if total == 0:
+        return infra
+
+    # 降级策略：操作总数 ≤ 2 时，只排除已知的全局基础设施路径
+    _KNOWN_GLOBAL_INFRA = {"/users/current-user", "/current-user", "/access-log",
+                           "/system-theme", "/favorite"}
+    if total <= 2:
+        for path in path_contexts:
+            if path in _KNOWN_GLOBAL_INFRA:
+                infra.add(path)
+        LOG.debug(f"  基础设施 API 降级识别（total={total}）: {infra}")
+        return infra
+
+    for path, contexts in path_contexts.items():
+        ratio = len(contexts) / total
+        if ratio >= threshold:
+            infra.add(path)
+            LOG.debug(f"  基础设施 API: {path} 出现在 {len(contexts)}/{total} ({ratio:.2f}) 个操作中")
+
+    return infra
 
 
 def _filter_by_cooccurrence(all_endpoints: list, threshold: float = 0.6,
@@ -129,16 +183,22 @@ def analyze(classified_apis: dict, all_endpoints: list,
     # Step -1: 用当前分类器重新分类所有端点
     # 原因：分类器逻辑可能已修复（如 replay context 匹配），但 Stage 2 输出中
     # 的分类结果仍是旧分类器的输出。重新分类确保使用最新逻辑。
-    classified_apis = _reclassify_all_endpoints(classified_apis, all_endpoints)
+    reclassified_apis = _reclassify_all_endpoints(classified_apis, all_endpoints)
 
-    # Step 0: 同现频率过滤（识别在多个按钮上下文中都出现的辅助 API）
+    # Step 0a: 基础设施 API 识别（频率统计替代 URL 关键词）
+    infra_apis = _identify_infrastructure_apis(all_endpoints, threshold=0.6)
+    if infra_apis:
+        LOG.info(f"  Step 0a: 基础设施 API 识别: {len(infra_apis)} 个 API 被标记为基础设施")
+
+    # Step 0b: 同现频率过滤（识别在多个按钮上下文中都出现的辅助 API）
     cooccurrence_support = _filter_by_cooccurrence(all_endpoints, threshold=0.6,
                                                    response_samples=response_samples)
     if cooccurrence_support:
-        LOG.info(f"  Step 0: 同现频率过滤: {len(cooccurrence_support)} 个 API 被标记为辅助")
+        LOG.info(f"  Step 0b: 同现频率过滤: {len(cooccurrence_support)} 个 API 被标记为辅助")
 
     # Step 1: 过滤辅助 API，找核心 CRUD API
-    core_apis = _filter_core_apis(classified_apis, response_samples, cooccurrence_support, profile)
+    core_apis = _filter_core_apis(reclassified_apis, response_samples, cooccurrence_support,
+                                  profile, infra_apis)
     LOG.info(f"  Step 1: 核心 API 类别: {list(core_apis.keys())}")
 
     # Step 2: 按钮-API 关联
@@ -174,6 +234,7 @@ def analyze(classified_apis: dict, all_endpoints: list,
         "dependencies": dep_chain,
         "state_assertions": state_rules,
         "pre_api_chain": pre_api_result,
+        "reclassified_apis": reclassified_apis,  # 添加重新分类的数据
     }
 
 
@@ -224,32 +285,52 @@ def _reclassify_all_endpoints(classified_apis: dict, all_endpoints: list) -> dic
 
 
 def _filter_core_apis(classified: dict, response_samples: dict,
-                      cooccurrence_support: set = None, profile: dict = None) -> dict:
+                      cooccurrence_support: set = None, profile: dict = None,
+                      infra_apis: set = None) -> dict:
     """
     Step 1: 过滤辅助 API。
 
     辅助 API 判断标准：
-    - URL 包含菜单/主题/字典/通知等关键词
+    - 基础设施 API（频率统计识别，在多个操作中都出现）→ infra_apis
     - 在所有按钮点击后都会出现（同现频率高）→ cooccurrence_support
     - GET 类查询且路径不含核心资源名
     """
     core = {}
-    supporting_patterns = _get_supporting_keywords(profile)
     cooccurrence_support = cooccurrence_support or set()
+    infra_apis = infra_apis or set()
 
     for category, endpoints in classified.items():
+        # 跳过 support 类别（校验类 API）
         if category == "support":
             continue
-        # 过滤路径含辅助关键词的
+
         real_eps = []
         for ep in endpoints:
-            p = ep["pathname"].lower()
-            if any(kw in p for kw in supporting_patterns):
+            # 基础设施 API 过滤（频率统计结果）
+            if ep["pathname"] in infra_apis:
+                LOG.debug(f"  基础设施 API 过滤: {ep['pathname']}")
                 continue
+
             # 同现频率过滤：在 60%+ 的按钮上下文中都出现的 API 是辅助 API
             if ep["pathname"] in cooccurrence_support:
                 LOG.debug(f"  同现过滤跳过: {ep['pathname']}")
                 continue
+
+            # 关键：只保留 POST/PUT/DELETE 方法作为核心业务 API
+            # GET 请求是 pre-API（数据加载）或基础设施 API，不应纳入 core_apis
+            method = ep.get("method", "GET")
+            if method not in ("POST", "PUT", "DELETE", "PATCH"):
+                LOG.debug(f"  跳过 GET 请求（pre-API 或基础设施）: {ep['pathname']}")
+                continue
+
+            # 过滤辅助 POST：路径包含 /list, /check, /query 等关键词的是数据加载 POST
+            if method == "POST":
+                path_lower = ep["pathname"].lower()
+                helper_keywords = ["/list", "/check", "/query", "/search", "/get"]
+                if any(kw in path_lower for kw in helper_keywords):
+                    LOG.debug(f"  跳过辅助 POST（数据加载）: {ep['pathname']}")
+                    continue
+
             real_eps.append(ep)
 
         if real_eps:
@@ -348,12 +429,11 @@ def _map_buttons_to_apis(core_apis: dict, all_endpoints: list,
 
 def _derive_order(core_apis: dict, all_endpoints: list = None) -> list:
     """
-    Step 3: 根据核心 API 类别推导执行顺序（增强版：时序验证 + 依赖约束）。
+    Step 3: 根据核心 API 类别推导执行顺序（基于时间戳 + 依赖约束）。
 
     策略：
-    1. 静态优先级（CRUD_EXECUTION_ORDER）作为基础顺序
-    2. 时序验证（interceptor 时间戳）调整顺序
-    3. 依赖约束（拓扑排序）确保前置步骤先执行
+    1. 时间戳验证（interceptor 时间戳）作为基础顺序
+    2. 依赖约束（拓扑排序）确保前置步骤先执行
 
     注意：query/detail/execute 仅用于验证步骤，不作为独立业务步骤出现在排序中。
 
@@ -366,21 +446,24 @@ def _derive_order(core_apis: dict, all_endpoints: list = None) -> list:
     _VERIFY_ONLY = {"query", "detail", "execute"}
     available -= _VERIFY_ONLY
 
-    # 1. 静态优先级（基础顺序）
-    base_order = [step for step in const.CRUD_EXECUTION_ORDER if step in available]
-
-    if not base_order:
+    if not available:
         return []
 
-    # 2. 时序验证（从 all_endpoints 提取时间戳）
+    # 1. 时间戳验证（从 all_endpoints 提取时间戳）作为基础顺序
     if all_endpoints:
         temporal_order = _derive_temporal_order(core_apis, all_endpoints)
         if temporal_order:
             LOG.debug(f"  时序推导: {temporal_order}")
-            # 合并策略：静态优先级为主，时序为辅（仅调整相邻步骤）
-            base_order = _merge_orders(base_order, temporal_order)
+            base_order = temporal_order
+        else:
+            # 如果没有时间戳信息，使用核心 API 的键顺序作为备选
+            base_order = list(available)
+            LOG.debug(f"  无时间戳信息，使用键顺序: {base_order}")
+    else:
+        base_order = list(available)
+        LOG.debug(f"  无 all_endpoints，使用键顺序: {base_order}")
 
-    # 3. 依赖约束（拓扑排序）
+    # 2. 依赖约束（拓扑排序）
     dep_graph = _build_dependency_graph(core_apis)
     if dep_graph:
         topo_order = _topological_sort(dep_graph, base_order)
@@ -396,21 +479,41 @@ def _derive_temporal_order(core_apis: dict, all_endpoints: list) -> list:
     从 interceptor 时间戳推导执行顺序。
 
     策略：统计每个 CRUD 类别的首次出现时间，按时间排序。
+
+    支持两种 context 格式：
+    - 旧格式：click:按钮名:timestamp
+    - 新格式：replay:action（需要从 request_interceptor 的 submit_marks 获取时间戳）
     """
     first_seen = {}
 
     for category, endpoints in core_apis.items():
         for ep in endpoints:
-            # 从 contexts 中提取时间戳（格式: "click:按钮名:timestamp"）
             for ctx in ep.get("contexts", []):
+                # 旧格式：click:按钮名:timestamp
                 parts = ctx.split(":")
                 if len(parts) >= 3:
                     try:
                         ts = float(parts[-1])
                         if category not in first_seen or ts < first_seen[category]:
                             first_seen[category] = ts
-                    except (ValueError, TypeError):
                         continue
+                    except (ValueError, TypeError):
+                        pass
+
+                # 新格式：replay:action
+                # 这种情况下，all_endpoints 中没有直接的时间戳
+                # 需要通过 endpoint 在列表中的位置来推断顺序
+                if parts[0] == "replay" and len(parts) == 2:
+                    # 使用 endpoint 在 all_endpoints 中的索引作为时间戳
+                    ep_index = -1
+                    for i, all_ep in enumerate(all_endpoints):
+                        if (all_ep.get("method") == ep.get("method") and
+                            all_ep.get("pathname") == ep.get("pathname")):
+                            ep_index = i
+                            break
+                    if ep_index >= 0:
+                        if category not in first_seen or ep_index < first_seen[category]:
+                            first_seen[category] = ep_index
 
     if not first_seen:
         return []
@@ -449,27 +552,26 @@ def _build_dependency_graph(core_apis: dict) -> dict:
     """
     构建 CRUD 依赖图。
 
-    规则：
-    - query/detail/update/lock/unlock/reset 依赖 create（需要 id）
-    - unlock 依赖 lock（必须先锁定才能解锁）
+    规则（仅保留强依赖）：
+    - 所有写操作依赖 create（需要 id）
     - delete 依赖所有其他写操作（必须先完成所有业务操作再删除）
+
+    注意：不再强制 "unlock 依赖 lock"，因为：
+    - 如果 capture 阶段是 lock→unlock 顺序，时序已保证
+    - 如果 capture 阶段是 unlock→lock（异常），强制依赖反而会掩盖问题
     """
     graph = {cat: set() for cat in core_apis}
 
-    # 通用规则：大部分操作依赖 create
+    # 通用规则：所有写操作依赖 create（需要 id）
     if "create" in core_apis:
-        for cat in ("query", "detail", "update", "lock", "unlock", "reset"):
-            if cat in graph:
+        for cat in core_apis.keys():
+            if cat in ("update", "lock", "unlock", "reset", "delete", "migrate", "authorize"):
                 graph[cat].add("create")
 
-    # 特殊规则：unlock 依赖 lock
-    if "unlock" in graph and "lock" in core_apis:
-        graph["unlock"].add("lock")
-
-    # 关键规则：delete 依赖所有其他写操作
+    # 关键规则：delete 依赖所有其他写操作（必须先完成所有业务操作再删除）
     if "delete" in graph:
-        for cat in ("update", "lock", "unlock", "reset"):
-            if cat in core_apis:
+        for cat in core_apis.keys():
+            if cat not in ("delete", "query", "detail"):
                 graph["delete"].add(cat)
 
     return graph
@@ -1084,6 +1186,20 @@ def _classify_body_fields(body_sample: dict, id_field_details: dict,
         # 5. 静态字段：其他所有
         roles[key] = {"role": "static"}
 
+    # 降级分析：对 static 字段的长字符串做值模式分析
+    # 识别加密值、邮箱、手机号等用户输入字段
+    for key, role_info in roles.items():
+        if role_info.get("role") == "static":
+            value = body_sample[key]
+            if isinstance(value, str) and len(value) > 20:
+                pattern = _analyze_value_pattern(key, value)
+                if pattern and pattern["role"] == "test_value":
+                    roles[key] = {
+                        "role": "test_value",
+                        "value_pattern": pattern["value_pattern"],
+                    }
+                    LOG.debug(f"    _classify_body_fields: {key} 降级为 test_value/{pattern['value_pattern']}")
+
     return roles
 
 
@@ -1138,7 +1254,7 @@ def _build_auth_profile(profile: dict) -> dict:
 
 def build_manifest(analysis: dict, capture_result: dict,
                    profile: dict, module_name: str, target_url: str,
-                   ui_result: dict = None) -> dict:
+                   ui_result: dict = None, infra_apis: set = None) -> dict:
     """构建完整测试清单（manifest）。
 
     将 Stage 3 分析结果 + 响应约定发现 + 项目配置 → 结构化的 manifest dict。
@@ -1150,6 +1266,7 @@ def build_manifest(analysis: dict, capture_result: dict,
         module_name: 模块名称
         target_url: 目标页面 URL
         ui_result: Stage 1 UI 探测结果（可选，用于动态标签提取）
+        infra_apis: 基础设施 API 路径集合（可选，用于过滤辅助 API）
 
     Returns:
         完整的 manifest dict
@@ -1157,6 +1274,7 @@ def build_manifest(analysis: dict, capture_result: dict,
     response_samples = capture_result.get("response_samples", {})
     core_apis = analysis.get("core_apis", {})
     crud_order = analysis.get("crud_order", [])
+    infra_apis = infra_apis or set()
 
     # 1. 发现响应约定
     response_contract = _discover_response_contract(response_samples)
@@ -1219,7 +1337,10 @@ def build_manifest(analysis: dict, capture_result: dict,
         return False
 
     verify_endpoints = {}
-    raw_classified = capture_result.get("by_category", {})
+    # 使用重新分类的数据，而不是原始捕获数据
+    reclassified = analysis.get("reclassified_apis", {})
+    raw_classified = reclassified if reclassified else capture_result.get("by_category", {})
+
     for verify_action in ["query", "detail"]:
         eps = core_apis.get(verify_action, [])
         selected = False
@@ -1233,12 +1354,11 @@ def build_manifest(analysis: dict, capture_result: dict,
                 break
         if selected:
             continue
-        # 回退 1：从 capture_result 原始分类中查找
+        # 回退 1：从重新分类的数据中查找
         raw_eps = raw_classified.get(verify_action, [])
-        # 过滤掉明显的辅助 API（菜单、主题等）
+        # 过滤掉基础设施 API（菜单、主题等）
         for ep in raw_eps:
-            p = ep["pathname"].lower()
-            if any(kw in p for kw in _get_supporting_keywords(profile)):
+            if ep["pathname"] in infra_apis:
                 continue
             if _endpoint_returns_entity_id(ep):
                 verify_endpoints[verify_action] = {
@@ -1254,8 +1374,8 @@ def build_manifest(analysis: dict, capture_result: dict,
         for fallback_cat in ("other_get", "other_post"):
             fallback_eps = raw_classified.get(fallback_cat, [])
             for ep in fallback_eps:
-                p = ep["pathname"].lower()
-                if any(kw in p for kw in _get_supporting_keywords(profile)):
+                # 过滤掉基础设施 API（菜单、主题等）
+                if ep["pathname"] in infra_apis:
                     continue
                 if _endpoint_returns_entity_id(ep):
                     verify_endpoints[verify_action] = {
@@ -1593,13 +1713,28 @@ def build_manifest(analysis: dict, capture_result: dict,
             for field_name in list(field_roles.keys()):
                 key = f"{action}.{field_name}"
                 if key in field_resolutions:
+                    # 保护 name/mutable 字段不被 pre_api_ref 覆盖
+                    # 这些是业务测试值，运行时应自动生成唯一值
+                    existing_role = field_roles[field_name].get("role", "")
+                    if existing_role in ("name", "mutable"):
+                        continue
                     resolution = field_resolutions[key]
-                    field_roles[field_name] = {
-                        "role": "pre_api_ref",
-                        "source": resolution["source"],
-                    }
-                    if resolution.get("is_array"):
-                        field_roles[field_name]["is_array"] = True
+                    strategy = resolution.get("strategy", "")
+
+                    if strategy == "value_pattern_analysis":
+                        # 值模式分析结果：标记为 test_value
+                        field_roles[field_name] = {
+                            "role": "test_value",
+                            "value_pattern": resolution["value_pattern"],
+                        }
+                    else:
+                        # pre_api_ref 来源
+                        field_roles[field_name] = {
+                            "role": "pre_api_ref",
+                            "source": resolution["source"],
+                        }
+                        if resolution.get("is_array"):
+                            field_roles[field_name]["is_array"] = True
 
     manifest = {
         "manifest_version": manifest_version,
@@ -1713,7 +1848,7 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
 
     LOG.info(f"  Phase 2: 前置 API 索引包含 {len(pre_api_index)} 个值")
 
-    # Phase 3: 三策略匹配
+    # Phase 3: 三策略匹配 + 值模式分析降级
     field_resolutions = {}
     used_apis = {}  # {api_id: api_info}
 
@@ -1727,6 +1862,20 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
             api_id = resolution['source'].split('.')[0]
             if api_id not in used_apis:
                 used_apis[api_id] = resolution['api']
+        else:
+            # ★ 值模式分析降级（仅对 create 步骤）
+            # 当三策略匹配都返回 None 时，根据值的特征判断是否为用户输入字段
+            if param['step_action'] == 'create':
+                pattern = _analyze_value_pattern(param['field_name'], param['field_value'])
+                if pattern and pattern['role'] == 'test_value':
+                    key = f"{param['step_action']}.{param['field_name']}"
+                    field_resolutions[key] = {
+                        'source': '',
+                        'strategy': 'value_pattern_analysis',
+                        'value_pattern': pattern['value_pattern'],
+                    }
+                    LOG.debug(f"    值模式降级: {param['field_name']} → "
+                              f"test_value/{pattern['value_pattern']}")
 
     LOG.info(f"  Phase 3: 解析了 {len(field_resolutions)} 个字段来源")
 
@@ -1784,12 +1933,64 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
     }
 
 
+def _analyze_value_pattern(field_name: str, value) -> dict:
+    """根据值的特征推断字段角色（方案 B 降级：值模式分析）。
+
+    主要数据驱动（看值本身的特征），对加密/不可读值用字段名辅助判断。
+    用于区分「系统引用字段」和「用户输入字段」。
+
+    Args:
+        field_name: 字段名（加密值时用作辅助信号）
+        value: 字段值
+
+    Returns:
+        {"role": "test_value"|"static", "value_pattern": "..."} 或 None
+    """
+    if not isinstance(value, str) or not value:
+        return None
+
+    fn_lower = field_name.lower()
+
+    # 1. 长十六进制串（≥32 字符）→ hash/加密值，不可重放
+    if re.fullmatch(r'[0-9a-fA-F]{32,}', value):
+        return {"role": "test_value", "value_pattern": "hex_hash"}
+
+    # 2. 长 Base64 串（≥50 字符，含 +/=）→ 加密值，不可重放
+    #    对加密值用字段名辅助判断应生成什么类型的测试值
+    if len(value) >= 50 and re.search(r'[+/=]', value) and re.fullmatch(r'[A-Za-z0-9+/=]+', value):
+        # 字段名含敏感信息（phone/email/password）→ 标记为 static，复用原始加密值
+        # 原因：服务端要求加密后的值，我们无法生成有效的加密值（不知道公钥）
+        if any(kw in fn_lower for kw in ('phone', 'mobile', 'cell', 'email', 'mail', 'password', 'passwd', 'pwd')):
+            return {"role": "static", "value_pattern": "encrypted_sensitive"}
+        return {"role": "test_value", "value_pattern": "base64_encrypted"}
+
+    # 3. 短可读字符串 — 进一步分析子模式
+    if len(value) < 80:
+        # 3a. 含 @ → 邮箱
+        if '@' in value and '.' in value.split('@')[-1]:
+            return {"role": "test_value", "value_pattern": "email"}
+
+        # 3b. 纯数字且长度 8-15 → 手机号
+        if re.fullmatch(r'\+?\d{8,15}', value):
+            return {"role": "test_value", "value_pattern": "phone"}
+
+        # 3c. 短可读字符串（含字母，长度 2-50）→ 名称/文本
+        if 2 <= len(value) <= 50 and re.search(r'[a-zA-Z一-鿿]', value):
+            return {"role": "test_value", "value_pattern": "text"}
+
+    # 4. 短固定格式值（如 "+86", "1", "ACTIVE"）→ 静态
+    if len(value) <= 10:
+        return {"role": "static"}
+
+    return None
+
+
 def _resolve_parameter_source(param: dict, pre_api_index: dict) -> dict:
     """
     使用三策略匹配解析参数来源。
 
     策略 1: 精确值匹配
-    策略 2: 字段名启发式
+    策略 2: 字段名启发式 + 值比对门控
     策略 3: 列表成员检查
 
     Args:
@@ -1827,19 +2028,28 @@ def _resolve_parameter_source(param: dict, pre_api_index: dict) -> dict:
             'is_array': is_array
         }
 
-    # 策略 2: 字段名启发式（降级方案，仅当值匹配失败时尝试）
+    # 策略 2: 字段名启发式 + 值比对门控（降级方案，仅当值匹配失败时尝试）
     # 字段名完全匹配（取路径最后一段），不做子串匹配
     for value_str, info in pre_api_index.items():
         api_field_name = info['field']['name']
         api_field_leaf = api_field_name.rsplit('_', 1)[-1].lower()
         if field_name.lower() == api_field_leaf or field_name.lower() == api_field_name.lower():
-            api_id = info['api']['id']
-            return {
-                'source': f"{api_id}.{api_field_name}",
-                'api': info['api'],
-                'strategy': 'field_name_heuristic',
-                'is_array': False
-            }
+            # ★ 新增：字段名匹配时，检查值是否一致
+            if value_str == field_value_str:
+                # 值一致 → 系统引用
+                api_id = info['api']['id']
+                return {
+                    'source': f"{api_id}.{api_field_name}",
+                    'api': info['api'],
+                    'strategy': 'field_name_and_value_match',
+                    'is_array': False
+                }
+            else:
+                # 字段名匹配但值不同 → 用户输入字段，不是系统引用
+                LOG.debug(f"    字段 {field_name}: 名称匹配但值不同 "
+                          f"(请求值={field_value_str[:30]}..., "
+                          f"响应值={value_str[:30]}...) → 判定为用户输入")
+                return None  # 不返回，交给值模式分析
 
     # 策略 3: 列表成员检查（参数值是否在某个列表响应中）
     # 检查前置 API 索引中的列表字段

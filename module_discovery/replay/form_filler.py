@@ -578,26 +578,25 @@ class FormFiller:
 
         return checked
 
-    async def submit_form_v2(self) -> str:
-        """提交表单（v2 版本），返回提交结果。
+    async def submit_form_v2(self) -> dict:
+        """提交表单（v2 版本），返回已验证的 locator 和原始文本。
 
         中文按钮文本常含空格（如 "确 定"、"保 存"），使用 JavaScript
         去掉空格后匹配，避免 Playwright has-text 匹配失败。
 
-        返回格式: "submitted:{original_text}" 其中 original_text 是按钮原始文本（保留空格），
-        供 build_playbook 生成精确的 playwright_locator。
-
-        点击提交按钮后等待加载完成（可能触发页面刷新/跳转）。
+        Returns:
+            dict: {"text": str, "locator": str}
+            - text: 按钮原始文本（保留空格），如 "确 定"
+            - locator: 已验证的 playwright_locator，如 "button:has-text('确定')"
         """
         from .wait_helpers import wait_for_loading_complete
 
-        # JavaScript 方式：去掉空格后匹配常见提交按钮文本，返回原始文本
+        # JavaScript 方式：去掉空格后匹配常见提交按钮文本，返回原始文本 + 标签
         try:
             _submit_texts_js = json.dumps(const.SUBMIT_BUTTON_TEXTS)
             clicked = await self.page.evaluate(f"""(() => {{
                 const submitTexts = {_submit_texts_js};
-                const buttons = Array.from(document.querySelectorAll('button'));
-                // 优先找可见的按钮（过滤 hidden/disabled）
+                const buttons = Array.from(document.querySelectorAll('button, span, a'));
                 const visible = buttons.filter(b =>
                     b.offsetWidth > 0 && b.offsetHeight > 0
                     && !b.disabled
@@ -610,15 +609,16 @@ class FormFiller:
                     const normalized = originalText.replace(/\\s+/g, '');
                     if (submitTexts.some(t => normalized === t || normalized.includes(t))) {{
                         btn.click();
-                        return {{normalized: normalized, original: originalText}};
+                        return {{normalized: normalized, original: originalText, tag: btn.tagName.toLowerCase()}};
                     }}
                 }}
                 return null;
             }})()""")
             if clicked:
                 await wait_for_loading_complete(self.page)
-                # 使用原始文本（保留空格），供 build_playbook 生成精确 locator
-                return f"submitted:{clicked['original']}"
+                # 构建已验证的 locator：使用去空格后的文本（JS 去空格策略成功的）
+                verified_locator = f"{clicked['tag']}:has-text(\"{clicked['normalized']}\")"
+                return {"text": clicked['original'], "locator": verified_locator}
         except Exception as e:
             LOG.debug(f"JavaScript 提交按钮匹配失败: {e}")
 
@@ -629,9 +629,22 @@ class FormFiller:
                 enhanced = safe_css(f'button:has-text("{text}"):visible')
                 btn = self.page.locator(enhanced).first
                 if await btn.count() > 0:
+                    actual_text = await self.page.evaluate(f"""() => {{
+                        const allBtns = Array.from(document.querySelectorAll('button'));
+                        for (const b of allBtns) {{
+                            if (b.offsetWidth > 0 && b.offsetHeight > 0 && !b.disabled) {{
+                                const txt = b.textContent.trim();
+                                if (txt.includes("{text}")) {{
+                                    return txt;
+                                }}
+                            }}
+                        }}
+                        return "{text}";
+                    }}""")
                     await btn.click()
                     await wait_for_loading_complete(self.page)
-                    return f"submitted:{text}"
+                    verified_locator = f"button:has-text(\"{text}\")"
+                    return {"text": actual_text, "locator": verified_locator}
             except Exception as e:
                 LOG.debug(f"尝试提交按钮 {text} 失败: {e}")
                 continue
@@ -641,13 +654,22 @@ class FormFiller:
             enhanced_primary = safe_css('button.el-button--primary:visible')
             primary_btn = self.page.locator(enhanced_primary).first
             if await primary_btn.count() > 0:
+                actual_text = await self.page.evaluate("""() => {
+                    const btns = Array.from(document.querySelectorAll('button.el-button--primary'));
+                    for (const b of btns) {
+                        if (b.offsetWidth > 0 && b.offsetHeight > 0 && !b.disabled) {
+                            return b.textContent.trim();
+                        }
+                    }
+                    return "primary";
+                }""")
                 await primary_btn.click()
                 await wait_for_loading_complete(self.page)
-                return "submitted:primary"
+                return {"text": actual_text, "locator": "button.el-button--primary"}
         except Exception as e:
             LOG.debug(f"尝试 primary 按钮失败: {e}")
 
-        return "not_found"
+        return {"text": "", "locator": ""}
 
 
 async def scan_form_fields(page: Page, ui_framework: str = "element-ui") -> List[Dict]:

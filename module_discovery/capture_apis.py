@@ -184,11 +184,12 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
 
     LOG.info(f"Playbook 操作序列: {list(operations.keys())}")
 
-    # 4. 按 CRUD 执行顺序回放
+    # 4. 按 playbook 操作顺序回放（Stage 1 探测顺序即为正确的依赖顺序）
     created_marker = None
+    replay_windows = {}  # ★ 记录每个操作的时间窗口，用于 API 分类
 
-    for action in const.CRUD_EXECUTION_ORDER:
-        op = operations.get(action)
+    for action in operations:  # 直接遍历 playbook 定义的操作
+        op = operations[action]
         if not op:
             LOG.debug(f"跳过 {action}: Playbook 中无定义")
             continue
@@ -200,10 +201,14 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
             LOG.info(f"▶ 回放 {action}")
         interceptor.set_context(f"replay:{action}")
 
+        # ★ 记录操作开始时间
+        import time
+        op_start = time.time()
+
         try:
             # 执行 playbook 中的步骤序列
             steps = op.get("steps", [])
-            result = await replay_from_playbook(page, steps, button_driver, created_marker)
+            result = await replay_from_playbook(page, steps, button_driver, created_marker, interceptor)
 
             # 如果是 create 操作且成功，记录 marker
             if action == "create" and result.get("marker"):
@@ -214,7 +219,20 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
             await page.wait_for_timeout(1000)
 
         except Exception as e:
-            LOG.warning(f"  ⚠️ 回放 {action} 失败: {e}")
+            error_msg = str(e)
+            LOG.warning(f"  ⚠️ 回放 {action} 失败: {error_msg}")
+
+            # 页面崩溃恢复：重新加载页面，确保后续操作可以继续
+            if "crashed" in error_msg.lower():
+                LOG.warning(f"  🔄 页面崩溃，尝试恢复...")
+                try:
+                    await page.goto(target_url, wait_until="networkidle", timeout=60000)
+                    await wait_for_table_ready(page, timeout=15000)
+                    LOG.info(f"  ✅ 页面已恢复，继续后续操作")
+                except Exception as reload_err:
+                    LOG.error(f"  ❌ 页面恢复失败: {reload_err}")
+                    break  # 无法恢复，终止后续操作
+                continue  # 跳过清理，直接进入下一个操作
 
         # 操作间清理：关闭残留弹窗，确保回到列表页
         try:
@@ -222,14 +240,19 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
         except Exception as e:
             LOG.debug(f"  操作间清理异常（不影响后续）: {e}")
 
+        # ★ 记录操作结束时间
+        op_end = time.time()
+        replay_windows[action] = {"start": op_start, "end": op_end}
+
         continue
 
     # 5. 收集拦截数据
-    calls, samples, gates, sid = interceptor.collect()
+    calls, samples, gates, sid, submit_marks = interceptor.collect()
 
-    # 6. 分类端点
-    result = classifier.deduplicate(calls, samples)
+    # 6. 分类端点 — 传入 replay_windows 用于时间戳优先分类
+    result = classifier.deduplicate(calls, samples, replay_windows=replay_windows)
     result["permission_gates"] = gates
+    result["submit_marks"] = submit_marks  # 提交时间戳标记
     if sid:
         result["sid"] = sid
 

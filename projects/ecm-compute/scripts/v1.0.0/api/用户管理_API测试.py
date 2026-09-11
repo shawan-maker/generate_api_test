@@ -1,11 +1,18 @@
 """
 用户管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-10 11:21:07
+生成时间: 2026-09-11 15:39:28
 目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/user
 
 执行流程:
   1. 创建用户
-  2. 查询验证（创建后）
+  2. 编辑
+  3. 冻结
+  4. 启用
+  5. 重置密码
+  6. 批量删除
+
+状态断言:
+  - 删除后数据不应出现
 """
 
 import sys, json
@@ -75,12 +82,12 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userName": "autotest010424",
-        "password": "Q763nZJ/poVavV2SEmECzWXglsH7Df1+Oj78EsqKQ0EHy+TZkd/nGZh3SSNEoMDVwOR/p9gRH5sgHBxrndZb/BBmPJnYQMqUKvQPSDCX/nCg+FSKIJs9HfRP7OxStyyWY8ZtzZzhmBaZBOy5YjAqUkRTMKHvz3XS3eO2TeplJZE=",
-        "name": "test_010424",
-        "email": "RPVY1mUyutXyQ/xsYpi/x/wi2Th6V78gsb9YCDt2ufPkzLJJMlAFNriUE7+RzhSEMzhiC5H2pD1ay13fngpFZW58qD4tTAo2MeR7dCSTRFxdhEHaCXitCadxm6oF4GeLROVv6PKBXFZ8lehsZJy4cAzdNhlOcgIzMT00rUS7k4A=",
-        "phone": "E98pYupLR5JDo4+40nuhESr79MQ5YhVQIdqDnfZGtzxsV58/gvmQD65RtFPii0GZKHd5sywjE1yj12+CqxE37G4KdCQzWj0vEDlQUMfDCmRW1PiKhSUp2763W0p02OF6MeNlgJlgOQOwE5mqMQrpoY5qGQEDrGyYsCXrQOMZZp8=",
-        "description": "auto_desc_010424",
+        "userName": "autotest112205",
+        "password": "dU4OokoThhVbtvkzxMg8W2MKNCSqcR/eNRg0wK0JOVw0lg0eepyjd4fJwHaaXCb/Xu2GaLK919P9dt76oCDUZpipqrkTQgHtXX+O4hGXtRg3kfWMNKNs9iW0lkBmAZAzeRTWI0PPTS8Bf/TI43FoH7zAuLE6vRZO0GkDKVEZuCo=",
+        "name": "test_112205",
+        "email": "fnd2rRMZbOHDudE87jKlNiuNydtkVy/QnrdwhhLoL9EsPmLpGBusl5Ion6Ijq9BmzfvavxWDEHJuR/XSNOBDtAg/C98+1JFn5/dkkhDPBEsHrjOfwXh5wNjVVvNpvmF1yIN0YUvxhPsDneBeoUgW9Zn/QVA+PdtIsYitTsQXpjw=",
+        "phone": "A5IMhFVe8I5ZiSRh3gUhgG5YbPnVVgHHNqBB6fzutENatj8Vv31yb4pOXQfuQn+pBW/ObQvsEtrPZvieFM7b2Ecga7Ps/YfzDxkvMlK4N0pgHMXPwlyUZFQltxIJOQ1WGxIcanX/AG0LvIcbujvjjFSHA+prTD6CIe+w3cCXF9g=",
+        "description": "auto_desc_112205",
         "policyIds": [
           "1f8e392309fc414c9d77d45d0315fedc"
         ],
@@ -93,41 +100,33 @@ MANIFEST = {
           "role": "name"
         },
         "password": {
-          "role": "pre_api_ref",
-          "source": "current_user.entity_password"
+          "role": "static"
         },
         "name": {
-          "role": "pre_api_ref",
-          "source": "current_user.entity_name"
+          "role": "name"
         },
         "email": {
-          "role": "pre_api_ref",
-          "source": "current_user.entity_email"
+          "role": "static"
         },
         "phone": {
-          "role": "pre_api_ref",
-          "source": "current_user.entity_phone"
+          "role": "static"
         },
         "description": {
-          "role": "pre_api_ref",
-          "source": "current_user.entity_description"
+          "role": "mutable"
         },
         "policyIds": {
-          "role": "pre_api_ref",
-          "source": "list.entity_list_0_id",
-          "is_array": True
+          "role": "static"
         },
         "adminId": {
-          "role": "pre_api_ref",
-          "source": "current_user.entity_adminId"
+          "role": "test_value",
+          "value_pattern": "hex_hash"
         },
         "tenantId": {
           "role": "pre_api_ref",
-          "source": "display_by_role.entity_0_id"
+          "source": "display_unit_tree_ignore_currentuser.entity_0_id"
         },
         "countryCode": {
-          "role": "pre_api_ref",
-          "source": "current_user.entity_countryCode"
+          "role": "static"
         }
       },
       "requires": [],
@@ -140,137 +139,219 @@ MANIFEST = {
       }
     },
     {
-      "action": "get",
-      "label": "查询验证（创建后）",
+      "action": "update",
+      "label": "编辑",
       "api": {
-        "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/tenants/users",
-        "query_params": {
-          "tenantId": "$display_by_role.entity_0_id",
-          "pageNum": "1",
-          "pageSize": "10"
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/users/{id}",
+        "query_params": {}
+      },
+      "body_template": {
+        "userId": "1c44fd6a191d40b3bafa17b0ad0c6cdf",
+        "name": "test_112246",
+        "description": "auto_desc_112246",
+        "tenantId": "42ffdba38c58484f9be2bc1adf1672e6",
+        "countryCode": "+86",
+        "phone": "CH9buE4vsy7Hw9yqb0ikBT778f6WyhkXe3iJs1iodhyCxafayCJ0Ufcf3/jlNNMcar7lJRR4RYjX/lKaZPC3PV1U7AWk20sDtY4TOk0G+un+Zv1gUc3yhAHrvgQToJdp9MFVD5S4nrlwwoXIyqj9i9QOIgCDE84sqsZq1XQF10c=",
+        "email": "AjFkKrNKqnsy2OYoTsI3pm2jpT7ZTumzJSnBZmFTFRMiQce/gAsh1wktNGsebOeZ830C7iJf9ZrWT1WlN5yJo0/VVYqF75EBCyPZDKT57PakU8YTjvOrDC64hrDDU5iJz3Fd+lnTiL0nbMZdXYwtTsCNaLfkKKR24sO3B6P+/vs=",
+        "adminId": "93552edc908e4dadae761fff1fd0f24c"
+      },
+      "body_field_roles": {
+        "userId": {
+          "role": "id_ref"
+        },
+        "name": {
+          "role": "name"
+        },
+        "description": {
+          "role": "mutable"
+        },
+        "tenantId": {
+          "role": "pre_api_ref",
+          "source": "display_unit_tree_ignore_currentuser.entity_0_id"
+        },
+        "countryCode": {
+          "role": "static"
+        },
+        "phone": {
+          "role": "static"
+        },
+        "email": {
+          "role": "static"
+        },
+        "adminId": {
+          "role": "pre_api_ref",
+          "source": "access_log.entity_0_userId"
         }
       },
-      "body_template": {},
-      "body_field_roles": {},
       "requires": [
         "id"
+      ]
+    },
+    {
+      "action": "lock",
+      "label": "冻结",
+      "api": {
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/users/{id}/suspend",
+        "query_params": {}
+      },
+      "body_template": {
+        "userId": "1c44fd6a191d40b3bafa17b0ad0c6cdf",
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "adminId": "93552edc908e4dadae761fff1fd0f24c"
+      },
+      "body_field_roles": {
+        "userId": {
+          "role": "id_ref"
+        },
+        "tenantId": {
+          "role": "context",
+          "source": "context.tenantId"
+        },
+        "adminId": {
+          "role": "context",
+          "source": "context.adminId"
+        }
+      },
+      "requires": [
+        "id"
+      ]
+    },
+    {
+      "action": "unlock",
+      "label": "启用",
+      "api": {
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/users/{id}/enable",
+        "query_params": {}
+      },
+      "body_template": {
+        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+        "adminId": "93552edc908e4dadae761fff1fd0f24c"
+      },
+      "body_field_roles": {
+        "tenantId": {
+          "role": "context",
+          "source": "context.tenantId"
+        },
+        "adminId": {
+          "role": "context",
+          "source": "context.adminId"
+        }
+      },
+      "requires": [
+        "id"
+      ]
+    },
+    {
+      "action": "reset",
+      "label": "重置密码",
+      "api": {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/password-reset/generate",
+        "query_params": {}
+      },
+      "body_template": {
+        "userId": "1c44fd6a191d40b3bafa17b0ad0c6cdf",
+        "passwordPolicy": {
+          "id": "90542be67d584ab09daa12e697fb041a",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "minPasswordLength": 8,
+          "requireLowercaseCharacters": False,
+          "requireUppercaseCharacters": True,
+          "requireNumbers": True,
+          "requireSymbols": True,
+          "minPasswordDifferentCharacter": 0,
+          "createdAt": "2023-08-30 10:07:14",
+          "updatedAt": "2025-03-08 18:39:42",
+          "deleted": False,
+          "userName": None
+        },
+        "isRandomPassword": False
+      },
+      "body_field_roles": {
+        "userId": {
+          "role": "id_ref"
+        },
+        "passwordPolicy": {
+          "role": "static"
+        },
+        "isRandomPassword": {
+          "role": "static"
+        }
+      },
+      "requires": [
+        "id"
+      ]
+    },
+    {
+      "action": "delete",
+      "label": "批量删除",
+      "api": {
+        "method": "DELETE",
+        "pathname": "/estack/api/estack/draco/v1/users/batch/delete",
+        "query_params": {}
+      },
+      "body_template": [
+        "1c44fd6a191d40b3bafa17b0ad0c6cdf"
       ],
-      "assertion": "contains_id"
+      "body_field_roles": {
+        "__array_items__": {
+          "role": "id_ref",
+          "source": "create.id"
+        }
+      },
+      "requires": [
+        "id"
+      ]
     }
   ],
   "state_assertions": {
     "state_field": "state",
     "values_by_crud": {
-      "create": "ENABLE"
+      "create": "ENABLE",
+      "update": "ENABLE",
+      "lock": "DISABLE",
+      "unlock": "ENABLE"
     },
-    "after_create": "ENABLE"
+    "after_create": "ENABLE",
+    "after_lock": "DISABLE",
+    "after_unlock": "ENABLE",
+    "after_delete": "NOT_EXIST"
   },
   "pre_apis": [
     {
-      "name": "获取当前用户信息",
-      "id": "current_user",
+      "name": "前置 API: display-unit-tree-ignore-currentuser",
+      "id": "display_unit_tree_ignore_currentuser",
       "method": "GET",
-      "pathname": "/estack/api/estack/draco/v1/users/current-user",
-      "depends_on": [],
-      "extracts": [
-        {
-          "name": "entity_password",
-          "path": "entity.password",
-          "used_by": [
-            "create"
-          ]
-        },
-        {
-          "name": "entity_name",
-          "path": "entity.name",
-          "used_by": [
-            "create"
-          ]
-        },
-        {
-          "name": "entity_email",
-          "path": "entity.email",
-          "used_by": [
-            "create"
-          ]
-        },
-        {
-          "name": "entity_phone",
-          "path": "entity.phone",
-          "used_by": [
-            "create"
-          ]
-        },
-        {
-          "name": "entity_description",
-          "path": "entity.description",
-          "used_by": [
-            "create"
-          ]
-        },
-        {
-          "name": "entity_adminId",
-          "path": "entity.adminId",
-          "used_by": [
-            "create"
-          ]
-        },
-        {
-          "name": "entity_countryCode",
-          "path": "entity.countryCode",
-          "used_by": [
-            "create"
-          ]
-        },
-        {
-          "name": "tenantId",
-          "path": "entity.tenantId",
-          "used_by": [
-            "query"
-          ]
-        },
-        {
-          "name": "adminId",
-          "path": "entity.id",
-          "used_by": [
-            "query"
-          ]
-        }
-      ],
-      "body_template": {},
-      "query_params": {}
-    },
-    {
-      "name": "前置 API: list",
-      "id": "list",
-      "method": "POST",
-      "pathname": "/estack/api/estack/draco/v1/policies/list",
-      "depends_on": [],
-      "extracts": [
-        {
-          "name": "entity_list_0_id",
-          "path": "entity.list[0].id",
-          "used_by": [
-            "create"
-          ]
-        }
-      ],
-      "body_template": {},
-      "query_params": {}
-    },
-    {
-      "name": "前置 API: display-by-role",
-      "id": "display_by_role",
-      "method": "GET",
-      "pathname": "/estack/api/estack/draco/v1/tenants/display-by-role",
+      "pathname": "/estack/api/estack/draco/v1/tenants/display-unit-tree-ignore-currentuser",
       "depends_on": [],
       "extracts": [
         {
           "name": "entity_0_id",
           "path": "entity[0].id",
           "used_by": [
-            "create"
+            "create",
+            "update"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {}
+    },
+    {
+      "name": "前置 API: access-log",
+      "id": "access_log",
+      "method": "GET",
+      "pathname": "/estack/api/estack/pegasi/v1/menu/access-log",
+      "depends_on": [],
+      "extracts": [
+        {
+          "name": "entity_0_userId",
+          "path": "entity[0].userId",
+          "used_by": [
+            "update"
           ]
         }
       ],
@@ -279,9 +360,8 @@ MANIFEST = {
     }
   ],
   "pre_api_refs": [
-    "current_user",
-    "list",
-    "display_by_role"
+    "display_unit_tree_ignore_currentuser",
+    "access_log"
   ]
 }
 

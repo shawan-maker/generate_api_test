@@ -157,6 +157,7 @@ class RequestInterceptor:
         self._ctx_holder = {"v": "init"}
         self._installed = False
         self._sid: Optional[str] = None
+        self.submit_marks: List[Dict] = []  # [(ts, context), ...]
 
         # 加载 KB 与权限门禁关键词
         kb = load_kb()
@@ -168,6 +169,37 @@ class RequestInterceptor:
     def set_context(self, ctx: str):
         """设置当前操作上下文标签（如 'click:创建用户'、'row:编辑'）。"""
         self._ctx_holder["v"] = ctx
+
+    def mark_submit(self):
+        """记录提交时刻的精确时间戳，用于时序定位目标 API。
+
+        在表单提交按钮点击前调用，标记 (ts, context) 元组。
+        Stage 3 分析时，submit_ts 后的第一个非 GET 请求即为目标 API。
+        """
+        self.submit_marks.append({
+            "ts": time.time(),
+            "context": self._ctx_holder["v"],
+        })
+        LOG.debug(f"  📌 mark_submit: ts={self.submit_marks[-1]['ts']:.3f}, "
+                  f"ctx={self._ctx_holder['v']}")
+
+    async def wait_for_quiesce(self, timeout_ms=5000):
+        """等待网络静默（无新请求），在最终提交前调用。
+
+        目的：在"填表单"和"点提交"之间制造一个无请求的间隙，
+        使提交后的第一个请求就是目标 API，避免填表期间的 GET
+        请求与提交后的 POST 请求混在一起。
+
+        Args:
+            timeout_ms: 最大等待时间（毫秒），超时后降级为固定等待
+        """
+        try:
+            await self.page.wait_for_load_state("networkidle", timeout=timeout_ms)
+            LOG.debug("  ✅ 网络静默等待完成")
+        except Exception:
+            # networkidle 超时（可能有长轮询/WebSocket），不阻塞主流程
+            await self.page.wait_for_timeout(2000)  # 降级：固定等 2s
+            LOG.debug("  ⏳ 网络静默等待超时，降级为固定等待 2s")
 
     async def install(self):
         """安装请求/响应监听器 + KB 注入补丁（如需要）。"""
@@ -253,23 +285,44 @@ class RequestInterceptor:
     def _on_request(self, req):
         """请求事件：记录 method、pathname、body、context、query_params。"""
         u = req.url
+        ctx = self._ctx_holder["v"]
+
+        # 临时 debug 日志：追踪 migrate 上下文期间的请求
+        if "migrate" in ctx:
+            LOG.debug(f"[interceptor] migrate ctx 请求: {req.method} {u[:120]}")
+            LOG.debug(f"[interceptor]   should_capture={self._should_capture(u)}, method={req.method}")
+
         if not self._should_capture(u):
+            # migrate 期间被过滤的请求也记录
+            if "migrate" in ctx:
+                LOG.warning(f"[interceptor] migrate 期间被过滤: {req.method} {u[:150]} (不匹配 {self.base_url}{self.api_path_prefix})")
             return
         if req.method == "OPTIONS":
+            if "migrate" in ctx:
+                LOG.debug(f"[interceptor] migrate 期间跳过 OPTIONS: {u[:120]}")
             return
         parsed = urlparse(u)
         pn = parsed.path
         query_params = {k: v[0] for k, v in parse_qs(parsed.query).items()} if parsed.query else {}
         if pn.endswith(self.SKIP_EXTENSIONS):
+            if "migrate" in ctx:
+                LOG.debug(f"[interceptor] migrate 期间跳过静态资源: {pn[-60:]}")
             return
         if "/web/" in pn:
+            if "migrate" in ctx:
+                LOG.debug(f"[interceptor] migrate 期间跳过 /web/: {pn[:80]}")
             return
+
+        # migrate 期间捕获到的请求详细记录
+        if "migrate" in ctx:
+            LOG.info(f"[interceptor] ✅ migrate 捕获: {req.method} {pn} body={bool(req.post_data)}")
+
         self.calls.append({
             "method": req.method,
             "pathname": pn.replace(self.base_url, ""),
             "query_params": query_params,
             "body": req.post_data or "",
-            "context": self._ctx_holder["v"],
+            "context": ctx,
             "ts": time.time(),
         })
 
@@ -327,5 +380,13 @@ class RequestInterceptor:
             LOG.debug(f"处理响应样本失败: {e}")
 
     def collect(self):
-        """返回收集到的 (calls, samples, permission_gates, sid)。"""
-        return self.calls, self.samples, self.permission_gates, self._sid
+        """返回收集到的 (calls, samples, permission_gates, sid, submit_marks)。"""
+        return self.calls, self.samples, self.permission_gates, self._sid, self.submit_marks
+
+    def get_submit_marks(self):
+        """获取提交时间戳标记列表。
+
+        Returns:
+            List[Dict]: 每个元素包含 {"ts": float, "context": str}
+        """
+        return self.submit_marks

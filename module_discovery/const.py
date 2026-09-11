@@ -76,23 +76,6 @@ CONFIRM_BUTTON_TEXTS = ['确定', '确认', '是', 'OK', 'Yes', '迁移', '授�
 # 取消对话框按钮文本
 CANCEL_BUTTON_TEXTS = ['取消', 'Cancel', '否']
 
-# 按优先级排序的 CRUD 执行顺序
-CRUD_EXECUTION_ORDER = [
-    "create",    # 必须第一
-    "query",     # 查初始数据
-    "detail",    # 查看详情
-    "update",    # 修改
-    "lock",      # 锁定/冻结（互斥）
-    "unlock",    # 解锁/启用
-    "reset",     # 重置密码
-    "import",    # 批量导入
-    "export",    # 导出
-    "execute",   # 其他操作
-    "authorize", # 授权
-    "migrate",   # 迁移
-    "delete",    # 必须最后
-]
-
 # 写操作集合（用于判断是否需要后置验证）
 WRITE_OPERATIONS = ("create", "update", "delete", "lock", "unlock", "reset")
 
@@ -168,34 +151,6 @@ SKIP_STATIC_EXTENSIONS = (".js", ".css", ".png", ".jpg", ".svg",
                           ".woff", ".woff2", ".ttf", ".ico", ".map",
                           ".gif", ".webp", ".mp4", ".pdf")
 
-# 辅助 API 路径关键词（出现在所有按钮点击场景中的基础设施 API）
-SUPPORTING_API_KEYWORDS = [
-    "/menu/", "/theme", "/favorite", "/dynamic-dictionary",
-    "/notice/", "/access-log", "/system-theme",
-    "/current-user", "/authority/",
-    "/dictionary", "/role/", "/permission/",
-]
-
-# ============================================================
-# Stage 3: API → CRUD 类别映射
-# ============================================================
-API_CRUD_KEYWORDS = {
-    "create":    ["/create", "/add", "/save", "/register", "/apply", "/order"],
-    "delete":    ["/delete", "/remove", "/destroy", "/release"],
-    "update":    ["/update", "/edit", "/modify", "/change", "/rename"],
-    "detail":    ["/detail", "/get", "/info", "/view"],
-    "query":     ["/list", "/page", "/search", "/query", "/find",
-                  "/all", "/select"],
-    "lock":      ["/lock", "/freeze", "/disable", "/stop", "/suspend"],
-    "unlock":    ["/unlock", "/enable", "/activate", "/resume", "/start"],
-    "export":    ["/export", "/download"],
-    "import":    ["/import", "/upload"],
-    "batch":     ["/batch", "/batch-delete", "/batch-update"],
-    "reset":     ["/reset", "/reset-password"],
-    # 角色/策略管理相关（estack 风格的命名）
-    "role":      ["/policies", "/roles", "/permissions", "/authorities"],
-}
-
 # ============================================================
 # Stage 3: 状态字段检测
 # ============================================================
@@ -245,8 +200,10 @@ LIST_KEY_CANDIDATES = ["list", "records", "rows", "items", "data", "content", "r
 TOTAL_KEY_CANDIDATES = ["total", "totalCount", "totalElements", "count", "total_count"]
 
 # 名称字段标识符（字段名包含这些关键词 且 值是短字符串）
+# 注：仅作初始分类辅助，最终由值模式分析（_analyze_value_pattern）决定
 NAME_FIELD_KEYWORDS = ["name", "title", "label", "displayname", "username", "account"]
-# 可变字段标识符
+# 可变字段标识符（测试时需要生成唯一值，避免与已有数据冲突）
+# 注：仅作初始分类辅助，最终由值模式分析（_analyze_value_pattern）决定
 MUTABLE_FIELD_KEYWORDS = ["description", "remark", "memo", "note", "comment", "desc"]
 
 

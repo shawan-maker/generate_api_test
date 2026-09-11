@@ -22,7 +22,7 @@
       "text": "批量导入",
       "tag": "BUTTON",
       "className": "el-button el-button--default el-button--small",
-      "rect": "69x30",
+      "rect": "70x31",
       "location": "toolbar",
       "source": "main",
       "action": "import"
@@ -31,7 +31,7 @@
       "text": "批量删除",
       "tag": "BUTTON",
       "className": "el-button el-tooltip el-button--default el-button--small is-",
-      "rect": "69x30",
+      "rect": "70x31",
       "location": "toolbar",
       "source": "main",
       "action": "delete"
@@ -40,7 +40,7 @@
       "text": "批量迁移",
       "tag": "BUTTON",
       "className": "el-button el-tooltip el-button--default el-button--small is-",
-      "rect": "69x30",
+      "rect": "70x31",
       "location": "toolbar",
       "source": "main",
       "action": "migrate"
@@ -49,7 +49,7 @@
       "text": "GO",
       "tag": "BUTTON",
       "className": "el-button pagination-jumper el-button--default el-button--mi",
-      "rect": "50x27",
+      "rect": "51x28",
       "location": "toolbar",
       "source": "main",
       "action": "unknown"
@@ -60,7 +60,7 @@
       "text": "编辑",
       "tag": "BUTTON",
       "className": "el-button el-button--text el-button--small",
-      "rect": "25x13",
+      "rect": "26x14",
       "location": "row_action",
       "source": "main",
       "action": "update"
@@ -69,7 +69,7 @@
       "text": "删除",
       "tag": "BUTTON",
       "className": "el-button el-tooltip el-button--text el-button--small",
-      "rect": "25x13",
+      "rect": "26x14",
       "location": "row_action",
       "source": "main",
       "action": "delete"
@@ -78,7 +78,7 @@
       "text": "更多",
       "tag": "SPAN",
       "className": "el-dropdown-link el-dropdown-selfdefine",
-      "rect": "44x13",
+      "rect": "44x14",
       "location": "row_action",
       "source": "main",
       "action": "execute"
@@ -90,10 +90,10 @@
       "tag": "button",
       "className": "el-button el-button--default el-button--small",
       "rect": {
-        "x": 1472.6458740234375,
+        "x": 1471.3125,
         "y": 945,
-        "width": 48.677085876464844,
-        "height": 29.33333396911621
+        "width": 49.34375,
+        "height": 30
       },
       "location": "dialog",
       "source": "create_page_scan",
@@ -104,10 +104,10 @@
       "tag": "button",
       "className": "el-button el-button--primary el-button--small",
       "rect": {
-        "x": 1531.322998046875,
+        "x": 1530.65625,
         "y": 945,
-        "width": 48.677085876464844,
-        "height": 29.33333396911621
+        "width": 49.34375,
+        "height": 30
       },
       "location": "dialog",
       "source": "create_page_scan",
@@ -397,30 +397,30 @@
       "success": true,
       "fill_data": {
         "名称": "test",
-        "编码": "code_022087",
-        "描述": "自动测试创建于022087",
-        "备注": "自动创建于022087",
-        "说明": "自动测试创建于022087",
+        "编码": "code_111970",
+        "描述": "自动测试创建于111970",
+        "备注": "自动创建于111970",
+        "说明": "自动测试创建于111970",
         "用户名": "test",
         "姓名": "test",
-        "邮箱": "at_022087@test.com",
-        "手机": "13840618978",
+        "邮箱": "at_111970@test.com",
+        "手机": "13895430732",
         "密码": "Test@123456",
         "确认密码": "Test@123456",
         "角色名称": "test",
-        "角色编码": "role_code_022087",
-        "角色描述": "自动测试角色创建于022087",
+        "角色编码": "role_code_111970",
+        "角色描述": "自动测试角色创建于111970",
         "username": "test",
         "name": "test",
-        "email": "at_022087@test.com",
-        "phone": "13840618978",
+        "email": "at_111970@test.com",
+        "phone": "13895430732",
         "password": "Test@123456",
-        "description": "自动测试创建于022087",
-        "code": "code_022087",
-        "remark": "自动创建于022087",
-        "账号": "AT_test_022087",
-        "系统角色": "AT_test_022087",
-        "部门角色": "AT_test_022087"
+        "description": "自动测试创建于111970",
+        "code": "code_111970",
+        "remark": "自动创建于111970",
+        "账号": "AT_test_111970",
+        "系统角色": "AT_test_111970",
+        "部门角色": "AT_test_111970"
       },
       "fill_rules": {
         "账号": {
@@ -554,11 +554,11 @@
         "trigger": "创建用户",
         "submit": "确 定"
       },
-      "trigger_locator": "button:has-text('创建用户')",
-      "trigger_locator_verified": "button:has-text('创建用户')",
+      "trigger_locator": "span:has-text(\"创建用户\")",
+      "trigger_locator_verified": "span:has-text(\"创建用户\")",
       "trigger_text": "创建用户",
-      "submit_locator": "button:has-text('确 定')",
-      "submit_locator_verified": "button:has-text('确 定')",
+      "submit_locator": "button:has-text(\"确定\")",
+      "submit_locator_verified": "button:has-text(\"确定\")",
       "submit_text": "确 定",
       "dialog_detected": false,
       "interaction_mode": "page-nav",
@@ -573,30 +573,35 @@
           "fill_rule": {},
           "is_editable": true,
           "option_text": "普通用户"
-        },
-        {
-          "label": "部门角色",
-          "kb_category": "el-select",
-          "selector": ".el-form-item:nth-child(3) .el-select",
-          "fill_rule": {},
-          "is_editable": false,
-          "option_text": ""
         }
       ],
       "radio_field_details": []
     },
-    "query": {
+    "import": {
+      "success": false,
+      "error_type": "env_dependency",
+      "error_text": "导入操作需要上传文件，无法自动完成",
+      "trigger_text": "批量导入",
+      "selectors": {
+        "trigger": "批量导入"
+      }
+    },
+    "migrate": {
       "success": true,
       "selectors": {
-        "trigger": "搜索输入:请输入"
+        "trigger": "批量迁移",
+        "confirm": "确 定"
       },
-      "trigger_locator_verified": "input[placeholder=\"请输入\"]",
-      "search_input": {
-        "locator": "input[placeholder=\"请输入\"]",
-        "placeholder": "请输入"
+      "confirmed": "确 定",
+      "trigger_text": "批量迁移",
+      "post_confirm_state": {
+        "dialog_remains": false,
+        "has_form_in_dialog": false
       },
-      "trigger_mode": "button",
-      "has_table": true
+      "trigger_locator_verified": "button:has-text(\"批量迁移\")",
+      "needs_checkbox": true,
+      "checkbox_locator": ".el-checkbox__input",
+      "confirm_button_text_verified": "确 定"
     },
     "update": {
       "success": true,
@@ -672,7 +677,7 @@
         }
       },
       "trigger_locator_verified": "button:has-text('编辑')",
-      "submit_locator_verified": "button:has-text('确 定')",
+      "submit_locator_verified": "button:has-text(\"确定\")",
       "submit_text": "确 定",
       "interaction_mode": "page-nav",
       "dialog_locator": ".el-dialog__wrapper",
@@ -680,82 +685,13 @@
       "multi_step_field_details": [],
       "radio_field_details": []
     },
-    "lock": {
-      "success": true,
-      "selectors": {
-        "trigger": "冻结",
-        "row_selector": "更多 > 冻结",
-        "confirm": "确定"
-      },
-      "confirmed": "确定",
-      "trigger_text": "冻结",
-      "post_confirm_state": {
-        "dialog_remains": false,
-        "has_form_in_dialog": false
-      },
-      "is_dropdown_operation": true,
-      "dropdown_parent_selector": ".el-dropdown",
-      "dropdown_item_locator": ".el-dropdown-menu__item:has-text('冻结')",
-      "dropdown_item_text": "冻结",
-      "dropdown_trigger_method": "hover",
-      "checkbox_locator": ".el-checkbox__input"
-    },
-    "unlock": {
-      "success": true,
-      "selectors": {
-        "trigger": "启用",
-        "row_selector": "更多 > 启用",
-        "confirm": "确定"
-      },
-      "confirmed": "确定",
-      "trigger_text": "启用",
-      "post_confirm_state": {
-        "dialog_remains": false,
-        "has_form_in_dialog": false
-      },
-      "is_dropdown_operation": true,
-      "dropdown_parent_selector": ".el-dropdown",
-      "dropdown_item_locator": ".el-dropdown-menu__item:has-text('启用')",
-      "dropdown_item_text": "启用",
-      "dropdown_trigger_method": "hover",
-      "checkbox_locator": ".el-checkbox__input"
-    },
-    "reset": {
-      "success": true,
-      "selectors": {
-        "trigger": "重置密码",
-        "row_selector": "更多 > 重置密码",
-        "confirm": "确认"
-      },
-      "confirmed": "确认",
-      "trigger_text": "重置密码",
-      "post_confirm_state": {
-        "dialog_remains": false,
-        "has_form_in_dialog": false
-      },
-      "is_dropdown_operation": true,
-      "dropdown_parent_selector": ".el-dropdown",
-      "dropdown_item_locator": ".el-dropdown-menu__item:has-text('重置密码')",
-      "dropdown_item_text": "重置密码",
-      "dropdown_trigger_method": "hover",
-      "checkbox_locator": ".el-checkbox__input"
-    },
-    "import": {
-      "success": false,
-      "error_type": "env_dependency",
-      "error_text": "导入操作需要上传文件，无法自动完成",
-      "trigger_text": "批量导入",
-      "selectors": {
-        "trigger": "批量导入"
-      }
-    },
     "authorize": {
       "success": false,
       "error_type": "required_field_empty",
       "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
       "trigger_text": "授权",
       "nav_info": {
-        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=d82bf75c780a45dfa0d26bfc01cab59f",
+        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=eb2fe7d4c6804599b249b5be7ca9b304&type=userList&rowId=231fb55113ea4e15a599c8180ca64cb3",
         "depth": 0,
         "page_title": "eStack Enterprise",
         "has_form": true,
@@ -793,30 +729,30 @@
         ],
         "fill_data": {
           "名称": "AT_test_auto",
-          "编码": "code_022204",
-          "描述": "自动测试创建于022204",
-          "备注": "自动创建于022204",
-          "说明": "自动测试创建于022204",
+          "编码": "code_112094",
+          "描述": "自动测试创建于112094",
+          "备注": "自动创建于112094",
+          "说明": "自动测试创建于112094",
           "用户名": "AT_test_auto",
           "姓名": "AT_test_auto",
-          "邮箱": "at_022204@test.com",
-          "手机": "13831587904",
+          "邮箱": "at_112094@test.com",
+          "手机": "13892990311",
           "密码": "Test@123456",
           "确认密码": "Test@123456",
           "角色名称": "AT_test_auto",
-          "角色编码": "role_code_022204",
-          "角色描述": "自动测试角色创建于022204",
+          "角色编码": "role_code_112094",
+          "角色描述": "自动测试角色创建于112094",
           "username": "AT_test_auto",
           "name": "AT_test_auto",
-          "email": "at_022204@test.com",
-          "phone": "13831587904",
+          "email": "at_112094@test.com",
+          "phone": "13892990311",
           "password": "Test@123456",
-          "description": "自动测试创建于022204",
-          "code": "code_022204",
-          "remark": "自动创建于022204",
-          "授权用户": "AT_AT_test_auto_022204",
-          "授权角色": "AT_AT_test_auto_022204",
-          "授权范围": "AT_AT_test_auto_022204"
+          "description": "自动测试创建于112094",
+          "code": "code_112094",
+          "remark": "自动创建于112094",
+          "授权用户": "AT_AT_test_auto_112094",
+          "授权角色": "AT_AT_test_auto_112094",
+          "授权范围": "AT_AT_test_auto_112094"
         },
         "submit_result": {},
         "error_type": "required_field_empty",
@@ -850,21 +786,87 @@
         "row_selector": "更多 > 授权"
       }
     },
-    "migrate": {
+    "lock": {
       "success": true,
       "selectors": {
-        "trigger": "批量迁移",
-        "confirm": "确 定"
+        "trigger": "冻结",
+        "row_selector": "更多 > 冻结",
+        "confirm": "确定"
       },
-      "confirmed": "确 定",
-      "trigger_text": "批量迁移",
+      "confirmed": "确定",
+      "trigger_text": "冻结",
       "post_confirm_state": {
         "dialog_remains": false,
         "has_form_in_dialog": false
       },
-      "trigger_locator_verified": "button:has-text('批量迁移')",
-      "needs_checkbox": true,
-      "checkbox_locator": ".el-checkbox__input"
+      "is_dropdown_operation": true,
+      "dropdown_parent_selector": ".el-dropdown",
+      "dropdown_item_locator": ".el-dropdown-menu__item:has-text('冻结')",
+      "dropdown_item_text": "冻结",
+      "dropdown_trigger_method": "hover",
+      "checkbox_locator": ".el-checkbox__input",
+      "expand_strategy_verified": "click",
+      "dropdown_item_text_verified": "冻结",
+      "confirm_button_text_verified": "确定"
+    },
+    "unlock": {
+      "success": true,
+      "selectors": {
+        "trigger": "启用",
+        "row_selector": "更多 > 启用",
+        "confirm": "确定"
+      },
+      "confirmed": "确定",
+      "trigger_text": "启用",
+      "post_confirm_state": {
+        "dialog_remains": false,
+        "has_form_in_dialog": false
+      },
+      "is_dropdown_operation": true,
+      "dropdown_parent_selector": ".el-dropdown",
+      "dropdown_item_locator": ".el-dropdown-menu__item:has-text('启用')",
+      "dropdown_item_text": "启用",
+      "dropdown_trigger_method": "hover",
+      "checkbox_locator": ".el-checkbox__input",
+      "expand_strategy_verified": "click",
+      "dropdown_item_text_verified": "启用",
+      "confirm_button_text_verified": "确定"
+    },
+    "reset": {
+      "success": true,
+      "selectors": {
+        "trigger": "重置密码",
+        "row_selector": "更多 > 重置密码",
+        "confirm": "确认"
+      },
+      "confirmed": "确认",
+      "trigger_text": "重置密码",
+      "post_confirm_state": {
+        "dialog_remains": false,
+        "has_form_in_dialog": false
+      },
+      "is_dropdown_operation": true,
+      "dropdown_parent_selector": ".el-dropdown",
+      "dropdown_item_locator": ".el-dropdown-menu__item:has-text('重置密码')",
+      "dropdown_item_text": "重置密码",
+      "dropdown_trigger_method": "hover",
+      "checkbox_locator": ".el-checkbox__input",
+      "expand_strategy_verified": "click",
+      "dropdown_item_text_verified": "重置密码",
+      "confirm_button_text_verified": "确认"
+    },
+    "query": {
+      "success": true,
+      "selectors": {
+        "trigger": "搜索输入:请输入"
+      },
+      "trigger_locator_verified": "input[placeholder=\"请输入\"]",
+      "search_input": {
+        "locator": "input[placeholder=\"请输入\"]",
+        "placeholder": "请输入"
+      },
+      "trigger_mode": "button",
+      "has_table": true
     },
     "delete": {
       "success": true,
@@ -874,7 +876,7 @@
       },
       "confirmed": "确认",
       "trigger_text": "批量删除",
-      "trigger_locator_verified": "button:has-text('批量删除')",
+      "trigger_locator_verified": "button:has-text(\"批量删除\")",
       "success_locator": ".el-message--success",
       "needs_checkbox": true,
       "checkbox_locator": ".el-checkbox__input",

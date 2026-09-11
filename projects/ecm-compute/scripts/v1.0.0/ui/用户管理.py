@@ -2,7 +2,7 @@
 """
 用户管理 - UI 自动化测试脚本
 
-生成时间: 2026-09-09 17:00:38
+生成时间: 2026-09-11 15:39:28
 生成工具: API AI Test Framework - Stage 2
 版本: v1.0.0
 
@@ -52,7 +52,7 @@ CONFIG = {
     },
 }
 
-AVAILABLE_OPERATIONS = ['create', 'query', 'update', 'lock', 'unlock', 'reset', 'import', 'authorize', 'migrate', 'delete']
+AVAILABLE_OPERATIONS = ['create', 'import', 'migrate', 'update', 'authorize', 'lock', 'unlock', 'reset', 'query', 'delete']
 
 # ==================== Cookie 鉴权 ====================
 
@@ -112,13 +112,8 @@ _OPERATION_STATUS = {
     },
     "authorize": {
         "status": "failed",
-        "error_type": "exception",
-        "error_text": "Page.evaluate: ReferenceError: FORM_ITEM_SEL is not defined\n    at _buildComponentSelector (eval at evaluate (:303:30), <anonymous>:154:13)\n    at eval (eval at evaluate (:303:30), <anonymous>:51:40)\n"
-    },
-    "migrate": {
-        "status": "failed",
         "error_type": "required_field_empty",
-        "error_text": "弹窗中必填字段为空: 待迁移用户：, 待迁移部门："
+        "error_text": "必填字段无法填写: 授权用户组（select，值为空）"
     }
 }
 

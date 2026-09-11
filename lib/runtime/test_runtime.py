@@ -45,6 +45,31 @@ except ImportError:
 # 禁用 SSL 警告（自签证书环境）
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+
+def _generate_test_value(pattern: str, ts: str) -> str:
+    """根据值模式生成测试值（方案 B + A 降级：值模式分析）。
+
+    完全数据驱动，不依赖字段名关键词列表。
+    根据 Stage 3 分析出的 value_pattern 生成对应的测试值。
+
+    Args:
+        pattern: 值模式类型（email/phone/hex_hash/base64_encrypted/text）
+        ts: 时间戳后缀，确保唯一性
+
+    Returns:
+        生成的测试值
+    """
+    if pattern == "email":
+        return f"at_{ts}@test.com"
+    elif pattern == "phone":
+        return f"138{ts.zfill(8)}"
+    elif pattern in ("hex_hash", "base64_encrypted"):
+        # 加密/hash 值：使用固定测试密码（明文，由服务端加密）
+        return const.DEFAULT_TEST_PASSWORD
+    else:
+        # 通用文本
+        return f"auto_{ts}"
+
 # 导入鉴权模块 — 支持两种运行环境：
 #   框架内（lib/auth.py 存在）→ 完整 AuthSession（含滑块登录）
 #   生成脚本（lib/cookie_client.py 存在）→ cookie-only 轻量鉴权
@@ -352,6 +377,9 @@ class StepExecutor:
                     body[key] = value
             elif role == "mutable":
                 body[key] = f"自动修改_{self.ts}"
+            elif role == "test_value":
+                pattern = role_config.get("value_pattern", "text")
+                body[key] = _generate_test_value(pattern, self.ts)
             elif role == "pre_api_ref":
                 # 前置 API 引用：从前置 API 提取的字段
                 source = role_config.get("source", "")
@@ -946,6 +974,9 @@ class TestRunner:
                 else:
                     prefix_len = len(const.DEFAULT_TEST_NAME_PREFIX)
                     create_body[key] = f"{const.DEFAULT_TEST_NAME_PREFIX}{self.ts}_{value[prefix_len:]}"
+            elif role == "test_value":
+                pattern = role_config.get("value_pattern", "text")
+                create_body[key] = _generate_test_value(pattern, self.ts)
             else:
                 create_body[key] = value
 
