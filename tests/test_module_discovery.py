@@ -11,7 +11,7 @@ import pytest
 from unittest.mock import MagicMock
 
 from module_discovery.endpoint_classifier import (
-    EndpointClassifier, classify_endpoint, deduplicate_calls, _classify_by_text
+    EndpointClassifier, deduplicate_calls, _classify_by_behavior
 )
 from module_discovery.stage_validators import (
     validate_stage1, validate_stage2, validate_stage3, validate_stage4
@@ -36,30 +36,6 @@ class TestEndpointClassifierClass:
         config = {"systems": {"estack": {"api_root": "/estack/api"}}}
         classifier = EndpointClassifier(config)
         assert classifier.kb_config == config
-
-    def test_classify_by_text_create(self):
-        """按钮文本分类：创建"""
-        classifier = EndpointClassifier()
-        assert classifier.classify_by_text("新增用户") == "create"
-        assert classifier.classify_by_text("创建") == "create"
-        assert classifier.classify_by_text("添加") == "create"
-
-    def test_classify_by_text_delete(self):
-        """按钮文本分类：删除"""
-        classifier = EndpointClassifier()
-        assert classifier.classify_by_text("删除") == "delete"
-        assert classifier.classify_by_text("移除") == "delete"
-
-    def test_classify_by_text_update(self):
-        """按钮文本分类：修改"""
-        classifier = EndpointClassifier()
-        assert classifier.classify_by_text("编辑") == "update"
-        assert classifier.classify_by_text("修改") == "update"
-
-    def test_classify_by_text_unknown(self):
-        """按钮文本分类：未知"""
-        classifier = EndpointClassifier()
-        assert classifier.classify_by_text("随便什么东西") == "unknown"
 
     def test_deduplicate_basic(self):
         """基本去重功能"""
@@ -88,57 +64,50 @@ class TestEndpointClassifierClass:
 
 
 # ============================================================
-# classify_endpoint 函数测试
+# _classify_by_behavior 函数测试 (行为驱动分类)
 # ============================================================
 
-class TestClassifyEndpoint:
-    """测试端点分类函数"""
-
-    def test_query_by_url(self):
-        """URL 查询关键词分类"""
-        assert classify_endpoint("POST", "/api/users/list", []) == "query"
-        assert classify_endpoint("POST", "/api/users/page", []) == "query"
-        assert classify_endpoint("POST", "/api/users/search", []) == "query"
-
-    def test_detail_by_url(self):
-        """URL 详情关键词分类"""
-        assert classify_endpoint("GET", "/api/users/detail", []) == "detail"
-        assert classify_endpoint("GET", "/api/users/get", []) == "detail"
-
-    def test_support_by_url(self):
-        """校验类 API 分类"""
-        assert classify_endpoint("POST", "/api/users/check", ["click:创建"]) == "support"
-        assert classify_endpoint("POST", "/api/users/valid", ["click:创建"]) == "support"
+class TestClassifyByBehavior:
+    """测试基于 HTTP 方法的行为分类（不依赖 URL 关键词或按钮文本）"""
 
     def test_delete_method(self):
-        """DELETE 方法分类"""
-        assert classify_endpoint("DELETE", "/api/users/delete", []) == "delete"
-        assert classify_endpoint("DELETE", "/api/users/unlock", []) == "unlock"
+        """DELETE 方法 → delete"""
+        assert _classify_by_behavior({"method": "DELETE", "pathname": "/api/users/123"}) == "delete"
+        assert _classify_by_behavior({"method": "DELETE", "pathname": "/api/users/unlock"}) == "delete"
 
-    def test_context_based_post(self):
-        """基于上下文的 POST 分类"""
-        assert classify_endpoint("POST", "/api/users/xxx", ["click:创建用户"]) == "create"
-        assert classify_endpoint("POST", "/api/users/yyy", ["click:编辑"]) == "update"
-        assert classify_endpoint("POST", "/api/users/zzz", ["click:锁定"]) == "lock"
+    def test_post_with_form_data(self):
+        """POST + 有表单数据 → create"""
+        assert _classify_by_behavior({"method": "POST", "pathname": "/api/users"}, has_form_data=True) == "create"
 
-    def test_get_ignores_context(self):
-        """GET 请求不受上下文影响"""
-        # GET 请求无论上下文是什么都不应该是写操作
-        assert classify_endpoint("GET", "/api/menu/tree", ["click:创建用户"]) == "other_get"
+    def test_post_without_form_data(self):
+        """POST + 无表单数据 → state_change (冻结/启用/审批等)"""
+        assert _classify_by_behavior({"method": "POST", "pathname": "/api/users/lock"}) == "state_change"
+        assert _classify_by_behavior({"method": "POST", "pathname": "/api/users/xxx"}) == "state_change"
 
-    def test_url_write_keywords(self):
-        """URL 写操作关键词"""
-        assert classify_endpoint("POST", "/api/users/create", []) == "create"
-        assert classify_endpoint("POST", "/api/users/add", []) == "create"
-        assert classify_endpoint("POST", "/api/users/update", []) == "update"
-        assert classify_endpoint("POST", "/api/users/lock", []) == "lock"
-        assert classify_endpoint("POST", "/api/users/unlock", []) == "unlock"
-        assert classify_endpoint("POST", "/api/users/reset", []) == "reset"
+    def test_put_method(self):
+        """PUT 方法 → update"""
+        assert _classify_by_behavior({"method": "PUT", "pathname": "/api/users/123"}) == "update"
 
-    def test_fallback(self):
-        """兜底分类"""
-        assert classify_endpoint("POST", "/api/unknown-action", []) == "other_post"
-        assert classify_endpoint("GET", "/api/unknown-query", []) == "other_get"
+    def test_patch_method(self):
+        """PATCH 方法 → update"""
+        assert _classify_by_behavior({"method": "PATCH", "pathname": "/api/users/123"}) == "update"
+
+    def test_get_method(self):
+        """GET 方法 → query"""
+        assert _classify_by_behavior({"method": "GET", "pathname": "/api/users/list"}) == "query"
+        assert _classify_by_behavior({"method": "GET", "pathname": "/api/unknown"}) == "query"
+
+    def test_get_with_download(self):
+        """GET + 触发下载 → export"""
+        assert _classify_by_behavior({"method": "GET", "pathname": "/api/users/export"}, triggers_download=True) == "export"
+
+    def test_post_with_download(self):
+        """POST + 触发下载 → export"""
+        assert _classify_by_behavior({"method": "POST", "pathname": "/api/users/export"}, triggers_download=True) == "export"
+
+    def test_unknown_method(self):
+        """未知方法 → other"""
+        assert _classify_by_behavior({"method": "OPTIONS", "pathname": "/api/users"}) == "other"
 
 
 # ============================================================
@@ -151,9 +120,9 @@ class TestValidateStage1:
     def test_valid_result(self):
         """有效的 Stage 1 结果"""
         result = {
-            "toolbar_buttons": [{"text": "新增"}, {"text": "确定"}],
-            "row_actions": [{"text": "编辑"}, {"text": "删除"}],
-            "dialog_buttons": [{"text": "确定"}],
+            "toolbar_buttons": [{"text": "新增", "action": "create"}, {"text": "确定", "action": "confirm"}],
+            "row_actions": [{"text": "编辑", "action": "update"}, {"text": "删除", "action": "delete"}],
+            "dialog_buttons": [{"text": "确定", "action": "confirm"}],
             "form_fields": [{"name": "name", "required": True}],
             "summary": {
                 "total": 10,
@@ -163,7 +132,8 @@ class TestValidateStage1:
             },
             "validated_operations": {
                 "create": {"success": True, "fill_data": {"name": "test"}, "selectors": {"trigger": "新增"}},
-                "delete": {"success": True, "fill_data": {}, "selectors": {"trigger": "删除"}}
+                "delete": {"success": True, "fill_data": {}, "selectors": {"trigger": "删除"}},
+                "update": {"success": True, "fill_data": {"name": "test"}, "selectors": {"trigger": "编辑"}}
             }
         }
         is_valid, issues, missing = validate_stage1(result)
@@ -625,39 +595,3 @@ class TestCooccurrenceFilter:
         assert "/api/users/lock" not in result
 
 
-# ============================================================
-# _classify_by_text 函数测试
-# ============================================================
-
-class TestClassifyByText:
-    """测试按钮文本分类"""
-
-    def test_create_keywords(self):
-        """创建类关键词"""
-        assert _classify_by_text("新增") == "create"
-        assert _classify_by_text("创建用户") == "create"
-        assert _classify_by_text("添加资源") == "create"
-        assert _classify_by_text("新建实例") == "create"
-
-    def test_delete_keywords(self):
-        """删除类关键词"""
-        assert _classify_by_text("删除") == "delete"
-        assert _classify_by_text("移除") == "delete"
-        assert _classify_by_text("清除") == "delete"
-
-    def test_lock_keywords(self):
-        """锁定类关键词"""
-        assert _classify_by_text("锁定") == "lock"
-        assert _classify_by_text("冻结") == "lock"
-        assert _classify_by_text("停用") == "lock"
-
-    def test_unlock_keywords(self):
-        """解锁类关键词"""
-        assert _classify_by_text("解锁") == "unlock"
-        assert _classify_by_text("解冻") == "unlock"
-        assert _classify_by_text("启用") == "unlock"
-
-    def test_unknown_text(self):
-        """未知文本"""
-        assert _classify_by_text("随便什么") == "unknown"
-        assert _classify_by_text("") == "unknown"

@@ -17,12 +17,16 @@ def validate_stage1(
     ui_result: dict,
     required_flows: list = None
 ) -> Tuple[bool, List[str], list]:
-    """验证 Stage 1 UI 探测结果质量。
+    """验证 Stage 1 UI 探测结果质量（泛化版本）。
+
+    泛化验证逻辑：
+    1. 结构性检查（按钮分类、总数、summary）
+    2. 业务闭环验证（validated_operations）
+    3. 不写死任何按钮文本或关键词
 
     Args:
         ui_result: Stage 1 输出 (buttons.json)
-        required_flows: 需要验证的流程列表（如 ["create_flow", "delete_flow"]）
-                       默认验证所有 CRUD 流程。设为 [] 则跳过必须元素检查。
+        required_flows: 保留参数以兼容旧接口（实际不使用，传 None 即可）
 
     Returns:
         (is_valid, issues, missing_elements)
@@ -60,7 +64,7 @@ def validate_stage1(
     if total > 100:
         issues.append(f"按钮总数过多 ({total})，可能存在重复或误识别")
 
-    # 4. 检查关键功能
+    # 4. 检查关键功能（基于 summary 的结构性指标）
     if not summary.get("has_create"):
         issues.append("未发现创建功能（has_create=false），生命周期测试将不完整")
 
@@ -72,55 +76,34 @@ def validate_stage1(
     if not categories:
         issues.append("分类统计为空（categories），按钮分类可能失败")
 
-    # 6. 检查必须元素（新增）
-    all_missing = []
-    if required_flows is None:
-        # 默认验证所有 CRUD 流程
-        from .required_elements import REQUIRED_ELEMENTS
-        required_flows = list(REQUIRED_ELEMENTS.keys())
+    # 6. 结构性验证（不写死任何按钮文本）
+    from .required_elements import check_required_elements
+    all_present, all_missing = check_required_elements(ui_result, flow_name=None)
 
-    if required_flows:
-        from .required_elements import check_required_elements
-        for flow in required_flows:
-            present, missing = check_required_elements(ui_result, flow)
-            if not present:
-                all_missing.extend(missing)
-                for m in missing:
-                    if m.get("critical"):
-                        issues.append(
-                            f"[{flow}] 缺少必须元素: {m['desc']} (critical)"
-                        )
-                    else:
-                        issues.append(
-                            f"[{flow}] 缺少元素: {m['desc']} (可降级)"
-                        )
+    if not all_present:
+        for m in all_missing:
+            if m.get("critical"):
+                issues.append(f"[结构验证] {m['desc']} (critical)")
+            else:
+                issues.append(f"[结构验证] {m['desc']} (可降级)")
 
     # 7. 检查业务闭环验证结果（validated_operations）
     validated_ops = ui_result.get("validated_operations", {})
     if not validated_ops:
         issues.append("未执行业务闭环验证（validated_operations 为空）")
     else:
-        # 检查关键操作是否已验证
-        critical_ops = ["create", "delete"]
-        for op in critical_ops:
-            if op not in validated_ops:
-                issues.append(f"关键操作未验证: {op}")
-            else:
-                op_result = validated_ops[op]
-                if not op_result.get("success"):
-                    error = op_result.get("error", "未知错误")
-                    issues.append(f"关键操作验证失败: {op} - {error}")
-                else:
-                    # 检查是否有选择器
-                    if not op_result.get("selectors"):
-                        issues.append(f"操作 {op} 缺少 selectors")
-                    # 只有需要表单填充的操作才检查 fill_data
-                    if op in ["create", "update"] and not op_result.get("fill_data"):
-                        issues.append(f"操作 {op} 缺少 fill_data")
+        # 检查是否有至少一个成功验证的操作（不写死具体操作名）
+        success_count = sum(1 for op in validated_ops.values() if op.get("success"))
+        LOG.info(f"业务闭环验证: {success_count}/{len(validated_ops)} 个操作成功")
 
-        # 统计已验证的操作数
-        validated_count = sum(1 for op in validated_ops.values() if op.get("success"))
-        LOG.info(f"业务闭环验证: {validated_count}/{len(validated_ops)} 个操作成功")
+        if success_count == 0:
+            issues.append(f"业务闭环验证失败：{len(validated_ops)} 个操作均未成功")
+
+        # 打印已验证的操作详情
+        for action, info in validated_ops.items():
+            if info.get("success"):
+                fill_count = len(info.get("fill_data", {}))
+                LOG.debug(f"  {action}: fill_data={fill_count} fields")
 
     # 判断是否通过（只检查 critical 元素）
     critical_missing = [m for m in all_missing if m.get("critical")]
@@ -131,7 +114,7 @@ def validate_stage1(
         for issue in issues:
             LOG.warning(f"  - {issue}")
     else:
-        LOG.info(f"Stage 1 验证通过: 发现 {total} 个按钮")
+        LOG.info(f"Stage 1 验证通过: 发现 {total} 个按钮，{len(validated_ops)} 个操作已验证")
 
     return is_valid, issues, all_missing
 

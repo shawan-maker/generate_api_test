@@ -1,58 +1,51 @@
 """
-Stage 1-5 端到端测试：验证 list/query 分类修复
+Stage 1-5 端到端测试：验证行为驱动分类与响应体重分类
 
-测试三个核心 Bug：
-1. Bug 1: endpoint_classifier.py 子串匹配改为段级匹配
-2. Bug 2: lib/catalog.py REST 兜底逻辑收紧
-3. Bug 3: analyze_flow.py 响应体重分类误判修复
+测试核心功能：
+1. 行为驱动分类（HTTP method + 请求特征，不依赖 URL 关键词）
+2. lib/catalog.py REST 兜底逻辑
+3. analyze_flow.py 响应体重分类
 """
 
 import pytest
 from pathlib import Path
-from module_discovery.endpoint_classifier import classify_endpoint
+from module_discovery.endpoint_classifier import _classify_by_behavior
 from lib.catalog import guess_crud
 from module_discovery.analyze_flow import _filter_core_apis
 
 
-class TestBug1SegmentLevelMatching:
-    """Bug 1: 子串匹配误判修复"""
+class TestBehaviorDrivenClassification:
+    """验证行为驱动分类：基于 HTTP method，不依赖 URL 关键词"""
 
-    def test_target_not_classified_as_detail(self):
-        """/target 不应被 /get 子串误判为 detail"""
-        # 路径含 "get" 子串（tar-get），但完整段是 "target"
-        result = classify_endpoint("GET", "/api/v1/target", [])
-        assert result != "detail", f"Expected not detail, got {result}"
-        # 应判为 other_get 或 support
-
-    def test_playlist_not_classified_as_query(self):
-        """/playlist 不应被 /list 子串误判为 query"""
-        result = classify_endpoint("GET", "/api/v1/playlist", [])
-        assert result != "query", f"Expected not query, got {result}"
-
-    def test_preview_not_classified_as_detail(self):
-        """/preview 不应被 /view 子串误判为 detail"""
-        result = classify_endpoint("GET", "/api/v1/preview", [])
-        assert result != "detail", f"Expected not detail, got {result}"
-
-    def test_callback_not_classified_as_query(self):
-        """/callback 不应被 /all 子串误判为 query"""
-        result = classify_endpoint("GET", "/api/v1/callback", [])
-        assert result != "query", f"Expected not query, got {result}"
-
-    def test_actual_list_endpoint_still_classified(self):
-        """/users/list 应正确判为 query"""
-        result = classify_endpoint("GET", "/api/v1/users/list", [])
+    def test_get_classified_as_query(self):
+        """GET 方法 → query"""
+        result = _classify_by_behavior({"method": "GET", "pathname": "/api/v1/users/list"})
         assert result == "query", f"Expected query, got {result}"
 
-    def test_actual_detail_endpoint_still_classified(self):
-        """/users/detail 应正确判为 detail"""
-        result = classify_endpoint("GET", "/api/v1/users/detail", [])
-        assert result == "detail", f"Expected detail, got {result}"
+    def test_post_with_form_classified_as_create(self):
+        """POST + form data → create"""
+        result = _classify_by_behavior({"method": "POST", "pathname": "/api/v1/users"}, has_form_data=True)
+        assert result == "create", f"Expected create, got {result}"
 
-    def test_batch_delete_not_classified_as_update(self):
-        """/batch-delete 应正确判为 delete（段级匹配允许连字符）"""
-        result = classify_endpoint("DELETE", "/api/v1/users/batch-delete", [])
+    def test_post_without_form_classified_as_state_change(self):
+        """POST + no form → state_change"""
+        result = _classify_by_behavior({"method": "POST", "pathname": "/api/v1/users/lock"})
+        assert result == "state_change", f"Expected state_change, got {result}"
+
+    def test_put_classified_as_update(self):
+        """PUT → update"""
+        result = _classify_by_behavior({"method": "PUT", "pathname": "/api/v1/users/123"})
+        assert result == "update", f"Expected update, got {result}"
+
+    def test_delete_classified_as_delete(self):
+        """DELETE → delete"""
+        result = _classify_by_behavior({"method": "DELETE", "pathname": "/api/v1/users/123"})
         assert result == "delete", f"Expected delete, got {result}"
+
+    def test_get_with_download_classified_as_export(self):
+        """GET + download → export"""
+        result = _classify_by_behavior({"method": "GET", "pathname": "/api/v1/users/export"}, triggers_download=True)
+        assert result == "export", f"Expected export, got {result}"
 
 
 class TestBug2RestFallbackTightening:
@@ -119,7 +112,7 @@ class TestBug3ResponseBodyReclassification:
     def test_list_with_dict_items_classified_as_query(self):
         """响应含 "list": [{"id":1}] 应被判为 query（典型列表结构）"""
         classified = {
-            "other_get": [
+            "query": [
                 {
                     "pathname": "/api/v1/users",
                     "method": "GET",
@@ -142,7 +135,7 @@ class TestBug3ResponseBodyReclassification:
     def test_records_with_dict_items_classified_as_query(self):
         """响应含 "records": [{"id":1}] 应被判为 query"""
         classified = {
-            "other_get": [
+            "query": [
                 {
                     "pathname": "/api/v1/roles",
                     "method": "GET",
@@ -186,41 +179,41 @@ class TestBug3ResponseBodyReclassification:
 
 
 class TestEndToEndClassification:
-    """端到端分类测试：验证完整流程"""
+    """端到端分类测试：验证行为驱动分类在完整流程中的表现"""
 
     def test_user_management_apis_classification(self):
-        """用户管理模块的典型 API 分类"""
+        """用户管理模块的典型 API 分类（行为驱动）"""
         # 创建用户
-        assert classify_endpoint("POST", "/api/v1/users", ["click:创建"]) == "create"
+        assert _classify_by_behavior({"method": "POST", "pathname": "/api/v1/users"}, has_form_data=True) == "create"
 
         # 列表查询
-        assert classify_endpoint("GET", "/api/v1/users/list", []) == "query"
-
-        # 详情查询
-        assert classify_endpoint("GET", "/api/v1/users/{id}", []) == "detail"
+        assert _classify_by_behavior({"method": "GET", "pathname": "/api/v1/users/list"}) == "query"
 
         # 更新用户
-        assert classify_endpoint("PUT", "/api/v1/users/{id}", ["click:编辑"]) == "update"
+        assert _classify_by_behavior({"method": "PUT", "pathname": "/api/v1/users/123"}) == "update"
 
         # 删除用户
-        assert classify_endpoint("DELETE", "/api/v1/users/{id}", []) == "delete"
+        assert _classify_by_behavior({"method": "DELETE", "pathname": "/api/v1/users/123"}) == "delete"
 
         # 批量删除
-        assert classify_endpoint("DELETE", "/api/v1/users/batch-delete", []) == "delete"
+        assert _classify_by_behavior({"method": "DELETE", "pathname": "/api/v1/users/batch-delete"}) == "delete"
+
+        # 状态变更（锁定）
+        assert _classify_by_behavior({"method": "POST", "pathname": "/api/v1/users/lock"}) == "state_change"
 
     def test_support_apis_not_misclassified(self):
-        """支撑 API 不应被误判为 CRUD"""
+        """支撑 API 不应被误判为 CRUD（行为驱动：GET = query）"""
         # 当前用户信息
-        result = classify_endpoint("GET", "/api/v1/current-user", [])
-        assert result in ("other_get", "support", "detail"), f"Got {result}"
+        result = _classify_by_behavior({"method": "GET", "pathname": "/api/v1/current-user"})
+        assert result == "query", f"Got {result}"
 
         # 配置信息
-        result = classify_endpoint("GET", "/api/v1/config", [])
-        assert result in ("other_get", "support", "detail"), f"Got {result}"
+        result = _classify_by_behavior({"method": "GET", "pathname": "/api/v1/config"})
+        assert result == "query", f"Got {result}"
 
         # 字典查询
-        result = classify_endpoint("GET", "/api/v1/dictionary", [])
-        assert result in ("other_get", "support", "detail"), f"Got {result}"
+        result = _classify_by_behavior({"method": "GET", "pathname": "/api/v1/dictionary"})
+        assert result == "query", f"Got {result}"
 
 
 if __name__ == "__main__":

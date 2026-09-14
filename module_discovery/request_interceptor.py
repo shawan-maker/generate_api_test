@@ -161,10 +161,9 @@ class RequestInterceptor:
 
         # 加载 KB 与权限门禁关键词
         kb = load_kb()
-        self._gate_keywords = kb.get("permission_gate_keywords") or [
-            "您没有", "请先授权", "权限不足", "无权限",
-            "permission denied", "forbidden", "not authorized", "403",
-        ]
+        self._gate_keywords = kb.get("permission_gate_keywords", [])
+        # 权限状态码（HTTP 401/403 为主要检测手段）
+        self._gate_status_codes = {401, 403}
 
     def set_context(self, ctx: str):
         """设置当前操作上下文标签（如 'click:创建用户'、'row:编辑'）。"""
@@ -338,30 +337,42 @@ class RequestInterceptor:
             b = await resp.text()
             if b and len(b) > 20:
                 pn = urlparse(u).path.replace(self.base_url, "")
-                # 权限门禁识别（修复: 纯数字关键词需状态码匹配，避免子串误报）
+                # 权限门禁识别：优先使用 HTTP 状态码，其次使用 KB 配置的关键词
                 status = resp.status
-                low = b.lower()
-                hit = None
-                for kw in self._gate_keywords:
-                    kw_low = kw.lower()
-                    # 纯数字关键词（如 "403", "401"）：必须 HTTP 状态码匹配才视为命中
-                    if kw_low.isdigit():
-                        if str(status) == kw_low:
-                            hit = kw
+                gate_detected = False
+                detection_source = ""
+
+                # 1. HTTP 状态码检测（主要手段）
+                if status in self._gate_status_codes:
+                    gate_detected = True
+                    detection_source = f"HTTP {status}"
+
+                # 2. KB 配置的关键词检测（辅助手段）
+                if not gate_detected and self._gate_keywords:
+                    low = b.lower()
+                    for kw in self._gate_keywords:
+                        kw_low = kw.lower()
+                        # 纯数字关键词（如 "403", "401"）：必须 HTTP 状态码匹配才视为命中
+                        if kw_low.isdigit():
+                            if str(status) == kw_low:
+                                gate_detected = True
+                                detection_source = f"关键词+状态码: {kw}"
+                                break
+                        elif kw_low in low:
+                            gate_detected = True
+                            detection_source = f"关键词: {kw}"
                             break
-                    elif kw_low in low:
-                        hit = kw
-                        break
-                if hit:
+
+                if gate_detected:
                     self.permission_gates.append({
                         "method": resp.request.method,
                         "pathname": pn,
                         "status": status,
-                        "keyword_hit": hit,
+                        "keyword_hit": detection_source,
                         "snippet": (b[:200] + "...") if len(b) > 200 else b,
                     })
                     LOG.info(f"  ⚠️ 命中权限门禁: {resp.request.method} {pn} "
-                             f"(HTTP {status}, 命中关键词: {hit})")
+                             f"(HTTP {status}, 检测来源: {detection_source})")
                 # 响应样本收集（每个路径最多保留 2 个样本）
                 # 修复: 前置 API 候选路径（/current-user, /policies 等）响应常超 3000 字符，
                 #       截断后 JSON 解析失败导致前置 API 无法识别。

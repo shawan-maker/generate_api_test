@@ -1,168 +1,81 @@
 """
-required_elements.py — 定义各操作流程的必须元素
+required_elements.py — Stage 1 结构性验证（泛化版本）
 
-Stage 1 验证时检查这些元素是否存在于 ui_result 中。
-通过 REQUIRED_ELEMENTS 定义每个流程的关键元素，确保 Stage 2 有足够信息执行操作。
+核心理念：
+- 不写死任何按钮文本或关键词
+- 只检查结构性指标（是否有工具栏按钮、行操作按钮、表单字段等）
+- 关键操作验证由业务闭环验证（validated_operations）完成
+
+Stage 1 验证分为两层：
+1. 结构性验证（本文件）：检查探测结果的完整性
+2. 业务闭环验证（discover_ui.py）：验证关键操作能否触发弹窗/表单
 """
 
 from typing import Dict, List, Tuple, Optional
-from . import const
-
-
-# 各操作流程的必须元素定义
-REQUIRED_ELEMENTS = {
-    "create_flow": [
-        {
-            "type": "button",
-            "action": "create",
-            "desc": "创建/新增按钮",
-            "location": ["toolbar", "row_action"],
-            "critical": True,  # 缺失则阻断
-        },
-        {
-            "type": "button",
-            "action": "confirm",
-            "desc": "确定/提交按钮（表单提交）",
-            "location": ["dialog", "toolbar"],
-            "critical": True,
-        },
-        {
-            "type": "input",
-            "required": True,
-            "desc": "必填输入项（至少1个）",
-            "min_count": 1,
-            "critical": False,  # 缺失但可降级（使用默认值）
-        },
-    ],
-
-    "delete_flow": [
-        {
-            "type": "button",
-            "action": "delete",
-            "desc": "删除按钮",
-            "location": ["row_action", "toolbar"],
-            "critical": True,
-        },
-        {
-            "type": "button",
-            "action": "confirm",
-            "desc": "确认删除按钮",
-            "location": ["dialog", "toolbar"],
-            "critical": True,
-        },
-    ],
-
-    "update_flow": [
-        {
-            "type": "button",
-            "action": "update",
-            "desc": "编辑按钮",
-            "location": ["row_action"],
-            "critical": True,
-        },
-        {
-            "type": "button",
-            "action": "confirm",
-            "desc": "确定按钮",
-            "location": ["dialog"],
-            "critical": True,
-        },
-    ],
-
-    "query_flow": [
-        {
-            "type": "button",
-            "action": "query",
-            "desc": "查询/搜索按钮",
-            "location": ["toolbar"],
-            "critical": False,  # 可降级（直接调 API）
-        },
-    ],
-}
-
-
-def get_required_elements(flow_name: str) -> List[Dict]:
-    """获取指定流程的必须元素列表。
-
-    Args:
-        flow_name: 流程名称（create_flow/delete_flow/update_flow/query_flow）
-
-    Returns:
-        必须元素列表
-    """
-    return REQUIRED_ELEMENTS.get(flow_name, [])
 
 
 def check_required_elements(ui_result: Dict, flow_name: str) -> Tuple[bool, List[Dict]]:
-    """检查 ui_result 是否包含必须元素。
+    """检查 ui_result 是否包含必要的结构性元素。
+
+    泛化版本：不检查具体按钮文本，只检查：
+    - toolbar_buttons 或 row_actions 是否有内容
+    - dialog_buttons 是否有内容（如果需要弹窗交互）
+    - form_fields 是否有内容（如果需要表单填充）
 
     Args:
-        ui_result: Stage 1 输出（包含 toolbar_buttons, row_actions, dialog_buttons 等）
-        flow_name: 流程名称
+        ui_result: Stage 1 输出
+        flow_name: 流程名称（保留参数以兼容旧接口，实际不使用）
 
     Returns:
         (all_present, missing_elements)
-        - all_present: 是否全部 critical 元素存在
-        - missing_elements: 缺失的元素列表（含 critical 标记）
+        - all_present: 是否通过结构验证
+        - missing_elements: 缺失的结构性元素（空列表表示全部通过）
     """
-    required = get_required_elements(flow_name)
     missing = []
 
-    for req in required:
-        found = False
+    # 1. 检查是否有业务操作按钮（工具栏或行操作）
+    toolbar = ui_result.get("toolbar_buttons", [])
+    row_actions = ui_result.get("row_actions", [])
 
-        if req["type"] == "button":
-            # 检查按钮
-            locations = req.get("location", [])
-            for loc in locations:
-                # 支持多种字段名：toolbar_buttons, row_actions, dialog_buttons, dropdowns
-                # 注意：row_actions 没有 _buttons 后缀
-                field_name = f"{loc}_buttons" if loc != "row_action" else "row_actions"
-                buttons = ui_result.get(field_name, []) + ui_result.get("dropdowns", [])
-                for btn in buttons:
-                    # 优先使用 action 字段，否则从 text 推断
-                    action = btn.get("action") or _infer_action(btn.get("text", ""))
-                    if action == req["action"]:
-                        found = True
-                        break
-                if found:
-                    break
+    if not toolbar and not row_actions:
+        missing.append({
+            "type": "structure",
+            "desc": "未发现业务操作按钮（toolbar_buttons 和 row_actions 均为空）",
+            "critical": True,
+        })
 
-        elif req["type"] == "input":
-            # 检查输入字段
-            fields = ui_result.get("form_fields", [])
-            min_count = req.get("min_count", 1)
-            if req.get("required"):
-                # 检查必填字段
-                matching = [f for f in fields if f.get("required")]
-                found = len(matching) >= min_count
-            else:
-                # 检查任意字段
-                found = len(fields) >= min_count
+    # 2. 检查 summary 中的分类统计
+    summary = ui_result.get("summary", {})
+    categories = summary.get("categories", {})
 
-        if not found:
-            missing.append(req)
+    if not categories:
+        missing.append({
+            "type": "structure",
+            "desc": "未发现任何按钮分类（categories 为空）",
+            "critical": True,
+        })
 
-    # 判断是否全部 critical 元素存在
+    # 3. 检查 validated_operations（业务闭环验证结果）
+    validated_ops = ui_result.get("validated_operations", {})
+
+    if not validated_ops:
+        missing.append({
+            "type": "structure",
+            "desc": "未执行业务闭环验证（validated_operations 为空）",
+            "critical": False,  # 可降级（可能是不需要验证的模块）
+        })
+    else:
+        # 检查是否有至少一个成功验证的操作
+        success_count = sum(1 for op in validated_ops.values() if op.get("success"))
+        if success_count == 0:
+            missing.append({
+                "type": "structure",
+                "desc": f"业务闭环验证失败：{len(validated_ops)} 个操作均未成功",
+                "critical": True,
+            })
+
+    # 判断是否通过
     critical_missing = [m for m in missing if m.get("critical")]
     all_present = len(critical_missing) == 0
 
     return all_present, missing
-
-
-def _infer_action(button_text: str) -> str:
-    """从按钮文本推断 action。
-
-    使用 const.ACTION_KEYWORDS 进行匹配。
-
-    Args:
-        button_text: 按钮文本
-
-    Returns:
-        推断的 action 名称（如 "create", "delete"），未匹配返回 "unknown"
-    """
-    for action, keywords in const.ACTION_KEYWORDS.items():
-        for kw in keywords:
-            if kw in button_text:
-                return action
-    return "unknown"

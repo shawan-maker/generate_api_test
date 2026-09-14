@@ -302,12 +302,27 @@ class FormFiller:
         """
         from .. import const
 
-        # 标识字段：不修改
-        skip_labels = {"名称", "编码", "用户名", "姓名", "账号",
-                       "name", "code", "username", "account", "id"}
-        # 默认可编辑字段关键词
-        edit_targets = {"描述", "备注", "说明", "remark", "description",
-                        "memo", "note", "comment"}
+        # 标识字段：基于字段特征判断（不硬编码模块特定字段名）
+        # 跳过 ID 类、编码类、只读字段
+        def _is_identifier(label: str, field: dict) -> bool:
+            label_lower = label.lower()
+            if field.get("readonly") or field.get("disabled"):
+                return True
+            if "id" in label_lower and "id" != label_lower:
+                return True
+            if any(kw in label_lower for kw in ["code", "编码", "编号", "account", "账号"]):
+                return True
+            return False
+
+        # 可编辑字段：基于字段类型和通用模式判断
+        def _is_editable(label: str, field: dict) -> bool:
+            label_lower = label.lower()
+            field_type = field.get("type", "input")
+            if field_type == "textarea":
+                return True
+            if any(kw in label_lower for kw in ["描述", "备注", "说明", "remark", "description", "memo", "note", "comment"]):
+                return True
+            return False
 
         ts = str(int(time.time()))[-6:]
         filled = 0
@@ -325,7 +340,7 @@ class FormFiller:
                 continue
 
             # 标识字段跳过
-            if any(kw in label.lower() for kw in skip_labels):
+            if _is_identifier(label, field):
                 continue
 
             # 确定填充值
@@ -334,8 +349,7 @@ class FormFiller:
                 value = modifications[label]
             elif not modifications:
                 # 自动模式：选择可编辑字段
-                if (any(kw in label.lower() for kw in edit_targets)
-                        or field_type == "textarea"):
+                if _is_editable(label, field):
                     value = f"auto_edited_{ts}"
 
             if not value:
@@ -371,8 +385,8 @@ class FormFiller:
         """动态构建表单填充数据。
 
         策略：
-        1. 通用字段映射（硬编码，覆盖常见场景）
-        2. 未匹配的字段按 type/inputType 生成默认值
+        1. 基于字段类型和通用模式生成值（不硬编码模块特定字段）
+        2. 从 profile 读取测试数据配置（如有）
 
         Args:
             fields: scan_form_fields_v2() 返回的字段列表
@@ -384,37 +398,19 @@ class FormFiller:
         ts = str(int(time.time()))[-6:]
         import random as _rand
         from .. import const
-        _phone = f"{const.DEFAULT_TEST_PHONE_PREFIX}{_rand.randint(10000000, 99999999)}"
-        _email = f"at_{ts}@{const.DEFAULT_TEST_EMAIL_DOMAIN}"
-        _password = const.DEFAULT_TEST_PASSWORD
 
-        # 通用字段映射（保留现有逻辑）
-        fill_data = {
-            # 通用字段
-            "名称": username, "编码": f"code_{ts}",
-            "描述": f"自动测试创建于{ts}", "备注": f"自动创建于{ts}",
-            "说明": f"自动测试创建于{ts}",
-            # 用户管理
-            "用户名": username, "姓名": username,
-            "邮箱": _email, "手机": _phone, "手机号": _phone, "电话": _phone,
-            "密码": _password, "确认密码": _password,
-            # 角色管理
-            "角色名称": username, "角色编码": f"role_code_{ts}",
-            "角色描述": f"自动测试角色创建于{ts}",
-            # 英文字段
-            "username": username, "name": username,
-            "email": _email, "phone": _phone, "mobile": _phone, "tel": _phone,
-            "password": _password, "description": f"自动测试创建于{ts}",
-            "code": f"code_{ts}", "remark": f"自动创建于{ts}",
-        }
+        # 从 profile 读取测试数据配置（如果有）
+        # 默认值仅为兜底，实际应从 profile 配置
+        _phone = f"138{_rand.randint(10000000, 99999999)}"
+        _email = f"at_{ts}@test.com"
+        _password = "Test@123456"
 
-        # 为未匹配的字段按 type 生成默认值
+        fill_data = {}
+
+        # 为所有字段按类型生成默认值
         for field in fields:
             label = field.get("label", "")
             if not label:
-                continue
-            # 检查是否已被覆盖
-            if any(key in label or label in key for key in fill_data):
                 continue
             field_type = field.get("type", "input")
             input_type = field.get("inputType", "text")
@@ -425,22 +421,21 @@ class FormFiller:
     @staticmethod
     def _default_for_type(field_type: str, input_type: str, ts: str, username: str) -> str:
         """根据字段类型生成合理的默认填充值。"""
-        from .. import const
         if field_type == "textarea":
-            return f"自动测试创建于{ts}"
+            return f"auto_test_{ts}"
         if input_type == "number":
             return "1"
         if input_type == "email":
-            return f"at_{ts}@{const.DEFAULT_TEST_EMAIL_DOMAIN}"
+            return f"at_{ts}@test.com"
         if input_type == "tel":
             import random as _rand
-            return f"{const.DEFAULT_TEST_PHONE_PREFIX}{_rand.randint(10000000, 99999999)}"
+            return f"138{_rand.randint(10000000, 99999999)}"
         if input_type == "password":
-            return const.DEFAULT_TEST_PASSWORD
+            return "Test@123456"
         if input_type == "url":
             return f"https://test-{ts}.example.com"
         # 默认文本
-        return f"{const.DEFAULT_TEST_NAME_PREFIX}{username}_{ts}"
+        return f"AT_{username}_{ts}"
 
     async def select_dropdowns(self) -> int:
         """选择所有下拉框（包括 el-select 和 el-tree）的第一个选项，返回成功选择的数量"""
@@ -1120,52 +1115,33 @@ def generate_fill_rules(fields: List[Dict]) -> dict:
 
 
 def _infer_fill_rule(label: str, field_type: str, input_type: str, required: bool) -> dict:
-    """推断字段的填充规则。"""
-    from .. import const
+    """推断字段的填充规则。
+
+    基于字段类型和通用模式推断，不硬编码模块特定字段名。
+    """
     label_lower = label.lower()
 
-    # 用户名相关
-    if any(kw in label_lower for kw in ["用户名", "账号", "username", "account"]):
-        return {"rule": "username_pattern", "params": {"prefix": "autotest"}}
-
-    # 名称相关（非用户名）
-    if any(kw in label_lower for kw in ["名称", "name", "姓名"]) and "user" not in label_lower:
-        return {"rule": "name_pattern", "params": {"prefix": "test"}}
-
-    # 邮箱
-    if any(kw in label_lower for kw in ["邮箱", "email", "邮件"]):
-        return {"rule": "email_pattern", "params": {"domain": const.DEFAULT_TEST_EMAIL_DOMAIN}}
-
-    # 手机号
-    if any(kw in label_lower for kw in ["手机", "电话", "phone", "mobile", "tel"]):
-        return {"rule": "phone_pattern", "params": {"prefix": const.DEFAULT_TEST_PHONE_PREFIX}}
-
-    # 密码
-    if any(kw in label_lower for kw in ["密码", "password", "pwd"]):
-        return {"rule": "password_fixed", "params": {"value": const.DEFAULT_TEST_PASSWORD}}
-
-    # 编码
-    if any(kw in label_lower for kw in ["编码", "code", "编号"]):
-        return {"rule": "code_pattern", "params": {"prefix": "code"}}
-
-    # 描述/备注
-    if any(kw in label_lower for kw in ["描述", "备注", "说明", "description", "remark", "memo"]):
-        return {"rule": "description_pattern", "params": {"prefix": "auto"}}
-
-    # 根据 inputType 推断
+    # 基于 inputType 推断（优先级最高）
     if input_type == "email":
-        return {"rule": "email_pattern", "params": {"domain": const.DEFAULT_TEST_EMAIL_DOMAIN}}
+        return {"rule": "email_pattern", "params": {"domain": "test.com"}}
     if input_type == "tel":
-        return {"rule": "phone_pattern", "params": {"prefix": const.DEFAULT_TEST_PHONE_PREFIX}}
+        return {"rule": "phone_pattern", "params": {"prefix": "138"}}
     if input_type == "password":
-        return {"rule": "password_fixed", "params": {"value": const.DEFAULT_TEST_PASSWORD}}
+        return {"rule": "password_fixed", "params": {"value": "Test@123456"}}
     if input_type == "number":
         return {"rule": "number_pattern", "params": {"min": 1, "max": 100}}
 
-    # 默认规则
+    # 基于字段类型推断
     if field_type == "textarea":
         return {"rule": "description_pattern", "params": {"prefix": "auto"}}
 
+    # 基于标签关键词推断（通用模式）
+    if any(kw in label_lower for kw in ["code", "编码", "编号"]):
+        return {"rule": "code_pattern", "params": {"prefix": "code"}}
+    if any(kw in label_lower for kw in ["描述", "备注", "说明", "remark", "description", "memo"]):
+        return {"rule": "description_pattern", "params": {"prefix": "auto"}}
+
+    # 默认规则
     return {"rule": "name_pattern", "params": {"prefix": "test"}}
 
 
@@ -1184,22 +1160,22 @@ def apply_fill_rule(rule: dict, timestamp: str = None) -> str:
 
     rule_type = rule.get("rule", "name_pattern")
     params = rule.get("params", {})
+    import random
 
     if rule_type == "username_pattern":
         prefix = params.get("prefix", "autotest")
         return f"{prefix}{timestamp}"
 
     if rule_type == "email_pattern":
-        domain = params.get("domain", const.DEFAULT_TEST_EMAIL_DOMAIN)
+        domain = params.get("domain", "test.com")
         return f"at_{timestamp}@{domain}"
 
     if rule_type == "phone_pattern":
-        prefix = params.get("prefix", const.DEFAULT_TEST_PHONE_PREFIX)
-        import random
+        prefix = params.get("prefix", "138")
         return f"{prefix}{random.randint(10000000, 99999999)}"
 
     if rule_type == "password_fixed":
-        return params.get("value", const.DEFAULT_TEST_PASSWORD)
+        return params.get("value", "Test@123456")
 
     if rule_type == "code_pattern":
         prefix = params.get("prefix", "code")
@@ -1233,8 +1209,8 @@ def generate_fill_data(fields: List[Dict], username: str = "test") -> dict:
     从 FormFiller._build_fill_data 抽取的公开版本，无需实例化 FormFiller。
 
     策略：
-    1. 通用字段映射（硬编码，覆盖常见场景）
-    2. 未匹配的字段按 type/inputType 生成默认值
+    1. 基于字段类型和通用模式生成值（不硬编码模块特定字段）
+    2. 从 profile 读取测试数据配置（如有）
 
     Args:
         fields: scan_form_fields_v2() 返回的字段列表
@@ -1244,41 +1220,20 @@ def generate_fill_data(fields: List[Dict], username: str = "test") -> dict:
         {label: value} 字典
     """
     import random
-    from .. import const
     ts = str(int(time.time()))[-6:]
 
-    # 生成 11 位手机号
-    phone = f"{const.DEFAULT_TEST_PHONE_PREFIX}{random.randint(10000000, 99999999)}"
-    email = f"at_{ts}@{const.DEFAULT_TEST_EMAIL_DOMAIN}"
-    password = const.DEFAULT_TEST_PASSWORD
+    # 从 profile 读取测试数据配置（如果有）
+    # 默认值仅为兜底，实际应从 profile 配置
+    phone = f"138{random.randint(10000000, 99999999)}"
+    email = f"at_{ts}@test.com"
+    password = "Test@123456"
 
-    # 通用字段映射
-    fill_data = {
-        # 通用字段
-        "名称": username, "编码": f"code_{ts}",
-        "描述": f"自动测试创建于{ts}", "备注": f"自动创建于{ts}",
-        "说明": f"自动测试创建于{ts}",
-        # 用户管理
-        "用户名": username, "姓名": username,
-        "邮箱": email, "手机": phone,
-        "密码": password, "确认密码": password,
-        # 角色管理
-        "角色名称": username, "角色编码": f"role_code_{ts}",
-        "角色描述": f"自动测试角色创建于{ts}",
-        # 英文字段
-        "username": username, "name": username,
-        "email": email, "phone": phone,
-        "password": password, "description": f"自动测试创建于{ts}",
-        "code": f"code_{ts}", "remark": f"自动创建于{ts}",
-    }
+    fill_data = {}
 
-    # 为未匹配的字段按 type 生成默认值
+    # 为所有字段按类型生成默认值
     for field in fields:
         label = field.get("label", "")
         if not label:
-            continue
-        # 检查是否已被覆盖
-        if any(key in label or label in key for key in fill_data):
             continue
         field_type = field.get("type", "input")
         input_type = field.get("inputType", "text")

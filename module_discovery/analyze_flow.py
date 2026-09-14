@@ -69,12 +69,16 @@ def _identify_infrastructure_apis(all_endpoints: list, threshold: float = 0.6) -
     if total == 0:
         return infra
 
-    # 降级策略：操作总数 ≤ 2 时，只排除已知的全局基础设施路径
-    _KNOWN_GLOBAL_INFRA = {"/users/current-user", "/current-user", "/access-log",
-                           "/system-theme", "/favorite"}
+    # 降级策略：操作总数 ≤ 2 时，只排除已知的全局基础设施路径（从 KB 读取）
+    from .kb_loader import get_kb
+    kb = get_kb()
+    generic_infra = kb.get_infrastructure_patterns()
+    if not generic_infra:
+        # 兜底：最通用的基础设施模式（不依赖特定项目）
+        generic_infra = ["/current-user", "/access-log", "/system-theme"]
     if total <= 2:
         for path in path_contexts:
-            if path in _KNOWN_GLOBAL_INFRA:
+            if any(pattern in path for pattern in generic_infra):
                 infra.add(path)
         LOG.debug(f"  基础设施 API 降级识别（total={total}）: {infra}")
         return infra
@@ -255,7 +259,7 @@ def _reclassify_all_endpoints(classified_apis: dict, all_endpoints: list) -> dic
     Returns:
         重新分类后的 by_category dict
     """
-    from .endpoint_classifier import classify_endpoint
+    from .endpoint_classifier import _classify_by_behavior
 
     # ★ 构建端点到原始类别的映射（用于保留 Stage 2 的 query/detail 分类）
     original_cat_map = {}  # {(method, pathname): category}
@@ -275,7 +279,8 @@ def _reclassify_all_endpoints(classified_apis: dict, all_endpoints: list) -> dic
         if original_cat in ("query", "detail"):
             new_cat = original_cat
         else:
-            new_cat = classify_endpoint(method, pathname, contexts)
+            # 使用行为驱动分类（不依赖文本匹配）
+            new_cat = _classify_by_behavior(ep, has_form_data=bool(ep.get("bodies")))
 
         if new_cat not in reclassified:
             reclassified[new_cat] = []
@@ -346,13 +351,22 @@ def _filter_core_apis(classified: dict, response_samples: dict,
                 LOG.debug(f"  跳过 GET 请求（pre-API 或基础设施）: {ep['pathname']}")
                 continue
 
-            # 过滤辅助 POST：路径包含 /list, /check, /query 等关键词的是数据加载 POST
+            # 过滤辅助 POST：响应包含 list+total 结构的是数据加载 POST
             if method == "POST":
-                path_lower = ep["pathname"].lower()
-                helper_keywords = ["/list", "/check", "/query", "/search", "/get"]
-                if any(kw in path_lower for kw in helper_keywords):
-                    LOG.debug(f"  跳过辅助 POST（数据加载）: {ep['pathname']}")
+                samples = response_samples.get(ep["pathname"], [])
+                for s in samples[:1]:
+                    try:
+                        body = json.loads(s["body"]) if isinstance(s["body"], str) else {}
+                        if _is_list_query(ep["pathname"], response_samples):
+                            LOG.debug(f"  跳过辅助 POST（列表查询）: {ep['pathname']}")
+                            break
+                    except Exception:
+                        continue
+                else:
+                    real_eps.append(ep)
                     continue
+                # 如果是列表查询，跳过
+                continue
 
             real_eps.append(ep)
 
@@ -576,7 +590,7 @@ def _build_dependency_graph(core_apis: dict) -> dict:
     构建 CRUD 依赖图。
 
     规则（仅保留强依赖）：
-    - 所有写操作依赖 create（需要 id）
+    - 所有写操作依赖 create（需要 id）— 基于 HTTP method 判断，不硬编码操作名
     - delete 依赖所有其他写操作（必须先完成所有业务操作再删除）
 
     注意：不再强制 "unlock 依赖 lock"，因为：
@@ -586,9 +600,17 @@ def _build_dependency_graph(core_apis: dict) -> dict:
     graph = {cat: set() for cat in core_apis}
 
     # 通用规则：所有写操作依赖 create（需要 id）
+    # 判断依据：类别对应的 HTTP method 是 POST/PUT/PATCH/DELETE
     if "create" in core_apis:
-        for cat in core_apis.keys():
-            if cat in ("update", "lock", "unlock", "reset", "delete", "migrate", "authorize"):
+        for cat, endpoints in core_apis.items():
+            if cat == "create":
+                continue
+            # 检查该类别是否有写操作的 HTTP method
+            has_write_method = any(
+                ep.get("method") in ("POST", "PUT", "PATCH", "DELETE")
+                for ep in endpoints
+            )
+            if has_write_method:
                 graph[cat].add("create")
 
     # 关键规则：delete 依赖所有其他写操作（必须先完成所有业务操作再删除）
@@ -826,8 +848,25 @@ def _derive_state_rules(core_apis: dict, response_samples: dict) -> dict:
 
 
 def _find_state_value(entity: dict) -> Optional[dict]:
-    """在实体字典中递归查找状态字段。"""
-    for fname in const.STATE_FIELD_NAMES:
+    """在实体字典中查找状态字段。
+
+    使用通用状态字段名（state/status/enabled/locked 等），
+    不依赖特定语言的状态值列表。
+    """
+    # 通用状态字段名（英文为主，覆盖大多数 API 设计）
+    _GENERIC_STATE_FIELDS = [
+        "state", "status", "enabled", "locked", "frozen",
+        "active", "disabled", "phase", "stage", "lifecycle",
+        "instanceStatus", "serviceStatus", "runStatus",
+    ]
+
+    # 先从 KB 读取扩展的状态字段名
+    from .kb_loader import get_kb
+    kb = get_kb()
+    kb_state_fields = kb.get_state_field_names()
+    all_fields = kb_state_fields or _GENERIC_STATE_FIELDS
+
+    for fname in all_fields:
         if fname in entity:
             val = entity[fname]
             if isinstance(val, str) and val:
@@ -865,13 +904,10 @@ def _extract_entity_with_fallback(body: dict, fallback_keys: list = None) -> any
 
 # ========== Manifest 构建（Phase 2: 泛化架构）==========
 
-# 步骤中文标签映射
-_STEP_LABELS = {
-    "create": "创建", "query": "查询", "detail": "详情",
-    "update": "修改", "lock": "锁定", "unlock": "解锁",
-    "reset": "重置", "export": "导出", "execute": "其他操作",
-    "authorize": "授权", "delete": "删除", "migrate": "迁移",
-}
+# 步骤标签映射 — 仅保留最通用的 HTTP 行为标签
+# 不再硬编码中文业务操作名（如"创建"、"锁定"）
+# 实际标签优先从 ui_result.button_labels 获取（按钮文本即标签）
+_STEP_LABELS = {}
 
 
 def _parse_body(ep_or_sample) -> dict | list:
@@ -1595,10 +1631,18 @@ def build_manifest(analysis: dict, capture_result: dict,
         """
         plans = []
         action_label = (ui_result or {}).get("button_labels", {}).get(action) \
-                       or _STEP_LABELS.get(action, action)
+                       or action
 
-        # 写操作后验证：有 query/detail 端点才插入
-        if action in const.WRITE_OPERATIONS:
+        # 写操作后验证：基于 HTTP method 判断，不硬编码操作名
+        # 检查该 action 对应的端点是否为写操作
+        is_write_op = False
+        if action in core_apis:
+            for ep in core_apis[action]:
+                if ep.get("method") in ("POST", "PUT", "PATCH", "DELETE"):
+                    is_write_op = True
+                    break
+
+        if is_write_op:
             # 优先用 query（列表验证），其次 detail（详情验证）
             if "query" in verify_endpoints:
                 query_ep = verify_endpoints["query"]["ep"]
@@ -1610,7 +1654,7 @@ def build_manifest(analysis: dict, capture_result: dict,
                         plans.append(("query", f"搜索验证（删除后）", "search_not_found"))
                     else:
                         plans.append(("query", f"搜索验证（{action_label}后）", "search_verify"))
-                # 无 search_param → 使用 contains_id/not_contains_id（旧逻辑）
+                # 无 search_param → 使用 contains_id/not_contains_id
                 elif action == "delete":
                     plans.append(("query", f"查询验证（删除后）", "not_contains_id"))
                 elif action == "create":
@@ -1618,7 +1662,8 @@ def build_manifest(analysis: dict, capture_result: dict,
                 else:
                     plans.append(("query", f"查询验证（{action_label}后）", "contains_id"))
             elif "detail" in verify_endpoints:
-                if action in ("update", "lock", "unlock"):
+                # 非 create/delete 的写操作可以用 detail 验证
+                if action not in ("create", "delete"):
                     plans.append(("detail", f"详情验证（{action_label}后）", "field_changed"))
 
         return plans

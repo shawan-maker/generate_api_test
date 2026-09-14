@@ -13,7 +13,6 @@ from module_discovery.required_elements import (
     REQUIRED_ELEMENTS,
     get_required_elements,
     check_required_elements,
-    _infer_action,
 )
 from module_discovery.stage2_errors import (
     Stage2Error,
@@ -38,16 +37,16 @@ class TestRequiredElementsStructure:
         assert len(REQUIRED_ELEMENTS["delete_flow"]) > 0
 
     def test_create_flow_has_create_button(self):
-        """create_flow 必须包含 create 按钮"""
+        """create_flow 必须包含创建按钮（按钮文本 "新增"）"""
         create_flow = REQUIRED_ELEMENTS["create_flow"]
-        create_buttons = [e for e in create_flow if e.get("action") == "create"]
+        create_buttons = [e for e in create_flow if e.get("action") == "新增"]
         assert len(create_buttons) == 1
         assert create_buttons[0]["critical"] is True
 
     def test_create_flow_has_confirm_button(self):
-        """create_flow 必须包含 confirm 按钮"""
+        """create_flow 必须包含确定按钮（按钮文本 "确定"）"""
         create_flow = REQUIRED_ELEMENTS["create_flow"]
-        confirm_buttons = [e for e in create_flow if e.get("action") == "confirm"]
+        confirm_buttons = [e for e in create_flow if e.get("action") == "确定"]
         assert len(confirm_buttons) == 1
         assert confirm_buttons[0]["critical"] is True
 
@@ -88,10 +87,10 @@ class TestCheckRequiredElements:
         """所有 critical 元素都存在"""
         ui_result = {
             "toolbar_buttons": [
-                {"text": "新增", "action": "create"},
+                {"text": "新增", "action": "新增"},
             ],
             "dialog_buttons": [
-                {"text": "确定", "action": "confirm"},
+                {"text": "确定", "action": "确定"},
             ],
             "row_actions": [],
             "dropdowns": [],
@@ -106,9 +105,9 @@ class TestCheckRequiredElements:
     def test_missing_critical_element(self):
         """缺少 critical 元素"""
         ui_result = {
-            "toolbar_buttons": [],  # 缺少 create 按钮
+            "toolbar_buttons": [],  # 缺少新增按钮
             "dialog_buttons": [
-                {"text": "确定", "action": "confirm"},
+                {"text": "确定", "action": "确定"},
             ],
             "row_actions": [],
             "dropdowns": [],
@@ -119,27 +118,26 @@ class TestCheckRequiredElements:
         all_present, missing = check_required_elements(ui_result, "create_flow")
         assert all_present is False
         assert len(missing) == 1
-        assert missing[0]["action"] == "create"
+        assert missing[0]["action"] == "新增"
         assert missing[0]["critical"] is True
 
     def test_missing_non_critical_element(self):
         """缺少 non-critical 元素不影响 all_present"""
-        # delete_flow 中的 confirm 按钮是 critical，但我们可以测试一个 hypothetical 场景
-        # 假设我们修改 delete_flow 让 confirm 变成 non-critical（仅用于测试）
+        # delete_flow 中的确定按钮是 critical
         ui_result = {
             "toolbar_buttons": [
-                {"text": "删除", "action": "delete"},
+                {"text": "删除", "action": "删除"},
             ],
-            "dialog_buttons": [],  # 缺少 confirm 按钮
+            "dialog_buttons": [],  # 缺少确定按钮
             "row_actions": [],
             "dropdowns": [],
             "form_fields": [],
         }
         all_present, missing = check_required_elements(ui_result, "delete_flow")
-        # confirm 是 critical，所以 all_present 应该是 False
+        # 确定按钮是 critical，所以 all_present 应该是 False
         assert all_present is False
         assert len(missing) == 1
-        assert missing[0]["action"] == "confirm"
+        assert missing[0]["action"] == "确定"
 
     def test_button_in_different_location(self):
         """按钮在不同位置（toolbar vs row_action vs dialog）"""
@@ -147,28 +145,28 @@ class TestCheckRequiredElements:
             "toolbar_buttons": [],
             "dialog_buttons": [],
             "row_actions": [
-                {"text": "删除", "action": "delete"},  # delete_flow 允许 row_action
+                {"text": "删除", "action": "删除"},  # delete_flow 允许 row_action
             ],
             "dropdowns": [],
             "form_fields": [],
         }
         all_present, missing = check_required_elements(ui_result, "delete_flow")
-        # delete 按钮在 row_actions 中，应该被找到
-        delete_found = any(e["action"] == "delete" for e in ui_result["row_actions"])
+        # 删除按钮在 row_actions 中，应该被找到
+        delete_found = any(e["action"] == "删除" for e in ui_result["row_actions"])
         assert delete_found
 
     def test_button_in_dropdown(self):
         """按钮在 dropdowns 中"""
         ui_result = {
             "toolbar_buttons": [
-                {"text": "新增", "action": "create"},
+                {"text": "新增", "action": "新增"},
             ],
             "dialog_buttons": [
-                {"text": "确定", "action": "confirm"},
+                {"text": "确定", "action": "确定"},
             ],
             "row_actions": [],
             "dropdowns": [
-                {"text": "删除", "action": "delete"},
+                {"text": "删除", "action": "删除"},
             ],
             "form_fields": [],
         }
@@ -181,10 +179,10 @@ class TestCheckRequiredElements:
         # 这个测试是为了未来扩展
         ui_result = {
             "toolbar_buttons": [
-                {"text": "新增", "action": "create"},
+                {"text": "新增", "action": "新增"},
             ],
             "dialog_buttons": [
-                {"text": "确定", "action": "confirm"},
+                {"text": "确定", "action": "确定"},
             ],
             "row_actions": [],
             "dropdowns": [],
@@ -210,36 +208,6 @@ class TestCheckRequiredElements:
         assert len(missing) >= 2  # 至少缺少 create 和 confirm 和 form_fields
 
 
-class TestInferAction:
-    """测试 _infer_action() 函数"""
-
-    def test_infer_create_action(self):
-        """推断 create 动作"""
-        assert _infer_action("新增") == "create"
-        assert _infer_action("创建") == "create"
-        assert _infer_action("新建") == "create"
-
-    def test_infer_delete_action(self):
-        """推断 delete 动作"""
-        assert _infer_action("删除") == "delete"
-        assert _infer_action("移除") == "delete"
-
-    def test_infer_confirm_action(self):
-        """推断 confirm 动作"""
-        assert _infer_action("确定") == "confirm"
-        assert _infer_action("确认") == "confirm"
-        assert _infer_action("保存") == "confirm"
-
-    def test_infer_edit_action(self):
-        """推断 update 动作"""
-        assert _infer_action("编辑") == "update"
-        assert _infer_action("修改") == "update"
-
-    def test_infer_unknown_action(self):
-        """推断未知动作"""
-        assert _infer_action("未知按钮") == "unknown"
-        assert _infer_action("") == "unknown"
-
 
 class TestStage2Errors:
     """测试 Stage2Error 异常类"""
@@ -254,15 +222,15 @@ class TestStage2Errors:
         """Stage1MissingError"""
         error = Stage1MissingError(
             element_type="button",
-            action="confirm",
+            action="确定",
             context="提交创建表单",
             expected_location=["dialog"],
         )
         assert error.element_type == "button"
-        assert error.action == "confirm"
+        assert error.action == "确定"
         assert error.context == "提交创建表单"
         assert "Stage 1" in str(error)
-        assert "confirm" in str(error)
+        assert "确定" in str(error)
         assert isinstance(error, Stage2Error)
 
     def test_stage2_locator_error(self):
@@ -297,11 +265,11 @@ class TestValidateStage1WithRequiredFlows:
         """默认检查所有流程（required_flows=None）"""
         ui_result = {
             "toolbar_buttons": [
-                {"text": "新增", "action": "create"},
-                {"text": "删除", "action": "delete"},
+                {"text": "新增", "action": "新增"},
+                {"text": "删除", "action": "删除"},
             ],
             "dialog_buttons": [
-                {"text": "确定", "action": "confirm"},
+                {"text": "确定", "action": "确定"},
             ],
             "row_actions": [],
             "dropdowns": [],
@@ -313,23 +281,23 @@ class TestValidateStage1WithRequiredFlows:
         }
         is_valid, issues, missing = validate_stage1(ui_result, required_flows=None)
         # 应该检查 create_flow 和 delete_flow
-        # create_flow 需要 create 和 confirm
-        # delete_flow 需要 delete 和 confirm
+        # create_flow 需要 "新增" 和 "确定"
+        # delete_flow 需要 "删除" 和 "确定"
         assert "missing" in locals()  # 确保返回了 missing 参数
 
     def test_validate_stage1_specific_required_flows(self):
         """指定检查特定流程"""
         ui_result = {
             "toolbar_buttons": [
-                {"text": "新增", "action": "create"},
-                {"text": "查询", "action": "query"},
+                {"text": "新增", "action": "新增"},
+                {"text": "查询", "action": "查询"},
             ],
             "dialog_buttons": [
-                {"text": "确定", "action": "confirm"},
+                {"text": "确定", "action": "确定"},
             ],
             "row_actions": [
-                {"text": "编辑", "action": "update"},
-                {"text": "删除", "action": "delete"},
+                {"text": "编辑", "action": "编辑"},
+                {"text": "删除", "action": "删除"},
             ],
             "dropdowns": [],
             "form_fields": [
@@ -339,7 +307,7 @@ class TestValidateStage1WithRequiredFlows:
                 "total_buttons": 5,
                 "has_create": True,
                 "has_delete": True,
-                "categories": {"create": 1, "query": 1, "update": 1, "delete": 1}
+                "categories": {"新增": 1, "查询": 1, "编辑": 1, "删除": 1}
             },
             "validated_operations": {
                 "create": {"success": True, "fill_data": {"username": "test"}, "selectors": {"trigger": "新增"}},
@@ -356,8 +324,8 @@ class TestValidateStage1WithRequiredFlows:
     def test_validate_stage1_missing_required_elements(self):
         """缺少必须元素时返回 missing"""
         ui_result = {
-            "toolbar_buttons": [],  # 缺少 create
-            "dialog_buttons": [],  # 缺少 confirm
+            "toolbar_buttons": [],  # 缺少 "新增"
+            "dialog_buttons": [],  # 缺少 "确定"
             "row_actions": [],
             "dropdowns": [],
             "form_fields": [],
@@ -370,9 +338,9 @@ class TestValidateStage1WithRequiredFlows:
             ui_result, required_flows=["create_flow"]
         )
         assert is_valid is False
-        assert len(missing) >= 2  # 至少缺少 create 和 confirm
-        assert any(e["action"] == "create" for e in missing)
-        assert any(e["action"] == "confirm" for e in missing)
+        assert len(missing) >= 2  # 至少缺少 "新增" 和 "确定"
+        assert any(e["action"] == "新增" for e in missing)
+        assert any(e["action"] == "确定" for e in missing)
 
     def test_validate_stage1_empty_required_flows(self):
         """required_flows=[] 时不检查必须元素"""
@@ -397,8 +365,8 @@ class TestValidateStage1WithRequiredFlows:
     def test_validate_stage1_returns_three_values(self):
         """validate_stage1 返回三个值"""
         ui_result = {
-            "toolbar_buttons": [{"text": "新增", "action": "create"}],
-            "dialog_buttons": [{"text": "确定", "action": "confirm"}],
+            "toolbar_buttons": [{"text": "新增", "action": "新增"}],
+            "dialog_buttons": [{"text": "确定", "action": "确定"}],
             "row_actions": [],
             "dropdowns": [],
             "form_fields": [],
@@ -422,11 +390,11 @@ class TestValidateStage1BackwardCompatibility:
         """不传 required_flows 参数时使用默认值"""
         ui_result = {
             "toolbar_buttons": [
-                {"text": "新增", "action": "create"},
-                {"text": "删除", "action": "delete"},
+                {"text": "新增", "action": "新增"},
+                {"text": "删除", "action": "删除"},
             ],
             "dialog_buttons": [
-                {"text": "确定", "action": "confirm"},
+                {"text": "确定", "action": "确定"},
             ],
             "row_actions": [],
             "dropdowns": [],
@@ -445,10 +413,10 @@ class TestValidateStage1BackwardCompatibility:
         """旧的调用方式（只传 ui_result）仍然有效"""
         ui_result = {
             "toolbar_buttons": [
-                {"text": "新增", "action": "create"},
+                {"text": "新增", "action": "新增"},
             ],
             "dialog_buttons": [
-                {"text": "确定", "action": "confirm"},
+                {"text": "确定", "action": "确定"},
             ],
             "row_actions": [],
             "dropdowns": [],
@@ -471,16 +439,16 @@ class TestIntegration:
         # 1. 准备 ui_result
         ui_result = {
             "toolbar_buttons": [
-                {"text": "新增用户", "action": "create"},
-                {"text": "查询", "action": "query"},
+                {"text": "新增用户", "action": "新增"},
+                {"text": "查询", "action": "查询"},
             ],
             "dialog_buttons": [
-                {"text": "确定", "action": "confirm"},
-                {"text": "取消", "action": "cancel"},
+                {"text": "确定", "action": "确定"},
+                {"text": "取消", "action": "取消"},
             ],
             "row_actions": [
-                {"text": "编辑", "action": "update"},
-                {"text": "删除", "action": "delete"},
+                {"text": "编辑", "action": "编辑"},
+                {"text": "删除", "action": "删除"},
             ],
             "dropdowns": [],
             "form_fields": [
@@ -491,7 +459,7 @@ class TestIntegration:
                 "total_buttons": 6,
                 "has_create": True,
                 "has_delete": True,
-                "categories": {"create": 1, "query": 1, "update": 1, "delete": 1}
+                "categories": {"新增": 1, "查询": 1, "编辑": 1, "删除": 1}
             },
             "validated_operations": {
                 "create": {"success": True, "fill_data": {"username": "test"}, "selectors": {"trigger": "新增用户"}},
@@ -515,14 +483,14 @@ class TestIntegration:
         """完整的 delete_flow 验证流程"""
         ui_result = {
             "toolbar_buttons": [
-                {"text": "删除", "action": "delete"},
-                {"text": "查询", "action": "query"},
+                {"text": "删除", "action": "删除"},
+                {"text": "查询", "action": "查询"},
             ],
             "dialog_buttons": [
-                {"text": "确认删除", "action": "confirm"},
+                {"text": "确认删除", "action": "确定"},
             ],
             "row_actions": [
-                {"text": "编辑", "action": "update"},
+                {"text": "编辑", "action": "编辑"},
             ],
             "dropdowns": [],
             "form_fields": [],
@@ -530,7 +498,7 @@ class TestIntegration:
                 "total_buttons": 4,
                 "has_create": True,
                 "has_delete": True,
-                "categories": {"query": 1, "update": 1, "delete": 1}
+                "categories": {"查询": 1, "编辑": 1, "删除": 1}
             },
             "validated_operations": {
                 "create": {"success": True, "fill_data": {"username": "test"}, "selectors": {"trigger": "新增"}},
@@ -549,9 +517,9 @@ class TestIntegration:
     def test_missing_element_triggers_stage1_missing_error(self):
         """缺少元素时应该触发 Stage1MissingError（在 Stage 2 中）"""
         ui_result = {
-            "toolbar_buttons": [],  # 缺少 create
+            "toolbar_buttons": [],  # 缺少 "新增"
             "dialog_buttons": [
-                {"text": "确定", "action": "confirm"},
+                {"text": "确定", "action": "确定"},
             ],
             "row_actions": [],
             "dropdowns": [],
@@ -577,5 +545,5 @@ class TestIntegration:
                 context="创建流程",
                 expected_location=first_missing.get("location", ["unknown"]),
             )
-            assert error.action == "create"
+            assert error.action == "新增"
             assert "Stage 1" in str(error)

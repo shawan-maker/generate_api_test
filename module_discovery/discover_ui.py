@@ -114,7 +114,8 @@ async def _discover_once(page, kb: ProbeKB, framework: str) -> dict:
                      f"source={si.get('source', 'css')}")
 
     # 4. 创建表单扫描（同时扫描弹窗按钮）
-    has_create = any(_match_crud(b["text"]) == "create" for b in result["toolbar_buttons"])
+    # 通过位置判断：工具栏按钮通常是 create 类操作
+    has_create = any(_classify_button_location(b) == "create_like" for b in result["toolbar_buttons"])
     if has_create:
         scan_result = await _scan_create_dialog(page, kb, framework)
         result["form_fields"] = scan_result.get("form_fields", [])
@@ -127,11 +128,11 @@ async def _discover_once(page, kb: ProbeKB, framework: str) -> dict:
             LOG.info(f"  弹窗按钮: {len(result['dialog_buttons'])} (含创建弹窗内)")
         await _close_dialog(page)
 
-    # 4.5 为所有按钮赋值 action 字段
+    # 4.5 为所有按钮赋值 action 字段（使用按钮文本原文，不做分类）
     for key in ["toolbar_buttons", "row_actions", "dialog_buttons"]:
         for btn in result[key]:
             if "action" not in btn or not btn["action"]:
-                btn["action"] = _match_crud(btn["text"])
+                btn["action"] = btn.get("text", "")
 
     # 5. 动态标签构建
     result["button_labels"] = _build_button_labels(result)
@@ -140,7 +141,7 @@ async def _discover_once(page, kb: ProbeKB, framework: str) -> dict:
         "total_buttons": sum(len(result[k]) for k in
                             ["toolbar_buttons", "row_actions", "dialog_buttons", "menu_items", "dropdowns"]),
         "has_create": has_create,
-        "has_delete": any(_match_crud(b["text"]) == "delete"
+        "has_delete": any(_classify_button_location(b) == "business"
                           for blist in [result["toolbar_buttons"], result["row_actions"]]
                           for b in blist),
         "has_form": len(result["form_fields"]) > 0,
@@ -518,7 +519,7 @@ async def _discover_dropdowns(page, parent_buttons: list, kb: ProbeKB = None, fr
                     "parent": text,
                     "tag": "DROPDOWN_ITEM",
                     "location": "dropdown",
-                    "action": _match_crud(item),
+                    "action": item,  # 使用下拉菜单项文本作为 action
                 })
         await page.keyboard.press("Escape")
         # 等待下拉菜单消失（快速超时，失败也不阻塞）
@@ -544,21 +545,47 @@ async def _scan_create_dialog(page, kb: ProbeKB = None, framework: str = "elemen
 
     result = {"form_fields": [], "dialog_buttons": []}
     url_before = page.url
-    # 使用 ACTION_KEYWORDS 中的完整关键词列表
-    create_keywords = const.ACTION_KEYWORDS.get("create", ["新增", "创建", "添加", "新建"])
+
+    # 使用工具栏按钮的文本作为创建按钮候选
+    # 通过位置判断（toolbar 按钮通常是 create 类操作）
+    toolbar_buttons = page.locator("button, .el-button").filter(has_not_text="")
+    count = await toolbar_buttons.count()
+
+    create_btn = None
+    for i in range(count):
+        btn = toolbar_buttons.nth(i)
+        try:
+            # 检查是否是工具栏按钮（位置判断）
+            location = await btn.evaluate("""el => {
+                const toolbar = el.closest('.el-toolbar, .toolbar, [class*="toolbar"]');
+                return toolbar ? 'toolbar' : 'other';
+            }""")
+
+            if location == 'toolbar':
+                # 获取按钮文本
+                text = await btn.inner_text()
+                text = text.strip()
+
+                # 工具栏按钮通常是创建按钮（排除明显的非创建按钮）
+                skip_keywords = ["删除", "导入", "导出", "查询", "搜索", "筛选"]
+                if not any(kw in text for kw in skip_keywords):
+                    create_btn = btn
+                    LOG.info(f"发现工具栏按钮作为创建入口: {text}")
+                    break
+        except Exception as e:
+            continue
+
+    if not create_btn:
+        return result
+
     clicked = False
-    for kw in create_keywords:
-        clicked = await page.evaluate(f"""() => {{
-            const all = document.querySelectorAll('span, button, a');
-            for (const el of all) {{
-                if ((el.textContent || '').trim().includes('{kw}') && el.offsetWidth > 0) {{
-                    el.click(); return true;
-                }}
-            }}
-            return false;
-        }}""")
-        if clicked:
-            break
+    try:
+        await create_btn.click()
+        clicked = True
+    except Exception as e:
+        LOG.warning(f"点击创建按钮失败: {e}")
+        return result
+
     if not clicked:
         return result
 
@@ -991,19 +1018,49 @@ async def _close_dialog(page):
         LOG.debug(f"关闭弹窗失败: {e}")
 
 
-def _match_crud(text: str) -> str:
-    for crud, keywords in const.ACTION_KEYWORDS.items():
-        for kw in keywords:
-            if kw in text:
-                return crud
-    return "unknown"
+def _classify_button_location(btn: dict) -> str:
+    """基于按钮 DOM 位置推断其行为类型（结构性，不依赖文本）。
+
+    用于 Stage 1 内部逻辑（如决定是否扫描创建弹窗），不改变按钮的 action 字段。
+    按钮的 action 字段始终使用按钮文本原文。
+
+    Returns:
+        "create_like" / "query_like" / "navigation" / "business"
+    """
+    location = btn.get("location", "toolbar")
+    tag = btn.get("tag", "")
+
+    # 导航/菜单类 → 不是业务操作
+    if location == "menu":
+        return "navigation"
+
+    # 工具栏按钮（页面顶部）→ 可能是 create 或 query
+    if location == "toolbar":
+        # 有 icon 特征或 class 包含 search/query → query_like
+        cls = (btn.get("className") or "").lower()
+        if "search" in cls or "query" in cls or "filter" in cls:
+            return "query_like"
+        # 其他工具栏按钮 → 可能是 create 或 generic
+        return "create_like"
+
+    # 行操作按钮 → 业务操作
+    if location == "row_action":
+        return "business"
+
+    # 下拉菜单项 → 业务操作
+    if location in ("dropdown", "dropdown_item"):
+        return "business"
+
+    return "business"
 
 
 def _count_categories(result: dict) -> dict:
+    """统计各位置按钮数量（使用按钮文本作为类别标识）。"""
     counts = {}
     for key in ("toolbar_buttons", "row_actions", "dropdowns"):
         for btn in result.get(key, []):
-            cat = _match_crud(btn["text"])
+            # 用按钮文本作为类别标识（不再做文本→CRUD 映射）
+            cat = btn.get("text", "unknown")
             counts[cat] = counts.get(cat, 0) + 1
     return counts
 
@@ -1107,35 +1164,28 @@ async def _kb_enrichment_scan(page, existing: list, kb: ProbeKB, framework: str 
     # 收集已存在按钮的文本，用于去重
     existing_texts = {item.get("text", "") for item in existing}
 
-    # 从 ACTION_KEYWORDS 获取所有按钮关键词
-    keywords = set()
-    for action_keywords in const.ACTION_KEYWORDS.values():
-        keywords.update(action_keywords)
-
-    # 使用 KB 中的 button 模板进行探测
+    # 使用 KB 中的通用按钮模板（不依赖 ACTION_KEYWORDS 关键词）
+    # 通用按钮模板（如 //button[contains(.,'{label}')]）会匹配页面上所有可见按钮
     button_patterns = kb.get_patterns("button", framework)
     if not button_patterns:
-        return []
+        # 回退：使用通用 XPath 直接扫描所有按钮
+        button_patterns = ["//button", "//a[contains(@class,'btn')]", "//*[contains(@class,'el-button')]"]
 
-    # 构建所有 XPath 查询（Python 侧展开占位符）
+    # 构建 XPath 查询：使用通用模板（不带 {label} 占位符）扫描所有按钮
     xpath_list = []
-    for keyword in keywords:
-        for pattern in button_patterns:
-            xpath = pattern.replace("{label}", keyword)
-            # 处理 {chars_all} 占位符
-            if "{chars_all}" in xpath:
-                chars = list(keyword)
-                chars_all = " and ".join([f"contains(., '{c}')" for c in chars])
-                xpath = xpath.replace("{chars_all}", chars_all)
-            # 处理 {char1} 和 {char2}
-            if "{char1}" in xpath and len(keyword) > 0:
-                xpath = xpath.replace("{char1}", keyword[0])
-            if "{char2}" in xpath and len(keyword) > 1:
-                xpath = xpath.replace("{char2}", keyword[1])
-            xpath_list.append(xpath)
+    for pattern in button_patterns:
+        # 如果模板包含占位符，跳过（这些需要具体关键词）
+        if "{label}" in pattern or "{chars_all}" in pattern:
+            continue
+        xpath_list.append(pattern)
 
+    # 如果所有模板都带占位符，添加兜底的通用扫描
     if not xpath_list:
-        return []
+        xpath_list = [
+            "//button[not(ancestor::nav) and not(ancestor::*[contains(@class,'pagination')])]",
+            "//a[contains(@class,'btn') or contains(@class,'button')]",
+            "//*[contains(@class,'el-button') and not(ancestor::*[contains(@class,'pagination')])]",
+        ]
 
     # 单次 evaluate：批量执行所有 XPath
     import json
@@ -1202,14 +1252,13 @@ async def _kb_enrichment_scan(page, existing: list, kb: ProbeKB, framework: str 
 def _build_button_labels(result: dict) -> dict:
     """从已探测到的按钮构建 action -> label 映射。
 
-    遍历所有探测到的按钮，根据按钮文本推断其对应的 action，
-    构建动态标签映射，用于后续的 manifest 生成。
+    按钮文本即操作名，直接构建 {text: text} 映射。
 
     Args:
         result: 探测结果字典，包含 toolbar_buttons, row_actions, dropdowns 等
 
     Returns:
-        dict: {action: label} 映射，如 {"create": "新增", "delete": "删除"}
+        dict: {action: label} 映射
     """
     labels = {}
 
@@ -1219,22 +1268,15 @@ def _build_button_labels(result: dict) -> dict:
     all_buttons.extend(result.get("row_actions", []))
     all_buttons.extend(result.get("dropdowns", []))
 
-    # 遍历按钮，推断 action
+    # 遍历按钮，直接使用按钮文本作为 action 和 label
     for btn in all_buttons:
         text = btn.get("text", "")
         if not text:
             continue
 
-        # 使用 ACTION_KEYWORDS 匹配 action
-        for action, keywords in const.ACTION_KEYWORDS.items():
-            for keyword in keywords:
-                if keyword in text:
-                    # 只记录第一个匹配的按钮作为该 action 的标签
-                    if action not in labels:
-                        labels[action] = text
-                    break
-            if action in labels and labels[action] == text:
-                break
+        # action 就是按钮文本，label 也是按钮文本
+        action = btn.get("action", text)
+        labels[action] = text
 
     return labels
 
@@ -1242,8 +1284,8 @@ def _build_button_labels(result: dict) -> dict:
 async def _scan_hints(page, missing_elements: list) -> list:
     """基于反馈循环的 hints 定向扫描缺失按钮。
 
-    对 missing_elements 中类型为 button 的元素，使用 ACTION_KEYWORDS
-    中的关键词在页面中搜索可见的匹配元素。
+    对 missing_elements 中类型为 button 的元素，使用按钮文本（action）
+    在页面中搜索可见的匹配元素。
     包括主页面和 iframe 扫描。
 
     Args:
@@ -1261,51 +1303,48 @@ async def _scan_hints(page, missing_elements: list) -> list:
         if elem.get("type") != "button":
             continue
 
+        # 使用按钮文本（action）作为搜索关键词
         action = elem.get("action", "")
-        keywords = const.ACTION_KEYWORDS.get(action, [])
-
-        if not keywords:
-            LOG.debug(f"  hints 扫描: action '{action}' 无关键词")
+        if not action:
+            LOG.debug(f"  hints 扫描: action 为空")
             continue
 
-        # 尝试每个关键词
-        for kw in keywords:
-            try:
-                elements = await page.evaluate(f"""() => {{
-                    const results = [];
-                    const selectors = '{selectors}';
-                    const all = document.querySelectorAll(selectors);
-                    for (const el of all) {{
-                        const text = (el.textContent || '').trim();
-                        if (text.includes('{kw}') &&
-                            el.offsetWidth > 0 && el.offsetHeight > 0) {{
-                            const rect = el.getBoundingClientRect();
-                            const dialog = el.closest('.el-dialog, .ant-modal, .el-drawer');
-                            const table = el.closest('.el-table, table, .ant-table');
-                            let location = 'toolbar';
-                            if (dialog && dialog.contains(el)) location = 'dialog';
-                            else if (table && table.contains(el)) location = 'row_action';
-                            results.push({{
-                                text,
-                                tag: el.tagName.toLowerCase(),
-                                className: el.className || '',
-                                rect: {{x: rect.x, y: rect.y, width: rect.width, height: rect.height}},
-                                location,
-                                source: 'hint_scan'
-                            }});
-                        }}
+        # 尝试搜索按钮文本
+        try:
+            elements = await page.evaluate(f"""() => {{
+                const results = [];
+                const selectors = '{selectors}';
+                const all = document.querySelectorAll(selectors);
+                for (const el of all) {{
+                    const text = (el.textContent || '').trim();
+                    if (text.includes('{action}') &&
+                        el.offsetWidth > 0 && el.offsetHeight > 0) {{
+                        const rect = el.getBoundingClientRect();
+                        const dialog = el.closest('.el-dialog, .ant-modal, .el-drawer');
+                        const table = el.closest('.el-table, table, .ant-table');
+                        let location = 'toolbar';
+                        if (dialog && dialog.contains(el)) location = 'dialog';
+                        else if (table && table.contains(el)) location = 'row_action';
+                        results.push({{
+                            text,
+                            tag: el.tagName.toLowerCase(),
+                            className: el.className || '',
+                            rect: {{x: rect.x, y: rect.y, width: rect.width, height: rect.height}},
+                            location,
+                            source: 'hint_scan'
+                        }});
                     }}
-                    return results;
-                }}""")
+                }}
+                return results;
+            }}""")
 
-                if elements:
-                    found.extend(elements)
-                    LOG.info(f"  hints 扫描: 关键词 '{kw}' 找到 {len(elements)} 个元素")
-                    break  # 找到后不再尝试其他关键词
+            if elements:
+                found.extend(elements)
+                LOG.info(f"  hints 扫描: 按钮文本 '{action}' 找到 {len(elements)} 个元素")
 
-            except Exception as e:
-                LOG.debug(f"  hints 扫描关键词 '{kw}' 失败: {e}")
-                continue
+        except Exception as e:
+            LOG.debug(f"  hints 扫描按钮文本 '{action}' 失败: {e}")
+            continue
 
     return found
 
@@ -1828,6 +1867,87 @@ async def discover_and_validate(page, username: str = "test") -> dict:
     return ui_result
 
 
+def _infer_action_role(action: str, btn: dict) -> str:
+    """基于按钮 DOM 位置和特征推断语义角色（纯结构性，不写死任何文本）。
+
+    规则：
+    - 搜索输入框 → query
+    - 非 BUTTON/DROPDOWN_ITEM 标签 → navigation（面包屑/导航/分页）
+    - toolbar BUTTON + primary 样式 → create（主操作按钮，触发弹窗创建流程）
+    - toolbar BUTTON + 非 primary → generic（批量操作/辅助按钮）
+    - row_action / dropdown → generic（行内操作，走通用路径）
+
+    Args:
+        action: 按钮文本（作为 action 标识）
+        btn: 按钮元数据字典
+
+    Returns:
+        "create" / "query" / "detail" / "navigation" / "generic"
+    """
+    # 搜索输入框 → query
+    if btn.get("is_search_input"):
+        return "query"
+
+    location = btn.get("location", "toolbar")
+    tag = btn.get("tag", "")
+    cls = (btn.get("className") or "").lower()
+
+    # 非 BUTTON/DROPDOWN_ITEM 标签不参与业务验证
+    if tag not in ("BUTTON", "DROPDOWN_ITEM"):
+        return "navigation"
+
+    # 有 href 的链接 → detail/navigation
+    if tag == "A" and btn.get("href"):
+        return "detail"
+
+    # toolbar BUTTON：区分主操作按钮和辅助按钮
+    if location == "toolbar":
+        # primary 按钮 = 主操作（创建/新增）→ create 角色
+        if "primary" in cls:
+            return "create"
+        # 非 primary 的 toolbar 按钮 = 批量操作/辅助功能 → generic
+        return "generic"
+
+    # row_action / dropdown → generic
+    return "generic"
+
+
+def _find_create_delete_actions(buttons_by_action: dict) -> tuple:
+    """基于 DOM 位置找出 create-like 和 delete-like 操作。
+
+    纯结构性判断：
+    - create: toolbar 中第一个 primary BUTTON（主操作按钮）
+    - delete: row_actions 或 dropdowns 中最后出现的按钮
+
+    Args:
+        buttons_by_action: {action: btn_dict} 映射
+
+    Returns:
+        (create_action, delete_action) — action 名称或 None
+    """
+    create_action = None
+    delete_action = None
+
+    # create: toolbar 中第一个 primary BUTTON
+    for action, btn in buttons_by_action.items():
+        if btn.get("location") == "toolbar" and btn.get("tag") == "BUTTON":
+            cls = (btn.get("className") or "").lower()
+            if "primary" in cls:
+                create_action = action
+                break
+
+    # delete: row_actions 或 dropdowns 中最后出现的按钮
+    candidates = []
+    for action, btn in buttons_by_action.items():
+        if btn.get("location") in ("row_action", "dropdown") and btn.get("tag") in ("BUTTON", "DROPDOWN_ITEM"):
+            candidates.append(action)
+
+    if candidates:
+        delete_action = candidates[-1]
+
+    return create_action, delete_action
+
+
 async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
     """按动态顺序逐一验证按钮的业务闭环。
 
@@ -1860,7 +1980,8 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
         # 跳过下拉菜单触发器（如"更多"），它们只是展开菜单，不是实际操作
         if btn.get("text") in _DROPDOWN_TRIGGER_TEXTS and btn.get("tag") != "DROPDOWN_ITEM":
             continue
-        action = btn.get("action", "") or _match_crud(btn.get("text", ""))
+        # 使用按钮文本作为 action（不再调用 _match_crud）
+        action = btn.get("action", "") or btn.get("text", "")
         if action and action not in buttons_by_action:
             buttons_by_action[action] = btn
 
@@ -1884,16 +2005,27 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
     # 记录创建的数据标识（供后续操作复用）
     created_marker = None
 
-    # 动态确定操作顺序：create 优先，delete 最后，其他操作按发现顺序
-    # 这样既保持依赖关系，又不依赖硬编码的操作列表
+    # 动态确定操作顺序：
+    # 结构性判断哪些操作需要先有数据（编辑/删除类需 marker），哪些不需要
+    # create-like 优先（创建测试数据），delete-like 最后（清理），其他按发现顺序
+    _create_action, _delete_action = _find_create_delete_actions(buttons_by_action)
+
     ordered_actions = []
-    if "create" in buttons_by_action:
-        ordered_actions.append("create")
+    if _create_action:
+        ordered_actions.append(_create_action)
     for action in buttons_by_action:
-        if action not in ("create", "delete"):
+        if action not in (_create_action, _delete_action):
             ordered_actions.append(action)
-    if "delete" in buttons_by_action:
-        ordered_actions.append("delete")
+    if _delete_action:
+        ordered_actions.append(_delete_action)
+
+    # 记录每个 action 的语义角色（create/update/delete/generic/query）
+    action_roles = {}
+    for action in buttons_by_action:
+        btn = buttons_by_action[action]
+        action_roles[action] = _infer_action_role(action, btn)
+
+    LOG.debug(f"  操作分发: { {a: action_roles[a] for a in ordered_actions} }")
 
     for action in ordered_actions:
         btn = buttons_by_action.get(action)
@@ -1902,10 +2034,11 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
             continue
 
         btn_text = btn.get("text", "")
-        LOG.info(f"  验证操作: {action} (按钮: {btn_text})")
+        role = action_roles.get(action, "generic")
+        LOG.info(f"  验证操作: {action} (按钮: {btn_text}, 角色: {role})")
 
-        # 分发到对应的验证函数
-        if action == "create":
+        # 基于角色分发到对应验证函数（不依赖硬编码操作名）
+        if role == "create":
             result = await _error_driven_retry(
                 page, _do_create, {
                     "btn": btn, "fields": form_fields, "username": username,
@@ -1916,18 +2049,16 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
                 created_marker = result.get("marker")
                 validated[action] = result
             else:
-                # Fix 2: create 失败时从表格提取 fallback marker
+                # create 失败时从表格提取 fallback marker
                 fallback = await _extract_fallback_marker(page)
                 if fallback:
                     created_marker = fallback
                     LOG.info(f"  create 失败，使用 fallback marker: {fallback}")
-                # 记录失败的 create 结果
                 if result:
                     validated[action] = result
 
-        elif action == "query":
+        elif role == "query":
             if btn.get("is_search_input"):
-                # 搜索输入框驱动的 query（无按钮）
                 result = await _do_query_via_search_input(page, btn)
                 if result and result.get("success"):
                     validated[action] = result
@@ -1938,7 +2069,7 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
                 if result and result.get("success"):
                     validated[action] = result
 
-        elif action == "detail":
+        elif role == "detail":
             result = await _error_driven_retry(
                 page, _do_detail, {
                     "btn": btn, "marker": created_marker,
@@ -1947,9 +2078,9 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
             if result and result.get("success"):
                 validated[action] = result
 
-        elif action == "update":
+        elif role == "update":
             if not created_marker:
-                LOG.warning(f"  update 跳过: create 失败且无可用 marker")
+                LOG.warning(f"  {action} 跳过: create 失败且无可用 marker")
                 validated[action] = {"success": False, "error_type": "skipped",
                                     "error_text": "create 失败且无可用 marker"}
             else:
@@ -1964,9 +2095,9 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
                 elif result:
                     validated[action] = result
 
-        elif action == "delete":
+        elif role == "delete":
             if not created_marker:
-                LOG.warning(f"  delete 跳过: create 失败且无可用 marker")
+                LOG.warning(f"  {action} 跳过: create 失败且无可用 marker")
                 validated[action] = {"success": False, "error_type": "skipped",
                                     "error_text": "create 失败且无可用 marker"}
             else:
@@ -1980,14 +2111,12 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
                     created_marker = None  # 已删除
                 elif result:
                     validated[action] = result
-                elif result:
-                    validated[action] = result
 
-        elif action in ("lock", "unlock", "reset", "authorize", "migrate",
-                        "export", "import", "batch", "approve", "execute"):
-            # Fix 3: toolbar 行操作前先确保有行被勾选
+        else:
+            # generic 角色：所有其他操作统一走通用路径
+            # 不写死操作名白名单，任何未被上述角色匹配的操作都走这里
             btn_location = btn.get("location", "toolbar")
-            if btn_location == "toolbar" and action in ("lock", "unlock", "reset"):
+            if btn_location == "toolbar" and created_marker:
                 selected = await _ensure_row_selected(page, created_marker)
                 if selected:
                     LOG.debug(f"    已勾选表格行供 toolbar 操作使用")
@@ -2000,7 +2129,6 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
             if result and result.get("success"):
                 validated[action] = result
             elif result:
-                # 失败的操作也记录（含部分步骤），供 playbook 生成和 Stage 2 尝试
                 validated[action] = result
 
         # 操作后确保回到列表页
@@ -2013,11 +2141,26 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
                 LOG.error(f"    浏览器已关闭，停止后续操作验证")
                 break
 
-    # 判断是否有关键操作失败（未出现在 validated 中，或 success=False）
-    critical_actions = {"create", "delete"}
-    failed_critical = [a for a in critical_actions
-                       if a in buttons_by_action and
-                       (a not in validated or not validated[a].get("success"))]
+    # 判断是否有关键操作失败（create-like 和 delete-like 角色）
+    # 不写死具体操作名，检查是否有任一 create/delete 角色的操作成功验证
+    has_create_role = any(r == "create" for r in action_roles.values())
+    has_delete_role = any(r == "delete" for r in action_roles.values())
+
+    create_verified = any(
+        action_roles.get(a) == "create" and validated.get(a, {}).get("success")
+        for a in validated
+    )
+    delete_verified = any(
+        action_roles.get(a) == "delete" and validated.get(a, {}).get("success")
+        for a in validated
+    )
+
+    failed_critical = []
+    if has_create_role and not create_verified:
+        failed_critical.append("create-like")
+    if has_delete_role and not delete_verified:
+        failed_critical.append("delete-like")
+
     if failed_critical:
         LOG.error(f"  Stage 1 关键操作验证失败: {failed_critical}")
         return None
@@ -2963,6 +3106,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
 
     # 找到行并点击
     row_selector = None
+    btn_click_result = {}  # 默认初始化，row_action/dropdown 分支不设置此变量
     if btn_location == "row_action" and marker:
         from .replay.button_driver import ButtonDriver
         driver = ButtonDriver(page)
@@ -3079,37 +3223,36 @@ async def _do_generic_operation(page, context: dict) -> dict:
     # 安装消息捕获（在点击按钮前，防止瞬态 toast 消失）
     await _install_message_capture(page)
 
-    # 特殊处理 import 操作 - 检测文件上传对话框
-    if action == "import":
-        has_upload_dialog = await page.evaluate("""() => {
-            const fileInput = document.querySelector('input[type="file"]');
-            const uploadComponent = document.querySelector('.el-upload, .ant-upload');
-            const uploadDialog = document.querySelector('.el-dialog, .ant-modal');
+    # 特殊处理上传操作 - 检测文件上传对话框（结构性判断，不依赖操作名）
+    has_upload_dialog = await page.evaluate("""() => {
+        const fileInput = document.querySelector('input[type="file"]');
+        const uploadComponent = document.querySelector('.el-upload, .ant-upload');
+        const uploadDialog = document.querySelector('.el-dialog, .ant-modal');
 
-            if (fileInput && fileInput.offsetParent !== null) {
-                return true;
-            }
-            if (uploadComponent && uploadComponent.offsetParent !== null) {
-                return true;
-            }
-            if (uploadDialog && uploadDialog.offsetParent !== null) {
-                const dialogUpload = uploadDialog.querySelector('.el-upload, .ant-upload, input[type="file"]');
-                if (dialogUpload) return true;
-            }
-            return false;
-        }""")
+        if (fileInput && fileInput.offsetParent !== null) {
+            return true;
+        }
+        if (uploadComponent && uploadComponent.offsetParent !== null) {
+            return true;
+        }
+        if (uploadDialog && uploadDialog.offsetParent !== null) {
+            const dialogUpload = uploadDialog.querySelector('.el-upload, .ant-upload, input[type="file"]');
+            if (dialogUpload) return true;
+        }
+        return false;
+    }""")
 
-        if has_upload_dialog:
-            LOG.info(f"    检测到文件上传对话框（{action} 操作），无法自动完成")
-            await _close_dialog(page)
-            selectors = {"trigger": btn_text}
-            if row_selector:
-                selectors["row_selector"] = row_selector
-            # 导入操作无法自动完成（需要文件），标记为失败
-            return {"success": False, "error_type": "env_dependency",
-                    "error_text": "导入操作需要上传文件，无法自动完成",
-                    "trigger_text": trigger_text_normalized,
-                    "selectors": selectors}
+    if has_upload_dialog:
+        LOG.info(f"    检测到文件上传对话框（{action} 操作），无法自动完成")
+        await _close_dialog(page)
+        selectors = {"trigger": btn_text}
+        if row_selector:
+            selectors["row_selector"] = row_selector
+        # 文件上传操作无法自动完成（需要文件），标记为失败
+        return {"success": False, "error_type": "env_dependency",
+                "error_text": "文件上传操作无法自动完成",
+                "trigger_text": trigger_text_normalized,
+                "selectors": selectors}
 
     # 如果有确认弹窗，先填充空 select 字段，再点击确认
     state = await _check_precondition_state(page, {"type": "dialog"})
@@ -4165,7 +4308,8 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
         target_btn = None
 
         for btn in toolbar_buttons + dialog_buttons:
-            btn_action = btn.get("action", "") or _match_crud(btn.get("text", ""))
+            # 使用按钮文本作为 action（不再调用 _match_crud）
+            btn_action = btn.get("action", "") or btn.get("text", "")
             if btn_action in key_actions:
                 target_btn = btn
                 break
@@ -4779,6 +4923,44 @@ def _extract_field_names(error_text: str) -> list:
     return []
 
 
+def _classify_op_steps_type(op_data: dict) -> str:
+    """根据 op_data 结构特征判断步骤构建类型（不写死任何操作名）。
+
+    判断逻辑：
+    - 有 fill_data 且非空 → create/update（需要填表单）
+    - 有 search_input → query（搜索框触发）
+    - 有 is_delete=true → delete（确认删除）
+    - 其他 → generic（通用操作）
+
+    Args:
+        op_data: 操作数据字典
+
+    Returns:
+        "create" / "update" / "query" / "delete" / "generic"
+    """
+    # 有搜索框 → query
+    if op_data.get("search_input"):
+        return "query"
+
+    # 有表单填充数据
+    fill_data = op_data.get("fill_data", {})
+    if fill_data:
+        # 检查是否有 marker（用于区分 create vs update）
+        # create: 通常没有 marker，create 后生成 marker
+        # update: 需要 marker 来定位要编辑的记录
+        if op_data.get("requires_marker"):
+            return "update"
+        else:
+            return "create"
+
+    # 检查是否是删除确认
+    if op_data.get("is_delete") or op_data.get("confirm_dialog", {}).get("is_delete"):
+        return "delete"
+
+    # 默认走通用操作
+    return "generic"
+
+
 def build_playbook(ui_result: dict) -> dict:
     """从 Stage 1 的 ui_result 构建完整的 playbook.json
 
@@ -4823,35 +5005,23 @@ def build_playbook(ui_result: dict) -> dict:
         op_steps = []
 
         if is_success:
-            # 根据操作类型构建步骤
-            if action == "create":
+            # 基于 op_data 结构特征分发步骤构建（不写死任何操作名）
+            steps_type = _classify_op_steps_type(op_data)
+            if steps_type == "create":
                 op_steps.extend(_build_create_steps(op_data))
-            elif action in ("lock", "unlock", "reset", "freeze", "thaw"):
-                op_steps.extend(_build_dropdown_steps(op_data))
-            elif action in ("delete", "remove"):
-                op_steps.extend(_build_delete_steps(op_data))
-            elif action in ("update", "edit"):
-                op_steps.extend(_build_update_steps(op_data))
-            elif action == "query":
+            elif steps_type == "query":
                 op_steps.extend(_build_query_steps(op_data))
+            elif steps_type == "update":
+                op_steps.extend(_build_update_steps(op_data))
+            elif steps_type == "delete":
+                op_steps.extend(_build_delete_steps(op_data))
             else:
-                # 通用操作（含导入、授权等）
+                # 通用操作（含导入、授权、冻结等）
                 op_steps.extend(_build_generic_steps(op_data))
 
         if op_steps or not is_success:
-            # 使用 trigger_text 作为业务名称（如"创建用户"而非"create"）
-            display_name = op_data.get("trigger_text") or op_data.get("description", action)
-            # 兜底：如果 display_name 仍然是英文 action key，使用中文映射
-            _ACTION_ZH = {
-                "create": "创建", "query": "查询", "update": "编辑",
-                "delete": "删除", "lock": "冻结", "unlock": "启用",
-                "reset": "重置密码", "import": "导入", "export": "导出",
-                "authorize": "授权", "migrate": "迁移", "detail": "详情",
-                "remove": "删除", "edit": "编辑", "freeze": "冻结",
-                "thaw": "启用",
-            }
-            if display_name in _ACTION_ZH or display_name == action:
-                display_name = _ACTION_ZH.get(action, action)
+            # 使用 trigger_text 作为业务名称（按钮原文即操作名）
+            display_name = op_data.get("trigger_text") or action
             entry = {
                 "display_name": display_name,
                 "description": op_data.get("description", action),

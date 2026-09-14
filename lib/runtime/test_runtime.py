@@ -376,7 +376,8 @@ class StepExecutor:
                 else:
                     body[key] = value
             elif role == "mutable":
-                body[key] = f"自动修改_{self.ts}"
+                mutable_prefix = self.config.get("test_data", {}).get("mutable_prefix", "Updated_")
+                body[key] = f"{mutable_prefix}{self.ts}"
             elif role == "test_value":
                 pattern = role_config.get("value_pattern", "text")
                 body[key] = _generate_test_value(pattern, self.ts)
@@ -537,7 +538,8 @@ class StepExecutor:
                 if name_val is None:
                     name_val = entity.get("name") or entity.get("title") or entity.get("label")
 
-                if name_val and ("_Updated" in str(name_val) or "自动修改_" in str(name_val)):
+                mutable_prefix = self.config.get("test_data", {}).get("mutable_prefix", "Updated_")
+                if name_val and mutable_prefix in str(name_val):
                     return f"验证通过: 名称已更新为 {name_val}"
 
         elif assertion == "search_verify":
@@ -969,11 +971,12 @@ class TestRunner:
             create_body_raw[key] = value
 
             if role == "name" and isinstance(value, str):
-                if not value.startswith(const.DEFAULT_TEST_NAME_PREFIX):
-                    create_body[key] = f"{const.DEFAULT_TEST_NAME_PREFIX}{self.ts}_{value}"
+                name_prefix = self.config.get("test_data", {}).get("name_prefix", "AT_")
+                if not value.startswith(name_prefix):
+                    create_body[key] = f"{name_prefix}{self.ts}_{value}"
                 else:
-                    prefix_len = len(const.DEFAULT_TEST_NAME_PREFIX)
-                    create_body[key] = f"{const.DEFAULT_TEST_NAME_PREFIX}{self.ts}_{value[prefix_len:]}"
+                    prefix_len = len(name_prefix)
+                    create_body[key] = f"{name_prefix}{self.ts}_{value[prefix_len:]}"
             elif role == "test_value":
                 pattern = role_config.get("value_pattern", "text")
                 create_body[key] = _generate_test_value(pattern, self.ts)

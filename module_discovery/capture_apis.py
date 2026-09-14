@@ -71,15 +71,14 @@ async def capture_all(page, ui_result: dict, base_url: str, target_url: str,
                                            capture_all_mode=capture_all_mode,
                                            api_path_prefix=api_path_prefix)
 
-        # 验证捕获结果完整性
+        # 验证捕获结果完整性（检查是否有任何写操作 API）
         classified = result.get("classified", {})
-        has_create = any(ep for cat, eps in classified.items()
-                        if cat in ("create", "update", "delete", "detail") for ep in eps)
+        has_write_ops = any(cat in const.WRITE_CATEGORIES for cat in classified.keys())
 
-        if has_create:
-            LOG.info(f"[Stage 2] ✅ 捕获成功，包含 CRUD API")
+        if has_write_ops:
+            LOG.info(f"[Stage 2] ✅ 捕获成功，包含写操作 API")
         else:
-            LOG.warning(f"[Stage 2] ⚠️ 捕获未包含 CRUD API")
+            LOG.warning(f"[Stage 2] ⚠️ 捕获未包含写操作 API")
 
         return result
 
@@ -261,10 +260,12 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
     # 新增：识别前置 API 候选（Phase A）
     # 排除业务操作端点，保留其余端点作为前置 API 候选
     business_pathnames = set()
-    for cat in ("create", "update", "delete", "execute",
-                "lock", "unlock", "reset", "import", "export"):
-        for ep in result.get("classified", {}).get(cat, []):
-            business_pathnames.add(ep.get("pathname", ""))
+    # 动态收集所有非 query/detail 类别的端点（不硬编码类别列表）
+    NON_BUSINESS_CATS = {"query", "detail", "support", "other_get"}
+    for cat, eps in result.get("classified", {}).items():
+        if cat not in NON_BUSINESS_CATS:
+            for ep in eps:
+                business_pathnames.add(ep.get("pathname", ""))
     # 对 query/detail 类别：排除"模块自身资源"的查询，保留"辅助资源"查询
     # 判断依据：query 端点路径是否包含 create/delete 端点的资源路径段
     # 例如：create=/users → query=/tenants/users 包含 users → 排除（主查询）

@@ -2,14 +2,16 @@
 endpoint_classifier.py — API 端点分类与去重
 
 职责：
-- 根据 HTTP 方法、URL 路径、触发上下文对 API 端点分类
+- 根据 HTTP 方法、请求特征对 API 端点分类（行为驱动，不依赖按钮文本）
 - 去重合并相同端点的多次调用
-- 识别 CRUD 类别（create/query/update/delete/lock/unlock/reset/authorize）
+- 基于时间戳优先法确定操作核心 API
 """
 
-import re
-from typing import Dict, List, Set
+import logging
+from typing import Dict, List
 from . import const
+
+LOG = logging.getLogger(__name__)
 
 
 class EndpointClassifier:
@@ -18,93 +20,47 @@ class EndpointClassifier:
     def __init__(self, kb_config: dict = None):
         self.kb_config = kb_config or {}
 
-    def classify_by_text(self, text: str) -> str:
-        """根据按钮文本分类 CRUD 类别"""
-        return _classify_by_text(text)
-
     def deduplicate(self, all_calls: List[Dict], samples: Dict,
                     replay_windows: Dict = None) -> Dict:
         """去重合并并分类端点"""
         return deduplicate_calls(all_calls, samples, replay_windows=replay_windows)
 
 
-def _classify_by_text(text: str) -> str:
-    """根据按钮文本分类 CRUD 类别。"""
-    for crud, keywords in const.ACTION_KEYWORDS.items():
-        for kw in keywords:
-            if kw in text:
-                return crud
-    return "unknown"
+def _classify_by_behavior(call: dict, has_form_data: bool = False,
+                         triggers_download: bool = False) -> str:
+    """基于 API 行为分类（不看操作名，只看 HTTP 行为）。
 
+    Args:
+        call: API 调用信息 {method, pathname, ...}
+        has_form_data: 是否携带表单数据
+        triggers_download: 是否触发文件下载
 
-def _crud_from_contexts(contexts: List[str]) -> str | None:
-    """从 API 的触发上下文(按钮文本)推导 CRUD 类别，作为写操作判定的强信号。
-
-    例: 'click:创建用户' / 'row:编辑' / 'dropdown:更多:冻结'
-        → 取末段动作文本，经 ACTION_KEYWORDS 分类。
-    支持 Stage 2 playbook 回放上下文格式 'replay:lock' / 'replay:unlock' 等，
-    此时 action 为英文 action 名，直接匹配 priority 列表而不走中文关键词查找。
-    仅返回"写操作类"类别(create/delete/update/lock/unlock/reset/authorize/migrate)；
-    查询/详情等不在此返回（避免把创建上下文里的列表查询误标为 create）。
+    Returns:
+        分类结果：create/update/delete/query/state_change/export/other
     """
-    priority = ["create", "delete", "update", "lock", "unlock", "reset",
-                "authorize", "migrate"]
-    best = None
-    for ctx in contexts:
-        parts = str(ctx).split(":")
-        if len(parts) < 2:
-            continue
+    method = call.get("method", "").upper()
 
-        action = parts[-1].strip()
-
-        # 直接匹配 replay:{action} 格式（Stage 2 playbook 回放上下文）
-        if parts[0] == "replay" and action in priority:
-            if best is None or priority.index(action) < priority.index(best):
-                best = action
-                continue
-
-        # 原有逻辑：中文按钮文本匹配
-        cat = _classify_by_text(action)
-        if cat in priority:
-            if best is None or priority.index(cat) < priority.index(best):
-                best = cat
-    return best
-
-
-def classify_endpoint(method: str, pathname: str, contexts: List[str]) -> str:
-    """综合分类端点（兜底逻辑，供 core_api_map 未命中时使用）。
-
-    优先级:
-    ① 校验类 API（/check, /valid 等 → support）— 最高优先，明确不是 CRUD
-    ② Context-first（replay:{action} 或按钮文本）→ 直接返回类别
-    ③ DELETE → delete
-    ④ RESTful 兜底（POST=other_post, PUT=update, GET=other_get）
-    """
-    p = pathname.lower()
-
-    # ① 校验类 API（通用模式，不是项目特定关键词）— 最高优先
-    # 这些 URL 明确是验证/检查接口，不是 CRUD 操作
-    if any(k in p for k in ("/check", "/usability", "/valid", "/exist", "/unique")):
-        return "support" if method == "POST" else "other_get"
-
-    # ② Context-first: 从 contexts 提取 action
-    ctx_crud = _crud_from_contexts(contexts)
-    if ctx_crud:
-        return ctx_crud
-
-    # ③ DELETE 方法
+    # HTTP method 是主要分类依据
     if method == "DELETE":
         return "delete"
 
-    # ④ RESTful 兜底（HTTP 方法语义）
-    if method == "PUT":
-        return "update"
-    if method == "PATCH":
-        return "update"
     if method == "POST":
-        return "other_post"
+        if triggers_download:
+            return "export"
+        elif has_form_data:
+            return "create"
+        else:
+            # 无表单的 POST = 状态变更（冻结/启用/审批/发布/重置密码...）
+            return "state_change"
+
+    if method in ("PUT", "PATCH"):
+        return "update"
+
     if method == "GET":
-        return "other_get"
+        if triggers_download:
+            return "export"
+        else:
+            return "query"
 
     return "other"
 
@@ -162,7 +118,7 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict,
         ep_key = (ep["method"], ep["pathname"])
         actions = endpoint_actions.get(ep_key, set())
 
-        # ★ 分类逻辑：优先使用 core_api_map
+        # ★ 分类逻辑：优先使用 core_api_map（时间戳优先法）
         if "query" in actions:
             # 如果该端点是 query 操作的核心 API，优先归为 query
             cat = "query"
@@ -170,8 +126,8 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict,
             # 取第一个非 query 操作作为类别
             cat = next((a for a in actions if a != "query"), list(actions)[0])
         else:
-            # 兜底：使用传统分类逻辑
-            cat = classify_endpoint(ep["method"], ep["pathname"], list(ep["contexts"]))
+            # 兜底：基于 HTTP 方法的行为分类（不依赖文本匹配）
+            cat = _classify_by_behavior(ep, has_form_data=bool(ep.get("bodies")))
 
         ep_data = {
             "method": ep["method"], "pathname": ep["pathname"],
@@ -201,16 +157,28 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict,
 def _is_static_or_heartbeat(call: dict) -> bool:
     """排除非业务 API（静态资源、心跳、基础设施 GET）。"""
     pn = call.get("pathname", "")
+
     # 静态资源
     if any(pn.endswith(ext) for ext in const.SKIP_STATIC_EXTENSIONS):
         return True
-    # 心跳/主题等基础设施 GET
-    if call["method"] == "GET" and any(k in pn for k in (
-        "/system-theme", "/access-log", "/favorite/list",
-        "/notice/new/count", "/menu/tree", "/menu/side-tree",
-        "/draco/v1/users/current-user",  # 当前用户信息
-    )):
-        return True
+
+    # 心跳/主题等基础设施 GET（从 KB 读取，不硬编码）
+    if call["method"] == "GET":
+        # 从 KB 读取基础设施 API 模式
+        from .kb_loader import get_kb
+        kb = get_kb()
+        infra_patterns = kb.get_infrastructure_patterns()
+        if any(pattern in pn for pattern in infra_patterns):
+            return True
+
+        # 兜底：通用基础设施模式（不依赖特定项目）
+        generic_infra_patterns = [
+            "/current-user", "/access-log", "/system-theme",
+            "/favorite", "/menu/tree", "/notice/"
+        ]
+        if any(pattern in pn for pattern in generic_infra_patterns):
+            return True
+
     return False
 
 

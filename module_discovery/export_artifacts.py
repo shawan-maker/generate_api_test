@@ -293,6 +293,10 @@ def export_helpers(manifest: dict, output_path: Path):
     header_name = auth_profile.get("header_name", "Authorization")
     header_prefix = auth_profile.get("header_prefix", "Bearer ")
 
+    # 读取测试数据配置
+    test_data = manifest.get("test_data", {})
+    mutable_prefix = test_data.get("mutable_prefix", "自动修改_")
+
     helpers_code = f'''"""
 helpers.py — 由 module_discovery Stage 5 自动导出
 
@@ -370,9 +374,9 @@ def gen_mutable_value(ts: str) -> str:
         ts: 时间戳字符串
 
     Returns:
-        格式化值，例如 "自动修改_1725780000123"
+        格式化值，例如 "{mutable_prefix}1725780000123"
     """
-    return f"自动修改_{{ts}}"
+    return f"{mutable_prefix}{{ts}}"
 '''
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
