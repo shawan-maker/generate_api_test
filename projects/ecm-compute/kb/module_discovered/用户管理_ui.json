@@ -341,15 +341,15 @@
     "创建用户": {
       "success": true,
       "fill_data": {
-        "账号": "AT_test_354705",
-        "姓名": "AT_test_354705",
+        "账号": "AT_test_376948",
+        "姓名": "AT_test_376948",
         "密码": "Test@123456",
         "确认密码": "Test@123456",
-        "手机号": "13834025385",
-        "邮箱": "at_354703@test.com",
-        "描述": "auto_test_354705",
-        "系统角色": "AT_test_354705",
-        "部门角色": "AT_test_354705"
+        "手机号": "13848194747",
+        "邮箱": "at_376945@test.com",
+        "描述": "auto_test_376948",
+        "系统角色": "AT_test_376948",
+        "部门角色": "AT_test_376948"
       },
       "fill_rules": {
         "账号": {
@@ -377,15 +377,15 @@
           }
         },
         "手机号": {
-          "rule": "name_pattern",
+          "rule": "phone_pattern",
           "params": {
-            "prefix": "test"
+            "prefix": "138"
           }
         },
         "邮箱": {
-          "rule": "name_pattern",
+          "rule": "email_pattern",
           "params": {
-            "prefix": "test"
+            "domain": "test.com"
           }
         },
         "描述": {
@@ -489,9 +489,10 @@
       "trigger_locator": "span:has-text(\"创建用户\")",
       "trigger_locator_verified": "span:has-text(\"创建用户\")",
       "trigger_text": "创建用户",
-      "submit_locator": "button:has-text(\"确定\")",
-      "submit_locator_verified": "button:has-text(\"确定\")",
+      "submit_locator": "button:has-text(\"确 定\")",
+      "submit_locator_verified": "button:has-text(\"确 定\")",
       "submit_text": "确 定",
+      "submit_click_strategy": "js",
       "dialog_detected": false,
       "interaction_mode": "page-nav",
       "dialog_locator": ".el-dialog__wrapper",
@@ -509,11 +510,21 @@
       ],
       "radio_field_details": []
     },
+    "query": {
+      "success": true,
+      "selectors": {
+        "trigger": "搜索输入:请输入"
+      },
+      "trigger_locator_verified": "input[placeholder=\"请输入\"]",
+      "search_input": {
+        "locator": "input[placeholder=\"请输入\"]",
+        "placeholder": "请输入"
+      },
+      "trigger_mode": "button",
+      "has_table": true
+    },
     "用户": {
-      "success": false,
-      "error_type": "no_key_action",
-      "error_text": "未找到关键操作按钮（save/submit/confirm/authorize/batch）",
-      "trigger_text": "用户",
+      "success": true,
       "nav_info": {
         "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/user",
         "depth": 0,
@@ -521,12 +532,25 @@
         "has_form": false,
         "form_fields": [],
         "fill_data": {},
-        "submit_result": {},
-        "error_type": "no_key_action",
-        "error_text": "未找到关键操作按钮（save/submit/confirm/authorize/batch）"
+        "submit_result": {
+          "success": true,
+          "button_text": "",
+          "action": "browse",
+          "note": "页面跳转成功，无可填写字段（展示页面）"
+        },
+        "error_type": "",
+        "error_text": ""
       },
+      "trigger_text": "用户",
       "selectors": {
         "trigger": "用户"
+      },
+      "fill_data": {},
+      "submit_result": {
+        "success": true,
+        "button_text": "",
+        "action": "browse",
+        "note": "页面跳转成功，无可填写字段（展示页面）"
       }
     },
     "批量导入": {
@@ -537,46 +561,6 @@
       "selectors": {
         "trigger": "批量导入"
       }
-    },
-    "批量删除": {
-      "success": true,
-      "selectors": {
-        "trigger": "批量删除",
-        "confirm": "确认"
-      },
-      "confirmed": "确认",
-      "trigger_text": "批量删除",
-      "post_confirm_state": {
-        "dialog_remains": false,
-        "has_form_in_dialog": false
-      },
-      "trigger_locator_verified": "button:has-text(\"批量删除\")",
-      "needs_checkbox": true,
-      "checkbox_locator": ".el-checkbox__input",
-      "confirm_button_text_verified": "确认"
-    },
-    "批量迁移": {
-      "success": true,
-      "selectors": {
-        "trigger": "批量迁移",
-        "confirm": "确 定"
-      },
-      "confirmed": "确 定",
-      "trigger_text": "批量迁移",
-      "post_confirm_state": {
-        "dialog_remains": false,
-        "has_form_in_dialog": false
-      },
-      "trigger_locator_verified": "button:has-text(\"批量迁移\")",
-      "needs_checkbox": true,
-      "checkbox_locator": ".el-checkbox__input",
-      "confirm_button_text_verified": "确 定"
-    },
-    "GO": {
-      "success": false,
-      "error_type": "no_confirm_button",
-      "trigger_text": "GO",
-      "error_text": "GO 操作未检测到确认弹窗"
     },
     "编辑": {
       "success": true,
@@ -594,37 +578,49 @@
       "trigger_locator_verified": "button:has-text('编辑')",
       "confirm_button_text_verified": "确 定"
     },
-    "删除": {
-      "success": true,
-      "selectors": {
-        "trigger": "删除",
-        "row_selector": "删除",
-        "confirm": "确定"
-      },
-      "confirmed": "确定",
-      "trigger_text": "删除",
-      "post_confirm_state": {
-        "dialog_remains": false,
-        "has_form_in_dialog": false
-      },
-      "trigger_locator_verified": "button:has-text('删除')",
-      "confirm_button_text_verified": "确定"
-    },
     "授权": {
       "success": false,
-      "error_type": "no_key_action",
-      "error_text": "未找到关键操作按钮（save/submit/confirm/authorize/batch）",
+      "error_type": "required_field_empty",
+      "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
       "trigger_text": "授权",
       "nav_info": {
-        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=820a0f065ee24ab4bc9a0dfd484ba2cc",
+        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=d3cc4af6d4914de08bf2301fb13a0895",
         "depth": 0,
         "page_title": "eStack Enterprise",
         "has_form": false,
         "form_fields": [],
-        "fill_data": {},
+        "fill_data": {
+          "授权用户": "AT_AT_test_auto_377026",
+          "授权用户组": "AT_AT_test_auto_377026",
+          "授权角色": "AT_AT_test_auto_377026",
+          "授权范围": "AT_AT_test_auto_377026"
+        },
         "submit_result": {},
-        "error_type": "no_key_action",
-        "error_text": "未找到关键操作按钮（save/submit/confirm/authorize/batch）"
+        "error_type": "required_field_empty",
+        "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
+        "field_states": [
+          {
+            "label": "授权用户",
+            "type": "select",
+            "value": "",
+            "isDisabled": true,
+            "hasValue": false
+          },
+          {
+            "label": "授权用户组",
+            "type": "select",
+            "value": "",
+            "isDisabled": false,
+            "hasValue": false
+          },
+          {
+            "label": "授权角色",
+            "type": "radio",
+            "value": "组织架构",
+            "isDisabled": false,
+            "hasValue": true
+          }
+        ]
       },
       "selectors": {
         "trigger": "授权",
@@ -723,19 +719,6 @@
       "dropdown_item_text_verified": "重置密码",
       "confirm_button_text_verified": "确认"
     },
-    "query": {
-      "success": true,
-      "selectors": {
-        "trigger": "搜索输入:请输入"
-      },
-      "trigger_locator_verified": "input[placeholder=\"请输入\"]",
-      "search_input": {
-        "locator": "input[placeholder=\"请输入\"]",
-        "placeholder": "请输入"
-      },
-      "trigger_mode": "button",
-      "has_table": true
-    },
     "迁移": {
       "success": true,
       "selectors": {
@@ -758,6 +741,22 @@
       "expand_strategy_verified": "click",
       "dropdown_item_text_verified": "迁移",
       "confirm_button_text_verified": "确 定"
+    },
+    "删除": {
+      "success": true,
+      "selectors": {
+        "trigger": "删除",
+        "row_selector": "删除",
+        "confirm": "确定"
+      },
+      "confirmed": "确定",
+      "trigger_text": "删除",
+      "post_confirm_state": {
+        "dialog_remains": false,
+        "has_form_in_dialog": false
+      },
+      "trigger_locator_verified": "button:has-text('删除')",
+      "confirm_button_text_verified": "确定"
     }
   }
 }

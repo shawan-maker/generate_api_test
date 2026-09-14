@@ -2,7 +2,7 @@
 """
 用户管理 - UI 自动化测试脚本
 
-生成时间: 2026-09-11 15:39:28
+生成时间: 2026-09-14 17:15:24
 生成工具: API AI Test Framework - Stage 2
 版本: v1.0.0
 
@@ -52,7 +52,7 @@ CONFIG = {
     },
 }
 
-AVAILABLE_OPERATIONS = ['create', 'import', 'migrate', 'update', 'authorize', 'lock', 'unlock', 'reset', 'query', 'delete']
+AVAILABLE_OPERATIONS = ['创建用户', 'query', '用户', '批量导入', '编辑', '授权', '冻结', '启用', '锁定', '重置密码', '迁移', '删除']
 
 # ==================== Cookie 鉴权 ====================
 
@@ -105,12 +105,12 @@ async def _cleanup_dialogs(page):
 
 # 操作失败原因（由 Stage 1 标记）
 _OPERATION_STATUS = {
-    "import": {
+    "批量导入": {
         "status": "failed",
         "error_type": "env_dependency",
-        "error_text": "导入操作需要上传文件，无法自动完成"
+        "error_text": "文件上传操作无法自动完成"
     },
-    "authorize": {
+    "授权": {
         "status": "failed",
         "error_type": "required_field_empty",
         "error_text": "必填字段无法填写: 授权用户组（select，值为空）"

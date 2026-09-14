@@ -12,6 +12,7 @@ replay_engine.py — Playbook 回放引擎
 """
 
 import logging
+import json
 from .button_driver import ButtonDriver, confirm_dialog
 from .form_filler import apply_fill_rule, FormFiller
 from .wait_helpers import wait_for_table_ready
@@ -73,6 +74,60 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
                 ctx["url_before_click"] = page.url
                 await _step_click_button(page, step, button_driver, ctx)
 
+                # 诊断：检查点击后的表单状态和对话框
+                await page.wait_for_timeout(1000)  # 等待可能的验证完成
+                post_click_state = await page.evaluate("""() => {
+                    const result = {
+                        dialogVisible: false,
+                        errors: [],
+                        formValues: {},
+                        submitButtonState: null
+                    };
+
+                    // 检查对话框
+                    const dialog = document.querySelector('.el-dialog__wrapper:not([style*="display: none"])');
+                    if (dialog) {
+                        result.dialogVisible = true;
+
+                        // 检查表单错误
+                        dialog.querySelectorAll('.el-form-item').forEach(item => {
+                            const error = item.querySelector('.el-form-item__error');
+                            if (error) {
+                                const label = item.querySelector('.el-form-item__label')?.textContent?.trim() || 'unknown';
+                                result.errors.push({
+                                    field: label,
+                                    message: error.textContent.trim()
+                                });
+                            }
+                        });
+
+                        // 检查表单值
+                        dialog.querySelectorAll('input, textarea').forEach(input => {
+                            const formItem = input.closest('.el-form-item');
+                            if (formItem) {
+                                const label = formItem.querySelector('.el-form-item__label')?.textContent?.trim() || '';
+                                result.formValues[label] = {
+                                    value: input.value || '',
+                                    type: input.type
+                                };
+                            }
+                        });
+
+                        // 检查提交按钮状态
+                        const submitBtn = dialog.querySelector('button.el-button--primary');
+                        if (submitBtn) {
+                            result.submitButtonState = {
+                                text: submitBtn.textContent.trim(),
+                                disabled: submitBtn.disabled,
+                                hasLoading: submitBtn.classList.contains('is-loading')
+                            };
+                        }
+                    }
+
+                    return result;
+                }""")
+                LOG.info(f"    [点击按钮后状态] {post_click_state}")
+
             elif action == "wait_for_dialog":
                 await _step_wait_for_dialog(page, step, ctx)
 
@@ -80,6 +135,34 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
                 marker_value = await _step_fill_form(page, step, button_driver)
                 if marker_value:
                     result["marker"] = marker_value
+
+                # 诊断：检查表单填充后的实际值
+                form_state = await page.evaluate("""() => {
+                    const fields = {};
+                    document.querySelectorAll('.el-form-item').forEach(item => {
+                        const label = item.querySelector('.el-form-item__label')?.textContent?.trim() || '';
+                        const input = item.querySelector('input, textarea');
+                        if (input && label) {
+                            fields[label] = {
+                                value: input.value || '',
+                                type: input.type || 'unknown',
+                                required: input.required || false
+                            };
+                        }
+                        // 检查 select 字段
+                        const select = item.querySelector('.el-select .el-select__tags');
+                        if (select && label) {
+                            const tags = Array.from(select.querySelectorAll('.el-tag')).map(t => t.textContent.trim());
+                            fields[label] = {
+                                value: tags.join(', '),
+                                type: 'select',
+                                tagCount: tags.length
+                            };
+                        }
+                    });
+                    return fields;
+                }""")
+                LOG.info(f"    [表单填充后状态] {json.dumps(form_state, ensure_ascii=False, indent=2)}")
 
             elif action == "find_row":
                 await _step_find_row(page, step, button_driver, marker)
@@ -158,32 +241,93 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
 async def _step_click_button(page, step: dict, button_driver: ButtonDriver, ctx: dict):
     """步骤：点击按钮（纯执行，不做探测）
 
-    Stage 2 直接使用 Stage 1 提供的精确 locator。
-    降级链：Playwright CSS → 空格容错 → JS 去空格点击（对齐 Stage 1 的 _click_button_escalating）。
+    Stage 2 直接使用 Stage 1 提供的精确 locator 和成功策略。
+    降级链：指定策略 → Playwright CSS → 空格容错 → JS 去空格点击。
     """
     locator = step.get("playwright_locator")
     btn_text = step.get("text", "")
+    preferred_strategy = step.get("click_strategy")  # Stage 1 记录的成功策略
 
     if not locator:
         raise Exception("click_button 步骤缺少 playwright_locator（Stage 1 未提供）")
 
-    LOG.debug(f"    [click_button] text='{btn_text}', locator='{locator}'")
+    LOG.info(f"    [click_button] text='{btn_text}', locator='{locator}', strategy={preferred_strategy}")
 
     # 增强：为 CSS 选择器添加隐藏过滤（防止匹配到 hidden/disabled 按钮）
     from .locator_helpers import safe_css
     ui_framework = getattr(button_driver, 'framework', 'element-ui')
     enhanced_locator = safe_css(locator, ui_framework)
 
+    # 策略 1: Playwright click（真实鼠标事件，触发 Vue/React 事件处理器）
     try:
+        # 诊断：点击前检查匹配的元素
+        match_info = await page.evaluate("""(locator_text) => {
+            const target = locator_text.replace(/\\s+/g, '');
+            const results = [];
+            const elements = document.querySelectorAll('button, span, a');
+            for (const el of elements) {
+                if (el.offsetWidth === 0 || el.offsetHeight === 0) continue;
+                if (el.disabled || el.classList.contains('is-disabled')) continue;
+                const elText = el.textContent.trim().replace(/\\s+/g, '');
+                if (elText.includes(target) && (el.tagName === 'BUTTON' || el.closest('button'))) {
+                    results.push({
+                        tag: el.tagName,
+                        text: el.textContent.trim(),
+                        class: el.className,
+                        inDialog: !!el.closest('.el-dialog:not([style*="display: none"])'),
+                        rect: el.getBoundingClientRect().toJSON()
+                    });
+                }
+            }
+            return results;
+        }""", btn_text or locator.split('"')[1] if '"' in locator else "")
+        LOG.info(f"    [click_button] 匹配元素: {match_info}")
+
         await page.click(enhanced_locator, timeout=5000)
-        LOG.debug(f"    [click_button] 成功")
+        LOG.info(f"    [click_button] Playwright 成功")
+
+        # 诊断：点击后检查表单状态和错误消息
+        await page.wait_for_timeout(500)  # 短暂等待让表单验证完成
+        form_state = await page.evaluate("""() => {
+            // 检查表单验证错误
+            const errors = [];
+            document.querySelectorAll('.el-form-item__error, .el-form-item.is-error').forEach(el => {
+                if (el.offsetWidth > 0 || el.offsetHeight > 0) {
+                    errors.push(el.textContent.trim());
+                }
+            });
+
+            // 检查对话框是否还在
+            const dialogs = document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"])');
+            const dialogVisible = Array.from(dialogs).some(d => d.offsetWidth > 0);
+
+            // 检查是否有提交按钮被禁用
+            const submitButtons = document.querySelectorAll('button.el-button--primary');
+            const disabledSubmit = Array.from(submitButtons).filter(b => {
+                const text = b.textContent.trim().replace(/\\s+/g, '');
+                return text === '确定' || text === '保存';
+            }).map(b => ({
+                disabled: b.disabled,
+                loading: b.classList.contains('is-loading'),
+                text: b.textContent.trim()
+            }));
+
+            return {
+                formErrors: errors,
+                dialogVisible,
+                submitButtons: disabledSubmit,
+                openDialogCount: dialogs.length
+            };
+        }""")
+        LOG.info(f"    [click_button] 点击后表单状态: {form_state}")
+
         from .wait_helpers import wait_for_loading_complete
         await wait_for_loading_complete(page, timeout=10000)
         return
-    except Exception:
-        pass
+    except Exception as e:
+        LOG.info(f"    [click_button] Playwright 失败: {str(e)[:100]}")
 
-    # 轻量级空格容错：仅针对中文 has-text 的空格变体
+    # 策略 2: 空格容错（仅针对中文 has-text 的空格变体）
     import re
     has_text_match = re.search(r"has-text\(['\"](.+?)['\"]\)", enhanced_locator)
     if has_text_match:
@@ -200,54 +344,44 @@ async def _step_click_button(page, step: dict, button_driver: ButtonDriver, ctx:
                 )
                 try:
                     await page.click(normalized_locator, timeout=3000)
-                    LOG.debug(f"    [click_button] 空格容错成功: '{original_text}' → '{normalized_text}'")
+                    LOG.info(f"    [click_button] 空格容错成功: '{original_text}' → '{normalized_text}'")
                     from .wait_helpers import wait_for_loading_complete
                     await wait_for_loading_complete(page, timeout=10000)
                     return
                 except Exception:
                     pass
 
-    # JS 回退：对齐 Stage 1 _click_button_escalating 的 JS 去空格策略
+    # 策略 3: JS 回退（仅在 Playwright 全部失败时使用，用 dispatchEvent）
     if has_text_match:
-        btn_text = has_text_match.group(1)
-
-        # 检查按钮状态（诊断信息，帮助定位为何 Playwright click 失败）
-        btn_state = await page.evaluate("""(text) => {
-            const target = text.replace(/\\s+/g, '');
-            const results = [];
-            const elements = document.querySelectorAll('button');
-            for (const el of elements) {
-                const elText = el.textContent.trim().replace(/\\s+/g, '');
-                if (elText.includes(target)) {
-                    results.push({
-                        text: el.textContent.trim(),
-                        disabled: el.disabled || el.classList.contains('is-disabled'),
-                        visible: el.offsetWidth > 0 && el.offsetHeight > 0
-                    });
-                }
-            }
-            return results;
-        }""", btn_text)
-        if btn_state:
-            LOG.debug(f"    [click_button] JS回退: {len(btn_state)}个匹配按钮 {btn_state}")
+        btn_text_for_js = has_text_match.group(1)
 
         clicked = await page.evaluate("""(text) => {
             const target = text.replace(/\\s+/g, '');
             const elements = document.querySelectorAll('button, span, a, .el-button');
+            let candidates = [];
             for (const el of elements) {
                 if (el.offsetWidth === 0 || el.offsetHeight === 0) continue;
                 if (el.disabled || el.classList.contains('is-disabled')) continue;
                 const elText = el.textContent.trim().replace(/\\s+/g, '');
                 if (elText.includes(target)) {
-                    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-                    return true;
+                    candidates.push(el);
                 }
             }
-            return false;
-        }""", btn_text)
-        if clicked:
-            LOG.debug(f"    [click_button] JS回退成功: '{btn_text}'")
-            await page.wait_for_timeout(500)
+            // 优先选择 BUTTON 标签
+            let target_el = candidates.find(el => el.tagName === 'BUTTON') || candidates[0];
+            if (target_el) {
+                target_el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                return {
+                    clicked: true,
+                    tag: target_el.tagName,
+                    text: target_el.textContent.trim()
+                };
+            }
+            return {clicked: false};
+        }""", btn_text_for_js)
+        if clicked.get("clicked"):
+            LOG.info(f"    [click_button] JS 回退成功: {clicked.get('tag')} '{clicked.get('text')}'")
+            await page.wait_for_timeout(1000)
             from .wait_helpers import wait_for_loading_complete
             await wait_for_loading_complete(page, timeout=10000)
             return

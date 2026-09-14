@@ -243,6 +243,18 @@ class ProbeKB:
 
         return result
 
+    def get_infrastructure_patterns(self) -> list:
+        """获取基础设施 API 路径模式列表。
+
+        用于 _is_static_or_heartbeat() 过滤非业务 GET 请求。
+
+        Returns:
+            URL 子串模式列表（如 ["/system-theme", "/access-log"]）
+        """
+        if not self._kb_data:
+            return []
+        return self._kb_data.get("infrastructure_patterns", [])
+
     def get_fallback_strategies(self) -> list:
         """获取 KB 兜底策略列表。
 

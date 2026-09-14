@@ -170,6 +170,24 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
     # 1. 安装请求拦截器
     await interceptor.install()
 
+    # 1.5 安装 console 消息监听（诊断表单验证错误）
+    console_msgs = []
+    def on_console(msg):
+        try:
+            text = msg.text
+            msg_type = msg.type
+            console_msgs.append(f"[{msg_type}] {text}")
+        except Exception as e:
+            console_msgs.append(f"[error] Failed to read message: {e}")
+    page.on("console", on_console)
+
+    # 1.6 临时：记录所有请求（不过滤）用于诊断
+    all_requests_for_debug = []
+    def on_request_debug(req):
+        if "users" in req.url or "check" in req.url:
+            all_requests_for_debug.append(f"{req.method} {req.url}")
+    page.on("request", on_request_debug)
+
     # 2. 导航到目标页面
     LOG.info("导航到目标页面...")
     await page.goto(target_url, wait_until="networkidle", timeout=60000)
@@ -207,12 +225,43 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
         try:
             # 执行 playbook 中的步骤序列
             steps = op.get("steps", [])
-            result = await replay_from_playbook(page, steps, button_driver, created_marker, interceptor)
+            # 传递 marker：需要 marker 的情况：
+            # 1. 步骤包含 find_row（行级操作定位）
+            # 2. 步骤值引用 {marker_name}（如 query 搜索框）
+            # 3. 步骤包含 click_row_more（下拉菜单行级操作）
+            needs_marker = (
+                any(s.get("action") == "find_row" for s in steps)
+                or any(s.get("action") == "click_row_more" for s in steps)
+                or any("{marker_name}" in str(s.get("value", "")) for s in steps)
+            )
+            pass_marker = created_marker if needs_marker else None
+            result = await replay_from_playbook(page, steps, button_driver, pass_marker, interceptor)
 
-            # 如果是 create 操作且成功，记录 marker
-            if action == "create" and result.get("marker"):
-                created_marker = result["marker"]
-                LOG.info(f"  创建成功，marker: {created_marker}")
+            # 如果是 create 类操作且成功，记录 marker
+            op_role = op.get("role", "")
+            if op_role == "create":
+                if result.get("marker"):
+                    created_marker = result["marker"]
+                    LOG.info(f"  创建成功，marker: {created_marker}")
+                else:
+                    LOG.warning(f"  创建操作完成但未获取 marker")
+
+                # 输出所有用户相关请求（诊断 POST /users 是否发出）
+                import sys
+                sys.stdout.write(f"  用户相关请求 ({len(all_requests_for_debug)} 条):\n")
+                for req in all_requests_for_debug[-20:]:
+                    sys.stdout.write(f"    {req}\n")
+                sys.stdout.flush()
+                all_requests_for_debug.clear()
+
+                # 输出 console 消息诊断
+                if console_msgs:
+                    sys.stdout.write(f"  Console 消息 ({len(console_msgs)} 条):\n")
+                    for msg in console_msgs[-10:]:  # 最后 10 条
+                        sys.stdout.write(f"    {msg}\n")
+                    sys.stdout.flush()
+                    console_msgs.clear()
+
                 await wait_for_table_ready(page, timeout=10000)
 
             await page.wait_for_timeout(1000)

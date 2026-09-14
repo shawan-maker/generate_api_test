@@ -118,16 +118,10 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict,
         ep_key = (ep["method"], ep["pathname"])
         actions = endpoint_actions.get(ep_key, set())
 
-        # ★ 分类逻辑：优先使用 core_api_map（时间戳优先法）
-        if "query" in actions:
-            # 如果该端点是 query 操作的核心 API，优先归为 query
-            cat = "query"
-        elif actions:
-            # 取第一个非 query 操作作为类别
-            cat = next((a for a in actions if a != "query"), list(actions)[0])
-        else:
-            # 兜底：基于 HTTP 方法的行为分类（不依赖文本匹配）
-            cat = _classify_by_behavior(ep, has_form_data=bool(ep.get("bodies")))
+        # ★ 分类逻辑：始终基于 HTTP 行为分类（不使用操作名作为类别）
+        # core_api_map 用于确定端点属于哪个操作，但类别由 HTTP 方法决定
+        # 例如：PUT /users/{id}（编辑操作）→ "update"，而非"编辑"
+        cat = _classify_by_behavior(ep, has_form_data=bool(ep.get("bodies")))
 
         ep_data = {
             "method": ep["method"], "pathname": ep["pathname"],

@@ -5,7 +5,7 @@
     "base_url": "https://10.151.61.248",
     "login_url": "https://10.151.61.248/estack/web/estack/login",
     "framework": "element-ui",
-    "generated_at": "2026-09-14 11:02:08",
+    "generated_at": "2026-09-14 17:12:37",
     "version": "1.0",
     "auth_config": {
       "token_key": "estackToken",
@@ -53,6 +53,7 @@
     "创建用户": {
       "display_name": "创建用户",
       "description": "创建用户",
+      "role": "create",
       "steps": [
         {
           "action": "click_button",
@@ -123,9 +124,9 @@
               "type": "input",
               "kb_category": "input-generic",
               "fill_rule": {
-                "rule": "name_pattern",
+                "rule": "phone_pattern",
                 "params": {
-                  "prefix": "test"
+                  "prefix": "138"
                 }
               }
             },
@@ -135,9 +136,9 @@
               "type": "input",
               "kb_category": "input-generic",
               "fill_rule": {
-                "rule": "name_pattern",
+                "rule": "email_pattern",
                 "params": {
-                  "prefix": "test"
+                  "domain": "test.com"
                 }
               }
             },
@@ -167,9 +168,10 @@
         },
         {
           "action": "click_button",
-          "playwright_locator": "button:has-text(\"确定\")",
+          "playwright_locator": "button:has-text(\"确 定\")",
           "text": "确 定",
-          "description": "点击提交按钮"
+          "description": "点击提交按钮",
+          "click_strategy": "js"
         },
         {
           "action": "assert_success",
@@ -180,14 +182,43 @@
       "marker": "test",
       "status": "success"
     },
+    "query": {
+      "display_name": "query",
+      "description": "query",
+      "role": "query",
+      "steps": [
+        {
+          "action": "fill_input",
+          "playwright_locator": "input[placeholder=\"请输入\"]",
+          "value": "{marker_name}",
+          "description": "搜索框输入: 请输入"
+        },
+        {
+          "action": "press_key",
+          "key": "Enter",
+          "description": "回车触发搜索"
+        },
+        {
+          "action": "wait_for_table_ready",
+          "description": "等待表格数据刷新"
+        }
+      ],
+      "marker": null,
+      "status": "success"
+    },
     "用户": {
       "display_name": "用户",
       "description": "用户",
-      "steps": [],
+      "role": "generic",
+      "steps": [
+        {
+          "action": "assert_success",
+          "playwright_locator": ".el-message--success",
+          "description": "验证操作成功"
+        }
+      ],
       "marker": null,
-      "status": "failed",
-      "error_type": "no_key_action",
-      "error_text": "未找到关键操作按钮（save/submit/confirm/authorize/batch）",
+      "status": "success",
       "nav_info": {
         "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/user",
         "depth": 0,
@@ -195,96 +226,30 @@
         "has_form": false,
         "form_fields": [],
         "fill_data": {},
-        "submit_result": {},
-        "error_type": "no_key_action",
-        "error_text": "未找到关键操作按钮（save/submit/confirm/authorize/batch）"
+        "submit_result": {
+          "success": true,
+          "button_text": "",
+          "action": "browse",
+          "note": "页面跳转成功，无可填写字段（展示页面）"
+        },
+        "error_type": "",
+        "error_text": ""
       }
     },
     "批量导入": {
       "display_name": "批量导入",
       "description": "批量导入",
+      "role": "unknown",
       "steps": [],
       "marker": null,
       "status": "failed",
       "error_type": "env_dependency",
       "error_text": "文件上传操作无法自动完成"
     },
-    "批量删除": {
-      "display_name": "批量删除",
-      "description": "批量删除",
-      "steps": [
-        {
-          "action": "find_row",
-          "description": "定位目标数据行"
-        },
-        {
-          "action": "select_row_checkbox",
-          "checkbox_locator": ".el-checkbox__input",
-          "description": "勾选行 checkbox"
-        },
-        {
-          "action": "click_button",
-          "text": "批量删除",
-          "playwright_locator": "button:has-text(\"批量删除\")",
-          "description": "点击操作按钮"
-        },
-        {
-          "action": "confirm_dialog",
-          "description": "点击确认对话框"
-        },
-        {
-          "action": "assert_success",
-          "playwright_locator": ".el-message--success",
-          "description": "验证操作成功"
-        }
-      ],
-      "marker": null,
-      "status": "success"
-    },
-    "批量迁移": {
-      "display_name": "批量迁移",
-      "description": "批量迁移",
-      "steps": [
-        {
-          "action": "find_row",
-          "description": "定位目标数据行"
-        },
-        {
-          "action": "select_row_checkbox",
-          "checkbox_locator": ".el-checkbox__input",
-          "description": "勾选行 checkbox"
-        },
-        {
-          "action": "click_button",
-          "text": "批量迁移",
-          "playwright_locator": "button:has-text(\"批量迁移\")",
-          "description": "点击操作按钮"
-        },
-        {
-          "action": "confirm_dialog",
-          "description": "点击确认对话框"
-        },
-        {
-          "action": "assert_success",
-          "playwright_locator": ".el-message--success",
-          "description": "验证操作成功"
-        }
-      ],
-      "marker": null,
-      "status": "success"
-    },
-    "GO": {
-      "display_name": "GO",
-      "description": "GO",
-      "steps": [],
-      "marker": null,
-      "status": "failed",
-      "error_type": "no_confirm_button",
-      "error_text": "GO 操作未检测到确认弹窗"
-    },
     "编辑": {
       "display_name": "编辑",
       "description": "编辑",
+      "role": "generic",
       "steps": [
         {
           "action": "find_row",
@@ -309,60 +274,69 @@
       "marker": null,
       "status": "success"
     },
-    "删除": {
-      "display_name": "删除",
-      "description": "删除",
-      "steps": [
-        {
-          "action": "find_row",
-          "description": "定位目标数据行"
-        },
-        {
-          "action": "click_button",
-          "text": "删除",
-          "playwright_locator": "button:has-text('删除')",
-          "description": "点击操作按钮"
-        },
-        {
-          "action": "confirm_dialog",
-          "description": "点击确认对话框"
-        },
-        {
-          "action": "assert_success",
-          "playwright_locator": ".el-message--success",
-          "description": "验证操作成功"
-        }
-      ],
-      "marker": null,
-      "status": "success"
-    },
     "授权": {
       "display_name": "授权",
       "description": "授权",
+      "role": "unknown",
       "steps": [],
       "marker": null,
       "status": "failed",
-      "error_type": "no_key_action",
-      "error_text": "未找到关键操作按钮（save/submit/confirm/authorize/batch）",
+      "error_type": "required_field_empty",
+      "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
       "nav_info": {
-        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=820a0f065ee24ab4bc9a0dfd484ba2cc",
+        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=d3cc4af6d4914de08bf2301fb13a0895",
         "depth": 0,
         "page_title": "eStack Enterprise",
         "has_form": false,
         "form_fields": [],
-        "fill_data": {},
+        "fill_data": {
+          "授权用户": "AT_AT_test_auto_377026",
+          "授权用户组": "AT_AT_test_auto_377026",
+          "授权角色": "AT_AT_test_auto_377026",
+          "授权范围": "AT_AT_test_auto_377026"
+        },
         "submit_result": {},
-        "error_type": "no_key_action",
-        "error_text": "未找到关键操作按钮（save/submit/confirm/authorize/batch）"
+        "error_type": "required_field_empty",
+        "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
+        "field_states": [
+          {
+            "label": "授权用户",
+            "type": "select",
+            "value": "",
+            "isDisabled": true,
+            "hasValue": false
+          },
+          {
+            "label": "授权用户组",
+            "type": "select",
+            "value": "",
+            "isDisabled": false,
+            "hasValue": false
+          },
+          {
+            "label": "授权角色",
+            "type": "radio",
+            "value": "组织架构",
+            "isDisabled": false,
+            "hasValue": true
+          }
+        ]
       }
     },
     "冻结": {
       "display_name": "冻结",
       "description": "冻结",
+      "role": "generic",
       "steps": [
         {
           "action": "find_row",
           "description": "定位目标数据行"
+        },
+        {
+          "action": "click_row_more",
+          "item_text": "冻结",
+          "expand_strategy": "click",
+          "description": "点击下拉菜单项: 冻结"
         },
         {
           "action": "confirm_dialog",
@@ -380,10 +354,17 @@
     "启用": {
       "display_name": "启用",
       "description": "启用",
+      "role": "generic",
       "steps": [
         {
           "action": "find_row",
           "description": "定位目标数据行"
+        },
+        {
+          "action": "click_row_more",
+          "item_text": "启用",
+          "expand_strategy": "click",
+          "description": "点击下拉菜单项: 启用"
         },
         {
           "action": "confirm_dialog",
@@ -401,10 +382,17 @@
     "锁定": {
       "display_name": "锁定",
       "description": "锁定",
+      "role": "generic",
       "steps": [
         {
           "action": "find_row",
           "description": "定位目标数据行"
+        },
+        {
+          "action": "click_row_more",
+          "item_text": "锁定",
+          "expand_strategy": "click",
+          "description": "点击下拉菜单项: 锁定"
         },
         {
           "action": "confirm_dialog",
@@ -422,10 +410,17 @@
     "重置密码": {
       "display_name": "重置密码",
       "description": "重置密码",
+      "role": "generic",
       "steps": [
         {
           "action": "find_row",
           "description": "定位目标数据行"
+        },
+        {
+          "action": "click_row_more",
+          "item_text": "重置密码",
+          "expand_strategy": "click",
+          "description": "点击下拉菜单项: 重置密码"
         },
         {
           "action": "confirm_dialog",
@@ -440,36 +435,48 @@
       "marker": null,
       "status": "success"
     },
-    "query": {
-      "display_name": "query",
-      "description": "query",
+    "迁移": {
+      "display_name": "迁移",
+      "description": "迁移",
+      "role": "generic",
       "steps": [
         {
-          "action": "fill_input",
-          "playwright_locator": "input[placeholder=\"请输入\"]",
-          "value": "{marker_name}",
-          "description": "搜索框输入: 请输入"
+          "action": "find_row",
+          "description": "定位目标数据行"
         },
         {
-          "action": "press_key",
-          "key": "Enter",
-          "description": "回车触发搜索"
+          "action": "click_row_more",
+          "item_text": "迁移",
+          "expand_strategy": "click",
+          "description": "点击下拉菜单项: 迁移"
         },
         {
-          "action": "wait_for_table_ready",
-          "description": "等待表格数据刷新"
+          "action": "confirm_dialog",
+          "description": "点击确认对话框"
+        },
+        {
+          "action": "assert_success",
+          "playwright_locator": ".el-message--success",
+          "description": "验证操作成功"
         }
       ],
       "marker": null,
       "status": "success"
     },
-    "迁移": {
-      "display_name": "迁移",
-      "description": "迁移",
+    "删除": {
+      "display_name": "删除",
+      "description": "删除",
+      "role": "generic",
       "steps": [
         {
           "action": "find_row",
           "description": "定位目标数据行"
+        },
+        {
+          "action": "click_button",
+          "text": "删除",
+          "playwright_locator": "button:has-text('删除')",
+          "description": "点击操作按钮"
         },
         {
           "action": "confirm_dialog",

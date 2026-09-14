@@ -574,15 +574,16 @@ class FormFiller:
         return checked
 
     async def submit_form_v2(self) -> dict:
-        """提交表单（v2 版本），返回已验证的 locator 和原始文本。
+        """提交表单（v2 版本），返回已验证的 locator、原始文本和成功策略。
 
         中文按钮文本常含空格（如 "确 定"、"保 存"），使用 JavaScript
         去掉空格后匹配，避免 Playwright has-text 匹配失败。
 
         Returns:
-            dict: {"text": str, "locator": str}
+            dict: {"text": str, "locator": str, "click_strategy": str}
             - text: 按钮原始文本（保留空格），如 "确 定"
-            - locator: 已验证的 playwright_locator，如 "button:has-text('确定')"
+            - locator: 已验证的 playwright_locator，如 "button:has-text('确 定')"
+            - click_strategy: 成功策略 "js" / "playwright"
         """
         from .wait_helpers import wait_for_loading_complete
 
@@ -611,9 +612,11 @@ class FormFiller:
             }})()""")
             if clicked:
                 await wait_for_loading_complete(self.page)
-                # 构建已验证的 locator：使用去空格后的文本（JS 去空格策略成功的）
-                verified_locator = f"{clicked['tag']}:has-text(\"{clicked['normalized']}\")"
-                return {"text": clicked['original'], "locator": verified_locator}
+                # 构建已验证的 locator：使用原始文本（含空格），确保 Stage 2 回放时能匹配
+                original = clicked['original']
+                tag = clicked['tag']
+                verified_locator = f"{tag}:has-text(\"{original}\")"
+                return {"text": original, "locator": verified_locator, "click_strategy": "js"}
         except Exception as e:
             LOG.debug(f"JavaScript 提交按钮匹配失败: {e}")
 
@@ -638,8 +641,8 @@ class FormFiller:
                     }}""")
                     await btn.click()
                     await wait_for_loading_complete(self.page)
-                    verified_locator = f"button:has-text(\"{text}\")"
-                    return {"text": actual_text, "locator": verified_locator}
+                    verified_locator = f"button:has-text(\"{actual_text}\")"
+                    return {"text": actual_text, "locator": verified_locator, "click_strategy": "playwright"}
             except Exception as e:
                 LOG.debug(f"尝试提交按钮 {text} 失败: {e}")
                 continue
@@ -660,7 +663,7 @@ class FormFiller:
                 }""")
                 await primary_btn.click()
                 await wait_for_loading_complete(self.page)
-                return {"text": actual_text, "locator": "button.el-button--primary"}
+                return {"text": actual_text, "locator": "button.el-button--primary", "click_strategy": "playwright"}
         except Exception as e:
             LOG.debug(f"尝试 primary 按钮失败: {e}")
 
@@ -1117,7 +1120,7 @@ def generate_fill_rules(fields: List[Dict]) -> dict:
 def _infer_fill_rule(label: str, field_type: str, input_type: str, required: bool) -> dict:
     """推断字段的填充规则。
 
-    基于字段类型和通用模式推断，不硬编码模块特定字段名。
+    基于字段类型、标签关键词和通用模式推断，不硬编码模块特定字段名。
     """
     label_lower = label.lower()
 
@@ -1130,6 +1133,17 @@ def _infer_fill_rule(label: str, field_type: str, input_type: str, required: boo
         return {"rule": "password_fixed", "params": {"value": "Test@123456"}}
     if input_type == "number":
         return {"rule": "number_pattern", "params": {"min": 1, "max": 100}}
+
+    # 基于标签关键词推断（覆盖 inputType 缺失的情况）
+    phone_keywords = ("手机", "电话", "phone", "mobile", "tel")
+    if any(kw in label_lower for kw in phone_keywords):
+        return {"rule": "phone_pattern", "params": {"prefix": "138"}}
+    email_keywords = ("邮箱", "email", "mail")
+    if any(kw in label_lower for kw in email_keywords):
+        return {"rule": "email_pattern", "params": {"domain": "test.com"}}
+    password_keywords = ("密码", "password", "pwd")
+    if any(kw in label_lower for kw in password_keywords):
+        return {"rule": "password_fixed", "params": {"value": "Test@123456"}}
 
     # 基于字段类型推断
     if field_type == "textarea":
@@ -1187,7 +1201,8 @@ def apply_fill_rule(rule: dict, timestamp: str = None) -> str:
 
     if rule_type == "name_pattern":
         prefix = params.get("prefix", "test")
-        return f"{prefix}_{timestamp}"
+        # 与 _default_for_type 保持一致（Stage 1 用 AT_ 前缀）
+        return f"AT_{prefix}_{timestamp}"
 
     if rule_type == "number_pattern":
         min_val = params.get("min", 1)

@@ -36,32 +36,12 @@ BUTTON_SELECTORS_STR = "button, a[href], .el-button, .el-button--text, .el-dropd
 
 # ============================================================
 # Stage 1: 按钮文本→CRUD 类别映射
+# 已废弃 — 不再用于 Stage 1 按钮过滤或 Stage 2 API 分类
+# Stage 1 现采用结构性初筛（DOM 位置判断），按钮文本即操作名（action 字段）
+# Stage 2 现采用行为驱动分类（HTTP method + 请求特征）
+# 保留为空 dict 仅为向后兼容（required_elements._infer_action 兜底）
 # ============================================================
-ACTION_KEYWORDS = {
-    "create":    ["新增", "创建", "添加", "新建", "增加", "录入", "登记",
-                  "注册", "申请", "开通", "购买", "订购", "下达", "新規"],
-    "delete":    ["删除", "移除", "清除", "销毁", "释放", "回收", "撤销"],
-    "update":    ["编辑", "修改", "更改", "更新", "变更", "设置", "配置",
-                  "调整", "改名", "重命名"],
-    "query":     ["搜索", "查询", "查找", "筛选", "过滤", "检索",
-                  "刷新", "翻页", "下一页", "上一页"],
-    "lock":      ["锁定", "冻结", "封禁", "暂停", "停用", "禁用",
-                  "关机", "关闭", "下架"],
-    "unlock":    ["解锁", "解冻", "启用", "恢复", "开机", "开启", "激活",
-                  "上架", "启用"],
-    "reset":     ["重置", "重置密码", "修改密码", "初始化"],
-    "authorize": ["授权", "赋予权限", "分配角色", "分配权限"],
-    "migrate":   ["迁移", "迁移用户", "转移"],
-    "export":    ["导出", "下载", "批量导出"],
-    "import":    ["导入", "上传", "批量导入"],
-    "batch":     ["批量", "批量操作", "批量删除", "批量编辑"],
-    "approve":   ["审批", "通过", "同意", "驳回", "拒绝", "审核"],
-    "confirm":   ["确定", "确认", "提交", "保存", "完成", "下一步",
-                  "立即创建", "立即购买"],
-    "reject":    ["驳回", "拒绝", "不同意"],
-    "detail":    ["详情", "查看", "查看详情", "明细"],
-    "execute":   ["执行", "运行", "触发", "操作", "更多"],
-}
+ACTION_KEYWORDS = {}
 
 # 提交按钮文本（表单提交时按优先级尝试）
 SUBMIT_BUTTON_TEXTS = ['确定', '保存', '提交', '确认', '立即创建',
@@ -76,8 +56,12 @@ CONFIRM_BUTTON_TEXTS = ['确定', '确认', '是', 'OK', 'Yes', '迁移', '授�
 # 取消对话框按钮文本
 CANCEL_BUTTON_TEXTS = ['取消', 'Cancel', '否']
 
-# 写操作集合（用于判断是否需要后置验证）
-WRITE_OPERATIONS = ("create", "update", "delete", "lock", "unlock", "reset")
+# 写操作 HTTP 方法（通用规则，不依赖操作名）
+WRITE_HTTP_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+# 写操作类别（行为驱动分类结果，用于 Stage 3 依赖推导）
+# 任何触发 POST/PUT/PATCH/DELETE 的分类结果都算写操作
+WRITE_CATEGORIES = {"create", "update", "delete", "state_change"}
 
 
 # ============================================================
@@ -153,23 +137,10 @@ SKIP_STATIC_EXTENSIONS = (".js", ".css", ".png", ".jpg", ".svg",
 
 # ============================================================
 # Stage 3: 状态字段检测
+# 已废弃 — 改为从 KB 读取，通过 kb_loader.get_state_patterns() 获取
 # ============================================================
-STATE_FIELD_NAMES = [
-    "state", "status", "enabled", "locked", "frozen",
-    "状态", "启用状态", "锁定状态", "运行状态",
-    "instanceStatus", "serviceStatus", "runStatus",
-    "phase", "stage", "lifecycle",
-]
-
-STATE_LIKE_VALUES = {
-    "ENABLE", "DISABLE", "ACTIVE", "INACTIVE",
-    "LOCKED", "UNLOCKED", "NORMAL", "FROZEN",
-    "CREATING", "DELETING", "DELETED",
-    "RUNNING", "STOPPED",
-    "Running", "Stopped",
-    "运行中", "已停止", "正常", "停用", "锁定", "已删除",
-    True, False,
-}
+STATE_FIELD_NAMES = []
+STATE_LIKE_VALUES = set()
 
 # ============================================================
 # Stage 3: 依赖注入字段名
@@ -218,18 +189,20 @@ DEFAULT_ID_FIELD = "id"
 
 # ============================================================
 # 登录表单选择器默认值（可通过 profile.yaml 的 login_flow 覆盖）
+# 已废弃 — 改为通用选择器，不依赖中文 placeholder
 # ============================================================
-DEFAULT_LOGIN_USERNAME_SELECTOR = 'input[placeholder="用户名"]'
-DEFAULT_LOGIN_PASSWORD_SELECTOR = 'input[placeholder="登录密码"]'
+DEFAULT_LOGIN_USERNAME_SELECTOR = 'input[type="text"], input[name*="user"], input[name*="account"]'
+DEFAULT_LOGIN_PASSWORD_SELECTOR = 'input[type="password"]'
 
 # ============================================================
 # 测试数据生成 — 默认值
-# （可通过 profile.yaml 的 test_data 字段覆盖）
+# 已废弃 — 改为从 profile.yaml 的 test_data 字段读取
+# 保留仅为向后兼容（新代码应使用 profile 配置）
 # ============================================================
-DEFAULT_TEST_PASSWORD = "Test@123456"
-DEFAULT_TEST_EMAIL_DOMAIN = "test.com"
-DEFAULT_TEST_PHONE_PREFIX = "138"
-DEFAULT_TEST_NAME_PREFIX = "AT_"
+DEFAULT_TEST_PASSWORD = ""
+DEFAULT_TEST_EMAIL_DOMAIN = ""
+DEFAULT_TEST_PHONE_PREFIX = ""
+DEFAULT_TEST_NAME_PREFIX = ""
 
 # 响应成功检查默认值（当 response_contract 未提供时使用）
 SUCCESS_CHECK_DEFAULT = {
