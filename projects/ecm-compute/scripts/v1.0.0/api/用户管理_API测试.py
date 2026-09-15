@@ -1,23 +1,27 @@
 """
 用户管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-15 14:23:20
+生成时间: 2026-09-15 18:06:36
 目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/user
 
 执行流程:
   1. 创建用户
-  2. 查询验证（创建用户后）
-  3. 编辑
-  4. 查询验证（编辑后）
-  5. 冻结
-  6. 查询验证（冻结后）
-  7. 启用
-  8. 查询验证（启用后）
-  9. 锁定
-  10. 查询验证（锁定后）
-  11. 重置密码
-  12. 迁移
-  13. 删除
-  14. 查询验证（删除后）
+  2. 搜索验证（创建用户后）
+  3. query
+  4. 编辑
+  5. 搜索验证（编辑后）
+  6. 冻结
+  7. 搜索验证（冻结后）
+  8. 启用
+  9. 搜索验证（启用后）
+  10. 锁定
+  11. 搜索验证（锁定后）
+  12. 重置密码
+  13. 迁移
+  14. 删除
+  15. 搜索验证（删除后）
+
+状态断言:
+  - 删除后数据不应出现
 """
 
 import sys, json
@@ -29,7 +33,7 @@ sys.path.insert(0, str(_lib.parent))
 from lib.runtime.test_runtime import TestRunner
 
 MANIFEST = {
-  "manifest_version": "1.0",
+  "manifest_version": "1.2",
   "module": {
     "name": "用户管理",
     "base_url": "https://10.151.61.248",
@@ -87,12 +91,12 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userName": "AT_test_452467",
-        "password": "gj6hbKon7HByRYJNz/ISGSHzqIX1Fv1RyGoZW2i1Y4rf82pPDphVb6EKOoFsvKIN2H0ugXnvSKC6Xu3rQBlCZS1SbCVwNp2JbXfG4iQsX9SJ0KFC/hTewqEiW7xX8zzRmKA8o40qpWf/A9xXUlDdpQSXCZIuXlfGrWjVD99/SXA=",
-        "name": "AT_test_452467",
-        "email": "PirGjcoqS/gT9Cqb4cPXlCuTvP9y43v0OMWo4E+JMl2BYe4SLinQ7XIjlspw3xTs1K14JEHPxO1emu4lxbZY1YkFe2RRbKNeXkt+aJkgMhJy2oMHtcVI3siVOZUPihrxBjS2dp5KEis4koE9j2C8FCoLGSlBFO1M8av9xPnES14=",
-        "phone": "R0+NfxTWmdRpj4Bsu0YksJfvtXkWQ0/3f3j5Km2ZK45r/Hu1TEbI3nfBMGBs6fGNfwPckmaBHmlADKAeA2CueefXPuvAywmYsjiGWsQTOfa9IwoTD/Kv5scLwO1INgHClDgZNcDXVSmhzw186OWJgTqjODKNTZX5PHu/rYgImWY=",
-        "description": "auto_desc_452467",
+        "userName": "AT_test_466517",
+        "password": "Whfq4T4/55OQ53KfAOkF3A3VRwhXAPgMi2JFKfUdPD4O7nc3zjz6s7JSNN3YvcS5tuDof9UpVLIDBEit7CAUHNnEC84NzQtmFwJWzgyk4B2CDytTjx7gdYgmdUF63QYMfFsv6Ii3zGxh+1BYeHH+IjoTJSETykGj3ClX64hPBQA=",
+        "name": "AT_test_466517",
+        "email": "TsNsCb+gq+Xw0xPsr94ajcFD/kD70FStYidymDG99H9CB2+/vYCNPrjRrvns6lvjrny7Zvr1hBpaSz22MGph2eZgS16LS/fgjrErmSu4JfUYndsnbzLsXhGi7zgNN3vJuAS4erwuvz71/J1rMSFuHc21MjtYdeKfMugcKAGC8Y0=",
+        "phone": "Mt3Ex4wmroBQkJImK4s1GZ2JDJuijBDDJNLAkcPysHQiVlZhhGs2gtpxejcTBztbOvjrOa7zTF1xuVVl4WTGQdkyL/QqD3HEnQCwYI9BbFpOqJPsCxrnt2891MjFFcms8x8FUPzvSxaEUukrnUH5QL16FDUQFNYJ0L/YkJh/ogE=",
+        "description": "auto_desc_466517",
         "policyIds": [
           "1f8e392309fc414c9d77d45d0315fedc"
         ],
@@ -123,32 +127,37 @@ MANIFEST = {
           "role": "static"
         },
         "adminId": {
-          "role": "context",
-          "source": "context.adminId"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_adminId"
         },
         "tenantId": {
-          "role": "context",
-          "source": "context.tenantId"
+          "role": "pre_api_ref",
+          "source": "display_by_role.entity_0_id"
         },
         "countryCode": {
-          "role": "static"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_countryCode"
         }
       },
-      "requires": [
-        "id"
-      ]
+      "requires": [],
+      "extract": {
+        "id": "entity.id",
+        "names": [
+          "userName",
+          "name"
+        ]
+      }
     },
     {
       "action": "get",
-      "label": "查询验证（创建用户后）",
+      "label": "搜索验证（创建用户后）",
       "api": {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$display_by_role.entity_0_id",
           "pageNum": "1",
-          "pageSize": "10",
-          "name": "AT_test_452467"
+          "pageSize": "10"
         }
       },
       "body_template": {},
@@ -156,7 +165,23 @@ MANIFEST = {
       "requires": [
         "id"
       ],
-      "assertion": "contains_id"
+      "assertion": "search_verify",
+      "search_param": "name",
+      "search_param_source": "userName"
+    },
+    {
+      "action": "query",
+      "label": "query",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "query_params": {}
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ]
     },
     {
       "action": "编辑",
@@ -167,16 +192,17 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "78f2da3729b849008578f5d3a419ee31",
-        "name": "AT_test_452467",
-        "description": "auto_desc_452467",
+        "userId": "36084183cec142178a32d51f35763414",
+        "name": "AT_test_466517",
+        "description": "auto_desc_466517",
         "tenantId": "42ffdba38c58484f9be2bc1adf1672e6",
         "countryCode": "+86",
         "adminId": "93552edc908e4dadae761fff1fd0f24c"
       },
       "body_field_roles": {
         "userId": {
-          "role": "id_ref"
+          "role": "pre_api_ref",
+          "source": "reset.entity_userId"
         },
         "name": {
           "role": "name"
@@ -185,15 +211,16 @@ MANIFEST = {
           "role": "mutable"
         },
         "tenantId": {
-          "role": "context",
-          "source": "context.tenantId"
+          "role": "pre_api_ref",
+          "source": "display_by_role.entity_0_id"
         },
         "countryCode": {
-          "role": "static"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_countryCode"
         },
         "adminId": {
-          "role": "context",
-          "source": "context.adminId"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_id"
         }
       },
       "requires": [
@@ -202,15 +229,14 @@ MANIFEST = {
     },
     {
       "action": "get",
-      "label": "查询验证（编辑后）",
+      "label": "搜索验证（编辑后）",
       "api": {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$display_by_role.entity_0_id",
           "pageNum": "1",
-          "pageSize": "10",
-          "name": "AT_test_452467"
+          "pageSize": "10"
         }
       },
       "body_template": {},
@@ -218,7 +244,9 @@ MANIFEST = {
       "requires": [
         "id"
       ],
-      "assertion": "contains_id"
+      "assertion": "search_verify",
+      "search_param": "name",
+      "search_param_source": "userName"
     },
     {
       "action": "冻结",
@@ -229,21 +257,22 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "78f2da3729b849008578f5d3a419ee31",
+        "userId": "36084183cec142178a32d51f35763414",
         "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
         "adminId": "93552edc908e4dadae761fff1fd0f24c"
       },
       "body_field_roles": {
         "userId": {
-          "role": "id_ref"
+          "role": "pre_api_ref",
+          "source": "reset.entity_userId"
         },
         "tenantId": {
-          "role": "context",
-          "source": "context.tenantId"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_tenantId"
         },
         "adminId": {
-          "role": "context",
-          "source": "context.adminId"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_id"
         }
       },
       "requires": [
@@ -252,15 +281,14 @@ MANIFEST = {
     },
     {
       "action": "get",
-      "label": "查询验证（冻结后）",
+      "label": "搜索验证（冻结后）",
       "api": {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$display_by_role.entity_0_id",
           "pageNum": "1",
-          "pageSize": "10",
-          "name": "AT_test_452467"
+          "pageSize": "10"
         }
       },
       "body_template": {},
@@ -268,7 +296,9 @@ MANIFEST = {
       "requires": [
         "id"
       ],
-      "assertion": "contains_id"
+      "assertion": "search_verify",
+      "search_param": "name",
+      "search_param_source": "userName"
     },
     {
       "action": "启用",
@@ -284,12 +314,12 @@ MANIFEST = {
       },
       "body_field_roles": {
         "tenantId": {
-          "role": "context",
-          "source": "context.tenantId"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_tenantId"
         },
         "adminId": {
-          "role": "context",
-          "source": "context.adminId"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_id"
         }
       },
       "requires": [
@@ -298,15 +328,14 @@ MANIFEST = {
     },
     {
       "action": "get",
-      "label": "查询验证（启用后）",
+      "label": "搜索验证（启用后）",
       "api": {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$display_by_role.entity_0_id",
           "pageNum": "1",
-          "pageSize": "10",
-          "name": "AT_test_452467"
+          "pageSize": "10"
         }
       },
       "body_template": {},
@@ -314,7 +343,9 @@ MANIFEST = {
       "requires": [
         "id"
       ],
-      "assertion": "contains_id"
+      "assertion": "search_verify",
+      "search_param": "name",
+      "search_param_source": "userName"
     },
     {
       "action": "锁定",
@@ -325,21 +356,22 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "78f2da3729b849008578f5d3a419ee31",
+        "userId": "36084183cec142178a32d51f35763414",
         "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
         "adminId": "93552edc908e4dadae761fff1fd0f24c"
       },
       "body_field_roles": {
         "userId": {
-          "role": "id_ref"
+          "role": "pre_api_ref",
+          "source": "reset.entity_userId"
         },
         "tenantId": {
-          "role": "context",
-          "source": "context.tenantId"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_tenantId"
         },
         "adminId": {
-          "role": "context",
-          "source": "context.adminId"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_id"
         }
       },
       "requires": [
@@ -348,15 +380,14 @@ MANIFEST = {
     },
     {
       "action": "get",
-      "label": "查询验证（锁定后）",
+      "label": "搜索验证（锁定后）",
       "api": {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$display_by_role.entity_0_id",
           "pageNum": "1",
-          "pageSize": "10",
-          "name": "AT_test_452467"
+          "pageSize": "10"
         }
       },
       "body_template": {},
@@ -364,7 +395,9 @@ MANIFEST = {
       "requires": [
         "id"
       ],
-      "assertion": "contains_id"
+      "assertion": "search_verify",
+      "search_param": "name",
+      "search_param_source": "userName"
     },
     {
       "action": "重置密码",
@@ -408,12 +441,12 @@ MANIFEST = {
       },
       "body_field_roles": {
         "tenantId": {
-          "role": "context",
-          "source": "context.tenantId"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_tenantId"
         },
         "adminId": {
-          "role": "context",
-          "source": "context.adminId"
+          "role": "pre_api_ref",
+          "source": "current_user.entity_id"
         }
       },
       "requires": [
@@ -422,15 +455,14 @@ MANIFEST = {
     },
     {
       "action": "get",
-      "label": "查询验证（删除后）",
+      "label": "搜索验证（删除后）",
       "api": {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$display_by_role.entity_0_id",
           "pageNum": "1",
-          "pageSize": "10",
-          "name": "AT_test_452467"
+          "pageSize": "10"
         }
       },
       "body_template": {},
@@ -438,7 +470,9 @@ MANIFEST = {
       "requires": [
         "id"
       ],
-      "assertion": "contains_id"
+      "assertion": "search_not_found",
+      "search_param": "name",
+      "search_param_source": "userName"
     }
   ],
   "state_assertions": {
@@ -449,8 +483,117 @@ MANIFEST = {
       "冻结": "DISABLE",
       "启用": "ENABLE",
       "删除": "ENABLE"
+    },
+    "after_create": "ENABLE",
+    "after_delete": "NOT_EXIST"
+  },
+  "pre_apis": [
+    {
+      "name": "获取当前用户信息",
+      "id": "current_user",
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/users/current-user",
+      "depends_on": [],
+      "extracts": [
+        {
+          "name": "entity_adminId",
+          "path": "entity.adminId",
+          "used_by": [
+            "创建用户"
+          ]
+        },
+        {
+          "name": "entity_countryCode",
+          "path": "entity.countryCode",
+          "used_by": [
+            "创建用户",
+            "编辑"
+          ]
+        },
+        {
+          "name": "entity_id",
+          "path": "entity.id",
+          "used_by": [
+            "编辑",
+            "冻结",
+            "启用",
+            "锁定",
+            "删除"
+          ]
+        },
+        {
+          "name": "entity_tenantId",
+          "path": "entity.tenantId",
+          "used_by": [
+            "冻结",
+            "启用",
+            "锁定",
+            "删除"
+          ]
+        },
+        {
+          "name": "tenantId",
+          "path": "entity.tenantId",
+          "used_by": [
+            "query"
+          ]
+        },
+        {
+          "name": "adminId",
+          "path": "entity.id",
+          "used_by": [
+            "query"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {}
+    },
+    {
+      "name": "前置 API: display-by-role",
+      "id": "display_by_role",
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/tenants/display-by-role",
+      "depends_on": [],
+      "extracts": [
+        {
+          "name": "entity_0_id",
+          "path": "entity[0].id",
+          "used_by": [
+            "创建用户",
+            "编辑"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {}
+    },
+    {
+      "name": "前置 API: reset",
+      "id": "reset",
+      "method": "POST",
+      "pathname": "/estack/api/estack/draco/v1/password-reset/reset",
+      "depends_on": [],
+      "extracts": [
+        {
+          "name": "entity_userId",
+          "path": "entity.userId",
+          "used_by": [
+            "编辑",
+            "冻结",
+            "锁定"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {}
     }
-  }
+  ],
+  "pre_api_refs": [
+    "current_user",
+    "display_by_role",
+    "reset"
+  ]
 }
 
 # --- 全局前置 API 支持 ---

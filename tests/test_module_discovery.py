@@ -62,15 +62,15 @@ class TestEndpointClassifierClass:
 
         assert result["stats"]["total_calls"] == 3
         assert result["stats"]["unique_endpoints"] == 2
-        # ★ 新设计：classified 使用操作名作为 key
-        assert "创建" in result["classified"] or "查询" in result["classified"]
+        # ★ 新设计：core_api_map 使用操作名作为 key（数组格式）
+        assert "创建" in result["core_api_map"] or "查询" in result["core_api_map"]
 
     def test_deduplicate_empty(self):
         """空输入去重"""
         result = EndpointClassifier().deduplicate([], {})
         assert result["stats"]["total_calls"] == 0
         assert result["stats"]["unique_endpoints"] == 0
-        assert result["classified"] == {}
+        assert result["core_api_map"] == {}
 
 
 # ============================================================
@@ -212,10 +212,10 @@ class TestValidateStage2:
         """有效的 Stage 2 结果"""
         result = {
             "core_api_map": {
-                "创建": {"method": "POST", "pathname": "/users"},
-                "查询": {"method": "GET", "pathname": "/users"},
-                "编辑": {"method": "PUT", "pathname": "/users/123"},
-                "删除": {"method": "DELETE", "pathname": "/users/123"},
+                "创建": [{"method": "POST", "pathname": "/users"}],
+                "查询": [{"method": "GET", "pathname": "/users"}],
+                "编辑": [{"method": "PUT", "pathname": "/users/123"}],
+                "删除": [{"method": "DELETE", "pathname": "/users/123"}],
             },
             "stats": {"total_calls": 30, "unique_endpoints": 10},
             "response_samples": {"/users": [{"status": 200}]},
@@ -240,7 +240,7 @@ class TestValidateStage2:
     def test_too_few_calls(self):
         """API 调用过少"""
         result = {
-            "by_category": {
+            "core_api_map": {
                 "create": [{"method": "POST", "pathname": "/create"}],
                 "query": [{"method": "POST", "pathname": "/list"}],
                 "update": [{"method": "POST", "pathname": "/update"}],
@@ -308,12 +308,10 @@ class TestValidateStage3:
         assert any("过短" in i for i in issues)
 
     def test_missing_create_step(self):
-        """缺少创建步骤"""
+        """order 过短（数据驱动：不再检查具体 action 名）"""
         result = {
             "order": [
                 {"name": "query"},
-                {"name": "update"},
-                {"name": "delete"},
             ],
             "dependencies": {},
             "state_assertions": {},
@@ -321,7 +319,7 @@ class TestValidateStage3:
         }
         is_valid, issues = validate_stage3(result)
         assert is_valid is False
-        assert any("创建" in i for i in issues)
+        assert any("过短" in i for i in issues)
 
     def test_empty_dependencies(self):
         """依赖关系为空"""
@@ -436,10 +434,10 @@ MANIFEST = {
     "response_contract": {"envelope_keys": ["entity"]},
     "body_field_roles": {"userId": "id_ref"},
     "steps": [
-        {"action": "create", "api": {"method": "POST", "pathname": "/users"}},
+        {"action": "create", "extract": "userId", "api": {"method": "POST", "pathname": "/users"}},
         {"action": "query", "api": {"method": "GET", "pathname": "/users"}},
         {"action": "update", "api": {"method": "PUT", "pathname": "/users/1"}},
-        {"action": "delete", "api": {"method": "DELETE", "pathname": "/users/1"}}
+        {"action": "delete", "verify": [{"not_contains_id": "userId"}], "api": {"method": "DELETE", "pathname": "/users/1"}}
     ]
 }
 from lib.test_runtime import TestRunner
@@ -766,9 +764,9 @@ class TestThreeLayerFiltering:
         windows = {"create": {"start": 0.5, "end": 2.0}}
         result = deduplicate_calls(all_calls, samples, replay_windows=windows)
         # POST /users 应通过 tiebreaker 胜出（请求体字段数最多）
-        create_eps = result["classified"].get("create", [])
-        assert len(create_eps) > 0
-        assert create_eps[0]["pathname"] == "/users"
+        create_candidates = result["core_api_map"].get("create", [])
+        assert len(create_candidates) > 0
+        assert create_candidates[0]["pathname"] == "/users"
 
     def test_query_window_search_api_preserved(self):
         """query 窗口：搜索 API 不被 Layer 1 频率排除（核心修复场景）"""
@@ -806,9 +804,9 @@ class TestThreeLayerFiltering:
         }
         result = deduplicate_calls(all_calls, samples, replay_windows=windows)
         # query 类别应非空（搜索 API 被正确识别）
-        query_eps = result["classified"].get("query", [])
-        assert len(query_eps) > 0
-        assert query_eps[0]["pathname"] == "/api/tenants/users"
+        query_candidates = result["core_api_map"].get("query", [])
+        assert len(query_candidates) > 0
+        assert query_candidates[0]["pathname"] == "/api/tenants/users"
 
     def test_fallback_when_all_filtered(self):
         """兜底：所有 API 都被过滤时取第一个非静态"""

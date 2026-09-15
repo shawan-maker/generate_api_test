@@ -127,25 +127,22 @@ def _is_list_query(pathname: str, response_samples: dict) -> bool:
     return False
 
 
-def analyze(classified_apis: dict, all_endpoints: list,
-            response_samples: dict, ui_result: dict,
-            pre_api_candidates: list = None, profile: dict = None,
-            operation_order: list = None,
-            core_api_map: dict = None) -> dict:
+def analyze(core_api_map, all_endpoints, response_samples, ui_result,
+            pre_api_candidates=None, profile=None,
+            operation_order=None) -> dict:
     """
     完整分析流程入口。
 
     从 core_api_map 构建 core_apis，不再使用旧的 HTTP 方法分类逻辑。
 
     Args:
-        classified_apis: capture_apis 的分类结果（by_category），包含完整的端点数据
+        core_api_map: Stage 2 操作→核心API映射（核心输入）
         all_endpoints: 所有去重端点列表
         response_samples: 响应样本 {pathname: [{status, body}, ...]}
         ui_result: discover_ui 的输出
         pre_api_candidates: 前置 API 候选列表（来自 Phase A）
         profile: profile.yaml 配置字典
         operation_order: Stage 2 保存的操作顺序
-        core_api_map: Stage 2 操作→核心API映射（核心输入）
     """
     LOG.info("开始逻辑分析...")
 
@@ -155,27 +152,25 @@ def analyze(classified_apis: dict, all_endpoints: list,
         LOG.info(f"  Step 0: 基础设施 API 识别: {len(infra_apis)} 个")
 
     # Step 1: 构建 core_apis
-    core_api_map = core_api_map or {}
-    core_apis = _build_core_apis_from_core_api_map(core_api_map, classified_apis, infra_apis)
+    core_apis = _build_core_apis_from_core_api_map(core_api_map, infra_apis)
     LOG.info(f"  Step 1 (core_api_map): {list(core_apis.keys())}")
 
     # Step 2: 按钮-API 关联
     api_by_button = _map_buttons_to_apis(core_apis, all_endpoints, ui_result)
     LOG.info(f"  Step 2: 按钮→API 映射: {len(api_by_button)} 条")
 
-    # Step 3: CRUD 顺序编排
-    # 优先使用 Stage 2 保存的 operation_order，不重新推断
-    execution_order = _derive_order(core_apis, all_endpoints, operation_order,
-                                    core_api_map=core_api_map,
-                                    classified_apis=classified_apis)
+    # Step 3: 执行顺序（直接使用 Stage 2 的 operation_order）
+    execution_order = _derive_order(core_apis, operation_order)
     LOG.info(f"  Step 3: 执行顺序: {execution_order}")
 
-    # Step 4: 数据依赖链分析
-    dep_chain = _derive_dependencies(core_apis, response_samples)
+    # Step 4: 数据依赖链分析（数据驱动：找 ID 生产者）
+    dep_chain = _derive_dependencies(core_apis, response_samples, execution_order)
     LOG.info(f"  Step 4: 依赖字段: {list(dep_chain.get('injections', {}).keys())}")
+    id_producer = dep_chain.get("id_producer")
+    LOG.info(f"  Step 4: ID 生产者: {id_producer or '未找到'}")
 
-    # Step 5: 状态断言推导
-    state_rules = _derive_state_rules(core_apis, response_samples)
+    # Step 5: 状态断言推导（数据驱动：用操作名作 key）
+    state_rules = _derive_state_rules(core_apis, response_samples, id_producer)
     LOG.info(f"  Step 5: 状态断言字段: {state_rules.get('state_field') or 'success_only'}")
 
     # Step 6: 前置 API 依赖链追踪（Phase B）
@@ -184,7 +179,8 @@ def analyze(classified_apis: dict, all_endpoints: list,
     if pre_api_candidates:
         pre_api_result = trace_pre_api_dependencies(
             core_apis, response_samples, pre_api_candidates,
-            context_fields={}, id_field_details=dep_chain.get("id_field_details", {})
+            context_fields={}, id_field_details=dep_chain.get("id_field_details", {}),
+            id_producer=id_producer
         )
         LOG.info(f"  Step 6: 前置 API 追踪: {len(pre_api_result.get('pre_apis', []))} 个前置 API")
 
@@ -199,55 +195,30 @@ def analyze(classified_apis: dict, all_endpoints: list,
     }
 
 
-def _build_core_apis_from_core_api_map(core_api_map: dict,
-                                       classified_apis: dict,
-                                       infra_apis: set) -> dict:
+def _build_core_apis_from_core_api_map(core_api_map: dict, infra_apis: set) -> dict:
     """从 core_api_map 构建 core_apis。
 
-    核心理念：core_api_map 是唯一权威，每个操作名直接对应一个 API。
-    操作名本身就是类别，不再转换成 HTTP 方法类别。
-
-    Args:
-        core_api_map: Stage 2 输出的操作→核心API映射
-                      {"操作名": {"method": "...", "pathname": "..."}}
-        classified_apis: Stage 2 的分类结果（仅用于获取 endpoint 数据）
-        infra_apis: 基础设施 API 集合（core_api_map 端点不受其影响）
-
-    Returns:
-        core_apis 字典：{操作名: [endpoint_data]}
+    core_api_map 值已改为数组格式，每项包含完整端点数据，
+    不需要再查 classified_apis 表。
     """
     core_apis = {}
 
-    # 构建查找表：(method, pathname) → endpoint_data
-    ep_lookup = {}
-    for cat, eps in classified_apis.items():
-        for ep in eps:
-            key = (ep.get("method"), ep.get("pathname"))
-            ep_lookup[key] = ep
-
-    for action_name, ep_info in core_api_map.items():
-        method = ep_info.get("method")
-        pathname = ep_info.get("pathname")
-        key = (method, pathname)
-
+    for action_name, candidates in core_api_map.items():
         if action_name == "init":
             continue
+        if not candidates:
+            continue
 
-        if key in ep_lookup:
-            ep_data = ep_lookup[key]
+        # 从候选中选取核心 API
+        selected = _select_core_api(candidates, "step")
+        if not selected:
+            continue
 
-            # ★ 直接用操作名作为类别，不再分类
-            target_cat = action_name
+        target_cat = action_name
+        if target_cat not in core_apis:
+            core_apis[target_cat] = []
 
-            if target_cat not in core_apis:
-                core_apis[target_cat] = []
-
-            # 添加 endpoint 数据（去重）
-            if not any(e.get("pathname") == pathname and e.get("method") == method
-                       for e in core_apis[target_cat]):
-                core_apis[target_cat].append(ep_data)
-        else:
-            LOG.warning(f"core_api_map 端点未找到: {action_name} ({method} {pathname})")
+        core_apis[target_cat].append(selected)
 
     return core_apis
 
@@ -292,282 +263,104 @@ def _map_buttons_to_apis(core_apis: dict, all_endpoints: list,
     return mapping
 
 
-def _derive_order(core_apis: dict, all_endpoints: list = None,
-                  operation_order: list = None,
-                  core_api_map: dict = None,
-                  classified_apis: dict = None) -> list:
+def _derive_order(core_apis: dict, operation_order: list = None) -> list:
     """
-    Step 3: 根据核心 API 类别推导执行顺序。
+    确定执行顺序：直接使用 Stage 2 的 operation_order，不重新推导。
 
-    策略（优先级从高到低）：
-    1. Stage 2 保存的 operation_order（playbook 回放顺序，最可靠）
-       - 如果有 core_api_map，用它翻译中文操作名到 HTTP 类别
-    2. 时间戳验证（interceptor 时间戳）
-    3. 依赖约束（拓扑排序）
-    4. dict 键顺序（兜底）
-
-    注意：query/detail/execute 仅用于验证步骤，不作为独立业务步骤出现在排序中。
+    Stage 2 已按 playbook 回放顺序保存了操作序列，
+    该顺序由用户在 Stage 1 中定义，是正确的业务顺序。
 
     Args:
         core_apis: 核心 API 字典
-        all_endpoints: 所有去重端点列表
-        operation_order: Stage 2 保存的操作顺序（来自 playbook 回放顺序）
-        core_api_map: Stage 2 操作→核心API映射（用于翻译中文操作名）
-        classified_apis: Stage 2 的分类结果（by_category），用于查找端点的原始类别
+        operation_order: Stage 2 保存的操作顺序
 
     Returns:
-        排序后的 CRUD 类别列表
+        执行顺序列表
     """
-    available = set(core_apis.keys())
-
-    # query/detail/execute 仅用于验证步骤，不进入 crud_order
-    _VERIFY_ONLY = {"query", "detail", "execute"}
-    available -= _VERIFY_ONLY
-
-    if not available:
-        return []
-
-    # 1. 优先使用 Stage 2 保存的 operation_order
     if operation_order:
-        # ★ 如果有 core_api_map，用它翻译中文操作名到 HTTP 类别
-        translated_order = []
-        if core_api_map:
-            # 构建反向索引：(method, pathname) → category（从 classified_apis）
-            ep_to_category = {}
-            if classified_apis:
-                for cat, eps in classified_apis.items():
-                    for ep in eps:
-                        key = (ep.get("method"), ep.get("pathname"))
-                        ep_to_category[key] = cat
-
-            for op_name in operation_order:
-                if op_name in core_api_map:
-                    # 从 core_api_map 获取端点信息
-                    ep_info = core_api_map[op_name]
-                    method = ep_info.get("method", "")
-                    pathname = ep_info.get("pathname", "")
-                    key = (method, pathname)
-
-                    # 直接使用操作名作为类别
-                    if op_name in available:
-                        translated_order.append(op_name)
-                elif op_name in available:
-                    # 直接匹配（英文操作名）
-                    translated_order.append(op_name)
-            LOG.debug(f"  core_api_map 翻译: {translated_order}")
-
-        # 过滤掉不在 available 中的操作
-        filtered = [op for op in translated_order if op in available] if translated_order else \
-                   [op for op in operation_order if op in available]
-        if filtered:
-            LOG.debug(f"  使用 Stage 2 operation_order: {filtered}")
-            # 补充 available 中有但 operation_order 中没有的（兜底）
-            missing = [op for op in available if op not in filtered]
-            base_order = filtered + missing
-            # 仍然应用依赖约束
-            dep_graph = _build_dependency_graph(core_apis)
-            if dep_graph:
-                topo_order = _topological_sort(dep_graph, base_order)
-                if topo_order:
-                    LOG.debug(f"  拓扑排序: {topo_order}")
-                    base_order = topo_order
-            return base_order
-
-    # 2. 时间戳验证（从 all_endpoints 提取时间戳）作为基础顺序
-    if all_endpoints:
-        temporal_order = _derive_temporal_order(core_apis, all_endpoints)
-        if temporal_order:
-            LOG.debug(f"  时序推导: {temporal_order}")
-            base_order = temporal_order
-        else:
-            # 如果没有时间戳信息，使用核心 API 的键顺序作为备选
-            base_order = list(available)
-            LOG.debug(f"  无时间戳信息，使用键顺序: {base_order}")
+        # 过滤掉 core_apis 中不存在的操作
+        filtered = [op for op in operation_order if op in core_apis]
+        # 补充 core_apis 中有但 operation_order 中没有的（兜底）
+        for op in core_apis:
+            if op not in filtered:
+                filtered.append(op)
+        return filtered
     else:
-        base_order = list(available)
-        LOG.debug(f"  无 all_endpoints，使用键顺序: {base_order}")
-
-    # 3. 依赖约束（拓扑排序）
-    dep_graph = _build_dependency_graph(core_apis)
-    if dep_graph:
-        topo_order = _topological_sort(dep_graph, base_order)
-        if topo_order:
-            LOG.debug(f"  拓扑排序: {topo_order}")
-            base_order = topo_order
-
-    return base_order
+        # 旧数据兼容：无 operation_order 时使用字典键顺序
+        return list(core_apis.keys())
 
 
-def _derive_temporal_order(core_apis: dict, all_endpoints: list) -> list:
+def _select_core_api(candidates, purpose="step"):
+    """从候选列表中选取最合适的 API。
+
+    Args:
+        candidates: 候选 API 列表，每项包含 method, pathname, body_field_count, response_has_id 等
+        purpose: 选取目的 - "step"(写操作优先), "id_extract"(写操作+响应含ID), "pre_api"(有请求体)
+
+    Returns:
+        选中的候选 dict，或 None
     """
-    从 interceptor 时间戳推导执行顺序。
-
-    策略：统计每个 CRUD 类别的首次出现时间，按时间排序。
-
-    支持两种 context 格式：
-    - 旧格式：click:按钮名:timestamp
-    - 新格式：replay:action（需要从 request_interceptor 的 submit_marks 获取时间戳）
-    """
-    first_seen = {}
-
-    for category, endpoints in core_apis.items():
-        for ep in endpoints:
-            for ctx in ep.get("contexts", []):
-                # 旧格式：click:按钮名:timestamp
-                parts = ctx.split(":")
-                if len(parts) >= 3:
-                    try:
-                        ts = float(parts[-1])
-                        if category not in first_seen or ts < first_seen[category]:
-                            first_seen[category] = ts
-                        continue
-                    except (ValueError, TypeError):
-                        pass
-
-                # 新格式：replay:action
-                # 这种情况下，all_endpoints 中没有直接的时间戳
-                # 需要通过 endpoint 在列表中的位置来推断顺序
-                if parts[0] == "replay" and len(parts) == 2:
-                    # 使用 endpoint 在 all_endpoints 中的索引作为时间戳
-                    ep_index = -1
-                    for i, all_ep in enumerate(all_endpoints):
-                        if (all_ep.get("method") == ep.get("method") and
-                            all_ep.get("pathname") == ep.get("pathname")):
-                            ep_index = i
-                            break
-                    if ep_index >= 0:
-                        if category not in first_seen or ep_index < first_seen[category]:
-                            first_seen[category] = ep_index
-
-    if not first_seen:
-        return []
-
-    # 按时间戳排序
-    sorted_cats = sorted(first_seen.items(), key=lambda x: x[1])
-    return [cat for cat, _ in sorted_cats]
-
-
-def _merge_orders(base: list, temporal: list) -> list:
-    """
-    合并静态优先级与时序顺序。
-
-    策略：保持静态优先级为主，仅调整时序差异明显的相邻步骤。
-    """
-    # 如果时序顺序与静态顺序一致，直接返回
-    if base == temporal:
-        return base
-
-    # 检查是否有明显的时序冲突（如 delete 在 create 之前）
-    result = list(base)
-    for i in range(len(result) - 1):
-        curr, next_cat = result[i], result[i + 1]
-        if curr in temporal and next_cat in temporal:
-            curr_idx = temporal.index(curr)
-            next_idx = temporal.index(next_cat)
-            # 如果时序上 next 明显早于 curr（差距 > 2 位），交换
-            if next_idx < curr_idx - 2:
-                result[i], result[i + 1] = next_cat, curr
-                LOG.debug(f"  时序调整: {curr} ↔ {next_cat}")
-
-    return result
-
-
-def _build_dependency_graph(core_apis: dict) -> dict:
-    """
-    构建 CRUD 依赖图。
-
-    规则（仅保留强依赖）：
-    - 所有写操作依赖 create（需要 id）— 基于 HTTP method 判断，不硬编码操作名
-    - delete 依赖所有其他写操作（必须先完成所有业务操作再删除）
-
-    注意：不再强制 "unlock 依赖 lock"，因为：
-    - 如果 capture 阶段是 lock→unlock 顺序，时序已保证
-    - 如果 capture 阶段是 unlock→lock（异常），强制依赖反而会掩盖问题
-    """
-    graph = {cat: set() for cat in core_apis}
-
-    # 通用规则：所有写操作依赖 create（需要 id）
-    # 判断依据：类别对应的 HTTP method 是 POST/PUT/PATCH/DELETE
-    if "create" in core_apis:
-        for cat, endpoints in core_apis.items():
-            if cat == "create":
-                continue
-            # 检查该类别是否有写操作的 HTTP method
-            has_write_method = any(
-                ep.get("method") in ("POST", "PUT", "PATCH", "DELETE")
-                for ep in endpoints
-            )
-            if has_write_method:
-                graph[cat].add("create")
-
-    # 关键规则：delete 依赖所有其他写操作（必须先完成所有业务操作再删除）
-    if "delete" in graph:
-        for cat in core_apis.keys():
-            if cat not in ("delete", "query", "detail"):
-                graph["delete"].add(cat)
-
-    return graph
-
-
-def _topological_sort(graph: dict, base_order: list) -> list:
-    """
-    拓扑排序（Kahn 算法），保持 base_order 中的相对顺序。
-
-    如果存在环或无法排序，返回 None。
-    """
-    in_degree = {cat: 0 for cat in graph}
-    for cat, deps in graph.items():
-        for dep in deps:
-            if dep in in_degree:
-                in_degree[cat] += 1
-
-    # 初始化队列（按 base_order 顺序）
-    queue = [cat for cat in base_order if in_degree[cat] == 0]
-    result = []
-
-    while queue:
-        # 按 base_order 顺序选择（保持稳定排序）
-        curr = queue.pop(0)
-        result.append(curr)
-
-        # 更新依赖
-        for cat in base_order:
-            if curr in graph.get(cat, set()):
-                in_degree[cat] -= 1
-                if in_degree[cat] == 0 and cat not in result:
-                    queue.append(cat)
-
-    # 检查是否所有节点都已排序
-    if len(result) != len(graph):
-        LOG.warning("  拓扑排序检测到环或无法排序")
+    if not candidates:
         return None
+    if len(candidates) == 1:
+        return candidates[0]
 
-    return result
+    if purpose == "id_extract":
+        writes = [c for c in candidates
+                  if c["method"] in ("POST", "PUT", "PATCH") and c.get("response_has_id")]
+        if writes:
+            return max(writes, key=lambda c: c.get("body_field_count", 0))
+
+    elif purpose == "step":
+        writes = [c for c in candidates
+                  if c["method"] in ("POST", "PUT", "PATCH", "DELETE")]
+        if writes:
+            return max(writes, key=lambda c: c.get("body_field_count", 0))
+
+    elif purpose == "pre_api":
+        with_body = [c for c in candidates if c.get("body_field_count", 0) > 0]
+        if with_body:
+            return max(with_body, key=lambda c: c.get("body_field_count", 0))
+
+    return max(candidates, key=lambda c: c.get("body_field_count", 0))
 
 
-def _derive_dependencies(core_apis: dict, response_samples: dict) -> dict:
+def _find_last_write_op(core_apis):
+    """从 core_apis 中找最后一个写操作的操作名。"""
+    for action in reversed(list(core_apis.keys())):
+        for ep in core_apis[action]:
+            if ep.get("method") in ("POST", "PUT", "PATCH", "DELETE"):
+                return action
+    return None
+
+
+def _derive_dependencies(core_apis: dict, response_samples: dict, operation_order: list) -> dict:
     """
-    Step 4: 从响应样本中分析数据依赖关系（增强版：递归提取嵌套 ID）。
+    Step 4: 从响应样本中分析数据依赖关系。
 
-    重点找出：
-    - 创建 API 的响应中返回的 id 字段名（如 id, userId, resourceId）
-    - 深层嵌套路径（如 entity.data.id, entity.user.id）
-    - 后续 API 请求体中引用这些 id 的模式
+    核心逻辑：
+    1. 按 operation_order 顺序扫描响应，找到第一个返回 ID 的操作（ID 生产者）
+    2. 检查后续操作的请求体/URL 中是否引用该 ID
+    3. 返回 id_producer（操作名）供后续步骤使用
+
+    Args:
+        core_apis: 核心 API 字典 {操作名: [端点数据]}
+        response_samples: 响应样本 {pathname: [{status, body}, ...]}
+        operation_order: 执行顺序列表
+
+    Returns:
+        dict with:
+        - id_producer: 产生 ID 的操作名（如"创建用户"）
+        - id_field_details: ID 字段详情 {字段名: {source_action, sample_value, path}}
+        - injections: ID 引用模式 {字段名: {source, source_path}}
     """
-    injections = {}  # {依赖字段: {"source_crud": "create", "source_path": "..."}}
-    id_field_candidates = {}
+    id_producer = None  # 产生 ID 的操作名
+    id_field_details = {}  # {字段名: {source_action, sample_value, path}}
+    injections = {}
 
-    # 从所有响应中找 ID 字段（递归提取）
-    # create 优先遍历：确保 ID 字段来源绑定到 create 操作，而非 reset 等其他操作
-    ordered_categories = []
-    if "create" in core_apis:
-        ordered_categories.append("create")
-    for cat in core_apis:
-        if cat != "create":
-            ordered_categories.append(cat)
-
-    for category in ordered_categories:
-        endpoints = core_apis[category]
+    # 1. 按 operation_order 顺序找 ID 生产者（数据驱动，不依赖操作名）
+    for action in operation_order:
+        endpoints = core_apis.get(action, [])
         for ep in endpoints:
             pn = ep["pathname"]
             samples = response_samples.get(pn, [])
@@ -575,23 +368,35 @@ def _derive_dependencies(core_apis: dict, response_samples: dict) -> dict:
                 try:
                     body = json.loads(s["body"]) if isinstance(s["body"], str) else {}
                 except Exception as e:
-                    LOG.debug(f"解析 ID 字段响应样本失败 ({pn}): {e}")
+                    LOG.debug(f"解析响应样本失败 ({pn}): {e}")
                     continue
 
-                # 递归提取所有 ID 字段（包括深层嵌套）
+                # 递归提取 ID 字段
                 found_ids = _extract_ids_recursive(body, path="", max_depth=4)
 
                 for field_path, field_name, sample_value in found_ids:
-                    if field_name not in id_field_candidates:
-                        id_field_candidates[field_name] = {
-                            "source_crud": category,
+                    if field_name not in id_field_details:
+                        id_field_details[field_name] = {
+                            "source_action": action,
                             "sample_value": sample_value,
-                            "path": field_path,  # 新增：记录完整路径
+                            "path": field_path,
                         }
-                        LOG.debug(f"  发现 ID 字段: {field_path} = {sample_value}")
+                        LOG.debug(f"  发现 ID 字段: {field_path} = {sample_value} (来自 {action})")
 
-    # 检查后续 API 是否引用了这些 id 字段
-    for category, endpoints in core_apis.items():
+                        # 第一个找到 ID 的操作即为 ID 生产者
+                        if id_producer is None:
+                            id_producer = action
+                            LOG.debug(f"  ID 生产者: {action}")
+
+        # 如果已找到 ID 生产者，停止扫描
+        if id_producer:
+            break
+
+    # 2. 检查后续操作是否引用了这些 ID 字段
+    for action, endpoints in core_apis.items():
+        if action == id_producer:
+            continue  # 跳过 ID 生产者本身
+
         for ep in endpoints:
             body_sample = ep.get("request_body_sample") or (
                 ep.get("bodies")[0] if ep.get("bodies") else None)
@@ -602,29 +407,33 @@ def _derive_dependencies(core_apis: dict, response_samples: dict) -> dict:
             except Exception as e:
                 LOG.debug(f"解析请求体 JSON 失败: {e}")
                 continue
+
             if isinstance(req_body, list):
-                # 数组格式（如 batch delete ["id1", "id2"]）：记录 ID 注入点
+                # 数组格式（如 batch delete ["id1", "id2"]）
                 if req_body and isinstance(req_body[0], str) and len(req_body[0]) >= 8:
                     injections["__array_items__"] = {
-                        "source": "create",
+                        "source": id_producer or "unknown",
                         "source_path": "entity.id",
                     }
                 continue
+
             if not isinstance(req_body, dict):
                 continue
+
+            # 检查请求体中是否包含 ID 字段
             for fname in const.COMMON_ID_FIELDS:
                 if fname in req_body and fname not in injections:
                     injections[fname] = {
-                        "source": id_field_candidates.get(fname, {}).get(
-                            "source_crud",
-                            "create" if "create" in core_apis else category),
-                        "source_path": id_field_candidates.get(fname, {}).get("path", fname),
+                        "source": id_field_details.get(fname, {}).get(
+                            "source_action",
+                            id_producer or "unknown"),
+                        "source_path": id_field_details.get(fname, {}).get("path", fname),
                     }
 
     result = {
+        "id_producer": id_producer,
+        "id_field_details": id_field_details,
         "injections": injections,
-        "id_fields_found": list(id_field_candidates.keys()),
-        "id_field_details": id_field_candidates,  # 新增：包含路径信息
     }
     return result
 
@@ -672,7 +481,7 @@ def _extract_ids_recursive(obj, path: str = "", max_depth: int = 4, _depth: int 
 
 
 
-def _derive_state_rules(core_apis: dict, response_samples: dict) -> dict:
+def _derive_state_rules(core_apis: dict, response_samples: dict, id_producer: str = None) -> dict:
     """
     Step 5: 从响应样本中推导状态断言规则。
 
@@ -722,14 +531,15 @@ def _derive_state_rules(core_apis: dict, response_samples: dict) -> dict:
     }
 
     # 如果有 create 和 lock 状态值，推导完整的断言逻辑
-    if "create" in state_values:
-        rules["after_create"] = state_values["create"]
-    if "lock" in state_values:
-        rules["after_lock"] = state_values["lock"]
-    if "unlock" in state_values:
-        rules["after_unlock"] = state_values["unlock"]
-    if "delete" in core_apis:
-        rules["after_delete"] = "NOT_EXIST"
+    if id_producer and id_producer in state_values:
+        rules["after_create"] = state_values[id_producer]
+    # Find delete-like operation for after_delete assertion
+    last_write_op = _find_last_write_op(core_apis)
+    if last_write_op:
+        for ep in core_apis.get(last_write_op, []):
+            if ep.get("method") == "DELETE":
+                rules["after_delete"] = "NOT_EXIST"
+                break
 
     return rules
 
@@ -764,28 +574,6 @@ def _find_state_value(entity: dict) -> Optional[dict]:
     return None
 
 
-def _find_endpoint_by_method_pathname(classified: dict, method: str, pathname: str) -> dict | None:
-    """从 classified 数据中按 method+pathname 查找完整端点数据。
-
-    classified 端点包含 query_params_samples、search_param 等丰富信息，
-    而 all_endpoints 只有基础字段。此函数用于从 core_api_map 的 (method, pathname)
-    找到对应的完整端点数据。
-
-    Args:
-        classified: Stage 2 的 by_category 或 reclassified 数据
-        method: HTTP 方法（GET/POST/PUT/DELETE）
-        pathname: API 路径
-
-    Returns:
-        完整的端点 dict，找不到返回 None
-    """
-    for cat, eps in classified.items():
-        for ep in eps:
-            if ep.get("method") == method and ep.get("pathname") == pathname:
-                return ep
-    return None
-
-
 def _extract_entity_with_fallback(body: dict, fallback_keys: list = None) -> any:
     """从响应体中提取实体数据（带信封键回退）。
 
@@ -817,7 +605,6 @@ def _extract_entity_with_fallback(body: dict, fallback_keys: list = None) -> any
 # 步骤标签映射 — 仅保留最通用的 HTTP 行为标签
 # 不再硬编码中文业务操作名（如"创建"、"锁定"）
 # 实际标签优先从 ui_result.button_labels 获取（按钮文本即标签）
-_STEP_LABELS = {}
 
 
 def _parse_body(ep_or_sample) -> dict | list:
@@ -1245,6 +1032,10 @@ def build_manifest(analysis: dict, capture_result: dict,
     crud_order = analysis.get("crud_order", [])
     infra_apis = infra_apis or set()
 
+    # 获取 id_producer 和 last_write_op（用于替代硬编码的 "create"/"delete"）
+    id_producer = analysis.get("dependencies", {}).get("id_producer")
+    last_write_op = _find_last_write_op(core_apis)
+
     # 1. 发现响应约定
     response_contract = _discover_response_contract(response_samples)
 
@@ -1253,8 +1044,8 @@ def build_manifest(analysis: dict, capture_result: dict,
 
     # 3. 获取 create body 样本（用于字段分类）
     create_body_sample = None
-    if "create" in core_apis:
-        create_body_sample = _parse_body(core_apis["create"][0])
+    if id_producer and id_producer in core_apis:
+        create_body_sample = _parse_body(core_apis[id_producer][0])
 
     # 4. 构建 steps 列表
     id_field_details = analysis.get("dependencies", {}).get("id_field_details", {})
@@ -1271,7 +1062,7 @@ def build_manifest(analysis: dict, capture_result: dict,
     create_id_sample = None
     if create_body_sample and isinstance(create_body_sample, dict):
         # 从 create 响应样本中提取 ID（用于验证 verify endpoint 是否返回同类数据）
-        create_eps = core_apis.get("create", [])
+        create_eps = core_apis.get(id_producer, [])
         if create_eps:
             create_resp_samples = response_samples.get(create_eps[0]["pathname"], [])
             for s in create_resp_samples:
@@ -1308,8 +1099,6 @@ def build_manifest(analysis: dict, capture_result: dict,
     verify_endpoints = {}
     # ★ 使用 core_api_map 选择验证端点（语义优先级 > 字母排序）
     core_api_map = analysis.get("core_api_map", {})
-    reclassified = analysis.get("reclassified_apis", {})
-    raw_classified = reclassified if reclassified else capture_result.get("by_category", {})
 
     # 验证端点选择优先级：搜索操作 > init 操作 > 列表查询兜底
     verify_ep = None
@@ -1318,10 +1107,8 @@ def build_manifest(analysis: dict, capture_result: dict,
     # 优先级 1：从"搜索"操作的核心 API 获取
     for search_action in ("搜索", "query", "search"):
         if search_action in core_api_map:
-            ep_info = core_api_map[search_action]
-            full_ep = _find_endpoint_by_method_pathname(
-                raw_classified, ep_info["method"], ep_info["pathname"]
-            )
+            candidates = core_api_map[search_action]
+            full_ep = _select_core_api(candidates, "step")
             if full_ep and _endpoint_returns_entity_id(full_ep):
                 verify_ep = full_ep
                 verify_source = f"搜索操作 ({search_action})"
@@ -1329,10 +1116,8 @@ def build_manifest(analysis: dict, capture_result: dict,
 
     # 优先级 2：从 init 操作获取（导航阶段的列表查询）
     if verify_ep is None and "init" in core_api_map:
-        ep_info = core_api_map["init"]
-        full_ep = _find_endpoint_by_method_pathname(
-            raw_classified, ep_info["method"], ep_info["pathname"]
-        )
+        candidates = core_api_map["init"]
+        full_ep = _select_core_api(candidates, "step")
         if full_ep and _endpoint_returns_entity_id(full_ep):
             verify_ep = full_ep
             verify_source = "init 操作（页面初始加载）"
@@ -1341,13 +1126,19 @@ def build_manifest(analysis: dict, capture_result: dict,
     if verify_ep is None:
         for ep in capture_result.get("all_endpoints", []):
             if ep.get("method") == "GET":
-                full_ep = _find_endpoint_by_method_pathname(
-                    raw_classified, ep["method"], ep["pathname"]
-                )
-                if full_ep and _is_list_query(ep["pathname"], response_samples) \
-                        and _endpoint_returns_entity_id(full_ep):
-                    verify_ep = full_ep
-                    verify_source = f"列表查询兜底 ({ep['pathname'][:50]})"
+                pn = ep.get("pathname", "")
+                # Try to find in core_api_map candidates
+                for action, candidates in core_api_map.items():
+                    for c in candidates:
+                        if c.get("method") == ep.get("method") and c.get("pathname") == pn:
+                            full_ep = c
+                            if full_ep and _is_list_query(pn, response_samples) and _endpoint_returns_entity_id(full_ep):
+                                verify_ep = full_ep
+                                verify_source = f"列表查询兜底 ({pn[:50]})"
+                                break
+                    if verify_ep:
+                        break
+                if verify_ep:
                     break
 
     if verify_ep:
@@ -1417,7 +1208,7 @@ def build_manifest(analysis: dict, capture_result: dict,
         pre_api_ref（如 tenantId ← display_by_role.entity_0_id），verify 步骤
         的 query_params 也应引用相同来源，确保 tenantId 一致。
         """
-        key = f"create.{field_name}"
+        key = f"{id_producer}.{field_name}"
         if key in field_resolutions:
             return field_resolutions[key].get("source", "")
         return None
@@ -1427,7 +1218,7 @@ def build_manifest(analysis: dict, capture_result: dict,
         # 处理数组格式请求体（如 batch delete ["id1", "id2"]）
         if isinstance(body_sample, list):
             field_roles = {
-                "__array_items__": {"role": "id_ref", "source": "create.id"}
+                "__array_items__": {"role": "id_ref", "source": f"{id_producer}.id"}
             }
         else:
             field_roles = _classify_body_fields(
@@ -1435,7 +1226,7 @@ def build_manifest(analysis: dict, capture_result: dict,
             )
 
         extract = None
-        if action == "create":
+        if action == id_producer:
             envelope_keys = response_contract["envelope_keys"]
             id_field = response_contract["id_field"]
             extract = {
@@ -1448,7 +1239,7 @@ def build_manifest(analysis: dict, capture_result: dict,
         step = {
             "action": action,
             "label": (ui_result or {}).get("button_labels", {}).get(action)
-                     or _STEP_LABELS.get(action, action),
+                     or action,
             "api": {
                 "method": ep["method"],
                 "pathname": pathname,
@@ -1456,7 +1247,7 @@ def build_manifest(analysis: dict, capture_result: dict,
             },
             "body_template": body_sample if isinstance(body_sample, list) else (body_sample or {}),
             "body_field_roles": field_roles,
-            "requires": ["id"] if action != "create" else [],
+            "requires": [] if action == id_producer else ["id"],
         }
         if extract:
             step["extract"] = extract
@@ -1560,20 +1351,20 @@ def build_manifest(analysis: dict, capture_result: dict,
 
                 # 有 search_param → 使用 search_verify/search_not_found
                 if search_param:
-                    if action == "delete":
+                    if action == last_write_op:
                         plans.append(("query", f"搜索验证（删除后）", "search_not_found"))
                     else:
                         plans.append(("query", f"搜索验证（{action_label}后）", "search_verify"))
                 # 无 search_param → 使用 contains_id/not_contains_id
-                elif action == "delete":
+                elif action == last_write_op:
                     plans.append(("query", f"查询验证（删除后）", "not_contains_id"))
-                elif action == "create":
+                elif action == id_producer:
                     plans.append(("query", f"查询验证（创建后）", "contains_id"))
                 else:
                     plans.append(("query", f"查询验证（{action_label}后）", "contains_id"))
             elif "detail" in verify_endpoints:
                 # 非 create/delete 的写操作可以用 detail 验证
-                if action not in ("create", "delete"):
+                if action != id_producer and action != last_write_op:
                     plans.append(("detail", f"详情验证（{action_label}后）", "field_changed"))
 
         return plans
@@ -1747,7 +1538,8 @@ def build_manifest(analysis: dict, capture_result: dict,
 
 def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
                                pre_api_candidates: list, context_fields: dict,
-                               id_field_details: dict) -> dict:
+                               id_field_details: dict,
+                               id_producer: str = None) -> dict:
     """
     递归追踪参数依赖链，生成前置 API 列表。
 
@@ -1772,8 +1564,6 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
     # Phase 1: 构建参数清单（从业务 API 的请求体中提取）
     param_inventory = []
     for category, endpoints in core_apis.items():
-        if category not in ('create', 'update', 'delete'):
-            continue
         for ep in endpoints:
             body_sample = _parse_body(ep)
             if not body_sample or not isinstance(body_sample, dict):
@@ -1843,7 +1633,7 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
         else:
             # ★ 值模式分析降级（仅对 create 步骤）
             # 当三策略匹配都返回 None 时，根据值的特征判断是否为用户输入字段
-            if param['step_action'] == 'create':
+            if id_producer and param['step_action'] == id_producer:
                 pattern = _analyze_value_pattern(param['field_name'], param['field_value'])
                 if pattern and pattern['role'] == 'test_value':
                     key = f"{param['step_action']}.{param['field_name']}"

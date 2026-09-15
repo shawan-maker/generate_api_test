@@ -139,6 +139,39 @@ def _request_body_field_count(call: Dict) -> int:
     return 0
 
 
+def _build_candidate(call: dict, uniq_ep: dict, samples: dict) -> dict:
+    """构建单个候选 API 的完整数据。
+
+    用于 core_api_map 数组结构，每个候选包含完整的端点信息。
+
+    Args:
+        call: API 调用信息 {method, pathname, body, ...}
+        uniq_ep: 去重后的端点数据 {contexts, bodies, query_params_list, ...}
+        samples: 响应样本字典
+
+    Returns:
+        候选 API 完整数据字典
+    """
+    candidate = {
+        "method": call["method"],
+        "pathname": call["pathname"],
+        "body_field_count": _request_body_field_count(call),
+        "response_has_id": _response_has_entity_id(call["pathname"], samples),
+        "contexts": sorted(uniq_ep.get("contexts", set())),
+        "bodies": uniq_ep.get("bodies", []),
+        "request_body_sample": uniq_ep["bodies"][0] if uniq_ep.get("bodies") else None,
+        "query_params": uniq_ep["query_params_list"][0] if len(uniq_ep.get("query_params_list", [])) == 1 else {},
+        "query_params_samples": uniq_ep.get("query_params_list", []),
+    }
+
+    # 提取搜索参数名（Stage 3 用于判断 search_verify vs contains_id）
+    search_param = _extract_search_param(candidate)
+    if search_param:
+        candidate["search_param"] = search_param
+
+    return candidate
+
+
 def _call_has_distinctive_params(call: Dict, all_calls: List[Dict]) -> bool:
     """检查该调用是否携带同路径其他调用没有的独有参数。
 
@@ -299,10 +332,10 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict,
         if qp and qp not in uniq[key]["query_params_list"]:
             uniq[key]["query_params_list"].append(qp)
 
-    # ★ 基于时间窗口构建 core_api_map
+    # ★ 基于时间窗口构建 core_api_map（数组格式，每项包含完整端点数据）
     # 三层过滤：频率排除 → 响应特征排除 → 时间戳优先（取第一个）
     # tiebreaker：多个候选时，请求体字段数最多的胜出
-    core_api_map = {}  # {action: {"method": str, "pathname": str}}
+    core_api_map = {}  # {action: [{candidate_with_full_data}, ...]}
     if replay_windows:
         # 预计算：每个 pathname 出现在多少个不同窗口中（Layer 1 用）
         pathname_window_count = _count_pathname_windows(all_calls, replay_windows)
@@ -344,51 +377,28 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict,
 
                 candidates.append(call)
 
-            # 从候选中选择
+            # 从候选中选择，构建完整数据数组
             if not candidates:
                 # 兜底：所有都被过滤了，取第一个非静态的
                 first_api = non_static_calls[0]
-                core_api_map[action] = {"method": first_api["method"], "pathname": first_api["pathname"]}
-            elif len(candidates) == 1:
-                core_api_map[action] = {"method": candidates[0]["method"], "pathname": candidates[0]["pathname"]}
+                key = f"{first_api['method']} {first_api['pathname']}"
+                ep = uniq.get(key, {})
+                core_api_map[action] = [_build_candidate(first_api, ep, samples)]
             else:
-                # tiebreaker：请求体字段数最多的胜出
-                best = max(candidates, key=_request_body_field_count)
-                core_api_map[action] = {"method": best["method"], "pathname": best["pathname"]}
-                LOG.debug(f"  core_api tiebreaker: {action} → "
-                          f"{best['method']} {best['pathname']} "
-                          f"(字段数={_request_body_field_count(best)})")
-
-    # ★ 直接使用 core_api_map 作为分类结果，不再做 HTTP 方法分类
-    classified = {}
-
-    # 按操作名组织端点数据
-    for action_name, ep_info in core_api_map.items():
-        method = ep_info["method"]
-        pathname = ep_info["pathname"]
-        key = f"{method} {pathname}"
-
-        if key not in uniq:
-            continue
-
-        ep = uniq[key]
-
-        ep_data = {
-            "method": ep["method"],
-            "pathname": ep["pathname"],
-            "contexts": sorted(ep["contexts"]),
-            "bodies": ep["bodies"],
-            "request_body_sample": ep["bodies"][0] if ep.get("bodies") else None,
-            "query_params": ep["query_params_list"][0] if len(ep["query_params_list"]) == 1 else {},
-            "query_params_samples": ep["query_params_list"],
-        }
-
-        # ★ 直接使用操作名作为类别
-        classified.setdefault(action_name, []).append(ep_data)
+                # 收集所有候选，按请求体字段数降序排列（最佳候选在前）
+                candidates.sort(key=_request_body_field_count, reverse=True)
+                core_api_map[action] = [
+                    _build_candidate(c, uniq.get(f"{c['method']} {c['pathname']}", {}), samples)
+                    for c in candidates
+                ]
+                if len(candidates) > 1:
+                    best = candidates[0]
+                    LOG.debug(f"  core_api tiebreaker: {action} → "
+                              f"{best['method']} {best['pathname']} "
+                              f"(字段数={_request_body_field_count(best)}, 共{len(candidates)}个候选)")
 
     return {
-        "classified": classified,
-        "_core_api_map": core_api_map,
+        "core_api_map": core_api_map,
         "all_endpoints": [{"method": e["method"], "pathname": e["pathname"],
                            "contexts": sorted(e["contexts"]), "bodies": e["bodies"]}
                           for e in uniq.values()],

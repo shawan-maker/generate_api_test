@@ -139,15 +139,20 @@ def validate_stage2(capture_result: dict) -> Tuple[bool, List[str]]:
     if not core_api_map:
         issues.append("core_api_map 为空，时间戳优先法可能失败")
 
-    # 2. 验证 core_api_map 中的端点格式
+    # 2. 验证 core_api_map 中的端点格式（数组结构）
     valid_endpoints = 0
-    for action, ep_info in core_api_map.items():
-        if not isinstance(ep_info, dict):
-            issues.append(f"core_api_map['{action}'] 格式错误：应为字典")
+    for action, candidates in core_api_map.items():
+        if not isinstance(candidates, list) or not candidates:
+            issues.append(f"core_api_map['{action}'] 格式错误：应为非空数组")
             continue
 
-        if "method" not in ep_info or "pathname" not in ep_info:
-            issues.append(f"core_api_map['{action}'] 缺少 method 或 pathname")
+        first = candidates[0]
+        if not isinstance(first, dict):
+            issues.append(f"core_api_map['{action}'][0] 格式错误：应为字典")
+            continue
+
+        if "method" not in first or "pathname" not in first:
+            issues.append(f"core_api_map['{action}'][0] 缺少 method 或 pathname")
             continue
 
         valid_endpoints += 1
@@ -207,21 +212,7 @@ def validate_stage3(analysis: dict) -> Tuple[bool, List[str]]:
     elif len(order) < 2:
         issues.append(f"执行顺序过短 ({len(order)} 步)，可能遗漏关键步骤")
 
-    # 2. 检查核心步骤是否存在（兼容 str 和 dict 两种格式）
-    if order and isinstance(order[0], str):
-        step_names = order
-    elif order:
-        step_names = [s.get("name", "") for s in order]
-    else:
-        step_names = []
-
-    if not any("create" in name.lower() for name in step_names):
-        issues.append("执行顺序上缺少创建步骤")
-
-    if not any("delete" in name.lower() for name in step_names):
-        issues.append("执行顺序上缺少删除步骤")
-
-    # 3. 检查依赖关系
+    # 2. 检查依赖关系（不再硬编码"create"/"delete"，由数据驱动）
     deps = analysis.get("dependencies", {})
 
     if not deps:
@@ -320,10 +311,11 @@ def validate_stage4(script_content: str, script_path: str) -> Tuple[bool, List[s
         if steps_count < 3:
             issues.append(f"manifest 步骤过少 ({steps_count} 个)")
 
-        if '"action": "create"' not in script_content:
-            issues.append("manifest 缺少 create 步骤")
-        if '"action": "delete"' not in script_content:
-            issues.append("manifest 缺少 delete 步骤")
+        if '"extract":' not in script_content:
+            issues.append("manifest 缺少 id_producer 步骤（无 extract 字段）")
+        # 删除验证：支持 not_contains_id 或 search_not_found 两种断言
+        if '"not_contains_id"' not in script_content and '"search_not_found"' not in script_content:
+            issues.append("manifest 缺少 delete 验证（无 not_contains_id 或 search_not_found）")
 
     # 判断是否通过
     is_valid = len(issues) == 0

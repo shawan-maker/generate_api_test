@@ -799,12 +799,12 @@ class DiagnosticMode:
             return {"success": False, "error": "No capture_result provided"}
 
         try:
-            classified = capture_result.get("classified", {})
+            core_api_map = capture_result.get("core_api_map", {})
             missing = []
             found = []
 
             for category in expected_categories:
-                if category in classified and classified[category]:
+                if category in core_api_map and core_api_map[category]:
                     found.append(category)
                 else:
                     missing.append(category)

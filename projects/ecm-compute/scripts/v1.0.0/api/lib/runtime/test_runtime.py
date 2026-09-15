@@ -247,7 +247,7 @@ class StepExecutor:
 
             self._assert_response(resp, label)
 
-            if action == "create":
+            if step_def.get("extract"):
                 self._extract_state(resp.json(), step_def)
 
             # 验证步骤：query 后的断言
@@ -1022,7 +1022,7 @@ class TestRunner:
             self.execute_pre_apis(session)
 
         steps = self.manifest.get("steps", [])
-        create_step = next((s for s in steps if s.get("action") == "create"), None)
+        create_step = next((s for s in steps if s.get("extract")), None)
         if create_step:
             self.prepare_create_body(create_step)
 

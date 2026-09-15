@@ -468,8 +468,7 @@ async def run_stage2(page, project_dir: Path, module_name: str,
             "capture_time": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "target_url": target_url,
             "stats": api_capture.get("stats", {}),
-            "by_category": api_capture.get("classified", {}),
-            "core_api_map": api_capture.get("core_api_map", {}),  # ★ 新增：操作→核心API映射
+            "core_api_map": api_capture.get("core_api_map", {}),  # ★ 操作→候选数组映射
             "all_endpoints": api_capture.get("all_endpoints", []),
             "response_samples": api_capture.get("response_samples", {}),
             "pre_api_candidates": api_capture.get("pre_api_candidates", []),
@@ -484,8 +483,8 @@ async def run_stage2(page, project_dir: Path, module_name: str,
             stats = full_result["stats"]
             LOG.info(f"  总拦截: {stats.get('total_calls', 0)} 条")
             LOG.info(f"  唯一端点: {stats.get('unique_endpoints', 0)} 个")
-            for cat, eps in sorted(api_capture.get("classified", {}).items()):
-                LOG.info(f"    {cat}: {len(eps)} 个")
+            for action, candidates in sorted(api_capture.get("core_api_map", {}).items()):
+                LOG.info(f"    {action}: {len(candidates)} 个候选")
 
             # 生成 UI 自动化脚本
             from .generate_ui_script import generate_ui_script
@@ -533,7 +532,6 @@ def run_stage34(project_dir: Path, module_name: str,
         LOG.error("请先执行 Stage 2")
         return None
 
-    classified = capture_result.get("by_category", {})
     all_endpoints = capture_result.get("all_endpoints", [])
     response_samples = capture_result.get("response_samples", {})
     pre_api_candidates = capture_result.get("pre_api_candidates", [])
@@ -542,10 +540,9 @@ def run_stage34(project_dir: Path, module_name: str,
     operation_order = capture_result.get("operation_order", [])
 
     # Stage 3: 分析（传入 core_api_map + 操作顺序）
-    flow = analyze(classified, all_endpoints, response_samples, ui_result,
+    flow = analyze(core_api_map, all_endpoints, response_samples, ui_result,
                    pre_api_candidates=pre_api_candidates, profile=profile,
-                   operation_order=operation_order,
-                   core_api_map=core_api_map)
+                   operation_order=operation_order)
 
     # 阶段门控验证
     is_valid, issues = validate_stage3(flow)
@@ -1041,7 +1038,7 @@ async def main():
                 api_path_prefix=profile.get("api_base", ""))
         else:
             capture_result = _load_capture_result(project_dir, args.module)
-            stage2_valid = bool(capture_result and capture_result.get("by_category"))
+            stage2_valid = bool(capture_result and capture_result.get("core_api_map"))
 
         LOG.info("\n⚠️ 浏览器保持打开供检查确认。")
 
@@ -1161,7 +1158,7 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
                     api_path_prefix=profile.get("api_base", ""))
             else:
                 capture_result = _load_capture_result(project_dir, name)
-                stage2_valid = bool(capture_result and capture_result.get("by_category"))
+                stage2_valid = bool(capture_result and capture_result.get("core_api_map"))
 
             # Stage 3+4
             script_path = None

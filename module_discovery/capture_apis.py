@@ -65,7 +65,7 @@ async def capture_all(page, ui_result: dict, base_url: str, target_url: str,
 
         if not playbook:
             LOG.error("无法获取 playbook，无法回放")
-            return {"error": "no_playbook", "classified": {}, "stats": {}}
+            return {"error": "no_playbook", "core_api_map": {}, "stats": {}}
 
         result = await _capture_by_playbook(page, playbook, base_url, target_url,
                                            project_dir=project_dir, module_name=module_name,
@@ -201,7 +201,7 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
     operations = playbook.get("operations", {})
     if not operations:
         LOG.error("Playbook 中无操作定义，无法回放")
-        return {"error": "no_operations", "classified": {}, "stats": {}}
+        return {"error": "no_operations", "core_api_map": {}, "stats": {}}
 
     LOG.info(f"Playbook 操作序列: {list(operations.keys())}")
 
@@ -307,9 +307,8 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
     if sid:
         result["sid"] = sid
 
-    # ★ 提取 core_api_map（从 classifier 内部字段转为公开字段）
-    core_api_map = result.pop("_core_api_map", {})
-    result["core_api_map"] = core_api_map
+    # ★ core_api_map 已由 classifier 直接返回
+    core_api_map = result.get("core_api_map", {})
     LOG.info(f"[Stage 2] core_api_map: {list(core_api_map.keys())}")
 
     # ★ 保存操作顺序（playbook 定义顺序 = 回放顺序），排除 init
@@ -321,8 +320,9 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
 
     # ★ 识别前置 API 候选（简化版：所有 GET - core_api_map 中的 GET → pre-API 候选）
     core_api_pathnames = set()
-    for action, ep_info in core_api_map.items():
-        core_api_pathnames.add(ep_info.get("pathname", ""))
+    for action, candidates in core_api_map.items():
+        for c in candidates:
+            core_api_pathnames.add(c.get("pathname", ""))
 
     pre_api_candidates = _identify_pre_api_candidates(calls, samples, core_api_pathnames)
     result["pre_api_candidates"] = pre_api_candidates
