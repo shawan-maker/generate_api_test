@@ -469,9 +469,11 @@ async def run_stage2(page, project_dir: Path, module_name: str,
             "target_url": target_url,
             "stats": api_capture.get("stats", {}),
             "by_category": api_capture.get("classified", {}),
+            "core_api_map": api_capture.get("core_api_map", {}),  # ★ 新增：操作→核心API映射
             "all_endpoints": api_capture.get("all_endpoints", []),
             "response_samples": api_capture.get("response_samples", {}),
-            "pre_api_candidates": api_capture.get("pre_api_candidates", []),  # Phase A 新增
+            "pre_api_candidates": api_capture.get("pre_api_candidates", []),
+            "operation_order": api_capture.get("operation_order", []),
         }
         out_path = project_dir / "kb" / "module_discovered" / f"{module_name}.json"
         _save_json(full_result, out_path)
@@ -535,10 +537,15 @@ def run_stage34(project_dir: Path, module_name: str,
     all_endpoints = capture_result.get("all_endpoints", [])
     response_samples = capture_result.get("response_samples", {})
     pre_api_candidates = capture_result.get("pre_api_candidates", [])
+    # ★ 从 Stage 2 读取操作→核心API映射 + 操作顺序
+    core_api_map = capture_result.get("core_api_map", {})
+    operation_order = capture_result.get("operation_order", [])
 
-    # Stage 3: 分析（传入前置 API 候选）
+    # Stage 3: 分析（传入 core_api_map + 操作顺序）
     flow = analyze(classified, all_endpoints, response_samples, ui_result,
-                   pre_api_candidates=pre_api_candidates, profile=profile)
+                   pre_api_candidates=pre_api_candidates, profile=profile,
+                   operation_order=operation_order,
+                   core_api_map=core_api_map)
 
     # 阶段门控验证
     is_valid, issues = validate_stage3(flow)

@@ -4,14 +4,12 @@ Stage 1-5 端到端测试：验证行为驱动分类与响应体重分类
 测试核心功能：
 1. 行为驱动分类（HTTP method + 请求特征，不依赖 URL 关键词）
 2. lib/catalog.py REST 兜底逻辑
-3. analyze_flow.py 响应体重分类
 """
 
 import pytest
 from pathlib import Path
 from module_discovery.endpoint_classifier import _classify_by_behavior
 from lib.catalog import guess_crud
-from module_discovery.analyze_flow import _filter_core_apis
 
 
 class TestBehaviorDrivenClassification:
@@ -80,102 +78,6 @@ class TestBug2RestFallbackTightening:
         """GET /users/{id} 应判为 detail"""
         result = guess_crud("GET", "/api/v1/users/{id}")
         assert result == "detail", f"Expected detail, got {result}"
-
-
-class TestBug3ResponseBodyReclassification:
-    """Bug 3: 响应体重分类误判修复"""
-
-    def test_data_array_not_classified_as_query(self):
-        """响应含 "data": [1,2,3] 不应被判为 query（跳过 data 字段）"""
-        classified = {
-            "other_get": [
-                {
-                    "pathname": "/api/v1/config",
-                    "method": "GET",
-                    "contexts": [],
-                    "bodies": [],
-                }
-            ]
-        }
-        response_samples = {
-            "/api/v1/config": [
-                {
-                    "body": '{"entity": {"data": [1, 2, 3], "id": "config_001"}}'
-                }
-            ]
-        }
-        result = _filter_core_apis(classified, response_samples)
-        # 应判为 execute（有 id 字段），而非 query
-        assert "query" not in result or len(result.get("query", [])) == 0
-        assert "execute" in result, f"Expected execute, got {result.keys()}"
-
-    def test_list_with_dict_items_classified_as_query(self):
-        """响应含 "list": [{"id":1}] 应被判为 query（典型列表结构）"""
-        classified = {
-            "query": [
-                {
-                    "pathname": "/api/v1/users",
-                    "method": "GET",
-                    "contexts": [],
-                    "bodies": [],
-                }
-            ]
-        }
-        response_samples = {
-            "/api/v1/users": [
-                {
-                    "body": '{"entity": {"list": [{"id": "user_001"}], "total": 1}}'
-                }
-            ]
-        }
-        result = _filter_core_apis(classified, response_samples)
-        assert "query" in result, f"Expected query, got {result.keys()}"
-        assert len(result["query"]) == 1
-
-    def test_records_with_dict_items_classified_as_query(self):
-        """响应含 "records": [{"id":1}] 应被判为 query"""
-        classified = {
-            "query": [
-                {
-                    "pathname": "/api/v1/roles",
-                    "method": "GET",
-                    "contexts": [],
-                    "bodies": [],
-                }
-            ]
-        }
-        response_samples = {
-            "/api/v1/roles": [
-                {
-                    "body": '{"entity": {"records": [{"id": "role_001"}], "total": 1}}'
-                }
-            ]
-        }
-        result = _filter_core_apis(classified, response_samples)
-        assert "query" in result, f"Expected query, got {result.keys()}"
-
-    def test_list_with_non_dict_items_not_classified_as_query(self):
-        """响应含 "list": [1, 2, 3] 不应被判为 query（非典型列表结构）"""
-        classified = {
-            "other_get": [
-                {
-                    "pathname": "/api/v1/tags",
-                    "method": "GET",
-                    "contexts": [],
-                    "bodies": [],
-                }
-            ]
-        }
-        response_samples = {
-            "/api/v1/tags": [
-                {
-                    "body": '{"entity": {"list": [1, 2, 3], "id": "tags_001"}}'
-                }
-            ]
-        }
-        result = _filter_core_apis(classified, response_samples)
-        # 应判为 execute（有 id 字段），而非 query
-        assert "query" not in result or len(result.get("query", [])) == 0
 
 
 class TestEndToEndClassification:

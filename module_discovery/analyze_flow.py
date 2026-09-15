@@ -2,11 +2,12 @@
 analyze_flow.py — Stage 3: 逻辑顺序与关联分析
 
 核心推理流水线：
-  Step 1: API 角色分类          → 过滤辅助 API，保留核心 CRUD API
-  Step 2: 按钮-API 关联         → 建立 "按钮文本 → 核心 API" 映射
-  Step 3: CRUD 顺序编排         → 推导正确的执行顺序
-  Step 4: 数据依赖链分析        → 从响应中提取 id，注入后续请求
-  Step 5: 状态断言自动推导      → 跨响应对比找出状态变化规律
+  Step 0: 基础设施 API 识别  → 识别 init 阶段的辅助 API
+  Step 1: 构建核心 API 列表  → 从 core_api_map 提取业务 API
+  Step 2: 按钮-API 关联     → 建立 "按钮文本 → 核心 API" 映射
+  Step 3: CRUD 顺序编排     → 推导正确的执行顺序
+  Step 4: 数据依赖链分析    → 从响应中提取 id，注入后续请求
+  Step 5: 状态断言自动推导  → 跨响应对比找出状态变化规律
 """
 
 import re
@@ -92,55 +93,6 @@ def _identify_infrastructure_apis(all_endpoints: list, threshold: float = 0.6) -
     return infra
 
 
-def _filter_by_cooccurrence(all_endpoints: list, threshold: float = 0.6,
-                            response_samples: dict = None) -> set:
-    """
-    同现频率过滤：统计每个 API 出现在多少个不同按钮上下文中。
-
-    如果一个 API 在 60%+ 的按钮点击后都出现，说明它是辅助 API（菜单加载、字典、通知等）。
-    例外：响应含 list+total 结构的列表查询 API 不会被过滤（即使同现频率高）。
-
-    Args:
-        all_endpoints: 所有去重端点列表，每个包含 contexts 字段
-        threshold: 同现比例阈值，默认 0.6
-        response_samples: 响应样本（用于列表查询保护判断）
-
-    Returns:
-        set: 被判定为辅助 API 的 pathname 集合
-    """
-    # 统计每个 API 出现的不同按钮上下文数
-    api_contexts = defaultdict(set)
-    total_button_contexts = set()
-
-    for ep in all_endpoints:
-        pathname = ep.get("pathname", "")
-        contexts = ep.get("contexts", [])
-
-        for ctx in contexts:
-            # 提取按钮标识（click:按钮名 或 dropdown:更多:子项）
-            if ":" in ctx:
-                button_key = ctx.split(":", 1)[0] + ":" + ctx.split(":", 1)[1].split(":")[0]
-                api_contexts[pathname].add(button_key)
-                total_button_contexts.add(button_key)
-
-    # 计算同现比例
-    supporting_apis = set()
-    total_buttons = len(total_button_contexts)
-
-    if total_buttons > 0:
-        for pathname, contexts in api_contexts.items():
-            ratio = len(contexts) / total_buttons
-            if ratio >= threshold:
-                # 列表查询保护：响应含 list+total 结构的 API 不应被过滤
-                if _is_list_query(pathname, response_samples):
-                    LOG.debug(f"同现过滤保护: {pathname} 是列表查询，保留")
-                    continue
-                LOG.debug(f"同现过滤: {pathname} 出现在 {len(contexts)}/{total_buttons} ({ratio:.2f}) 个按钮上下文")
-                supporting_apis.add(pathname)
-
-    return supporting_apis
-
-
 def _is_list_query(pathname: str, response_samples: dict) -> bool:
     """判断 API 是否为列表查询（响应含 list+total 结构）。
 
@@ -159,6 +111,12 @@ def _is_list_query(pathname: str, response_samples: dict) -> bool:
                 if ek in body and isinstance(body[ek], (dict, list)):
                     entity = body[ek]
                     break
+
+            # Case 1: entity 是列表（如 display-unit-tree）
+            if isinstance(entity, list) and len(entity) > 0:
+                return True
+
+            # Case 2: entity.list + entity.total（如 tenants/users）
             if isinstance(entity, dict):
                 has_list = any(k in entity for k in const.LIST_KEY_CANDIDATES)
                 has_total = any(k in entity for k in const.TOTAL_KEY_CANDIDATES)
@@ -171,46 +129,45 @@ def _is_list_query(pathname: str, response_samples: dict) -> bool:
 
 def analyze(classified_apis: dict, all_endpoints: list,
             response_samples: dict, ui_result: dict,
-            pre_api_candidates: list = None, profile: dict = None) -> dict:
+            pre_api_candidates: list = None, profile: dict = None,
+            operation_order: list = None,
+            core_api_map: dict = None) -> dict:
     """
     完整分析流程入口。
-    :param classified_apis:   capture_apis 归类结果（by_category）
-    :param all_endpoints:     所有去重端点列表
-    :param response_samples:  响应样本 {pathname: [{status, body}, ...]}
-    :param ui_result:         discover_ui 的输出
-    :param pre_api_candidates: 前置 API 候选列表（来自 Phase A）
-    :param profile:           profile.yaml 配置字典（用于读取 configurable 参数）
-    :return: FlowAnalysis
+
+    从 core_api_map 构建 core_apis，不再使用旧的 HTTP 方法分类逻辑。
+
+    Args:
+        classified_apis: capture_apis 的分类结果（by_category），包含完整的端点数据
+        all_endpoints: 所有去重端点列表
+        response_samples: 响应样本 {pathname: [{status, body}, ...]}
+        ui_result: discover_ui 的输出
+        pre_api_candidates: 前置 API 候选列表（来自 Phase A）
+        profile: profile.yaml 配置字典
+        operation_order: Stage 2 保存的操作顺序
+        core_api_map: Stage 2 操作→核心API映射（核心输入）
     """
     LOG.info("开始逻辑分析...")
 
-    # Step -1: 用当前分类器重新分类所有端点
-    # 原因：分类器逻辑可能已修复（如 replay context 匹配），但 Stage 2 输出中
-    # 的分类结果仍是旧分类器的输出。重新分类确保使用最新逻辑。
-    reclassified_apis = _reclassify_all_endpoints(classified_apis, all_endpoints)
-
-    # Step 0a: 基础设施 API 识别（频率统计替代 URL 关键词）
+    # Step 0: 基础设施 API 识别
     infra_apis = _identify_infrastructure_apis(all_endpoints, threshold=0.6)
     if infra_apis:
-        LOG.info(f"  Step 0a: 基础设施 API 识别: {len(infra_apis)} 个 API 被标记为基础设施")
+        LOG.info(f"  Step 0: 基础设施 API 识别: {len(infra_apis)} 个")
 
-    # Step 0b: 同现频率过滤（识别在多个按钮上下文中都出现的辅助 API）
-    cooccurrence_support = _filter_by_cooccurrence(all_endpoints, threshold=0.6,
-                                                   response_samples=response_samples)
-    if cooccurrence_support:
-        LOG.info(f"  Step 0b: 同现频率过滤: {len(cooccurrence_support)} 个 API 被标记为辅助")
-
-    # Step 1: 过滤辅助 API，找核心 CRUD API
-    core_apis = _filter_core_apis(reclassified_apis, response_samples, cooccurrence_support,
-                                  profile, infra_apis)
-    LOG.info(f"  Step 1: 核心 API 类别: {list(core_apis.keys())}")
+    # Step 1: 构建 core_apis
+    core_api_map = core_api_map or {}
+    core_apis = _build_core_apis_from_core_api_map(core_api_map, classified_apis, infra_apis)
+    LOG.info(f"  Step 1 (core_api_map): {list(core_apis.keys())}")
 
     # Step 2: 按钮-API 关联
     api_by_button = _map_buttons_to_apis(core_apis, all_endpoints, ui_result)
     LOG.info(f"  Step 2: 按钮→API 映射: {len(api_by_button)} 条")
 
-    # Step 3: CRUD 顺序编排（增强：时序验证 + 依赖约束）
-    execution_order = _derive_order(core_apis, all_endpoints)
+    # Step 3: CRUD 顺序编排
+    # 优先使用 Stage 2 保存的 operation_order，不重新推断
+    execution_order = _derive_order(core_apis, all_endpoints, operation_order,
+                                    core_api_map=core_api_map,
+                                    classified_apis=classified_apis)
     LOG.info(f"  Step 3: 执行顺序: {execution_order}")
 
     # Step 4: 数据依赖链分析
@@ -238,190 +195,61 @@ def analyze(classified_apis: dict, all_endpoints: list,
         "dependencies": dep_chain,
         "state_assertions": state_rules,
         "pre_api_chain": pre_api_result,
-        "reclassified_apis": reclassified_apis,  # 添加重新分类的数据
+        "core_api_map": core_api_map or {},
     }
 
 
-def _reclassify_all_endpoints(classified_apis: dict, all_endpoints: list) -> dict:
-    """用当前分类器重新分类所有端点。
+def _build_core_apis_from_core_api_map(core_api_map: dict,
+                                       classified_apis: dict,
+                                       infra_apis: set) -> dict:
+    """从 core_api_map 构建 core_apis。
 
-    Stage 2 保存的 by_category 可能由旧版分类器生成。在 analyze() 入口
-    重新分类，确保分类逻辑修复（如 replay context 匹配）立即生效。
-
-    注意：Stage 2 的时间戳优先分类法是 query/detail 分类的唯一可靠来源
-    （classify_endpoint 兜底逻辑不会产生 query 类别），因此对于
-    Stage 2 已分类为 query/detail 的端点，直接保留原始分类。
+    核心理念：core_api_map 是唯一权威，每个操作名直接对应一个 API。
+    操作名本身就是类别，不再转换成 HTTP 方法类别。
 
     Args:
-        classified_apis: Stage 2 保存的 by_category
-        all_endpoints: 所有去重端点列表（含 method/pathname/contexts）
+        core_api_map: Stage 2 输出的操作→核心API映射
+                      {"操作名": {"method": "...", "pathname": "..."}}
+        classified_apis: Stage 2 的分类结果（仅用于获取 endpoint 数据）
+        infra_apis: 基础设施 API 集合（core_api_map 端点不受其影响）
 
     Returns:
-        重新分类后的 by_category dict
+        core_apis 字典：{操作名: [endpoint_data]}
     """
-    from .endpoint_classifier import _classify_by_behavior
+    core_apis = {}
 
-    # ★ 构建端点到原始类别的映射（用于保留 Stage 2 的 query/detail 分类）
-    original_cat_map = {}  # {(method, pathname): category}
+    # 构建查找表：(method, pathname) → endpoint_data
+    ep_lookup = {}
     for cat, eps in classified_apis.items():
         for ep in eps:
-            key = (ep.get("method", "GET"), ep.get("pathname", ""))
-            original_cat_map[key] = cat
+            key = (ep.get("method"), ep.get("pathname"))
+            ep_lookup[key] = ep
 
-    reclassified = {}
-    for ep in all_endpoints:
-        method = ep.get("method", "GET")
-        pathname = ep.get("pathname", "")
-        contexts = ep.get("contexts", [])
+    for action_name, ep_info in core_api_map.items():
+        method = ep_info.get("method")
+        pathname = ep_info.get("pathname")
+        key = (method, pathname)
 
-        # ★ 保留 Stage 2 的 query/detail 分类（时间戳优先分类法的结果）
-        original_cat = original_cat_map.get((method, pathname))
-        if original_cat in ("query", "detail"):
-            new_cat = original_cat
+        if action_name == "init":
+            continue
+
+        if key in ep_lookup:
+            ep_data = ep_lookup[key]
+
+            # ★ 直接用操作名作为类别，不再分类
+            target_cat = action_name
+
+            if target_cat not in core_apis:
+                core_apis[target_cat] = []
+
+            # 添加 endpoint 数据（去重）
+            if not any(e.get("pathname") == pathname and e.get("method") == method
+                       for e in core_apis[target_cat]):
+                core_apis[target_cat].append(ep_data)
         else:
-            # 使用行为驱动分类（不依赖文本匹配）
-            new_cat = _classify_by_behavior(ep, has_form_data=bool(ep.get("bodies")))
+            LOG.warning(f"core_api_map 端点未找到: {action_name} ({method} {pathname})")
 
-        if new_cat not in reclassified:
-            reclassified[new_cat] = []
-        # 从原分类中找到完整的 endpoint dict（保留 bodies 等字段）
-        found = False
-        for old_cat, old_eps in classified_apis.items():
-            for old_ep in old_eps:
-                if old_ep["pathname"] == pathname and old_ep["method"] == method:
-                    reclassified[new_cat].append(old_ep)
-                    found = True
-                    break
-            if found:
-                break
-        if not found:
-            # 端点不在原始分类中（理论上不应发生），构造最小 dict
-            reclassified[new_cat].append({
-                "method": method,
-                "pathname": pathname,
-                "contexts": contexts,
-                "bodies": ep.get("bodies", []),
-                "request_body_sample": None,
-                "query_params": {},
-            })
-    return reclassified
-
-
-def _filter_core_apis(classified: dict, response_samples: dict,
-                      cooccurrence_support: set = None, profile: dict = None,
-                      infra_apis: set = None) -> dict:
-    """
-    Step 1: 过滤辅助 API。
-
-    辅助 API 判断标准：
-    - 基础设施 API（频率统计识别，在多个操作中都出现）→ infra_apis
-    - 在所有按钮点击后都会出现（同现频率高）→ cooccurrence_support
-    - GET 类查询且路径不含核心资源名
-    """
-    core = {}
-    cooccurrence_support = cooccurrence_support or set()
-    infra_apis = infra_apis or set()
-
-    for category, endpoints in classified.items():
-        # 跳过 support 类别（校验类 API）
-        if category == "support":
-            continue
-
-        real_eps = []
-        for ep in endpoints:
-            # 基础设施 API 过滤（频率统计结果）
-            if ep["pathname"] in infra_apis:
-                LOG.debug(f"  基础设施 API 过滤: {ep['pathname']}")
-                continue
-
-            # 同现频率过滤：在 60%+ 的按钮上下文中都出现的 API 是辅助 API
-            if ep["pathname"] in cooccurrence_support:
-                LOG.debug(f"  同现过滤跳过: {ep['pathname']}")
-                continue
-
-            # ★ 豁免验证类别：query/detail 是验证专用，保留 GET 端点
-            if category in ("query", "detail"):
-                real_eps.append(ep)
-                continue
-
-            # 关键：只保留 POST/PUT/DELETE 方法作为核心业务 API
-            # GET 请求是 pre-API（数据加载）或基础设施 API，不应纳入 core_apis
-            method = ep.get("method", "GET")
-            if method not in ("POST", "PUT", "DELETE", "PATCH"):
-                LOG.debug(f"  跳过 GET 请求（pre-API 或基础设施）: {ep['pathname']}")
-                continue
-
-            # 过滤辅助 POST：响应包含 list+total 结构的是数据加载 POST
-            if method == "POST":
-                samples = response_samples.get(ep["pathname"], [])
-                for s in samples[:1]:
-                    try:
-                        body = json.loads(s["body"]) if isinstance(s["body"], str) else {}
-                        if _is_list_query(ep["pathname"], response_samples):
-                            LOG.debug(f"  跳过辅助 POST（列表查询）: {ep['pathname']}")
-                            break
-                    except Exception:
-                        continue
-                else:
-                    real_eps.append(ep)
-                    continue
-                # 如果是列表查询，跳过
-                continue
-
-            real_eps.append(ep)
-
-        if real_eps:
-            core[category] = real_eps
-
-    # 如果 "other_post" 和 "other_get" 中有真正的业务 API，
-    # 尝试通过响应体判断（列表→query；含单条 id→execute）
-    # 修复：每个端点独立分类，避免 target_cat 跨端点共享
-    from collections import defaultdict
-    for cat in ("other_post", "other_get"):
-        if cat not in core:
-            continue
-        reclassified = defaultdict(list)
-        for ep in core[cat]:
-            pn = ep["pathname"]
-            samples = response_samples.get(pn, [])
-            if not samples:
-                continue
-            ep_cat = None  # 每个端点独立的目标分类
-            for s in samples:
-                try:
-                    body = json.loads(s["body"]) if isinstance(s["body"], str) else {}
-                except Exception as e:
-                    LOG.debug(f"解析响应样本 JSON 失败 ({pn}): {e}")
-                    continue
-                entity = _extract_entity_with_fallback(body)
-                if isinstance(entity, dict):
-                    # 查找列表键（泛化：不再硬编码 "list"）
-                    # 修复: 排除 "data" 字段，避免非列表响应被误判为 query
-                    for lk in const.LIST_KEY_CANDIDATES:
-                        if lk == "data":  # data 字段太通用，跳过
-                            continue
-                        if lk in entity and isinstance(entity[lk], list):
-                            # 额外检查：列表元素应为 dict（典型列表响应结构）
-                            if entity[lk] and isinstance(entity[lk][0], dict):
-                                ep_cat = "query"
-                                reclassified[ep_cat].append(ep)
-                                break
-                    else:
-                        # 查找 ID 键（使用通用 ID 字段列表，而非硬编码 "id"）
-                        if any(id_field in entity for id_field in const.COMMON_ID_FIELDS):
-                            reclassified["execute"].append(ep)
-                        elif isinstance(entity, list) and len(entity) > 0:
-                            reclassified["query"].append(ep)
-                    break  # 只用第一个有效响应样本
-            if ep_cat is None:
-                # 无响应样本或无法分类 → 默认为 execute
-                reclassified["execute"].append(ep)
-
-        for dest_cat, eps in reclassified.items():
-            core[dest_cat] = core.get(dest_cat, []) + eps
-        del core[cat]
-
-    return core
+    return core_apis
 
 
 def _map_buttons_to_apis(core_apis: dict, all_endpoints: list,
@@ -464,15 +292,28 @@ def _map_buttons_to_apis(core_apis: dict, all_endpoints: list,
     return mapping
 
 
-def _derive_order(core_apis: dict, all_endpoints: list = None) -> list:
+def _derive_order(core_apis: dict, all_endpoints: list = None,
+                  operation_order: list = None,
+                  core_api_map: dict = None,
+                  classified_apis: dict = None) -> list:
     """
-    Step 3: 根据核心 API 类别推导执行顺序（基于时间戳 + 依赖约束）。
+    Step 3: 根据核心 API 类别推导执行顺序。
 
-    策略：
-    1. 时间戳验证（interceptor 时间戳）作为基础顺序
-    2. 依赖约束（拓扑排序）确保前置步骤先执行
+    策略（优先级从高到低）：
+    1. Stage 2 保存的 operation_order（playbook 回放顺序，最可靠）
+       - 如果有 core_api_map，用它翻译中文操作名到 HTTP 类别
+    2. 时间戳验证（interceptor 时间戳）
+    3. 依赖约束（拓扑排序）
+    4. dict 键顺序（兜底）
 
     注意：query/detail/execute 仅用于验证步骤，不作为独立业务步骤出现在排序中。
+
+    Args:
+        core_apis: 核心 API 字典
+        all_endpoints: 所有去重端点列表
+        operation_order: Stage 2 保存的操作顺序（来自 playbook 回放顺序）
+        core_api_map: Stage 2 操作→核心API映射（用于翻译中文操作名）
+        classified_apis: Stage 2 的分类结果（by_category），用于查找端点的原始类别
 
     Returns:
         排序后的 CRUD 类别列表
@@ -486,7 +327,53 @@ def _derive_order(core_apis: dict, all_endpoints: list = None) -> list:
     if not available:
         return []
 
-    # 1. 时间戳验证（从 all_endpoints 提取时间戳）作为基础顺序
+    # 1. 优先使用 Stage 2 保存的 operation_order
+    if operation_order:
+        # ★ 如果有 core_api_map，用它翻译中文操作名到 HTTP 类别
+        translated_order = []
+        if core_api_map:
+            # 构建反向索引：(method, pathname) → category（从 classified_apis）
+            ep_to_category = {}
+            if classified_apis:
+                for cat, eps in classified_apis.items():
+                    for ep in eps:
+                        key = (ep.get("method"), ep.get("pathname"))
+                        ep_to_category[key] = cat
+
+            for op_name in operation_order:
+                if op_name in core_api_map:
+                    # 从 core_api_map 获取端点信息
+                    ep_info = core_api_map[op_name]
+                    method = ep_info.get("method", "")
+                    pathname = ep_info.get("pathname", "")
+                    key = (method, pathname)
+
+                    # 直接使用操作名作为类别
+                    if op_name in available:
+                        translated_order.append(op_name)
+                elif op_name in available:
+                    # 直接匹配（英文操作名）
+                    translated_order.append(op_name)
+            LOG.debug(f"  core_api_map 翻译: {translated_order}")
+
+        # 过滤掉不在 available 中的操作
+        filtered = [op for op in translated_order if op in available] if translated_order else \
+                   [op for op in operation_order if op in available]
+        if filtered:
+            LOG.debug(f"  使用 Stage 2 operation_order: {filtered}")
+            # 补充 available 中有但 operation_order 中没有的（兜底）
+            missing = [op for op in available if op not in filtered]
+            base_order = filtered + missing
+            # 仍然应用依赖约束
+            dep_graph = _build_dependency_graph(core_apis)
+            if dep_graph:
+                topo_order = _topological_sort(dep_graph, base_order)
+                if topo_order:
+                    LOG.debug(f"  拓扑排序: {topo_order}")
+                    base_order = topo_order
+            return base_order
+
+    # 2. 时间戳验证（从 all_endpoints 提取时间戳）作为基础顺序
     if all_endpoints:
         temporal_order = _derive_temporal_order(core_apis, all_endpoints)
         if temporal_order:
@@ -500,7 +387,7 @@ def _derive_order(core_apis: dict, all_endpoints: list = None) -> list:
         base_order = list(available)
         LOG.debug(f"  无 all_endpoints，使用键顺序: {base_order}")
 
-    # 2. 依赖约束（拓扑排序）
+    # 3. 依赖约束（拓扑排序）
     dep_graph = _build_dependency_graph(core_apis)
     if dep_graph:
         topo_order = _topological_sort(dep_graph, base_order)
@@ -860,11 +747,12 @@ def _find_state_value(entity: dict) -> Optional[dict]:
         "instanceStatus", "serviceStatus", "runStatus",
     ]
 
-    # 先从 KB 读取扩展的状态字段名
-    from .kb_loader import get_kb
-    kb = get_kb()
-    kb_state_fields = kb.get_state_field_names()
-    all_fields = kb_state_fields or _GENERIC_STATE_FIELDS
+    # TODO: 未来可从 KB 读取扩展的状态字段名
+    # from .kb_loader import get_kb
+    # kb = get_kb()
+    # kb_state_fields = kb.get_state_field_names()
+    # all_fields = kb_state_fields or _GENERIC_STATE_FIELDS
+    all_fields = _GENERIC_STATE_FIELDS
 
     for fname in all_fields:
         if fname in entity:
@@ -873,6 +761,28 @@ def _find_state_value(entity: dict) -> Optional[dict]:
                 return {"field": fname, "value": val}
             if isinstance(val, bool):
                 return {"field": fname, "value": val}
+    return None
+
+
+def _find_endpoint_by_method_pathname(classified: dict, method: str, pathname: str) -> dict | None:
+    """从 classified 数据中按 method+pathname 查找完整端点数据。
+
+    classified 端点包含 query_params_samples、search_param 等丰富信息，
+    而 all_endpoints 只有基础字段。此函数用于从 core_api_map 的 (method, pathname)
+    找到对应的完整端点数据。
+
+    Args:
+        classified: Stage 2 的 by_category 或 reclassified 数据
+        method: HTTP 方法（GET/POST/PUT/DELETE）
+        pathname: API 路径
+
+    Returns:
+        完整的端点 dict，找不到返回 None
+    """
+    for cat, eps in classified.items():
+        for ep in eps:
+            if ep.get("method") == method and ep.get("pathname") == pathname:
+                return ep
     return None
 
 
@@ -1396,59 +1306,59 @@ def build_manifest(analysis: dict, capture_result: dict,
         return False
 
     verify_endpoints = {}
-    # 使用重新分类的数据，而不是原始捕获数据
+    # ★ 使用 core_api_map 选择验证端点（语义优先级 > 字母排序）
+    core_api_map = analysis.get("core_api_map", {})
     reclassified = analysis.get("reclassified_apis", {})
     raw_classified = reclassified if reclassified else capture_result.get("by_category", {})
 
-    for verify_action in ["query", "detail"]:
-        eps = core_apis.get(verify_action, [])
-        selected = False
-        for ep in eps:
-            if _endpoint_returns_entity_id(ep):
-                verify_endpoints[verify_action] = {
-                    "ep": ep,
-                    "body_sample": _parse_body(ep),
-                }
-                selected = True
+    # 验证端点选择优先级：搜索操作 > init 操作 > 列表查询兜底
+    verify_ep = None
+    verify_source = None  # 记录来源用于日志
+
+    # 优先级 1：从"搜索"操作的核心 API 获取
+    for search_action in ("搜索", "query", "search"):
+        if search_action in core_api_map:
+            ep_info = core_api_map[search_action]
+            full_ep = _find_endpoint_by_method_pathname(
+                raw_classified, ep_info["method"], ep_info["pathname"]
+            )
+            if full_ep and _endpoint_returns_entity_id(full_ep):
+                verify_ep = full_ep
+                verify_source = f"搜索操作 ({search_action})"
                 break
-        if selected:
-            continue
-        # 回退 1：从重新分类的数据中查找
-        raw_eps = raw_classified.get(verify_action, [])
-        # 过滤掉基础设施 API（菜单、主题等）
-        for ep in raw_eps:
-            if ep["pathname"] in infra_apis:
-                continue
-            if _endpoint_returns_entity_id(ep):
-                verify_endpoints[verify_action] = {
-                    "ep": ep,
-                    "body_sample": _parse_body(ep),
-                }
-                LOG.info(f"  验证端点回退1: {verify_action} ← {ep['pathname'][:60]}")
-                selected = True
-                break
-        if selected:
-            continue
-        # 回退 2：从 other_get/other_post 中搜索列表查询端点
-        for fallback_cat in ("other_get", "other_post"):
-            fallback_eps = raw_classified.get(fallback_cat, [])
-            for ep in fallback_eps:
-                # 过滤掉基础设施 API（菜单、主题等）
-                if ep["pathname"] in infra_apis:
-                    continue
-                if _endpoint_returns_entity_id(ep):
-                    verify_endpoints[verify_action] = {
-                        "ep": ep,
-                        "body_sample": _parse_body(ep),
-                    }
-                    LOG.info(f"  验证端点回退2: {verify_action} ← "
-                             f"{ep['pathname'][:60]} (from {fallback_cat})")
-                    selected = True
+
+    # 优先级 2：从 init 操作获取（导航阶段的列表查询）
+    if verify_ep is None and "init" in core_api_map:
+        ep_info = core_api_map["init"]
+        full_ep = _find_endpoint_by_method_pathname(
+            raw_classified, ep_info["method"], ep_info["pathname"]
+        )
+        if full_ep and _endpoint_returns_entity_id(full_ep):
+            verify_ep = full_ep
+            verify_source = "init 操作（页面初始加载）"
+
+    # 优先级 3：兜底 — 从所有 GET 端点中找列表查询
+    if verify_ep is None:
+        for ep in capture_result.get("all_endpoints", []):
+            if ep.get("method") == "GET":
+                full_ep = _find_endpoint_by_method_pathname(
+                    raw_classified, ep["method"], ep["pathname"]
+                )
+                if full_ep and _is_list_query(ep["pathname"], response_samples) \
+                        and _endpoint_returns_entity_id(full_ep):
+                    verify_ep = full_ep
+                    verify_source = f"列表查询兜底 ({ep['pathname'][:50]})"
                     break
-            if selected:
-                break
-        if verify_action not in verify_endpoints and eps:
-            LOG.warning(f"  验证端点 {verify_action} 的响应不含 entity ID，跳过自动验证")
+
+    if verify_ep:
+        verify_endpoints["query"] = {
+            "ep": verify_ep,
+            "body_sample": _parse_body(verify_ep),
+        }
+        LOG.info(f"  验证端点来源: {verify_source} → {verify_ep['pathname'][:60]}")
+    else:
+        LOG.warning("  验证端点未找到，写操作后将无自动验证")
+
 
     def _resolve_search_param_source(search_param: str, query_ep: dict,
                                      create_body: dict, resp_samples: dict) -> str:

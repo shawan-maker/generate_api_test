@@ -17,6 +17,7 @@ Stage 2 直接执行 playbook 中的 steps，不再重新探测表单。
 import json
 import logging
 import re
+import time
 from pathlib import Path
 from .request_interceptor import RequestInterceptor
 from .replay.button_driver import ButtonDriver
@@ -71,14 +72,14 @@ async def capture_all(page, ui_result: dict, base_url: str, target_url: str,
                                            capture_all_mode=capture_all_mode,
                                            api_path_prefix=api_path_prefix)
 
-        # 验证捕获结果完整性（检查是否有任何写操作 API）
-        classified = result.get("classified", {})
-        has_write_ops = any(cat in const.WRITE_CATEGORIES for cat in classified.keys())
+        # 验证捕获结果完整性（检查 core_api_map 是否有足够的操作）
+        core_api_map = result.get("core_api_map", {})
+        operation_count = len([op for op in core_api_map.keys() if op != "init"])
 
-        if has_write_ops:
-            LOG.info(f"[Stage 2] ✅ 捕获成功，包含写操作 API")
+        if operation_count >= 3:
+            LOG.info(f"[Stage 2] ✅ 捕获成功，{operation_count} 个操作的核心 API 已识别")
         else:
-            LOG.warning(f"[Stage 2] ⚠️ 捕获未包含写操作 API")
+            LOG.warning(f"[Stage 2] ⚠️ 仅捕获 {operation_count} 个操作，可能不完整")
 
         return result
 
@@ -188,10 +189,13 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
             all_requests_for_debug.append(f"{req.method} {req.url}")
     page.on("request", on_request_debug)
 
-    # 2. 导航到目标页面
+    # 2. 导航到目标页面 — 记录 init 窗口（初始加载阶段的 API）
     LOG.info("导航到目标页面...")
+    init_start = time.time()
+    interceptor.set_context("init")
     await page.goto(target_url, wait_until="networkidle", timeout=60000)
     await wait_for_table_ready(page, timeout=15000)
+    init_end = time.time()
 
     # 3. 从 playbook.operations 获取操作序列
     operations = playbook.get("operations", {})
@@ -203,7 +207,7 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
 
     # 4. 按 playbook 操作顺序回放（Stage 1 探测顺序即为正确的依赖顺序）
     created_marker = None
-    replay_windows = {}  # ★ 记录每个操作的时间窗口，用于 API 分类
+    replay_windows = {"init": {"start": init_start, "end": init_end}}  # ★ init 窗口 + 操作窗口
 
     for action in operations:  # 直接遍历 playbook 定义的操作
         op = operations[action]
@@ -219,7 +223,6 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
         interceptor.set_context(f"replay:{action}")
 
         # ★ 记录操作开始时间
-        import time
         op_start = time.time()
 
         try:
@@ -304,42 +307,24 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
     if sid:
         result["sid"] = sid
 
+    # ★ 提取 core_api_map（从 classifier 内部字段转为公开字段）
+    core_api_map = result.pop("_core_api_map", {})
+    result["core_api_map"] = core_api_map
+    LOG.info(f"[Stage 2] core_api_map: {list(core_api_map.keys())}")
+
+    # ★ 保存操作顺序（playbook 定义顺序 = 回放顺序），排除 init
+    # Stage 3 直接读取此顺序，不重新推断
+    result["operation_order"] = [op for op in replay_windows.keys() if op != "init"]
+    LOG.info(f"[Stage 2] 操作顺序: {result['operation_order']}")
+
     LOG.info(f"[Stage 2] Playbook 回放完成: {result.get('stats', {})}")
 
-    # 新增：识别前置 API 候选（Phase A）
-    # 排除业务操作端点，保留其余端点作为前置 API 候选
-    business_pathnames = set()
-    # 动态收集所有非 query/detail 类别的端点（不硬编码类别列表）
-    NON_BUSINESS_CATS = {"query", "detail", "support", "other_get"}
-    for cat, eps in result.get("classified", {}).items():
-        if cat not in NON_BUSINESS_CATS:
-            for ep in eps:
-                business_pathnames.add(ep.get("pathname", ""))
-    # 对 query/detail 类别：排除"模块自身资源"的查询，保留"辅助资源"查询
-    # 判断依据：query 端点路径是否包含 create/delete 端点的资源路径段
-    # 例如：create=/users → query=/tenants/users 包含 users → 排除（主查询）
-    #       而 /policies/list 不包含 users → 保留（前置 API 候选）
-    create_paths = [ep["pathname"] for ep in result.get("classified", {}).get("create", [])]
-    for ep in result.get("classified", {}).get("query", []):
-        p = ep.get("pathname", "")
-        is_main_query = False
-        for cp in create_paths:
-            # 提取 create 路径的最后一段资源名
-            resource_seg = cp.rstrip("/").split("/")[-1] if cp else ""
-            if resource_seg and resource_seg in p:
-                is_main_query = True
-                break
-        # detail 类别也类似排除
-        if is_main_query:
-            business_pathnames.add(p)
-    for ep in result.get("classified", {}).get("detail", []):
-        p = ep.get("pathname", "")
-        for cp in create_paths:
-            resource_seg = cp.rstrip("/").split("/")[-1] if cp else ""
-            if resource_seg and resource_seg in p:
-                business_pathnames.add(p)
-                break
-    pre_api_candidates = _identify_pre_api_candidates(calls, samples, business_pathnames)
+    # ★ 识别前置 API 候选（简化版：所有 GET - core_api_map 中的 GET → pre-API 候选）
+    core_api_pathnames = set()
+    for action, ep_info in core_api_map.items():
+        core_api_pathnames.add(ep_info.get("pathname", ""))
+
+    pre_api_candidates = _identify_pre_api_candidates(calls, samples, core_api_pathnames)
     result["pre_api_candidates"] = pre_api_candidates
     LOG.info(f"[Phase A] 识别到 {len(pre_api_candidates)} 个前置 API 候选")
 

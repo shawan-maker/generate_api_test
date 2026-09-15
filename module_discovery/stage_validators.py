@@ -133,22 +133,27 @@ def validate_stage2(capture_result: dict) -> Tuple[bool, List[str]]:
     if not isinstance(capture_result, dict):
         return False, ["capture_result 不是字典"]
 
-    # 1. 检查分类结果（兼容 "by_category" 和 "classified" 两个字段名）
-    classified = capture_result.get("by_category") or capture_result.get("classified", {})
+    # 1. 检查 core_api_map（核心：操作名 → 端点映射）
+    core_api_map = capture_result.get("core_api_map", {})
 
-    if not classified:
-        issues.append("分类结果为空（by_category/classified 为空），分类可能失败")
+    if not core_api_map:
+        issues.append("core_api_map 为空，时间戳优先法可能失败")
 
-    # 2. 检查核心 API 是否存在
-    core_categories = ["create", "query", "update", "delete"]
-    missing_core = []
+    # 2. 验证 core_api_map 中的端点格式
+    valid_endpoints = 0
+    for action, ep_info in core_api_map.items():
+        if not isinstance(ep_info, dict):
+            issues.append(f"core_api_map['{action}'] 格式错误：应为字典")
+            continue
 
-    for cat in core_categories:
-        if cat not in classified or not classified[cat]:
-            missing_core.append(cat)
+        if "method" not in ep_info or "pathname" not in ep_info:
+            issues.append(f"core_api_map['{action}'] 缺少 method 或 pathname")
+            continue
 
-    if missing_core:
-        issues.append(f"缺少核心 CRUD API: {', '.join(missing_core)}")
+        valid_endpoints += 1
+
+    if valid_endpoints < 3:
+        issues.append(f"core_api_map 中有效端点过少 ({valid_endpoints})，捕获可能不完整")
 
     # 3. 检查端点数量
     stats = capture_result.get("stats", {})
@@ -167,21 +172,6 @@ def validate_stage2(capture_result: dict) -> Tuple[bool, List[str]]:
     if not samples:
         issues.append("响应样本为空（response_samples 为空），响应收集可能失败")
 
-    # 5. 检查辅助 API 比例
-    support_count = 0
-    core_count = 0
-
-    for cat, apis in classified.items():
-        if cat in ("support", "other_get", "other_post"):
-            support_count += len(apis)
-        else:
-            core_count += len(apis)
-
-    if core_count > 0:
-        support_ratio = support_count / core_count
-        if support_ratio > 5:
-            issues.append(f"辅助 API 比例过高 ({support_ratio:.1f}:1)，分类可能不准确")
-
     # 判断是否通过
     is_valid = len(issues) == 0
 
@@ -190,7 +180,7 @@ def validate_stage2(capture_result: dict) -> Tuple[bool, List[str]]:
         for issue in issues:
             LOG.warning(f"  - {issue}")
     else:
-        LOG.info(f"Stage 2 验证通过: {unique_endpoints} 个端点, {total_calls} 次调用")
+        LOG.info(f"Stage 2 验证通过: {len(core_api_map)} 个操作, {unique_endpoints} 个端点, {total_calls} 次调用")
 
     return is_valid, issues
 

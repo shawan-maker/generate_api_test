@@ -7,11 +7,192 @@ endpoint_classifier.py — API 端点分类与去重
 - 基于时间戳优先法确定操作核心 API
 """
 
+import json
 import logging
+from collections import defaultdict
 from typing import Dict, List
 from . import const
 
 LOG = logging.getLogger(__name__)
+
+
+def _count_pathname_windows(all_calls: List[Dict], replay_windows: Dict) -> Dict[str, int]:
+    """统计每个 pathname 出现在多少个不同时间窗口中。
+
+    用于识别周期性消息：如果一个 API 在大部分操作窗口中都出现，
+    说明它是基础设施 API（如 /current-user）。
+
+    Args:
+        all_calls: 所有捕获的 API 调用列表
+        replay_windows: 每个操作的时间窗口 {action: {"start": ts, "end": ts}}
+
+    Returns:
+        {pathname: window_count}
+    """
+    pathname_window_count = defaultdict(int)
+
+    for action, window in replay_windows.items():
+        start, end = window["start"], window["end"]
+        seen_in_window = set()
+
+        for call in all_calls:
+            ts = call.get("ts", 0)
+            if start <= ts <= end:
+                pathname = call.get("pathname", "")
+                if pathname not in seen_in_window:
+                    pathname_window_count[pathname] += 1
+                    seen_in_window.add(pathname)
+
+    return pathname_window_count
+
+
+def _response_has_entity_id(pathname: str, samples: Dict) -> bool:
+    """检查响应是否包含实体 ID（业务数据）。
+
+    用于区分核心 API 和校验类 API：
+    - 核心 API：响应包含 entity.id（如 POST /users → {"entity": {"id": "..."}}）
+    - 校验类 API：响应仅含 success 标志（如 POST /users/check → {"success": true}）
+
+    Args:
+        pathname: API 路径
+        samples: 响应样本字典 {pathname: [{status, body}, ...]}
+
+    Returns:
+        True 表示响应包含实体 ID（业务 API），False 表示无业务数据（校验类）
+    """
+    sample_list = samples.get(pathname, [])
+    if not sample_list:
+        return False
+
+    for sample in sample_list:
+        body_text = sample.get("body", "")
+        if not body_text:
+            continue
+
+        try:
+            body = json.loads(body_text) if isinstance(body_text, str) else body_text
+            if not isinstance(body, dict):
+                continue
+
+            # 尝试信封键提取实体
+            entity = None
+            for key in const.ENVELOPE_KEY_CANDIDATES:
+                if key in body and isinstance(body[key], dict):
+                    entity = body[key]
+                    break
+
+            # 如果没有信封键，检查 body 本身
+            if entity is None:
+                entity = body
+
+            # 检查实体是否包含 ID 字段
+            if isinstance(entity, dict):
+                for id_field in const.COMMON_ID_FIELDS:
+                    if id_field in entity:
+                        return True
+
+                # 检查列表响应：entity.list[0].id / entity.rows[0].id
+                for list_key in const.LIST_KEY_CANDIDATES:
+                    items = entity.get(list_key)
+                    if isinstance(items, list) and len(items) > 0:
+                        first = items[0]
+                        if isinstance(first, dict):
+                            for id_field in const.COMMON_ID_FIELDS:
+                                if id_field in first:
+                                    return True
+
+        except Exception:
+            continue
+
+    return False
+
+
+def _request_body_field_count(call: Dict) -> int:
+    """计算请求体字段数（用于 tiebreaker）。
+
+    当多个 API 通过 Layer 1+2 过滤时，请求体字段数最多的通常是核心 API：
+    - 核心 API：发送完整实体（10+ 字段）
+    - 辅助 POST：发送少量校验字段（1-3 字段）
+    - GET 请求：无请求体（0 字段）
+
+    Args:
+        call: API 调用信息 {method, body, ...}
+
+    Returns:
+        请求体字段数，GET 请求返回 0
+    """
+    method = call.get("method", "").upper()
+    if method == "GET":
+        return 0
+
+    body_text = call.get("body", "")
+    if not body_text:
+        return 0
+
+    try:
+        body = json.loads(body_text) if isinstance(body_text, str) else body_text
+        if isinstance(body, dict):
+            return len(body)
+    except Exception:
+        pass
+
+    return 0
+
+
+def _call_has_distinctive_params(call: Dict, all_calls: List[Dict]) -> bool:
+    """检查该调用是否携带同路径其他调用没有的独有参数。
+
+    用于 Layer 1 的例外判断：如果一个高频路径的某次调用携带了搜索参数
+    （其他调用没有的非分页参数），说明是有意触发的业务请求，不应被频率排除。
+
+    例如：
+    - GET /tenants/users?tenantId=xxx&pageNum=1&pageSize=10（页面自动刷新，无独有参数）
+    - GET /tenants/users?tenantId=xxx&pageNum=1&pageSize=10&name=AT_test（搜索，有独有参数 name）
+
+    Args:
+        call: 当前 API 调用信息
+        all_calls: 所有捕获的 API 调用列表
+
+    Returns:
+        True 表示该调用有独有参数（应保留为候选）
+    """
+    pathname = call.get("pathname", "")
+    call_params = call.get("query_params", {})
+    if not call_params or not isinstance(call_params, dict):
+        return False
+
+    call_keys = set(call_params.keys())
+
+    # 收集同路径其他调用的参数键
+    other_keys = set()
+    for other in all_calls:
+        if other is call:
+            continue
+        if other.get("pathname") != pathname:
+            continue
+        other_qp = other.get("query_params", {})
+        if other_qp and isinstance(other_qp, dict):
+            other_keys.update(other_qp.keys())
+
+    # 找出当前调用独有的参数键
+    distinctive_keys = call_keys - other_keys
+    if not distinctive_keys:
+        return False
+
+    # 排除分页参数后，是否还有独有参数
+    distinctive_non_pagination = distinctive_keys - _PAGINATION_PARAMS
+    return len(distinctive_non_pagination) > 0
+
+
+def _extract_entity(body: dict) -> dict | None:
+    """从响应体中提取实体数据（尝试常见信封键）。"""
+    for key in const.ENVELOPE_KEY_CANDIDATES:
+        if key in body and isinstance(body[key], dict):
+            return body[key]
+    # 如果没有信封键，返回 body 本身（如果包含 id）
+    if "id" in body:
+        return body
+    return None
 
 
 class EndpointClassifier:
@@ -26,12 +207,20 @@ class EndpointClassifier:
         return deduplicate_calls(all_calls, samples, replay_windows=replay_windows)
 
 
+def _is_hex_like(s: str) -> bool:
+    """检查字符串是否看起来像 hex ID（32字符hex或类似格式）。"""
+    if not s or len(s) < 20:
+        return False
+    # 检查是否全是十六进制字符
+    return all(c in '0123456789abcdefABCDEF' for c in s)
+
+
 def _classify_by_behavior(call: dict, has_form_data: bool = False,
                          triggers_download: bool = False) -> str:
     """基于 API 行为分类（不看操作名，只看 HTTP 行为）。
 
     Args:
-        call: API 调用信息 {method, pathname, ...}
+        call: API 调用信息 {method, pathname, bodies, ...}
         has_form_data: 是否携带表单数据
         triggers_download: 是否触发文件下载
 
@@ -47,10 +236,29 @@ def _classify_by_behavior(call: dict, has_form_data: bool = False,
     if method == "POST":
         if triggers_download:
             return "export"
+
+        # ★ 结构特征区分 create vs state_change
+        pathname = call.get("pathname", "")
+        path_parts = [p for p in pathname.split("/") if p]
+
+        # 检查路径中是否包含 ID 段（32字符hex或长数字串）
+        has_id_in_middle = False
+        for i, part in enumerate(path_parts):
+            # ID 特征：长度 >= 20 且是数字或hex
+            if len(part) >= 20 and (part.isdigit() or _is_hex_like(part)):
+                # 如果 ID 不在最后一段 → 中间有 ID → 状态变更
+                if i < len(path_parts) - 1:
+                    has_id_in_middle = True
+                    break
+
+        if has_id_in_middle:
+            # POST + 中间有ID + 子路径 → state_change（如 /users/{id}/lock）
+            return "state_change"
         elif has_form_data:
+            # POST + 简单路径 + 有表单 → create
             return "create"
         else:
-            # 无表单的 POST = 状态变更（冻结/启用/审批/发布/重置密码...）
+            # POST + 无表单 → state_change
             return "state_change"
 
     if method in ("PUT", "PATCH"):
@@ -92,8 +300,15 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict,
             uniq[key]["query_params_list"].append(qp)
 
     # ★ 基于时间窗口构建 core_api_map
-    core_api_map = {}  # {action: (method, pathname)}
+    # 三层过滤：频率排除 → 响应特征排除 → 时间戳优先（取第一个）
+    # tiebreaker：多个候选时，请求体字段数最多的胜出
+    core_api_map = {}  # {action: {"method": str, "pathname": str}}
     if replay_windows:
+        # 预计算：每个 pathname 出现在多少个不同窗口中（Layer 1 用）
+        pathname_window_count = _count_pathname_windows(all_calls, replay_windows)
+        operation_count = len(replay_windows)
+        frequency_threshold = max(2, int(operation_count * 0.6))
+
         for action, window in replay_windows.items():
             start, end = window["start"], window["end"]
             # 筛选时间窗口内的 API 调用，按时间排序
@@ -101,45 +316,79 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict,
                 [c for c in all_calls if start <= c.get("ts", 0) <= end],
                 key=lambda c: c.get("ts", 0)
             )
-            # 第一个业务 API 就是核心 API（排除静态资源和心跳）
-            for call in window_calls:
-                if not _is_static_or_heartbeat(call):
-                    core_api_map[action] = (call["method"], call["pathname"])
-                    break
 
-    # 构建反向索引：(method, pathname) → set of actions
-    endpoint_actions = {}  # {(method, pathname): set(actions)}
-    for action, ep_key in core_api_map.items():
-        endpoint_actions.setdefault(ep_key, set()).add(action)
+            # Layer 0: 排除静态资源和心跳
+            non_static_calls = [
+                call for call in window_calls
+                if not _is_static_or_heartbeat(call)
+            ]
 
-    # 分类端点
+            if not non_static_calls:
+                continue
+
+            # Layer 1 + Layer 2 过滤，收集候选
+            candidates = []
+            for call in non_static_calls:
+                pathname = call.get("pathname", "")
+
+                # Layer 1: 排除周期性消息（出现在大部分窗口中）
+                if pathname_window_count.get(pathname, 0) > frequency_threshold:
+                    # 例外：如果该调用携带其他同路径调用没有的独有参数（搜索参数），
+                    # 说明是有意触发的业务请求，不受频率限制
+                    if not _call_has_distinctive_params(call, all_calls):
+                        continue
+
+                # Layer 2: 排除响应无业务数据的 API（校验类）
+                if not _response_has_entity_id(pathname, samples):
+                    continue
+
+                candidates.append(call)
+
+            # 从候选中选择
+            if not candidates:
+                # 兜底：所有都被过滤了，取第一个非静态的
+                first_api = non_static_calls[0]
+                core_api_map[action] = {"method": first_api["method"], "pathname": first_api["pathname"]}
+            elif len(candidates) == 1:
+                core_api_map[action] = {"method": candidates[0]["method"], "pathname": candidates[0]["pathname"]}
+            else:
+                # tiebreaker：请求体字段数最多的胜出
+                best = max(candidates, key=_request_body_field_count)
+                core_api_map[action] = {"method": best["method"], "pathname": best["pathname"]}
+                LOG.debug(f"  core_api tiebreaker: {action} → "
+                          f"{best['method']} {best['pathname']} "
+                          f"(字段数={_request_body_field_count(best)})")
+
+    # ★ 直接使用 core_api_map 作为分类结果，不再做 HTTP 方法分类
     classified = {}
-    for ep in uniq.values():
-        ep_key = (ep["method"], ep["pathname"])
-        actions = endpoint_actions.get(ep_key, set())
 
-        # ★ 分类逻辑：始终基于 HTTP 行为分类（不使用操作名作为类别）
-        # core_api_map 用于确定端点属于哪个操作，但类别由 HTTP 方法决定
-        # 例如：PUT /users/{id}（编辑操作）→ "update"，而非"编辑"
-        cat = _classify_by_behavior(ep, has_form_data=bool(ep.get("bodies")))
+    # 按操作名组织端点数据
+    for action_name, ep_info in core_api_map.items():
+        method = ep_info["method"]
+        pathname = ep_info["pathname"]
+        key = f"{method} {pathname}"
+
+        if key not in uniq:
+            continue
+
+        ep = uniq[key]
 
         ep_data = {
-            "method": ep["method"], "pathname": ep["pathname"],
+            "method": ep["method"],
+            "pathname": ep["pathname"],
             "contexts": sorted(ep["contexts"]),
             "bodies": ep["bodies"],
             "request_body_sample": ep["bodies"][0] if ep.get("bodies") else None,
             "query_params": ep["query_params_list"][0] if len(ep["query_params_list"]) == 1 else {},
             "query_params_samples": ep["query_params_list"],
         }
-        # query 类端点：自动提取搜索参数名
-        if cat == "query":
-            search_param = _extract_search_param(ep_data)
-            if search_param:
-                ep_data["search_param"] = search_param
-        classified.setdefault(cat, []).append(ep_data)
+
+        # ★ 直接使用操作名作为类别
+        classified.setdefault(action_name, []).append(ep_data)
 
     return {
         "classified": classified,
+        "_core_api_map": core_api_map,
         "all_endpoints": [{"method": e["method"], "pathname": e["pathname"],
                            "contexts": sorted(e["contexts"]), "bodies": e["bodies"]}
                           for e in uniq.values()],

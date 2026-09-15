@@ -169,13 +169,20 @@ class StepExecutor:
     """执行单个 CRUD 步骤。"""
 
     def __init__(self, session: requests.Session, parser: ResponseParser,
-                 state: dict, ts: str, base_url: str, log_file: str = None):
+                 state: dict, ts: str, base_url: str, log_file: str = None,
+                 config: dict = None):
         self.session = session
         self.parser = parser
         self.state = state
         self.ts = ts
         self.base_url = base_url
         self.log_file = log_file
+        self.config = config or {
+            "test_data": {
+                "name_prefix": "AT_",
+                "mutable_prefix": "Updated_",
+            }
+        }
         self._api_call_count = 0
         self._last_request = {}
 
@@ -221,14 +228,12 @@ class StepExecutor:
             if assertion in ("search_verify", "search_not_found"):
                 search_param = step_def.get("search_param", "")
                 if search_param and "create_body_raw" in self.state:
-                    # 从 create_body_raw 中获取原始搜索值（不含 AT_ 前缀）
                     create_body_raw = self.state["create_body_raw"]
-                    # search_param_source 指向值来源字段（如 userName）
-                    # 也是 API 实际的 URL 参数名
+                    # search_param_source: create body 字段名 + API URL 参数名（如 userName）
+                    # search_param: endpoint_classifier 提取的参数名（可能不准确）
                     search_source = step_def.get("search_param_source", search_param)
                     search_value = create_body_raw.get(search_source, "")
                     if search_value:
-                        # 仅添加搜索参数（固定参数已由 _build_url 处理）
                         url += f"&{search_source}={search_value}" if "?" in url else f"?{search_source}={search_value}"
 
             resp = self._send_request(method, url, body)
@@ -376,7 +381,8 @@ class StepExecutor:
                 else:
                     body[key] = value
             elif role == "mutable":
-                body[key] = f"自动修改_{self.ts}"
+                mutable_prefix = self.config.get("test_data", {}).get("mutable_prefix", "Updated_")
+                body[key] = f"{mutable_prefix}{self.ts}"
             elif role == "test_value":
                 pattern = role_config.get("value_pattern", "text")
                 body[key] = _generate_test_value(pattern, self.ts)
@@ -537,7 +543,8 @@ class StepExecutor:
                 if name_val is None:
                     name_val = entity.get("name") or entity.get("title") or entity.get("label")
 
-                if name_val and ("_Updated" in str(name_val) or "自动修改_" in str(name_val)):
+                mutable_prefix = self.config.get("test_data", {}).get("mutable_prefix", "Updated_")
+                if name_val and mutable_prefix in str(name_val):
                     return f"验证通过: 名称已更新为 {name_val}"
 
         elif assertion == "search_verify":
@@ -615,6 +622,14 @@ class TestRunner:
         self.state = {}
         self.shared_context = shared_context or {}
         self.ts = format(int(time.time() * 1000), "x")[-6:]
+
+        # 测试配置（名称前缀、可变前缀等）
+        self.config = manifest.get("config", {
+            "test_data": {
+                "name_prefix": "AT_",
+                "mutable_prefix": "Updated_",
+            }
+        })
 
         # 设置日志文件
         _LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -969,11 +984,12 @@ class TestRunner:
             create_body_raw[key] = value
 
             if role == "name" and isinstance(value, str):
-                if not value.startswith(const.DEFAULT_TEST_NAME_PREFIX):
-                    create_body[key] = f"{const.DEFAULT_TEST_NAME_PREFIX}{self.ts}_{value}"
+                name_prefix = self.config.get("test_data", {}).get("name_prefix", "AT_")
+                if not value.startswith(name_prefix):
+                    create_body[key] = f"{name_prefix}{self.ts}_{value}"
                 else:
-                    prefix_len = len(const.DEFAULT_TEST_NAME_PREFIX)
-                    create_body[key] = f"{const.DEFAULT_TEST_NAME_PREFIX}{self.ts}_{value[prefix_len:]}"
+                    prefix_len = len(name_prefix)
+                    create_body[key] = f"{name_prefix}{self.ts}_{value[prefix_len:]}"
             elif role == "test_value":
                 pattern = role_config.get("value_pattern", "text")
                 create_body[key] = _generate_test_value(pattern, self.ts)
@@ -1019,7 +1035,8 @@ class TestRunner:
               f"(共 {len(steps_to_run)}/{len(steps)})")
 
         executor = StepExecutor(session, self.parser, self.state, self.ts,
-                                self.base_url, log_file=self.log_file)
+                                self.base_url, log_file=self.log_file,
+                                config=self.config)
 
         # 写入测试开始事件
         executor._log_event("test_start", {
