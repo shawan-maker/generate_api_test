@@ -659,6 +659,7 @@ class TestRunner:
                 "header_name": auth_profile.get("header_name", "Authorization"),
                 "header_prefix": auth_profile.get("header_prefix", "Bearer "),
                 "fixed_headers": auth_profile.get("fixed_headers", {}),
+                "cookie_token_key": auth_profile.get("cookie_token_key", ""),
             }
 
             session, cookies = require_auth(config_dir, auth_config)

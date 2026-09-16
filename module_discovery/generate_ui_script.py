@@ -58,69 +58,172 @@ def generate_ui_script(playbook: dict, module_name: str, project_dir: Path, vers
     return script_path, data_path
 
 
+def _transform_imports(content: str) -> str:
+    """将 replay/ 子包的父级导入转换为 flat 包导入。
+
+    转换规则:
+      from .. import const       → from . import const
+      from ..kb_loader import X  → from .kb_loader import X
+      from . import X            → 不变（兄弟引用）
+      from .button_driver import → 不变（兄弟引用）
+    """
+    lines = content.split("\n")
+    result = []
+    for line in lines:
+        stripped = line.lstrip()
+        # from .. import const → from . import const
+        if stripped.startswith("from .. import "):
+            line = line.replace("from .. import ", "from . import ", 1)
+        # from ..kb_loader import → from .kb_loader import
+        elif stripped.startswith("from .."):
+            line = line.replace("from ..", "from .", 1)
+        result.append(line)
+    return "\n".join(result)
+
+
+def _write_if_changed(dst: Path, content: str) -> bool:
+    """仅在内容变化时写入，避免不必要的文件更新。返回是否有变更。"""
+    if dst.exists() and dst.read_text(encoding="utf-8") == content:
+        return False
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text(content, encoding="utf-8")
+    return True
+
+
+def _verify_sync(dst_lib: Path, synced: list):
+    """验证同步后的模块能正确导入。
+
+    在子进程中执行 import 测试，确保所有依赖关系正确解析。
+    如果验证失败则抛出 RuntimeError 终止流程。
+    """
+    import subprocess
+    import sys
+
+    ui_dir = dst_lib.parent
+    result = subprocess.run(
+        [sys.executable, "-c",
+         f"import sys; sys.path.insert(0, {str(ui_dir)!r}); "
+         f"from lib import replay_engine; from lib import button_driver; "
+         f"from lib import form_filler; from lib import wait_helpers; "
+         f"from lib import locator_helpers; from lib import const; "
+         f"from lib import kb_loader"],
+        capture_output=True, text=True, timeout=15,
+        cwd=str(ui_dir),
+    )
+    if result.returncode != 0:
+        error_detail = result.stderr.strip()
+        LOG.error(f"  ❌ 同步验证失败: {error_detail}")
+        raise RuntimeError(
+            f"UI runtime sync verification failed:\n{error_detail}"
+        )
+    LOG.info("  ✅ 同步验证通过（导入检查 OK）")
+
+
 def _sync_ui_runtime_lib(ui_dir: Path):
-    """将 module_discovery/ 下的运行时文件复制到 ui/lib/。"""
-    src_dir = Path(__file__).resolve().parent  # module_discovery/
-    lib_dir = src_dir.parent / "lib"  # lib/
+    """从 Stage 2 运行时同步所有文件到 ui/lib/。
+
+    同步源:
+      - module_discovery/replay/*.py    → ui/lib/（含导入路径转换）
+      - module_discovery/{const,kb_loader}.py → ui/lib/
+      - lib/report/ui_report.py         → ui/lib/
+      - lib/auth/cookie_client.py       → ui/lib/
+      - module_discovery/kb/*.json      → ui/lib/kb/
+      - module_discovery/ui_selectors/*.json → ui/lib/ui_selectors/
+      - cookies.json                    → ui/config/（每次覆盖）
+
+    同步后执行导入验证，确保生成的 ui/lib/ 能正确工作。
+    """
+    src_dir = Path(__file__).resolve().parent       # module_discovery/
+    project_root = src_dir.parent                    # 项目根目录
+    replay_dir = src_dir / "replay"                  # module_discovery/replay/
+    lib_dir = project_root / "lib"                   # lib/
     dst_lib = ui_dir / "lib"
     dst_lib.mkdir(parents=True, exist_ok=True)
 
-    # Python modules from module_discovery/
-    module_files = [
-        "__init__.py",
-        "replay_engine.py",
-        "button_driver.py",
-        "form_filler.py",
-        "wait_helpers.py",
-        "kb_loader.py",
-        "const.py",
-        "ui_report.py",
-    ]
-    for name in module_files:
-        src = src_dir / name
-        dst = dst_lib / name
-        if name == "__init__.py" and not src.exists():
-            dst.write_text('"""UI automation runtime library."""\n', encoding="utf-8")
-            continue
-        if not src.exists():
-            LOG.warning(f"  Runtime file missing: {src}")
-            continue
-        src_content = src.read_text(encoding="utf-8")
-        if dst.exists() and dst.read_text(encoding="utf-8") == src_content:
-            continue
-        dst.write_text(src_content, encoding="utf-8")
-        LOG.info(f"  UI runtime sync: {name}")
+    synced = []
 
-    # cookie_client.py from lib/
-    cookie_src = lib_dir / "cookie_client.py"
-    cookie_dst = dst_lib / "cookie_client.py"
-    if cookie_src.exists():
-        src_content = cookie_src.read_text(encoding="utf-8")
-        if not cookie_dst.exists() or cookie_dst.read_text(encoding="utf-8") != src_content:
-            cookie_dst.write_text(src_content, encoding="utf-8")
-            LOG.info("  UI runtime sync: cookie_client.py")
+    # ---- 1. replay/*.py → ui/lib/（含导入转换）----
+    if not replay_dir.exists():
+        raise RuntimeError(f"replay 目录不存在: {replay_dir}")
+
+    for src_file in sorted(replay_dir.glob("*.py")):
+        if src_file.name == "__init__.py":
+            continue
+        dst_file = dst_lib / src_file.name
+        content = src_file.read_text(encoding="utf-8")
+        content = _transform_imports(content)
+        if _write_if_changed(dst_file, content):
+            LOG.info(f"  UI runtime sync (import-transformed): {src_file.name}")
+        synced.append(src_file.name)
+
+    # ---- 2. module_discovery 顶层模块 → ui/lib/（无需导入转换）----
+    for name in ("const.py", "kb_loader.py"):
+        src_file = src_dir / name
+        if src_file.exists():
+            if _write_if_changed(dst_lib / name,
+                                 src_file.read_text(encoding="utf-8")):
+                LOG.info(f"  UI runtime sync: {name}")
+            synced.append(name)
+
+    # ---- 3. lib/report/ui_report.py → ui/lib/ ----
+    ui_report_src = lib_dir / "report" / "ui_report.py"
+    if ui_report_src.exists():
+        if _write_if_changed(dst_lib / "ui_report.py",
+                             ui_report_src.read_text(encoding="utf-8")):
+            LOG.info("  UI runtime sync: ui_report.py")
+        synced.append("ui_report.py")
     else:
-        LOG.warning(f"  Runtime file missing: {cookie_src}")
+        LOG.warning(f"  ui_report.py 未找到: {ui_report_src}")
 
-    # KB data
+    # ---- 4. lib/auth/cookie_client.py → ui/lib/ ----
+    cookie_src = lib_dir / "auth" / "cookie_client.py"
+    if cookie_src.exists():
+        if _write_if_changed(dst_lib / "cookie_client.py",
+                             cookie_src.read_text(encoding="utf-8")):
+            LOG.info("  UI runtime sync: cookie_client.py")
+        synced.append("cookie_client.py")
+    else:
+        LOG.warning(f"  cookie_client.py 未找到: {cookie_src}")
+
+    # ---- 5. kb/probe_knowledge.json → ui/lib/kb/ ----
     kb_src = src_dir / "kb" / "probe_knowledge.json"
-    kb_dst = dst_lib / "kb" / "probe_knowledge.json"
-    kb_dst.parent.mkdir(parents=True, exist_ok=True)
     if kb_src.exists():
-        src_content = kb_src.read_text(encoding="utf-8")
-        if not kb_dst.exists() or kb_dst.read_text(encoding="utf-8") != src_content:
-            kb_dst.write_text(src_content, encoding="utf-8")
+        dst_kb = dst_lib / "kb"
+        dst_kb.mkdir(exist_ok=True)
+        if _write_if_changed(dst_kb / "probe_knowledge.json",
+                             kb_src.read_text(encoding="utf-8")):
             LOG.info("  UI runtime sync: kb/probe_knowledge.json")
 
-    # cookies.json -> config/
+    # ---- 6. ui_selectors/*.json → ui/lib/ui_selectors/ ----
+    selectors_src = src_dir / "ui_selectors"
+    if selectors_src.exists():
+        dst_selectors = dst_lib / "ui_selectors"
+        dst_selectors.mkdir(exist_ok=True)
+        for json_file in sorted(selectors_src.glob("*.json")):
+            if _write_if_changed(dst_selectors / json_file.name,
+                                 json_file.read_text(encoding="utf-8")):
+                LOG.info(f"  UI runtime sync: ui_selectors/{json_file.name}")
+
+    # ---- 7. cookies.json → ui/config/（每次覆盖）----
     config_dst = ui_dir / "config"
     config_dst.mkdir(parents=True, exist_ok=True)
-    cookies_src = src_dir.parent / "cookies.json"  # project root
+    cookies_src = project_root / "cookies.json"
     if cookies_src.exists():
         dst_cookies = config_dst / "cookies.json"
-        if not dst_cookies.exists():
-            dst_cookies.write_text(cookies_src.read_text(encoding="utf-8"), encoding="utf-8")
-            LOG.info("  UI runtime sync: config/cookies.json")
+        dst_cookies.write_text(
+            cookies_src.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+        LOG.info("  UI runtime sync: config/cookies.json")
+
+    # ---- 8. 生成 __init__.py ----
+    init_file = dst_lib / "__init__.py"
+    init_content = '"""UI automation runtime library — synced from module_discovery."""\n'
+    _write_if_changed(init_file, init_content)
+
+    # ---- 9. 同步后验证 ----
+    _verify_sync(dst_lib, synced)
+
+    LOG.info(f"  UI 运行时同步完成: {len(synced)} 个文件")
 
 
 def _extract_test_data(playbook: dict) -> dict:

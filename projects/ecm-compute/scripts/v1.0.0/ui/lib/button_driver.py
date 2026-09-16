@@ -9,8 +9,11 @@ button_driver.py - 按钮点击与交互驱动
 """
 
 import logging
+import json
 from playwright.async_api import Page, Locator
 from typing import List, Dict, Optional
+
+from . import const
 
 LOG = logging.getLogger("button_driver")
 
@@ -20,9 +23,15 @@ LOG = logging.getLogger("button_driver")
 class ButtonDriver:
     """按钮驱动封装类，供 capture_apis 调用"""
 
-    def __init__(self, page: Page):
+    def __init__(self, page: Page, ui_framework: str = "element-ui"):
         self.page = page
-        self.framework = "element-ui"  # 默认，可由外部设置
+        self.framework = ui_framework
+        # 加载 UI 选择器配置
+        try:
+            self.selectors = const.get_ui_selectors(ui_framework)
+        except FileNotFoundError:
+            # 回退到 element-ui
+            self.selectors = const.get_ui_selectors("element-ui")
 
     async def scan_toolbar_buttons(self) -> List[str]:
         """扫描工具栏按钮文本列表"""
@@ -51,10 +60,10 @@ class ButtonDriver:
     async def _find_row_on_current_page(self, marker: str) -> Optional[Locator]:
         """在当前页面查找行（不含分页）"""
         try:
-            MAIN_SEL = '.el-table__body-wrapper tbody tr'
+            MAIN_SEL = self.selectors["table"]["body_row"]
             FIXED_SELS = [
-                '.el-table__fixed .el-table__fixed-body-wrapper tbody tr',
-                '.el-table__fixed-right .el-table__fixed-body-wrapper tbody tr',
+                self.selectors["table"]["fixed_row"],
+                self.selectors["table"]["fixed_right_row"],
             ]
 
             for attempt in range(3):
@@ -93,8 +102,9 @@ class ButtonDriver:
         """带分页的行查找：当前页找不到时尝试翻页（最多 max_pages 页）"""
         try:
             # 检查是否有分页组件
-            has_pagination = await self.page.evaluate("""
-                () => !!document.querySelector('.el-pagination')
+            pagination_sel = self.selectors["pagination"]["container"]
+            has_pagination = await self.page.evaluate(f"""
+                () => !!document.querySelector('{pagination_sel}')
             """)
 
             if not has_pagination:
@@ -102,18 +112,21 @@ class ButtonDriver:
                 return None
 
             # 获取当前页码
-            current_page = await self.page.evaluate("""
-                () => {
-                    const activeBtn = document.querySelector('.el-pagination .number.active, .el-pagination .btn-quicknext + .number');
+            active_num_sel = self.selectors["pagination"]["active_number"]
+            quicknext_sel = self.selectors["pagination"]["quicknext_number"]
+            current_page = await self.page.evaluate(f"""
+                () => {{
+                    const activeBtn = document.querySelector('{active_num_sel}, {quicknext_sel}');
                     return activeBtn ? parseInt(activeBtn.textContent) : 1;
-                }
+                }}
             """)
             LOG.info(f"当前页未找到 '{marker}'，当前页码: {current_page}，尝试翻页...")
 
             # 尝试翻页查找（最多 max_pages 页）
             for page_num in range(current_page + 1, current_page + max_pages + 1):
                 # 点击下一页
-                next_btn = self.page.locator('.el-pagination .btn-next:not(.disabled)')
+                next_btn_sel = self.selectors["pagination"]["next_button"]
+                next_btn = self.page.locator(next_btn_sel)
                 if await next_btn.count() == 0:
                     LOG.debug("已到达最后一页，停止翻页")
                     break
@@ -249,11 +262,17 @@ class ButtonDriver:
         # 最终 fallback: 直接在行内用 JavaScript 查找并点击按钮
         LOG.debug(f"XPath 全部失败，尝试 JavaScript fallback")
         try:
+            # 转义按钮文本
+            button_text_escaped = button_text.replace('\\', '\\\\').replace("'", "\\'")
             clicked = await row.evaluate(f"""(row) => {{
                 const buttons = row.querySelectorAll('button, .el-button, a, span');
                 for (const btn of buttons) {{
                     const text = btn.textContent.trim();
-                    if (text.includes('{button_text}')) {{
+                    if (text.includes('{button_text_escaped}')) {{
+                        // Skip hidden/disabled elements
+                        if (btn.offsetWidth === 0 || btn.offsetHeight === 0) continue;
+                        if (btn.disabled || btn.classList.contains('is-disabled')) continue;
+                        if (btn.closest('.is-hidden') || btn.closest('[style*="display: none"]')) continue;
                         btn.click();
                         return true;
                     }}
@@ -271,7 +290,7 @@ class ButtonDriver:
         LOG.warning(f"未找到按钮 '{button_text}' (行索引={row_index})")
         return False
 
-    async def click_row_more_item(self, row: Locator, item_text: str) -> bool:
+    async def click_row_more_item(self, row: Locator, item_text: str) -> dict:
         """点击行内"更多"下拉菜单项
 
         使用 KB dropdown-menu 模板的 click-more 步骤 fallback 链。
@@ -280,8 +299,17 @@ class ButtonDriver:
         - 隐藏元素过滤
         - 覆盖层前缀定位
         - 点击后等待加载完成
+
+        Returns:
+            dict: {
+                "clicked": bool,  # 是否成功点击菜单项
+                "expand_strategy": str,  # 展开策略: hover/click/vue/failed
+                "actual_item_text": str,  # 实际点击的菜单项文本
+            }
         """
         from .kb_loader import get_kb, apply_overlay_scope
+
+        result = {"clicked": False, "expand_strategy": "failed", "actual_item_text": ""}
 
         row_index = await self._get_row_index(row)
         if row_index < 0:
@@ -324,12 +352,13 @@ class ButtonDriver:
 
         if not more_btn:
             LOG.warning(f"未找到行内更多按钮 (行索引={row_index})")
-            return False
+            return result
 
         # 展开下拉菜单（Element UI 默认 hover 触发，click 兜底）
         # Element UI 的 mouseenter 监听器绑定在 .el-dropdown 父元素上，
         # 仅 hover 内部 <span> 可能无法触发 Vue 的事件处理器。
         expanded = False
+        expand_strategy = "failed"
         try:
             await more_btn.hover()
             await self.page.wait_for_timeout(300)
@@ -354,6 +383,7 @@ class ButtonDriver:
             }""")
             if expanded:
                 LOG.debug(f"    ✓ hover 展开成功 (行索引={row_index})")
+                expand_strategy = "hover"
         except Exception as e:
             LOG.debug(f"hover + dispatch on more button failed: {e}")
 
@@ -369,6 +399,7 @@ class ButtonDriver:
                 }""")
                 if expanded:
                     LOG.debug(f"    ✓ click 展开成功 (行索引={row_index})")
+                    expand_strategy = "click"
             except Exception as e:
                 LOG.debug(f"click on more button failed: {e}")
 
@@ -394,6 +425,7 @@ class ButtonDriver:
                 }""", await more_btn.element_handle())
                 if expanded:
                     LOG.debug(f"    ✓ Vue 实例展开成功 (行索引={row_index})")
+                    expand_strategy = "vue"
                     await self.page.wait_for_timeout(600)
                 else:
                     LOG.debug(f"    ✗ Vue 实例未找到 (行索引={row_index})")
@@ -402,10 +434,15 @@ class ButtonDriver:
 
         if not expanded:
             LOG.warning(f"    ✗ 所有展开策略均失败 (行索引={row_index})")
+            result["expand_strategy"] = expand_strategy
+            return result
 
         # 查找并点击菜单项（按钮类型，需要等待加载）
-        clicked = await click_dropdown_option(self.page, item_text)
-        return clicked
+        click_result = await click_dropdown_option(self.page, item_text)
+        result["clicked"] = click_result.get("clicked", False) if isinstance(click_result, dict) else click_result
+        result["expand_strategy"] = expand_strategy
+        result["actual_item_text"] = click_result.get("actual_text", item_text) if isinstance(click_result, dict) else item_text
+        return result
 
     async def confirm_message_box(self) -> str:
         """确认 Element UI MessageBox，返回点击的按钮文本"""
@@ -424,6 +461,9 @@ class ButtonDriver:
                     return buttons.some(btn => {{
                         const txt = btn.textContent.trim();
                         if (!txt.includes('{text}')) return false;
+                        // 排除隐藏/disabled
+                        if (btn.disabled || btn.classList.contains('is-disabled')) return false;
+                        if (btn.closest('.is-hidden') || btn.closest('[style*="display: none"]')) return false;
                         // 排除侧边栏/菜单
                         const parent = btn.closest('.el-menu, .sidebar, nav');
                         return !parent;
@@ -440,8 +480,14 @@ class ButtonDriver:
         try:
             items = await self.page.evaluate("""
                 () => {
-                    const menuItems = document.querySelectorAll('.el-dropdown-menu__item:visible');
-                    return Array.from(menuItems).map(item => item.textContent.trim()).filter(t => t);
+                    const menuItems = document.querySelectorAll('.el-dropdown-menu__item');
+                    return Array.from(menuItems)
+                        .filter(item => item.offsetWidth > 0
+                            && !item.disabled
+                            && !item.classList.contains('is-disabled')
+                            && !item.closest('.is-hidden')
+                            && !item.closest('[style*="display: none"]'))
+                        .map(item => item.textContent.trim()).filter(t => t);
                 }
             """)
             return items
@@ -547,7 +593,7 @@ async def scan_buttons(page: Page) -> Dict[str, List[str]]:
     return await page.evaluate(script)
 
 
-async def click_button(page: Page, text: str, max_retries: int = 3) -> bool:
+async def click_button(page: Page, text: str, max_retries: int = 3, ui_framework: str = "element-ui") -> bool:
     """智能点击按钮（处理遮挡、动画、fixed 列等复杂场景）。
 
     策略：
@@ -561,23 +607,29 @@ async def click_button(page: Page, text: str, max_retries: int = 3) -> bool:
         page: Playwright 页面对象
         text: 按钮文本
         max_retries: 最大重试次数
+        ui_framework: UI 框架名称
 
     Returns:
         是否成功点击
     """
     from .wait_helpers import wait_for_loading_complete
+    from .locator_helpers import safe_css
+    selectors = const.get_ui_selectors(ui_framework)
+    button_base = selectors["button"]["base"]
 
     for attempt in range(max_retries):
         try:
-            # 策略 1: Playwright click（自动等待可见性）
-            button = page.locator(f'button:has-text("{text}"), .el-button:has-text("{text}")').first
+            # 策略 1: Playwright click（自动等待可见性）+ 隐藏过滤
+            safe_sel = safe_css(f'button:has-text("{text}"), {button_base}:has-text("{text}")', ui_framework)
+            button = page.locator(safe_sel).first
             if await button.count() > 0:
                 await button.click(timeout=3000)
                 await wait_for_loading_complete(page)
                 return True
 
-            # 策略 2: 查找并滚动到可见
-            buttons = await page.query_selector_all(f'button:has-text("{text}"):visible, .el-button:has-text("{text}"):visible')
+            # 策略 2: 查找并滚动到可见（带完整隐藏过滤）
+            hidden_css = const.HIDDEN_FILTERS_CSS.get(ui_framework, const.HIDDEN_FILTERS_CSS['_universal'])
+            buttons = await page.query_selector_all(f'button:has-text("{text}"):visible{hidden_css}, {button_base}:has-text("{text}"):visible{hidden_css}')
             if buttons:
                 await buttons[0].scroll_into_view_if_needed()
                 await page.wait_for_timeout(300)
@@ -585,11 +637,16 @@ async def click_button(page: Page, text: str, max_retries: int = 3) -> bool:
                 await wait_for_loading_complete(page)
                 return True
 
-            # 策略 3: JavaScript click（绕过遮挡）
+            # 策略 3: JavaScript click（绕过遮挡）+ 隐藏/disabled 检查
             clicked = await page.evaluate(f"""
                 () => {{
-                    const buttons = Array.from(document.querySelectorAll('button, .el-button'));
-                    const target = buttons.find(btn => btn.textContent.trim().includes('{text}'));
+                    const buttons = Array.from(document.querySelectorAll('button, {button_base}'));
+                    const target = buttons.find(btn => {{
+                        const textMatch = btn.textContent.trim().includes('{text}');
+                        const notHidden = !btn.closest('.is-hidden') && !btn.closest('[style*="display: none"]');
+                        const notDisabled = !btn.disabled && !btn.classList.contains('is-disabled');
+                        return textMatch && notHidden && notDisabled;
+                    }});
                     if (target) {{
                         target.click();
                         return true;
@@ -605,7 +662,7 @@ async def click_button(page: Page, text: str, max_retries: int = 3) -> bool:
             if attempt == 0:
                 # 首次失败时诊断
                 diag = await page.evaluate(f"""() => {{
-                    const all = Array.from(document.querySelectorAll('button, .el-button'));
+                    const all = Array.from(document.querySelectorAll('button, {button_base}'));
                     const matches = all.filter(b => b.textContent.trim().includes('{text}'));
                     return {{
                         totalButtons: all.length,
@@ -613,6 +670,8 @@ async def click_button(page: Page, text: str, max_retries: int = 3) -> bool:
                         matches: matches.slice(0, 5).map(b => ({{
                             text: b.textContent.trim().slice(0, 30),
                             visible: b.offsetWidth > 0 && b.offsetHeight > 0,
+                            hidden: !!b.closest('.is-hidden') || !!b.closest('[style*="display: none"]'),
+                            disabled: b.disabled || b.classList.contains('is-disabled'),
                             tag: b.tagName,
                             rect: {{w: b.offsetWidth, h: b.offsetHeight, x: b.getBoundingClientRect().x, y: b.getBoundingClientRect().y}},
                         }}))
@@ -626,22 +685,25 @@ async def click_button(page: Page, text: str, max_retries: int = 3) -> bool:
     return False
 
 
-async def click_row_button(page: Page, row_index: int, button_text: str) -> bool:
+async def click_row_button(page: Page, row_index: int, button_text: str, ui_framework: str = "element-ui") -> bool:
     """点击表格行操作按钮。
 
     点击成功后等待加载完成。
     """
     from .wait_helpers import wait_for_loading_complete
+    selectors = const.get_ui_selectors(ui_framework)
+    table_body_tr = selectors["table"]["body_tr"]
+    button_base = selectors["button"]["base"]
 
     try:
-        rows = await page.query_selector_all('tbody tr, .el-table__body-wrapper tr')
+        rows = await page.query_selector_all(f'tbody tr, {table_body_tr}')
         if row_index >= len(rows):
             return False
 
         row = rows[row_index]
         cells = await row.query_selector_all('td')
         for cell in cells:
-            buttons = await cell.query_selector_all('button, .el-button, a')
+            buttons = await cell.query_selector_all(f'button, {button_base}, a')
             for btn in buttons:
                 text = await btn.inner_text()
                 if button_text in text:
@@ -661,27 +723,32 @@ async def click_row_button(page: Page, row_index: int, button_text: str) -> bool
         return False
 
 
-async def expand_dropdown(page: Page, trigger_text: str) -> List[str]:
+async def expand_dropdown(page: Page, trigger_text: str, ui_framework: str = "element-ui") -> List[str]:
     """展开下拉菜单并获取选项列表。
 
     Args:
         page: Playwright 页面对象
         trigger_text: 下拉触发器文本
+        ui_framework: UI 框架名称
 
     Returns:
         选项文本列表
     """
+    selectors = const.get_ui_selectors(ui_framework)
+    dropdown_menu_item = selectors["dropdown"]["menu_item"]
+    select_dropdown_item = selectors["select"]["dropdown_item"]
+
     try:
         # 点击触发器
-        await click_button(page, trigger_text)
+        await click_button(page, trigger_text, ui_framework=ui_framework)
         await page.wait_for_timeout(800)
 
         # 获取下拉选项
-        options = await page.evaluate("""
-            () => {
-                const items = document.querySelectorAll('.el-dropdown-menu__item:visible, .el-select-dropdown__item:visible');
+        options = await page.evaluate(f"""
+            () => {{
+                const items = document.querySelectorAll('{dropdown_menu_item}:visible, {select_dropdown_item}:visible');
                 return Array.from(items).map(item => item.textContent.trim()).filter(text => text);
-            }
+            }}
         """)
 
         return options
@@ -691,19 +758,28 @@ async def expand_dropdown(page: Page, trigger_text: str) -> List[str]:
         return []
 
 
-async def click_dropdown_option(page: Page, option_text: str) -> bool:
+async def click_dropdown_option(page: Page, option_text: str, ui_framework: str = "element-ui") -> dict:
     """点击下拉菜单选项。
 
     点击成功后等待加载完成（可能触发后续操作）。
     快速路径：先检查可见性，不可见时直接走 JS click，避免 30s 超时。
+
+    Returns:
+        dict: {
+            "clicked": bool,
+            "actual_text": str  # 实际点击的选项文本（去空格后）
+        }
     """
     from .wait_helpers import wait_for_loading_complete
+    selectors = const.get_ui_selectors(ui_framework)
+    dropdown_menu_item = selectors["dropdown"]["menu_item"]
+    select_dropdown_item = selectors["select"]["dropdown_item"]
 
     try:
         # 快速检查：元素是否存在且可见
         visible = await page.evaluate(f"""() => {{
             const items = Array.from(document.querySelectorAll(
-                '.el-dropdown-menu__item, .el-select-dropdown__item'));
+                '{dropdown_menu_item}, {select_dropdown_item}'));
             const target = items.find(
                 item => item.textContent.trim().includes('{option_text}'));
             if (!target) return 'not_found';
@@ -712,46 +788,47 @@ async def click_dropdown_option(page: Page, option_text: str) -> bool:
         }}""")
 
         if visible == 'not_found':
-            return False
+            return {"clicked": False, "actual_text": ""}
 
         if visible == 'visible':
             # 可见 → Playwright click（快速成功）
             option = page.locator(
-                f'.el-dropdown-menu__item:has-text("{option_text}"), '
-                f'.el-select-dropdown__item:has-text("{option_text}")'
+                f'{dropdown_menu_item}:has-text("{option_text}"), '
+                f'{select_dropdown_item}:has-text("{option_text}")'
             ).first
             if await option.count() > 0:
                 await option.click(timeout=3000)
                 await wait_for_loading_complete(page)
-                return True
+                return {"clicked": True, "actual_text": option_text}
 
         # 不可见或 Playwright click 失败 → JS click（强制触发）
-        clicked = await page.evaluate(f"""
+        clicked_text = await page.evaluate(f"""
             () => {{
                 const items = Array.from(document.querySelectorAll(
                     '.el-dropdown-menu__item, .el-select-dropdown__item'));
                 const target = items.find(
                     item => item.textContent.trim().includes('{option_text}'));
                 if (target) {{
+                    const text = target.textContent.trim().replace(/\\s+/g, '');
                     target.click();
-                    return true;
+                    return text;
                 }}
-                return false;
+                return null;
             }}
         """)
 
-        if clicked:
+        if clicked_text:
             await wait_for_loading_complete(page)
-            return True
+            return {"clicked": True, "actual_text": clicked_text}
 
-        return False
+        return {"clicked": False, "actual_text": ""}
 
     except Exception as e:
         LOG.warning(f"点击下拉选项失败: {e}")
-        return False
+        return {"clicked": False, "actual_text": ""}
 
 
-async def confirm_dialog(page: Page, confirm: bool = True) -> str:
+async def confirm_dialog(page: Page, confirm: bool = True, ui_framework: str = "element-ui") -> str:
     """处理确认弹窗（Element UI MessageBox / Popconfirm / 通用模态框）。
 
     支持三种确认 UI：
@@ -762,17 +839,38 @@ async def confirm_dialog(page: Page, confirm: bool = True) -> str:
     Args:
         page: Playwright 页面对象
         confirm: True 点击确认，False 点击取消
+        ui_framework: UI 框架名称，用于选择对应的隐藏过滤器
 
     Returns:
         点击的按钮文本（如 "确定"、"确认"），失败返回空字符串
     """
     from .wait_helpers import wait_for_loading_complete
 
+    # 获取隐藏过滤器
+    hidden_filter = const.HIDDEN_FILTERS.get(ui_framework, const.HIDDEN_FILTERS['_universal'])
+
+    def _chars_all(text: str) -> str:
+        """Generate XPath character-by-character match pattern with hidden filters.
+        Example: "确定" -> "contains(.,'确') and contains(.,'定') and <hidden_filter>"
+        """
+        chars_match = " and ".join(f"contains(.,'{c}')" for c in text)
+        return f"{chars_match} and {hidden_filter}"
+
+    def _js_chars_all(text: str) -> str:
+        """Generate JS character-by-character check.
+        Example: "确定" -> "text.includes('确') && text.includes('定')"
+        """
+        return " && ".join(f"text.includes('{c}')" for c in text)
+
     try:
         # 等待确认框出现（最多 2 秒）
+        # Build JS detection code with character-split matching
+        confirm_texts_js = json.dumps(const.CONFIRM_BUTTON_TEXTS, ensure_ascii=False)
+        chars_all_checks = " || ".join(f"({_js_chars_all(t)})" for t in const.CONFIRM_BUTTON_TEXTS)
+
         for _ in range(4):
             # 检查各种确认框容器
-            has_confirm = await page.evaluate("""() => {
+            has_confirm = await page.evaluate(f"""() => {{
                 // 1. el-message-box
                 const msgBox = document.querySelector('.el-message-box__wrapper:not([style*="display: none"])');
                 if (msgBox && msgBox.offsetWidth > 0) return 'message-box';
@@ -783,19 +881,24 @@ async def confirm_dialog(page: Page, confirm: bool = True) -> str:
 
                 // 3. 通用对话框（包含确认按钮）
                 const dialogs = document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"]), .ant-modal-wrap:not([style*="display: none"])');
-                for (const dialog of dialogs) {
-                    if (dialog.offsetWidth > 0) {
+                for (const dialog of dialogs) {{
+                    if (dialog.offsetWidth > 0) {{
                         const btns = dialog.querySelectorAll('button');
-                        for (const btn of btns) {
+                        const btnTexts = [];
+                        for (const btn of btns) {{
                             const text = btn.textContent.trim();
-                            if (['确定', '确认', '是', 'OK', 'Yes'].includes(text)) {
+                            btnTexts.push(text);
+                            // Match exact text OR character-by-character (handles spaces like "确 定")
+                            if ({confirm_texts_js}.includes(text) || {chars_all_checks}) {{
                                 return 'generic-dialog';
-                            }
-                        }
-                    }
-                }
+                            }}
+                        }}
+                        // 调试：如果没有匹配，返回找到的按钮文本
+                        return {{type: 'no-match', buttons: btnTexts, expected: {confirm_texts_js}}};
+                    }}
+                }}
                 return null;
-            }""")
+            }}""")
 
             if has_confirm:
                 break
@@ -808,38 +911,143 @@ async def confirm_dialog(page: Page, confirm: bool = True) -> str:
         LOG.debug(f"检测到确认框类型: {has_confirm}")
 
         # 根据容器类型定位按钮
+        # Use XPath with character splitting to handle spaces in button text
+        confirm_xpaths = [f"//button[{_chars_all(t)}]" for t in const.CONFIRM_BUTTON_TEXTS]
+        cancel_xpaths = [f"//button[{_chars_all(t)}]" for t in const.CANCEL_BUTTON_TEXTS]
+
         if has_confirm == 'message-box':
             if confirm:
-                button = page.locator('.el-message-box__btns button.el-button--primary, .el-message-box__btns button:has-text("确定")').first
+                button = page.locator('.el-message-box__btns button.el-button--primary').first
+                # If primary button not found, try character-split XPath
+                if await button.count() == 0:
+                    for xpath in confirm_xpaths:
+                        scoped_xpath = f".el-message-box__btns {xpath}"
+                        btn = page.locator(f"xpath={scoped_xpath}").first
+                        if await btn.count() > 0:
+                            button = btn
+                            break
             else:
                 button = page.locator('.el-message-box__btns button:has-text("取消")').first
+                if await button.count() == 0:
+                    for xpath in cancel_xpaths:
+                        scoped_xpath = f".el-message-box__btns {xpath}"
+                        btn = page.locator(f"xpath={scoped_xpath}").first
+                        if await btn.count() > 0:
+                            button = btn
+                            break
 
         elif has_confirm == 'popconfirm':
             if confirm:
                 # el-popconfirm 的确认按钮在 .el-popconfirm__action 内
-                button = page.locator('.el-popconfirm__action button.el-button--primary, .el-popconfirm__action button:has-text("确定")').first
+                button = page.locator('.el-popconfirm__action button.el-button--primary').first
+                if await button.count() == 0:
+                    for xpath in confirm_xpaths:
+                        scoped_xpath = f".el-popconfirm__action {xpath}"
+                        btn = page.locator(f"xpath={scoped_xpath}").first
+                        if await btn.count() > 0:
+                            button = btn
+                            break
             else:
                 button = page.locator('.el-popconfirm__action button:has-text("取消")').first
+                if await button.count() == 0:
+                    for xpath in cancel_xpaths:
+                        scoped_xpath = f".el-popconfirm__action {xpath}"
+                        btn = page.locator(f"xpath={scoped_xpath}").first
+                        if await btn.count() > 0:
+                            button = btn
+                            break
 
         else:  # generic-dialog
             if confirm:
-                button = page.locator('button:has-text("确定"), button:has-text("确认"), button:has-text("是"), button:has-text("OK"), button:has-text("Yes")').first
+                # 首选: XPath 拆字符匹配 (处理 "确 定" 等带空格的按钮文本)
+                hidden_css = const.HIDDEN_FILTERS_CSS.get(ui_framework, const.HIDDEN_FILTERS_CSS['_universal'])
+                button = None
+                for xpath in confirm_xpaths:
+                    btn = page.locator(f"xpath={xpath}").first
+                    if await btn.count() > 0:
+                        button = btn
+                        break
+                # 降级: CSS has-text 匹配 (精确子串匹配，速度更快但不处理空格)
+                if not button:
+                    confirm_sel = ", ".join(f'button:has-text("{t}"){hidden_css}' for t in const.CONFIRM_BUTTON_TEXTS)
+                    css_btn = page.locator(confirm_sel).first
+                    if await css_btn.count() > 0:
+                        button = css_btn
             else:
-                button = page.locator('button:has-text("取消"), button:has-text("Cancel"), button:has-text("否")').first
+                # 首选: XPath 拆字符匹配
+                hidden_css = const.HIDDEN_FILTERS_CSS.get(ui_framework, const.HIDDEN_FILTERS_CSS['_universal'])
+                button = None
+                for xpath in cancel_xpaths:
+                    btn = page.locator(f"xpath={xpath}").first
+                    if await btn.count() > 0:
+                        button = btn
+                        break
+                # 降级: CSS has-text 匹配
+                if not button:
+                    cancel_sel = ", ".join(f'button:has-text("{t}"){hidden_css}' for t in const.CANCEL_BUTTON_TEXTS)
+                    css_btn = page.locator(cancel_sel).first
+                    if await css_btn.count() > 0:
+                        button = css_btn
 
         if await button.count() > 0:
             button_text = await button.inner_text()
-            await button.click()
+            try:
+                await button.click(timeout=5000)
+            except Exception as click_err:
+                # dialog body 遮挡 pointer events 时，回退到 JS click
+                if "intercepts pointer events" in str(click_err):
+                    LOG.debug(f"按钮被遮挡，改用 JS click: {button_text[:20]}")
+                    await button.evaluate("el => el.click()")
+                else:
+                    raise
             await wait_for_loading_complete(page)
-            return button_text.strip()
+            # 返回原始按钮文本（保留空格），供 build_playbook 生成精确 locator
+            return button_text
 
         # 兜底：尝试常见确认按钮文本
-        for text in ['确定', '确认', '是', 'OK', 'Yes']:
-            buttons = await page.query_selector_all(f'button:has-text("{text}"):visible')
-            if buttons:
-                await buttons[0].click()
+        # 先尝试精确匹配，再尝试去空格版本
+        hidden_css = const.HIDDEN_FILTERS_CSS.get(ui_framework, const.HIDDEN_FILTERS_CSS['_universal'])
+        for text in const.CONFIRM_BUTTON_TEXTS:
+            # 精确匹配（带隐藏过滤），获取原始文本
+            clicked_info = await page.evaluate(f"""() => {{
+                const buttons = Array.from(document.querySelectorAll('button'));
+                for (const btn of buttons) {{
+                    if (btn.offsetWidth === 0 || btn.offsetHeight === 0) continue;
+                    if (btn.disabled || btn.classList.contains('is-disabled')) continue;
+                    if (btn.closest('.is-hidden') || btn.closest('[style*="display: none"]')) continue;
+                    const btnText = btn.textContent.trim();
+                    if (btnText.includes("{text}")) {{
+                        btn.click();
+                        return btnText;
+                    }}
+                }}
+                return null;
+            }}""")
+            if clicked_info:
                 await wait_for_loading_complete(page)
-                return text
+                return clicked_info
+
+        # 去空格容错：处理 "确 定" 这种带空格的按钮文本
+        for text in const.CONFIRM_BUTTON_TEXTS:
+            # 查找所有可见按钮，手动去空格匹配（含 disabled/hidden 检查）
+            clicked = await page.evaluate(f"""() => {{
+                const target = '{text}';
+                const buttons = Array.from(document.querySelectorAll('button'));
+                for (const btn of buttons) {{
+                    if (btn.offsetWidth === 0 || btn.offsetHeight === 0) continue;
+                    if (btn.disabled || btn.classList.contains('is-disabled')) continue;
+                    if (btn.closest('.is-hidden') || btn.closest('[style*="display: none"]')) continue;
+                    const btnText = btn.textContent.trim().replace(/\\s+/g, '');
+                    if (btnText.includes(target)) {{
+                        btn.click();
+                        return btn.textContent.trim();  // 返回原始文本（保留空格）
+                    }}
+                }}
+                return null;
+            }}""")
+            if clicked:
+                await wait_for_loading_complete(page)
+                return clicked
 
         return ""
 
@@ -858,17 +1066,37 @@ async def close_dialog(page: Page) -> bool:
     from .wait_helpers import wait_for_loading_complete
 
     try:
-        # 检查是否有可见的关闭按钮（3秒超时）
-        close_btn = page.locator('.el-dialog__close:visible, .el-message-box__close:visible').first
+        # 先检查页面是否已崩溃
+        try:
+            await page.evaluate("() => true")
+        except Exception as e:
+            if "crashed" in str(e).lower():
+                LOG.warning("页面已崩溃，跳过关闭弹窗")
+                return False
+
+        # 检查是否有可见的关闭按钮（3秒超时，含 disabled 过滤）
+        close_btn = page.locator('.el-dialog__close:visible:not([disabled]), .el-message-box__close:visible:not([disabled])').first
         if await close_btn.count() > 0:
-            await close_btn.click(timeout=3000)
-            await wait_for_loading_complete(page)
-            return True
+            try:
+                await close_btn.click(timeout=3000)
+                await wait_for_loading_complete(page)
+                return True
+            except Exception as e:
+                if "crashed" in str(e).lower():
+                    LOG.warning("点击关闭按钮时页面崩溃")
+                    return False
+                raise
 
         # 无可见关闭按钮，按 Escape
-        await page.keyboard.press('Escape')
-        await wait_for_loading_complete(page)
-        return True
+        try:
+            await page.keyboard.press('Escape')
+            await wait_for_loading_complete(page)
+            return True
+        except Exception as e:
+            if "crashed" in str(e).lower():
+                LOG.warning("按 Escape 时页面崩溃")
+                return False
+            raise
 
     except Exception as e:
         LOG.debug(f"关闭弹窗: {e}")

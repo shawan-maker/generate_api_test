@@ -55,8 +55,8 @@ def parse_args():
     ap.add_argument("--offline", action="store_true",
                     help="离线模式：从已有 discovered.json 重新分析+生成，不启动浏览器")
     ap.add_argument("--stage", type=str, default="all",
-                    choices=["1", "2", "34", "4", "all"],
-                    help="执行阶段: 1=探测, 2=捕获, 34=分析, 4=生成, all=全部")
+                    choices=["1", "2", "34", "4", "5", "all"],
+                    help="执行阶段: 1=探测, 2=捕获, 34=分析+生成, 5=导出, all=全部")
     ap.add_argument("--version", type=str, default=None,
                     help="脚本版本号（如 v2.1.0）。默认读 .api_version / API_VERSION 环境变量 / v1.0.0")
     # ---- 批量发现 ----
@@ -897,6 +897,22 @@ async def main():
                 LOG.info("\n⚠️ 浏览器保持打开，手动关闭后按 Ctrl+C 退出。")
         return
 
+    # Stage 5 独立运行（无需 --url，仅需 --module）
+    if args.stage == "5":
+        if not args.module:
+            LOG.error("Stage 5 需要 --module 参数")
+            sys.exit(1)
+        version = args.version or ver_mod.resolve_version(project_dir)
+        manifest_path = project_dir / "kb" / "module_discovered" / f"{args.module}_manifest.json"
+        if not manifest_path.exists():
+            LOG.error(f"❌ manifest 不存在: {manifest_path}")
+            LOG.error("   请先运行 --stage 34 生成 manifest")
+            sys.exit(1)
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+        LOG.info(f"已从文件加载 manifest: {manifest_path}")
+        run_stage5(manifest, project_dir, args.module, version=version)
+        return
+
     # 单模块模式（原有逻辑）
     if not args.url or not args.module:
         LOG.error("单模块模式需要 --url 和 --module 参数")
@@ -1018,6 +1034,19 @@ async def main():
         # ---- 各阶段执行 ----
         stage = args.stage
 
+        # Stage 5 独立运行：跳过 1/2/34，直接加载 manifest 并导出
+        if stage == "5":
+            version = args.version or ver_mod.resolve_version(project_dir)
+            manifest_path = project_dir / "kb" / "module_discovered" / f"{args.module}_manifest.json"
+            if not manifest_path.exists():
+                LOG.error(f"❌ manifest 不存在: {manifest_path}")
+                LOG.error("   请先运行 --stage 34 生成 manifest")
+                return
+            manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+            LOG.info(f"已从文件加载 manifest: {manifest_path}")
+            run_stage5(manifest, project_dir, args.module, version=version)
+            return
+
         # Stage 1
         if stage in ("1", "all"):
             ui_result = await run_stage1(page, project_dir, args.module, target_url)
@@ -1112,13 +1141,20 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
         modules = [m for m in modules if filter_tags & set(m.get("tags", []))]
         LOG.info(f"标签过滤后: {len(modules)} 个模块")
 
-    # 增量检查
+    # 增量检查（Stage 5 不需要增量过滤，所有有 manifest 的模块都要处理）
     to_discover = []
     for m in modules:
         name = m["name"]
         url_raw = m["url"]
         target_url = base_url.rstrip("/") + url_raw if not url_raw.startswith("http") else url_raw
-        if _needs_rediscovery(project_dir, name, target_url, force=args.force):
+        if stage == "5":
+            # Stage 5: 只要有 manifest 就处理
+            manifest_path = project_dir / "kb" / "module_discovered" / f"{name}_manifest.json"
+            if manifest_path.exists():
+                to_discover.append((name, target_url, url_raw))
+            else:
+                LOG.info(f"  ⏭️  跳过 [{name}]（无 manifest 文件）")
+        elif _needs_rediscovery(project_dir, name, target_url, force=args.force):
             to_discover.append((name, target_url, url_raw))
         else:
             LOG.info(f"  ⏭️  跳过 [{name}]（已有结果，使用 --force 强制重新发现）")
@@ -1141,6 +1177,19 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
         LOG.info(f"{'='*60}")
 
         try:
+            # Stage 5 独立运行：跳过 1/2/34，直接加载 manifest 并导出
+            if stage == "5":
+                manifest_path = project_dir / "kb" / "module_discovered" / f"{name}_manifest.json"
+                if not manifest_path.exists():
+                    LOG.warning(f"  ⏭️ {name}: manifest 不存在，跳过")
+                    results.append({"name": name, "status": "no_manifest"})
+                    continue
+                manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+                run_stage5(manifest, project_dir, name,
+                           version=args.version or ver_mod.resolve_version(project_dir))
+                results.append({"name": name, "status": "ok"})
+                continue
+
             # Stage 1
             if stage in ("1", "all"):
                 ui_result = await run_stage1(page, project_dir, name, target_url)
@@ -1174,7 +1223,7 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
                 result = run_stage34(project_dir, name, profile, target_url,
                                      version=args.version or ver_mod.resolve_version(project_dir))
                 if result:
-                    script_path, _, manifest = result
+                    _, script_path, manifest = result
                     LOG.info(f"  ✅ {name}: 脚本已生成 → {script_path}")
 
             # Stage 4 验证：运行脚本并检查结果

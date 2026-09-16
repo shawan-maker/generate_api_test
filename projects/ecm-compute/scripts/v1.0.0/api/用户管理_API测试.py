@@ -1,7 +1,7 @@
 """
 用户管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-15 18:06:36
-目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/user
+生成时间: 2026-09-16 09:54:09
+目标URL: https://10.151.61.248D:/Program Files (x86)/Git/estack/web/estack/user-center/user-manage/user
 
 执行流程:
   1. 创建用户
@@ -38,7 +38,7 @@ MANIFEST = {
     "name": "用户管理",
     "base_url": "https://10.151.61.248",
     "login_url": "https://10.151.61.248/estack/web/estack/login",
-    "target_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/user"
+    "target_url": "https://10.151.61.248D:/Program Files (x86)/Git/estack/web/estack/user-center/user-manage/user"
   },
   "response_contract": {
     "envelope_keys": [
@@ -91,12 +91,12 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userName": "AT_test_466517",
-        "password": "Whfq4T4/55OQ53KfAOkF3A3VRwhXAPgMi2JFKfUdPD4O7nc3zjz6s7JSNN3YvcS5tuDof9UpVLIDBEit7CAUHNnEC84NzQtmFwJWzgyk4B2CDytTjx7gdYgmdUF63QYMfFsv6Ii3zGxh+1BYeHH+IjoTJSETykGj3ClX64hPBQA=",
-        "name": "AT_test_466517",
-        "email": "TsNsCb+gq+Xw0xPsr94ajcFD/kD70FStYidymDG99H9CB2+/vYCNPrjRrvns6lvjrny7Zvr1hBpaSz22MGph2eZgS16LS/fgjrErmSu4JfUYndsnbzLsXhGi7zgNN3vJuAS4erwuvz71/J1rMSFuHc21MjtYdeKfMugcKAGC8Y0=",
-        "phone": "Mt3Ex4wmroBQkJImK4s1GZ2JDJuijBDDJNLAkcPysHQiVlZhhGs2gtpxejcTBztbOvjrOa7zTF1xuVVl4WTGQdkyL/QqD3HEnQCwYI9BbFpOqJPsCxrnt2891MjFFcms8x8FUPzvSxaEUukrnUH5QL16FDUQFNYJ0L/YkJh/ogE=",
-        "description": "auto_desc_466517",
+        "userName": "AT_test_521452",
+        "password": "H8NUmVnyOaHblUbcwNkNdRxb+ASuBwaQ/ePQk/btny0y5JT+kJZrv814N5RHi8kO+uIq+vYUuKsYYNJWAdFiY3DKPCVeXvQHHTT94DsM21hTnBBrBhgkYGPjIIS63r6jBQSRKNhYCwrvwlpUhVvg2eUFRUvpm4ThUgdPs9UhpeY=",
+        "name": "AT_test_521452",
+        "email": "ANHpfros+wQZh1fMwHb+rOQebGA9+W7eHYiFqNh5LA0v71okLPOBkUSz0vy9t9dGtHWNBbNhBsfmNgLcKUHmTgsBvhn8upOQTfx57LyOeKjGdI7zAhZtDXoQGIng7ERhm4r8KnZmCLBGuKO4OMEpKe5LAqpdkyY1q75SNd6lncA=",
+        "phone": "FK+zyF4yHVgRP9k4CPKQViySEm1LQUoephjlq8Pbv22kMePfal6GNrQegLpexecVodOOCz/eMeupCF1aO2fHY4EENuXHkEbS/Ax/5Z8ItAPK52ZdJioUGDKJBm16X8Cj64CnCT35szBS3olVxv5Gji0bZeappTKx3feBEqTcj/8=",
+        "description": "auto_desc_521452",
         "policyIds": [
           "1f8e392309fc414c9d77d45d0315fedc"
         ],
@@ -192,9 +192,9 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "36084183cec142178a32d51f35763414",
-        "name": "AT_test_466517",
-        "description": "auto_desc_466517",
+        "userId": "5c66380b79bc46db913dc83a04793142",
+        "name": "AT_test_521452",
+        "description": "auto_desc_521452",
         "tenantId": "42ffdba38c58484f9be2bc1adf1672e6",
         "countryCode": "+86",
         "adminId": "93552edc908e4dadae761fff1fd0f24c"
@@ -257,7 +257,7 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "36084183cec142178a32d51f35763414",
+        "userId": "5c66380b79bc46db913dc83a04793142",
         "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
         "adminId": "93552edc908e4dadae761fff1fd0f24c"
       },
@@ -356,7 +356,7 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "36084183cec142178a32d51f35763414",
+        "userId": "5c66380b79bc46db913dc83a04793142",
         "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
         "adminId": "93552edc908e4dadae761fff1fd0f24c"
       },

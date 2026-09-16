@@ -129,41 +129,79 @@ def save_script_to_file(script: str, project_dir: str, module_name: str, version
 
 
 def _sync_runtime_lib(api_dir: Path):
-    """将项目根 lib/ 下的运行时文件复制到 api/lib/。"""
+    """将项目根 lib/ 下的运行时文件复制到 api/lib/。
+
+    只同步 API 测试脚本真正需要的文件（依赖树追踪），
+    废代码文件不再同步，旧版本残留自动清理。
+
+    依赖关系:
+      用户管理_API测试.py
+      ├── lib/runtime/test_runtime.py     (直接导入)
+      │   ├── lib.cookie_client           (懒加载，cookie 鉴权)
+      │   └── lib.test_report             (懒加载，报告生成)
+      └── lib/runtime/global_pre_apis.py  (条件导入，前置 API)
+    """
+    import shutil
     src_lib = Path(__file__).resolve().parent.parent / "lib"
     dst_lib = api_dir / "lib"
     dst_lib.mkdir(parents=True, exist_ok=True)
 
-    # 生成脚本同步的运行时文件（相对于 src_lib 的路径）
-    # 包含子目录：runtime/、report/、auth/
-    files = [
-        "__init__.py",
-        "runtime/__init__.py",
-        "runtime/test_runtime.py",
-        "runtime/test_runner.py",
-        "runtime/run_history.py",
-        "runtime/global_pre_apis.py",
-        "report/__init__.py",
-        "report/test_report.py",
-        "auth/__init__.py",
-        "auth/cookie_client.py",
+    # 同步映射表: (源相对路径, 目标相对路径)
+    # 支持重命名（如 auth/cookie_client.py → cookie_client.py）
+    sync_map = [
+        # 顶层包标记
+        ("__init__.py", "__init__.py"),
+        # runtime 子包: 只同步真正使用的模块
+        ("runtime/__init__.py", "runtime/__init__.py"),
+        ("runtime/test_runtime.py", "runtime/test_runtime.py"),
+        ("runtime/global_pre_apis.py", "runtime/global_pre_apis.py"),
+        # 扁平文件: 从子目录提取到 lib/ 根（test_runtime.py 的懒加载依赖）
+        ("auth/cookie_client.py", "cookie_client.py"),
+        ("report/test_report.py", "test_report.py"),
     ]
-    for rel_path in files:
-        src = src_lib / rel_path
-        dst = dst_lib / rel_path
+
+    for src_rel, dst_rel in sync_map:
+        src = src_lib / src_rel
+        dst = dst_lib / dst_rel
         if not src.exists():
+            LOG.warning(f"  运行时同步: 源文件不存在 {src_rel}")
             continue
-        # 确保目标目录存在
         dst.parent.mkdir(parents=True, exist_ok=True)
         src_content = src.read_text(encoding="utf-8")
+        # __init__.py 写入最小 stub（源码中的 __init__.py 可能 re-export 废文件）
+        if src_rel.endswith("__init__.py"):
+            src_content = f'"""{src_rel.replace("/", ".")}"""\n'
         if dst.exists() and dst.read_text(encoding="utf-8") == src_content:
             continue  # 内容相同，跳过
         dst.write_text(src_content, encoding="utf-8")
-        LOG.info(f"  运行时同步: {rel_path}")
+        LOG.info(f"  运行时同步: {dst_rel}")
 
-    # 清理旧版登录文件（生成脚本不再包含滑块登录）
+    # ---- 清理旧版残留 ----
+    # 1. 删除已废弃的子包目录（auth/、report/ 不再需要）
+    for dead_dir in ["auth", "report"]:
+        dead_path = dst_lib / dead_dir
+        if dead_path.exists():
+            shutil.rmtree(dead_path)
+            LOG.info(f"  清理旧目录: lib/{dead_dir}/")
+
+    # 2. 删除旧版登录文件
     for old_file in ["auth.py", "slider.py"]:
         p = dst_lib / old_file
         if p.exists():
             p.unlink()
-            LOG.info(f"  清理旧文件: {old_file}")
+            LOG.info(f"  清理旧文件: lib/{old_file}")
+
+    # 3. 删除已废弃的 runtime 子模块（不再使用）
+    for dead_file in ["runtime/test_runner.py", "runtime/run_history.py"]:
+        p = dst_lib / dead_file
+        if p.exists():
+            p.unlink()
+            LOG.info(f"  清理旧文件: lib/{dead_file}")
+
+    # 4. 删除历史残留的平铺重复文件（旧版同步机制遗留的旧副本）
+    #    注意: test_report.py 是有效文件（test_runtime.py 的懒加载依赖），保留
+    for flat_dead in ["test_runtime.py", "global_pre_apis.py"]:
+        p = dst_lib / flat_dead
+        if p.exists():
+            p.unlink()
+            LOG.info(f"  清理旧文件: lib/{flat_dead}")
