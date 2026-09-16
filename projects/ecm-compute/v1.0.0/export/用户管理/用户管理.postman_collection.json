@@ -1,0 +1,577 @@
+{
+  "info": {
+    "_postman_id": "f444cbc5-605d-4ab6-a1b6-6eccaff091bb",
+    "name": "用户管理 API 测试",
+    "description": "由 module_discovery Stage 5 自动导出",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://10.151.61.248",
+      "type": "string"
+    },
+    {
+      "key": "Estack-Language",
+      "value": "zh-CN",
+      "type": "string"
+    },
+    {
+      "key": "entity_adminId",
+      "value": "",
+      "type": "string",
+      "description": "由 获取当前用户信息 提取"
+    },
+    {
+      "key": "entity_countryCode",
+      "value": "",
+      "type": "string",
+      "description": "由 获取当前用户信息 提取"
+    },
+    {
+      "key": "entity_id",
+      "value": "",
+      "type": "string",
+      "description": "由 获取当前用户信息 提取"
+    },
+    {
+      "key": "entity_tenantId",
+      "value": "",
+      "type": "string",
+      "description": "由 获取当前用户信息 提取"
+    },
+    {
+      "key": "tenantId",
+      "value": "",
+      "type": "string",
+      "description": "由 获取当前用户信息 提取"
+    },
+    {
+      "key": "adminId",
+      "value": "",
+      "type": "string",
+      "description": "由 获取当前用户信息 提取"
+    },
+    {
+      "key": "entity_0_id",
+      "value": "",
+      "type": "string",
+      "description": "由 前置 API: display-by-role 提取"
+    },
+    {
+      "key": "entity_userId",
+      "value": "",
+      "type": "string",
+      "description": "由 前置 API: reset 提取"
+    }
+  ],
+  "item": [
+    {
+      "name": "00_前置操作",
+      "item": [
+        {
+          "name": "unknown",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Status OK', function() {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "var entity_adminId = jsonData.entity.adminId;",
+                  "if (entity_adminId !== undefined) pm.environment.set('entity_adminId', entity_adminId);",
+                  "var entity_countryCode = jsonData.entity.countryCode;",
+                  "if (entity_countryCode !== undefined) pm.environment.set('entity_countryCode', entity_countryCode);",
+                  "var entity_id = jsonData.entity.id;",
+                  "if (entity_id !== undefined) pm.environment.set('entity_id', entity_id);",
+                  "var entity_tenantId = jsonData.entity.tenantId;",
+                  "if (entity_tenantId !== undefined) pm.environment.set('entity_tenantId', entity_tenantId);",
+                  "var tenantId = jsonData.entity.tenantId;",
+                  "if (tenantId !== undefined) pm.environment.set('tenantId', tenantId);",
+                  "var adminId = jsonData.entity.id;",
+                  "if (adminId !== undefined) pm.environment.set('adminId', adminId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "unknown",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Status OK', function() {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "var entity_0_id = jsonData.entity[0].id;",
+                  "if (entity_0_id !== undefined) pm.environment.set('entity_0_id', entity_0_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "unknown",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Status OK', function() {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "var entity_userId = jsonData.entity.userId;",
+                  "if (entity_userId !== undefined) pm.environment.set('entity_userId', entity_userId);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01_业务操作",
+      "item": [
+        {
+          "name": "01_创建用户",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/users"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userName\": \"{{name_userName}}\",\n  \"password\": \"H8NUmVnyOaHblUbcwNkNdRxb+ASuBwaQ/ePQk/btny0y5JT+kJZrv814N5RHi8kO+uIq+vYUuKsYYNJWAdFiY3DKPCVeXvQHHTT94DsM21hTnBBrBhgkYGPjIIS63r6jBQSRKNhYCwrvwlpUhVvg2eUFRUvpm4ThUgdPs9UhpeY=\",\n  \"name\": \"{{name_name}}\",\n  \"email\": \"ANHpfros+wQZh1fMwHb+rOQebGA9+W7eHYiFqNh5LA0v71okLPOBkUSz0vy9t9dGtHWNBbNhBsfmNgLcKUHmTgsBvhn8upOQTfx57LyOeKjGdI7zAhZtDXoQGIng7ERhm4r8KnZmCLBGuKO4OMEpKe5LAqpdkyY1q75SNd6lncA=\",\n  \"phone\": \"FK+zyF4yHVgRP9k4CPKQViySEm1LQUoephjlq8Pbv22kMePfal6GNrQegLpexecVodOOCz/eMeupCF1aO2fHY4EENuXHkEbS/Ax/5Z8ItAPK52ZdJioUGDKJBm16X8Cj64CnCT35szBS3olVxv5Gji0bZeappTKx3feBEqTcj/8=\",\n  \"description\": \"{{mutable_description}}\",\n  \"policyIds\": [\n    \"1f8e392309fc414c9d77d45d0315fedc\"\n  ],\n  \"adminId\": \"{{entity_adminId}}\",\n  \"tenantId\": \"{{entity_0_id}}\",\n  \"countryCode\": \"{{entity_countryCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Status OK', function() {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "var createdId = jsonData.entity.id;",
+                  "if (createdId) pm.environment.set('id', createdId);",
+                  "",
+                  "var nameVal = jsonData.entity && jsonData.entity.userName;",
+                  "if (nameVal) pm.environment.set('name_userName', nameVal);",
+                  "var nameVal = jsonData.entity && jsonData.entity.name;",
+                  "if (nameVal) pm.environment.set('name_name', nameVal);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02_搜索验证（创建用户后）",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/tenants/users"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "03_query",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/tenants/users"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "04_编辑",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/{id}"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{entity_userId}}\",\n  \"name\": \"{{name_name}}\",\n  \"description\": \"{{mutable_description}}\",\n  \"tenantId\": \"{{entity_0_id}}\",\n  \"countryCode\": \"{{entity_countryCode}}\",\n  \"adminId\": \"{{entity_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "05_搜索验证（编辑后）",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/tenants/users"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06_冻结",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/{id}/suspend"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{entity_userId}}\",\n  \"tenantId\": \"{{entity_tenantId}}\",\n  \"adminId\": \"{{entity_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "07_搜索验证（冻结后）",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/tenants/users"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "08_启用",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/{id}/enable"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"{{entity_tenantId}}\",\n  \"adminId\": \"{{entity_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "09_搜索验证（启用后）",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/tenants/users"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "10_锁定",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/lock/{id}"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{entity_userId}}\",\n  \"tenantId\": \"{{entity_tenantId}}\",\n  \"adminId\": \"{{entity_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "11_搜索验证（锁定后）",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/tenants/users"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "12_重置密码",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/password-policy"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "13_迁移",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/tenants/users"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "14_删除",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/{id}"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"{{entity_tenantId}}\",\n  \"adminId\": \"{{entity_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "15_搜索验证（删除后）",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/tenants/users"
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

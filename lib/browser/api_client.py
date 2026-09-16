@@ -86,7 +86,7 @@ def _safe_fn_name(crud: str, resource: str, service: str) -> str:
     与 generators/gen_api_layer._safe_fn_name 保持一致的命名规则,
     避免两套命名逻辑漂移。直接复用生成器中的实现。
     """
-    from generators.gen_api_layer import _safe_fn_name as _gen
+    from core.generators.gen_api_layer import _safe_fn_name as _gen
     return _gen("", crud, resource, service, "")
 
 
@@ -97,7 +97,7 @@ def _module_path(project_id: str, service: str, resource: str) -> Path:
     if not catalog_path.exists():
         raise FileNotFoundError(f"未找到 catalog: {catalog_path}")
     catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
-    from generators.menu_tools import get_resource_dir
+    from core.generators.menu_tools import get_resource_dir
     rel = get_resource_dir(str(proj_dir), catalog, f"{service}/{resource}")
     module_name = resource.replace("-", "_").replace(".", "_") or "resource"
     if rel == "未归类":

@@ -1,0 +1,128 @@
+{
+  "discovery_time": "2026-09-16T13:47:16",
+  "source_modules": [
+    "用户管理",
+    "角色管理"
+  ],
+  "pre_apis": [
+    {
+      "id": "current_user",
+      "name": "获取当前用户信息",
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/users/current-user",
+      "extracts": [
+        {
+          "name": "entity_adminId",
+          "path": "entity.adminId",
+          "used_by": [
+            "创建用户"
+          ]
+        },
+        {
+          "name": "entity_countryCode",
+          "path": "entity.countryCode",
+          "used_by": [
+            "创建用户",
+            "编辑"
+          ]
+        },
+        {
+          "name": "entity_id",
+          "path": "entity.id",
+          "used_by": [
+            "编辑",
+            "冻结",
+            "启用",
+            "锁定",
+            "删除"
+          ]
+        },
+        {
+          "name": "entity_tenantId",
+          "path": "entity.tenantId",
+          "used_by": [
+            "冻结",
+            "启用",
+            "锁定",
+            "删除"
+          ]
+        },
+        {
+          "name": "tenantId",
+          "path": "entity.tenantId",
+          "used_by": [
+            "query"
+          ]
+        },
+        {
+          "name": "adminId",
+          "path": "entity.id",
+          "used_by": [
+            "query"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {},
+      "depends_on": [],
+      "discovered_from": [
+        "用户管理"
+      ]
+    },
+    {
+      "id": "display_by_role",
+      "name": "前置 API: display-by-role",
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/tenants/display-by-role",
+      "extracts": [
+        {
+          "name": "entity_0_id",
+          "path": "entity[0].id",
+          "used_by": [
+            "创建用户",
+            "编辑"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {},
+      "depends_on": [],
+      "discovered_from": [
+        "用户管理"
+      ]
+    },
+    {
+      "id": "reset",
+      "name": "前置 API: reset",
+      "method": "POST",
+      "pathname": "/estack/api/estack/draco/v1/password-reset/reset",
+      "extracts": [
+        {
+          "name": "entity_userId",
+          "path": "entity.userId",
+          "used_by": [
+            "编辑",
+            "冻结",
+            "锁定"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {},
+      "depends_on": [],
+      "discovered_from": [
+        "用户管理"
+      ]
+    }
+  ],
+  "global_context_fields": [
+    "entity_adminId",
+    "entity_countryCode",
+    "entity_id",
+    "entity_tenantId",
+    "tenantId",
+    "adminId",
+    "entity_0_id",
+    "entity_userId"
+  ]
+}

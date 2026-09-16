@@ -10,16 +10,16 @@ test_module_discovery.py — module_discovery 模块单元测试
 import pytest
 from unittest.mock import MagicMock
 
-from module_discovery.endpoint_classifier import (
+from core.discovery.endpoint_classifier import (
     EndpointClassifier, deduplicate_calls, _classify_by_behavior,
     _response_has_entity_id, _call_has_distinctive_params,
     _request_body_field_count, _count_pathname_windows,
 )
-from module_discovery.stage_validators import (
+from core.discovery.stage_validators import (
     validate_stage1, validate_stage2, validate_stage3, validate_stage4
 )
 # 导入 analyze_flow 中仍存在的函数
-from module_discovery.analyze_flow import _identify_infrastructure_apis
+from core.discovery.analyze_flow import _identify_infrastructure_apis
 
 
 # ============================================================

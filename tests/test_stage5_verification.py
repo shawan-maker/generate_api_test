@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 def test_export_artifacts():
     """测试导出模块基本功能"""
-    from module_discovery.export_artifacts import (
+    from core.discovery.export_artifacts import (
         export_postman_collection,
         export_helpers,
         export_excel_params,
@@ -121,7 +121,7 @@ def test_export_artifacts():
 
 def test_pre_api_tracking():
     """测试前置 API 依赖链追踪"""
-    from module_discovery.analyze_flow import trace_pre_api_dependencies
+    from core.discovery.analyze_flow import trace_pre_api_dependencies
 
     # 模拟前置 API 候选
     pre_api_candidates = [

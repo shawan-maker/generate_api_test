@@ -5,8 +5,8 @@ import pytest
 import json
 import tempfile
 from pathlib import Path
-from module_discovery.capture_apis import _identify_pre_api_candidates
-from module_discovery.pre_api_merger import merge_pre_apis_across_modules
+from core.discovery.capture_apis import _identify_pre_api_candidates
+from core.discovery.pre_api_merger import merge_pre_apis_across_modules
 from lib.runtime.global_pre_apis import GlobalPreApiExecutor
 
 

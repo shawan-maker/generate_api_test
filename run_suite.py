@@ -39,9 +39,9 @@ def find_all_test_scripts(project_name: str = None) -> list:
     scripts = []
 
     if project_name:
-        pattern = PROJECT_ROOT / "projects" / project_name / "scripts" / "*" / "api" / "*_API测试.py"
+        pattern = PROJECT_ROOT / "projects" / project_name / "*" / "api" / "*_API测试.py"
     else:
-        pattern = PROJECT_ROOT / "projects" / "*" / "scripts" / "*" / "api" / "*_API测试.py"
+        pattern = PROJECT_ROOT / "projects" / "*" / "*" / "api" / "*_API测试.py"
 
     for script_path in sorted(glob.glob(str(pattern))):
         path = Path(script_path)
@@ -66,9 +66,8 @@ def _execute_and_persist_global_pre_apis(project_dir: Path) -> bool:
     import json
 
     # 查找 pre_apis_config.json
-    scripts_base = project_dir / "scripts"
     config_path = None
-    for version_dir in sorted(scripts_base.glob("v*")):
+    for version_dir in sorted(project_dir.glob("v*")):
         candidate = version_dir / "api" / "pre_apis_config.json"
         if candidate.exists():
             config_path = candidate
@@ -107,7 +106,8 @@ def _execute_and_persist_global_pre_apis(project_dir: Path) -> bool:
     # 使用 cookie-based 认证
     try:
         from lib.auth.cookie_client import require_auth
-        config_dir = project_dir / "output" / "config"
+        from core.discovery.path_mapper import get_workspace_dir
+        config_dir = get_workspace_dir(project_dir) / "output" / "config"
         auth_config = (profile or {}).get("auth", {})
         session = require_auth(str(config_dir), auth_config)
     except Exception as e:

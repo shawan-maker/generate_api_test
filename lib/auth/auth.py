@@ -24,7 +24,7 @@ from typing import Optional
 
 from . import slider
 try:
-    from module_discovery import const as _const
+    from core.discovery import const as _const
 except ImportError:
     _const = None
 
