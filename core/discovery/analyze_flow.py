@@ -220,6 +220,18 @@ def _build_core_apis_from_core_api_map(core_api_map: dict, infra_apis: set) -> d
 
         core_apis[target_cat].append(selected)
 
+        # ★ 保留其他写操作候选（操作链）
+        others = [
+            c for c in candidates
+            if c is not selected
+            and c.get("method", "").upper() in ("POST", "PUT", "PATCH", "DELETE")
+            and c.get("body_field_count", 0) > 0
+        ]
+        for other in others:
+            core_apis[target_cat].append(other)
+            LOG.info(f"  操作链: {action_name} 追加 "
+                     f"{other['method']} {other['pathname'].split('/')[-1]}")
+
     return core_apis
 
 
@@ -361,32 +373,34 @@ def _derive_dependencies(core_apis: dict, response_samples: dict, operation_orde
     # 1. 按 operation_order 顺序找 ID 生产者（数据驱动，不依赖操作名）
     for action in operation_order:
         endpoints = core_apis.get(action, [])
-        for ep in endpoints:
-            pn = ep["pathname"]
-            samples = response_samples.get(pn, [])
-            for s in samples[:1]:
-                try:
-                    body = json.loads(s["body"]) if isinstance(s["body"], str) else {}
-                except Exception as e:
-                    LOG.debug(f"解析响应样本失败 ({pn}): {e}")
-                    continue
+        if not endpoints:
+            continue
+        ep = endpoints[0]  # 只处理 main endpoint，避免 chain candidate 污染
+        pn = ep["pathname"]
+        samples = response_samples.get(pn, [])
+        for s in samples[:1]:
+            try:
+                body = json.loads(s["body"]) if isinstance(s["body"], str) else {}
+            except Exception as e:
+                LOG.debug(f"解析响应样本失败 ({pn}): {e}")
+                continue
 
-                # 递归提取 ID 字段
-                found_ids = _extract_ids_recursive(body, path="", max_depth=4)
+            # 递归提取 ID 字段
+            found_ids = _extract_ids_recursive(body, path="", max_depth=4)
 
-                for field_path, field_name, sample_value in found_ids:
-                    if field_name not in id_field_details:
-                        id_field_details[field_name] = {
-                            "source_action": action,
-                            "sample_value": sample_value,
-                            "path": field_path,
-                        }
-                        LOG.debug(f"  发现 ID 字段: {field_path} = {sample_value} (来自 {action})")
+            for field_path, field_name, sample_value in found_ids:
+                if field_name not in id_field_details:
+                    id_field_details[field_name] = {
+                        "source_action": action,
+                        "sample_value": sample_value,
+                        "path": field_path,
+                    }
+                    LOG.debug(f"  发现 ID 字段: {field_path} = {sample_value} (来自 {action})")
 
-                        # 第一个找到 ID 的操作即为 ID 生产者
-                        if id_producer is None:
-                            id_producer = action
-                            LOG.debug(f"  ID 生产者: {action}")
+                    # 第一个找到 ID 的操作即为 ID 生产者
+                    if id_producer is None:
+                        id_producer = action
+                        LOG.debug(f"  ID 生产者: {action}")
 
         # 如果已找到 ID 生产者，停止扫描
         if id_producer:
@@ -397,38 +411,40 @@ def _derive_dependencies(core_apis: dict, response_samples: dict, operation_orde
         if action == id_producer:
             continue  # 跳过 ID 生产者本身
 
-        for ep in endpoints:
-            body_sample = ep.get("request_body_sample") or (
-                ep.get("bodies")[0] if ep.get("bodies") else None)
-            if not body_sample:
-                continue
-            try:
-                req_body = json.loads(body_sample) if isinstance(body_sample, str) else body_sample
-            except Exception as e:
-                LOG.debug(f"解析请求体 JSON 失败: {e}")
-                continue
+        if not endpoints:
+            continue
+        ep = endpoints[0]  # 只处理 main endpoint，避免 chain candidate 污染
+        body_sample = ep.get("request_body_sample") or (
+            ep.get("bodies")[0] if ep.get("bodies") else None)
+        if not body_sample:
+            continue
+        try:
+            req_body = json.loads(body_sample) if isinstance(body_sample, str) else body_sample
+        except Exception as e:
+            LOG.debug(f"解析请求体 JSON 失败: {e}")
+            continue
 
-            if isinstance(req_body, list):
-                # 数组格式（如 batch delete ["id1", "id2"]）
-                if req_body and isinstance(req_body[0], str) and len(req_body[0]) >= 8:
-                    injections["__array_items__"] = {
-                        "source": id_producer or "unknown",
-                        "source_path": "entity.id",
-                    }
-                continue
+        if isinstance(req_body, list):
+            # 数组格式（如 batch delete ["id1", "id2"]）
+            if req_body and isinstance(req_body[0], str) and len(req_body[0]) >= 8:
+                injections["__array_items__"] = {
+                    "source": id_producer or "unknown",
+                    "source_path": "entity.id",
+                }
+            continue
 
-            if not isinstance(req_body, dict):
-                continue
+        if not isinstance(req_body, dict):
+            continue
 
-            # 检查请求体中是否包含 ID 字段
-            for fname in const.COMMON_ID_FIELDS:
-                if fname in req_body and fname not in injections:
-                    injections[fname] = {
-                        "source": id_field_details.get(fname, {}).get(
-                            "source_action",
-                            id_producer or "unknown"),
-                        "source_path": id_field_details.get(fname, {}).get("path", fname),
-                    }
+        # 检查请求体中是否包含 ID 字段
+        for fname in const.COMMON_ID_FIELDS:
+            if fname in req_body and fname not in injections:
+                injections[fname] = {
+                    "source": id_field_details.get(fname, {}).get(
+                        "source_action",
+                        id_producer or "unknown"),
+                    "source_path": id_field_details.get(fname, {}).get("path", fname),
+                }
 
     result = {
         "id_producer": id_producer,
@@ -494,35 +510,37 @@ def _derive_state_rules(core_apis: dict, response_samples: dict, id_producer: st
     state_values = {}  # {crud_category: state_value}
 
     for category, endpoints in core_apis.items():
-        for ep in endpoints:
-            pn = ep["pathname"]
-            samples = response_samples.get(pn, [])
-            for s in samples[:1]:
-                try:
-                    body = json.loads(s["body"]) if isinstance(s["body"], str) else {}
-                except Exception as e:
-                    LOG.debug(f"解析状态断言响应样本失败 ({pn}): {e}")
-                    continue
-                entity = _extract_entity_with_fallback(body)
-                if isinstance(entity, dict):
-                    vals = _find_state_value(entity)
+        if not endpoints:
+            continue
+        ep = endpoints[0]  # 只处理 main endpoint，避免 chain candidate 污染
+        pn = ep["pathname"]
+        samples = response_samples.get(pn, [])
+        for s in samples[:1]:
+            try:
+                body = json.loads(s["body"]) if isinstance(s["body"], str) else {}
+            except Exception as e:
+                LOG.debug(f"解析状态断言响应样本失败 ({pn}): {e}")
+                continue
+            entity = _extract_entity_with_fallback(body)
+            if isinstance(entity, dict):
+                vals = _find_state_value(entity)
+                if vals:
+                    if state_field is None:
+                        state_field = vals["field"]
+                    if vals["field"] == state_field:
+                        if category not in state_values:
+                            state_values[category] = vals["value"]
+            elif isinstance(entity, list) and len(entity) > 0:
+                # 实体是列表，检查第一个元素的状态
+                first = entity[0]
+                if isinstance(first, dict):
+                    vals = _find_state_value(first)
                     if vals:
                         if state_field is None:
                             state_field = vals["field"]
                         if vals["field"] == state_field:
                             if category not in state_values:
                                 state_values[category] = vals["value"]
-                elif isinstance(entity, list) and len(entity) > 0:
-                    # 实体是列表，检查第一个元素的状态
-                    first = entity[0]
-                    if isinstance(first, dict):
-                        vals = _find_state_value(first)
-                        if vals:
-                            if state_field is None:
-                                state_field = vals["field"]
-                            if vals["field"] == state_field:
-                                if category not in state_values:
-                                    state_values[category] = vals["value"]
 
     # 组合状态规则
     rules = {
@@ -1255,6 +1273,182 @@ def build_manifest(analysis: dict, capture_result: dict,
             step["assertion"] = assertion
         return step
 
+    def _make_phased_step(action, eps):
+        """构建带 phases 的多阶段步骤。
+
+        eps[0] = 核心 API（body_field_count 最大）
+        eps[1:] = 前置 phase（按 body_field_count 降序，少的先执行）
+
+        执行顺序：eps[-1] → ... → eps[1] → eps[0]
+        （最少的先执行 = 查询/准备 → 最多的后执行 = 提交）
+        """
+        # 核心 API（最后执行）
+        core_ep = eps[0]
+        core_body = _parse_body(core_ep)
+        core_roles = _classify_body_fields(
+            core_body, id_field_details, create_body_sample, context_field_names
+        )
+
+        # 前置 phases（反转，最少的先执行）
+        prepare_eps = list(reversed(eps[1:]))
+        phases = []
+        all_extracts = {}  # {field_name: "phase_id.state_key"}
+
+        for pep in prepare_eps:
+            phase_id = pep["pathname"].split("/")[-1]  # 如 "generate"
+            pbody = _parse_body(pep)
+            proles = _classify_body_fields(
+                pbody, id_field_details, create_body_sample, context_field_names
+            )
+
+            # 推导 extract：从响应样本中提取与核心 body 同名字段
+            extracts = _infer_phase_extracts(pep, core_body, all_extracts)
+
+            phases.append({
+                "id": phase_id,
+                "label": f"{action}({phase_id})",
+                "api": {
+                    "method": pep["method"],
+                    "pathname": re.sub(r"[0-9a-f]{20,}", "{id}", pep["pathname"]),
+                    "query_params": pep.get("query_params", {}),
+                },
+                "body_template": pbody or {},
+                "body_field_roles": proles,
+                "extract": extracts,
+            })
+
+        # 核心 phase（最后执行）
+        core_pathname = re.sub(r"[0-9a-f]{20,}", "{id}", core_ep["pathname"])
+        phases.append({
+            "id": "main",
+            "label": action,
+            "api": {
+                "method": core_ep["method"],
+                "pathname": core_pathname,
+                "query_params": core_ep.get("query_params", {}),
+            },
+            "body_template": core_body if isinstance(core_body, list) else (core_body or {}),
+            "body_field_roles": core_roles,
+        })
+
+        # 更新核心 phase 的 field_roles：引用前置 phase 的 extract
+        _apply_phase_refs(core_roles, all_extracts)
+
+        # 后处理：服务端特殊验证逻辑
+        # 当 isRandomPassword=1 时，服务端仍会验证 newPassword 格式（如 RSA 加密），
+        # 但忽略实际值。因此 newPassword 应保持原始 RSA 模板值（static），
+        # 不替换为 phase_ref 提取的明文或 generate 的 UUID。
+        if isinstance(core_body, dict):
+            is_random = core_body.get("isRandomPassword")
+            if is_random and "newPassword" in core_roles:
+                if core_roles["newPassword"].get("role") == "phase_ref":
+                    # 恢复为 static，使用原始 RSA 模板值
+                    core_roles["newPassword"] = {"role": "static"}
+                    LOG.info("  操作链: newPassword 恢复为 static（isRandomPassword=1 时服务端验证格式但忽略值）")
+
+        # extract（如果 action == id_producer）
+        extract = None
+        if action == id_producer:
+            envelope_keys = response_contract["envelope_keys"]
+            id_field = response_contract["id_field"]
+            extract = {
+                "id": f"{envelope_keys[0]}.{id_field}" if envelope_keys else id_field,
+                "names": [k for k, v in core_roles.items() if v.get("role") == "name"],
+            }
+
+        step = {
+            "action": action,
+            "label": (ui_result or {}).get("button_labels", {}).get(action) or action,
+            "phases": phases,
+            "requires": [] if action == id_producer else ["id"],
+        }
+        if extract:
+            step["extract"] = extract
+        return step
+
+    def _infer_phase_extracts(phase_ep, core_body, all_extracts):
+        """推导 phase 的 extract 映射。
+
+        策略：检查 phase 响应中的字段，如果字段名在核心 body 中出现，
+        建立 extract 映射，供核心 phase 引用。
+        支持后缀模糊匹配（如 response 中 password → request 中 newPassword）。
+        """
+        pathname = phase_ep["pathname"]
+        samples = response_samples.get(pathname, [])
+        if not samples:
+            return []
+
+        try:
+            resp_body = json.loads(samples[0].get("body", "{}")) if isinstance(
+                samples[0].get("body", "{}"), str) else samples[0].get("body", {})
+        except Exception:
+            return []
+
+        entity = None
+        for key in const.ENVELOPE_KEY_CANDIDATES:
+            if key in resp_body and isinstance(resp_body[key], dict):
+                entity = resp_body[key]
+                break
+        if entity is None:
+            entity = resp_body
+        if not isinstance(entity, dict):
+            return []
+
+        phase_id = pathname.split("/")[-1]
+        extracts = []
+
+        # 构建核心 body 字段的后缀索引（用于模糊匹配）
+        core_body_lower = {}
+        if isinstance(core_body, dict):
+            for cb_field in core_body:
+                core_body_lower[cb_field.lower()] = cb_field
+
+        for field_name, value in entity.items():
+            if value is None:
+                continue
+
+            matched_core_field = None
+
+            # 1. 精确匹配：字段名在核心 body 中直接出现
+            if isinstance(core_body, dict) and field_name in core_body:
+                matched_core_field = field_name
+            else:
+                # 2. 后缀模糊匹配：response 字段名是 request 字段名的后缀
+                #    如 response "password" → request "newPassword"
+                fn_lower = field_name.lower()
+                for cb_lower, cb_field in core_body_lower.items():
+                    if cb_lower != fn_lower and cb_lower.endswith(fn_lower):
+                        # 确认前缀部分合理（new, updated, old 等）
+                        prefix = cb_lower[:len(cb_lower) - len(fn_lower)]
+                        if prefix in ("new", "updated", "old", "target", "final"):
+                            matched_core_field = cb_field
+                            LOG.info(f"  操作链 extract 模糊匹配: {field_name} → {cb_field}")
+                            break
+
+            if matched_core_field:
+                state_key = f"{phase_id}_{field_name}"
+                extracts.append({
+                    "name": state_key,
+                    "path": f"entity.{field_name}",
+                })
+                all_extracts[matched_core_field] = f"{phase_id}.{state_key}"
+
+        return extracts
+
+    def _apply_phase_refs(core_roles, all_extracts):
+        """将核心 phase 的 field_roles 中匹配前置 phase extract 的字段
+        标记为 phase_ref。
+        """
+        for field_name in core_roles:
+            if field_name in all_extracts:
+                existing_role = core_roles[field_name].get("role", "")
+                # 只覆盖 static 和 generate，不覆盖 id_ref/name/mutable/context
+                if existing_role in ("static", "generate", "test_value"):
+                    core_roles[field_name] = {
+                        "role": "phase_ref",
+                        "source": all_extracts[field_name],
+                    }
+
     def _make_verify_step(verify_action, label, assertion):
         """构建验证步骤（基于可用的验证端点）。"""
         if verify_action not in verify_endpoints:
@@ -1369,16 +1563,37 @@ def build_manifest(analysis: dict, capture_result: dict,
 
         return plans
 
+    # 追踪哪些 step/action 使用了 phases（用于 Pass 2 保护 phase_ref 角色）
+    phase_ref_fields = {}  # {action: set(field_names)}
+
     for action in crud_order:
         eps = core_apis.get(action, [])
         if not eps:
             continue
 
-        ep = eps[0]
-        body_sample = _parse_body(ep)
+        # 分支：单 API vs 多 API 操作链
+        if len(eps) == 1:
+            # 单 API 操作（向后兼容）
+            ep = eps[0]
+            body_sample = _parse_body(ep)
 
-        # 主步骤
-        steps.append(_make_step(action, ep, body_sample))
+            # 主步骤
+            steps.append(_make_step(action, ep, body_sample))
+        else:
+            # 多 API 操作链：生成带 phases 的 step
+            phased_step = _make_phased_step(action, eps)
+            steps.append(phased_step)
+
+            # 提取步骤中的 phase_ref 字段（用于后续 Phase B 保护）
+            phases = phased_step.get("phases", [])
+            for phase in phases:
+                if phase.get("id") == "main":
+                    field_roles = phase.get("body_field_roles", {})
+                    for field_name, role_config in field_roles.items():
+                        if role_config.get("role") == "phase_ref":
+                            if action not in phase_ref_fields:
+                                phase_ref_fields[action] = set()
+                            phase_ref_fields[action].add(field_name)
 
         # 根据可用端点自动规划验证步骤
         for verify_action, label, assertion in _plan_verify_steps(action):
@@ -1478,37 +1693,48 @@ def build_manifest(analysis: dict, capture_result: dict,
         # 应用 field_resolutions 到 steps 的 body_field_roles
         for step in steps:
             action = step.get("action", "")
-            field_roles = step.get("body_field_roles", {})
-            for field_name in list(field_roles.keys()):
-                key = f"{action}.{field_name}"
-                if key in field_resolutions:
-                    # 保护 name/mutable/id_ref 字段不被 Phase B 的 generate_random 覆盖
-                    # name/mutable 是业务测试值；id_ref 是步骤间引用（应使用 state['id']）
-                    existing_role = field_roles[field_name].get("role", "")
-                    if existing_role in ("name", "mutable", "context", "id_ref"):
-                        continue
-                    resolution = field_resolutions[key]
-                    strategy = resolution.get("strategy", "")
 
-                    if strategy == "generate_random":
-                        field_roles[field_name] = {
-                            "role": "generate",
-                            "value_type": resolution.get("value_type", "hex_id"),
-                        }
-                    elif strategy == "value_pattern_analysis":
-                        # 值模式分析结果：标记为 test_value
-                        field_roles[field_name] = {
-                            "role": "test_value",
-                            "value_pattern": resolution["value_pattern"],
-                        }
-                    else:
-                        # pre_api_ref 来源
-                        field_roles[field_name] = {
-                            "role": "pre_api_ref",
-                            "source": resolution["source"],
-                        }
-                        if resolution.get("is_array"):
-                            field_roles[field_name]["is_array"] = True
+            # 收集需要处理的 body_field_roles：单 API step + phases step 的 main phase
+            roles_targets = []
+            step_field_roles = step.get("body_field_roles", {})
+            if step_field_roles:
+                roles_targets.append(step_field_roles)
+
+            # phases step：处理每个 phase 的 body_field_roles
+            for phase in step.get("phases", []):
+                phase_roles = phase.get("body_field_roles", {})
+                if phase_roles:
+                    roles_targets.append(phase_roles)
+
+            for field_roles in roles_targets:
+                for field_name in list(field_roles.keys()):
+                    key = f"{action}.{field_name}"
+                    if key in field_resolutions:
+                        # 保护 name/mutable/id_ref/phase_ref 字段不被 Phase B 覆盖
+                        existing_role = field_roles[field_name].get("role", "")
+                        if existing_role in ("name", "mutable", "context", "id_ref", "phase_ref"):
+                            continue
+                        resolution = field_resolutions[key]
+                        strategy = resolution.get("strategy", "")
+
+                        if strategy == "generate_random":
+                            field_roles[field_name] = {
+                                "role": "generate",
+                                "value_type": resolution.get("value_type", "hex_id"),
+                            }
+                        elif strategy == "value_pattern_analysis":
+                            field_roles[field_name] = {
+                                "role": "test_value",
+                                "value_pattern": resolution["value_pattern"],
+                            }
+                        else:
+                            # pre_api_ref 来源
+                            field_roles[field_name] = {
+                                "role": "pre_api_ref",
+                                "source": resolution["source"],
+                            }
+                            if resolution.get("is_array"):
+                                field_roles[field_name]["is_array"] = True
 
     manifest = {
         "manifest_version": manifest_version,
@@ -1569,28 +1795,30 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
     # Phase 1: 构建参数清单（从业务 API 的请求体中提取）
     param_inventory = []
     for category, endpoints in core_apis.items():
-        for ep in endpoints:
-            body_sample = _parse_body(ep)
-            if not body_sample or not isinstance(body_sample, dict):
-                continue
-            for field_name, field_value in body_sample.items():
-                # 追踪标量值和列表值
-                if isinstance(field_value, list):
-                    # 列表值：保留整个列表，_resolve_parameter_source 会处理
-                    if field_value:  # 非空列表
-                        param_inventory.append({
-                            'step_action': category,
-                            'field_name': field_name,
-                            'field_value': field_value,
-                            'pathname': ep.get('pathname', '')
-                        })
-                elif isinstance(field_value, (str, int, float, bool)):
+        if not endpoints:
+            continue
+        ep = endpoints[0]  # 只处理 main endpoint，避免 chain candidate 污染
+        body_sample = _parse_body(ep)
+        if not body_sample or not isinstance(body_sample, dict):
+            continue
+        for field_name, field_value in body_sample.items():
+            # 追踪标量值和列表值
+            if isinstance(field_value, list):
+                # 列表值：保留整个列表，_resolve_parameter_source 会处理
+                if field_value:  # 非空列表
                     param_inventory.append({
                         'step_action': category,
                         'field_name': field_name,
                         'field_value': field_value,
                         'pathname': ep.get('pathname', '')
                     })
+            elif isinstance(field_value, (str, int, float, bool)):
+                param_inventory.append({
+                    'step_action': category,
+                    'field_name': field_name,
+                    'field_value': field_value,
+                    'pathname': ep.get('pathname', '')
+                })
 
     LOG.info(f"  Phase 1: 收集到 {len(param_inventory)} 个参数")
 

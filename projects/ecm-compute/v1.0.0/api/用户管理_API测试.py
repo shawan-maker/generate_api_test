@@ -1,7 +1,7 @@
 """
 用户管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-17 13:59:18
-目标URL: https://10.151.61.248D:/Program Files (x86)/Git/estack/web/estack/user-center/user-manage/user
+生成时间: 2026-09-17 15:55:06
+目标URL: https://ecm-compute.example.com/user-management
 
 执行流程:
   1. 创建用户
@@ -38,7 +38,7 @@ MANIFEST = {
     "name": "用户管理",
     "base_url": "https://10.151.61.248",
     "login_url": "https://10.151.61.248/estack/web/estack/login",
-    "target_url": "https://10.151.61.248D:/Program Files (x86)/Git/estack/web/estack/user-center/user-manage/user"
+    "target_url": "https://ecm-compute.example.com/user-management"
   },
   "response_contract": {
     "envelope_keys": [
@@ -363,52 +363,102 @@ MANIFEST = {
     {
       "action": "重置密码",
       "label": "重置密码",
-      "api": {
-        "method": "POST",
-        "pathname": "/estack/api/estack/draco/v1/password-reset/reset",
-        "query_params": {}
-      },
-      "body_template": {
-        "forceChangePassword": 1,
-        "isRandomPassword": 1,
-        "newPassword": "M5Gj2Vp2XLcdrlrjfd8HpaVZ988ssycFd1JKlvXZUXFiveODO+TGBtW/peWw2tLySLxlYyJ5HJV+3N8dKA9vdepSx2YCLjR0kINpbUFJdoqLwFnfATaKf1AoFzZlFxAAegEwBL0dfQBG1fggk1uV8mXB7XxIEqELPxEn9rd/Ryg=",
-        "passwordPolicy": {
-          "id": "90542be67d584ab09daa12e697fb041a",
-          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
-          "minPasswordLength": 8,
-          "requireLowercaseCharacters": False,
-          "requireUppercaseCharacters": True,
-          "requireNumbers": True,
-          "requireSymbols": True,
-          "minPasswordDifferentCharacter": 0,
-          "createdAt": "2023-08-30 10:07:14",
-          "updatedAt": "2025-03-08 18:39:42",
-          "deleted": False,
-          "userName": None
+      "phases": [
+        {
+          "id": "generate",
+          "label": "重置密码(generate)",
+          "api": {
+            "method": "POST",
+            "pathname": "/estack/api/estack/draco/v1/password-reset/generate",
+            "query_params": {}
+          },
+          "body_template": {
+            "userId": "ecd57be47cbc4a0780bb355e6ff4d7a7",
+            "passwordPolicy": {
+              "id": "90542be67d584ab09daa12e697fb041a",
+              "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+              "minPasswordLength": 8,
+              "requireLowercaseCharacters": False,
+              "requireUppercaseCharacters": True,
+              "requireNumbers": True,
+              "requireSymbols": True,
+              "minPasswordDifferentCharacter": 0,
+              "createdAt": "2023-08-30 10:07:14",
+              "updatedAt": "2025-03-08 18:39:42",
+              "deleted": False,
+              "userName": None
+            },
+            "isRandomPassword": False
+          },
+          "body_field_roles": {
+            "userId": {
+              "role": "id_ref"
+            },
+            "passwordPolicy": {
+              "role": "static"
+            },
+            "isRandomPassword": {
+              "role": "static"
+            }
+          },
+          "extract": [
+            {
+              "name": "generate_password",
+              "path": "entity.password"
+            }
+          ]
         },
-        "userId": "ecd57be47cbc4a0780bb355e6ff4d7a7",
-        "noticeType": []
-      },
-      "body_field_roles": {
-        "forceChangePassword": {
-          "role": "static"
-        },
-        "isRandomPassword": {
-          "role": "static"
-        },
-        "newPassword": {
-          "role": "static"
-        },
-        "passwordPolicy": {
-          "role": "static"
-        },
-        "userId": {
-          "role": "id_ref"
-        },
-        "noticeType": {
-          "role": "static"
+        {
+          "id": "main",
+          "label": "重置密码",
+          "api": {
+            "method": "POST",
+            "pathname": "/estack/api/estack/draco/v1/password-reset/reset",
+            "query_params": {}
+          },
+          "body_template": {
+            "forceChangePassword": 1,
+            "isRandomPassword": 1,
+            "newPassword": "M5Gj2Vp2XLcdrlrjfd8HpaVZ988ssycFd1JKlvXZUXFiveODO+TGBtW/peWw2tLySLxlYyJ5HJV+3N8dKA9vdepSx2YCLjR0kINpbUFJdoqLwFnfATaKf1AoFzZlFxAAegEwBL0dfQBG1fggk1uV8mXB7XxIEqELPxEn9rd/Ryg=",
+            "passwordPolicy": {
+              "id": "90542be67d584ab09daa12e697fb041a",
+              "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+              "minPasswordLength": 8,
+              "requireLowercaseCharacters": False,
+              "requireUppercaseCharacters": True,
+              "requireNumbers": True,
+              "requireSymbols": True,
+              "minPasswordDifferentCharacter": 0,
+              "createdAt": "2023-08-30 10:07:14",
+              "updatedAt": "2025-03-08 18:39:42",
+              "deleted": False,
+              "userName": None
+            },
+            "userId": "ecd57be47cbc4a0780bb355e6ff4d7a7",
+            "noticeType": []
+          },
+          "body_field_roles": {
+            "forceChangePassword": {
+              "role": "static"
+            },
+            "isRandomPassword": {
+              "role": "static"
+            },
+            "newPassword": {
+              "role": "static"
+            },
+            "passwordPolicy": {
+              "role": "static"
+            },
+            "userId": {
+              "role": "id_ref"
+            },
+            "noticeType": {
+              "role": "static"
+            }
+          }
         }
-      },
+      ],
       "requires": [
         "id"
       ]

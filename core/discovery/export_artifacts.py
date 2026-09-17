@@ -60,8 +60,28 @@ def export_postman_collection(manifest: dict, output_path: Path):
             "item": []
         }
         for i, step in enumerate(steps, 1):
-            item = _build_postman_request_item(step, base_url, step_index=i)
-            biz_folder["item"].append(item)
+            # 分支：单 API step vs phases step
+            phases = step.get("phases")
+            if phases:
+                # phases step：展开为多个 Postman request item
+                for j, phase in enumerate(phases):
+                    # 构建 phase 级的 step-like dict（供 _build_postman_request_item 使用）
+                    phase_step = {
+                        "action": step.get("action", ""),
+                        "label": phase.get("label", phase.get("id", "")),
+                        "api": phase.get("api", {}),
+                        "body_template": phase.get("body_template", {}),
+                        "body_field_roles": phase.get("body_field_roles", {}),
+                        "extract": phase.get("extract", []),
+                    }
+                    item = _build_postman_request_item(phase_step, base_url, step_index=i)
+                    # 重命名为 "序号.子序号_标签"
+                    item["name"] = f"{i:02d}.{j+1}_{phase.get('label', phase.get('id', ''))}"
+                    biz_folder["item"].append(item)
+            else:
+                # 单 API step（原有逻辑不变）
+                item = _build_postman_request_item(step, base_url, step_index=i)
+                biz_folder["item"].append(item)
         collection["item"].append(biz_folder)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -197,6 +217,14 @@ def _resolve_postman_body(body_template, field_roles: dict):
         elif role == "pre_api_ref":
             source = role_config.get("source", key)
             # source 格式: "api_id.field_name" → 取 field_name
+            if "." in source:
+                var_name = source.split(".", 1)[1]
+            else:
+                var_name = source
+            result[key] = "{{" + var_name + "}}"
+        elif role == "phase_ref":
+            source = role_config.get("source", key)
+            # source 格式: "phase_id.state_key" → 取 state_key
             if "." in source:
                 var_name = source.split(".", 1)[1]
             else:
@@ -492,24 +520,33 @@ def _collect_excel_params(manifest: dict) -> list:
     # 业务步骤中的 name 字段
     seen_names = set()
     for step in manifest.get("steps", []):
-        body_roles = step.get("body_field_roles", {})
-        for field_name, role_config in body_roles.items():
-            if role_config.get("role") == "name" and field_name not in seen_names:
-                seen_names.add(field_name)
-                params.append({
-                    "name": f"e_name_{field_name}",
-                    "value": "${gen_unique_name('AT', gen_timestamp(), '...')}",
-                    "sensitive": False,
-                    "note": f"步骤 {step.get('label', step.get('action', ''))} 的名称字段"
-                })
-            elif role_config.get("role") == "mutable" and field_name not in seen_names:
-                seen_names.add(field_name)
-                params.append({
-                    "name": f"e_mutable_{field_name}",
-                    "value": "${gen_mutable_value(gen_timestamp())}",
-                    "sensitive": False,
-                    "note": f"步骤 {step.get('label', step.get('action', ''))} 的可变字段"
-                })
+        # 分支：单 API step vs phases step
+        phases = step.get("phases")
+        if phases:
+            # phases step：从所有 phases 中收集字段
+            roles_list = [phase.get("body_field_roles", {}) for phase in phases]
+        else:
+            # 单 API step（原有逻辑）
+            roles_list = [step.get("body_field_roles", {})]
+
+        for body_roles in roles_list:
+            for field_name, role_config in body_roles.items():
+                if role_config.get("role") == "name" and field_name not in seen_names:
+                    seen_names.add(field_name)
+                    params.append({
+                        "name": f"e_name_{field_name}",
+                        "value": "${gen_unique_name('AT', gen_timestamp(), '...')}",
+                        "sensitive": False,
+                        "note": f"步骤 {step.get('label', step.get('action', ''))} 的名称字段"
+                    })
+                elif role_config.get("role") == "mutable" and field_name not in seen_names:
+                    seen_names.add(field_name)
+                    params.append({
+                        "name": f"e_mutable_{field_name}",
+                        "value": "${gen_mutable_value(gen_timestamp())}",
+                        "sensitive": False,
+                        "note": f"步骤 {step.get('label', step.get('action', ''))} 的可变字段"
+                    })
 
     return params
 

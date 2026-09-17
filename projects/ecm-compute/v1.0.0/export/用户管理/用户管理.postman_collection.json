@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "cb779fe2-1f05-4931-a0ef-7862661bf6ef",
+    "_postman_id": "8e7d290b-4483-49d6-915d-e38784a3d383",
     "name": "用户管理 API 测试",
     "description": "由 module_discovery Stage 5 自动导出",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -415,7 +415,53 @@
           "response": []
         },
         {
-          "name": "12_重置密码",
+          "name": "12.1_重置密码(generate)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/password-reset/generate"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{id}}\",\n  \"passwordPolicy\": {\n    \"id\": \"90542be67d584ab09daa12e697fb041a\",\n    \"tenantId\": \"cec63451f8bf4ceebb9ada0b87d829bf\",\n    \"minPasswordLength\": 8,\n    \"requireLowercaseCharacters\": false,\n    \"requireUppercaseCharacters\": true,\n    \"requireNumbers\": true,\n    \"requireSymbols\": true,\n    \"minPasswordDifferentCharacter\": 0,\n    \"createdAt\": \"2023-08-30 10:07:14\",\n    \"updatedAt\": \"2025-03-08 18:39:42\",\n    \"deleted\": false,\n    \"userName\": null\n  },\n  \"isRandomPassword\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Status OK', function() {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "var generate_password = jsonData.entity.password;",
+                  "if (generate_password !== undefined) pm.environment.set('generate_password', generate_password);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "12.2_重置密码",
           "request": {
             "method": "POST",
             "header": [

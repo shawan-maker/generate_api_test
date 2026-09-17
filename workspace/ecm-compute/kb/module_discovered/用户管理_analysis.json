@@ -145,6 +145,21 @@
         "request_body_sample": "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"M5Gj2Vp2XLcdrlrjfd8HpaVZ988ssycFd1JKlvXZUXFiveODO+TGBtW/peWw2tLySLxlYyJ5HJV+3N8dKA9vdepSx2YCLjR0kINpbUFJdoqLwFnfATaKf1AoFzZlFxAAegEwBL0dfQBG1fggk1uV8mXB7XxIEqELPxEn9rd/Ryg=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\",\"noticeType\":[]}",
         "query_params": {},
         "query_params_samples": []
+      },
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/password-reset/generate",
+        "body_field_count": 3,
+        "response_has_id": true,
+        "contexts": [
+          "replay:重置密码"
+        ],
+        "bodies": [
+          "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}"
+        ],
+        "request_body_sample": "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}",
+        "query_params": {},
+        "query_params_samples": []
       }
     ],
     "删除": [
@@ -277,6 +292,13 @@
         "method": "POST",
         "pathname": "/estack/api/estack/draco/v1/password-reset/reset",
         "body_sample": "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"M5Gj2Vp2XLcdrlrjfd8HpaVZ988ssycFd1JKlvXZUXFiveODO+TGBtW/peWw2tLySLxlYyJ5HJV+3N8dKA9vdepSx2YCLjR0kINpbUFJdoqLwFnfATaKf1AoFzZlFxAAegEwBL0dfQBG1fggk1uV8mXB7XxIEqELPxEn9rd/Ryg=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\",\"noticeType\":[]}",
+        "query_params": {}
+      },
+      {
+        "category": "重置密码",
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/password-reset/generate",
+        "body_sample": "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}",
         "query_params": {}
       }
     ]

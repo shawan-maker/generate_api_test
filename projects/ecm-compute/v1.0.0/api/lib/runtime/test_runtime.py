@@ -204,6 +204,11 @@ class StepExecutor:
         action = step_def.get("action", "unknown")
         label = step_def.get("label", action)
 
+        # ★ 多阶段操作：按 phases 顺序执行
+        phases = step_def.get("phases")
+        if phases:
+            return self._execute_phased_step(step_def, phases)
+
         print(f"\n[{label}] {step_def['api']['pathname']}")
 
         # 前置检查
@@ -274,7 +279,150 @@ class StepExecutor:
             self._write_log(action, label, resp, "error", str(e))
             return False
 
-    def _write_log(self, action, label, resp, result, message=""):
+    def _extract_with_array_index(self, obj, path: str):
+        """从嵌套对象中提取值，支持数组索引路径。
+
+        支持路径格式:
+          - "entity.id" -> obj["entity"]["id"]
+          - "entity.list[0].id" -> obj["entity"]["list"][0]["id"]
+        """
+        if not path or obj is None:
+            return None
+
+        # 分割路径段
+        segments = []
+        current = ""
+
+        i = 0
+        while i < len(path):
+            char = path[i]
+
+            if char == '.':
+                if current:
+                    segments.append(current)
+                    current = ""
+            elif char == '[':
+                if current:
+                    segments.append(current)
+                    current = ""
+                # 解析数组索引
+                j = i + 1
+                while j < len(path) and path[j] != ']':
+                    j += 1
+                if j < len(path):
+                    index_str = path[i+1:j]
+                    segments.append(f"[{index_str}]")
+                    i = j
+            else:
+                current += char
+
+            i += 1
+
+        if current:
+            segments.append(current)
+
+        # 遍历路径段提取值
+        value = obj
+        for segment in segments:
+            if value is None:
+                return None
+
+            # 数组索引段
+            if segment.startswith("[") and segment.endswith("]"):
+                try:
+                    index = int(segment[1:-1])
+                    if isinstance(value, list) and 0 <= index < len(value):
+                        value = value[index]
+                    else:
+                        return None
+                except (ValueError, IndexError):
+                    return None
+            # 字典字段段
+            elif isinstance(value, dict):
+                value = value.get(segment)
+            else:
+                return None
+
+        return value
+
+    def _execute_phased_step(self, step_def: dict, phases: list) -> bool:
+        """执行多阶段操作步骤。
+
+        phases 按顺序执行，每个 phase 的 extract 写入 self.state，
+        后续 phase 的 body 通过 phase_ref 引用前面 phase 的 extract。
+        """
+        action = step_def.get("action", "")
+        label = step_def.get("label", action)
+
+        # requires 检查
+        requires = step_def.get("requires", [])
+        for req in requires:
+            if not self.state.get(req):
+                print(f"  ⚠️ 跳过[{label}]: {req} 为空")
+                self._write_log(action, label, None, "skipped", f"{req} 为空")
+                return False
+
+        last_resp = None
+        for i, phase in enumerate(phases):
+            phase_id = phase.get("id", f"phase_{i}")
+            phase_label = phase.get("label", f"{label}:{phase_id}")
+
+            print(f"\n  [{phase_label}] {phase['api']['pathname']}")
+
+            try:
+                url = self._build_url(phase["api"])
+                body = self._build_body(phase)
+                method = phase["api"]["method"].upper()
+
+                resp = self._send_request(method, url, body)
+
+                # 保存当前请求信息（用于日志更新）
+                self._last_request = {
+                    "method": method, "url": url,
+                    "req_headers": dict(self.session.headers),
+                    "req_body": body if body else None,
+                }
+
+                # phase extract → state
+                extracts = phase.get("extract", [])
+                if extracts:
+                    resp_json = resp.json()
+                    for ext in extracts:
+                        name = ext.get("name", "")
+                        path = ext.get("path", "")
+                        value = self._extract_with_array_index(resp_json, path)
+                        if value is not None:
+                            self.state[name] = value
+                            print(f"    ✅ 提取: {name}={str(value)[:50]}")
+
+                last_resp = resp
+
+                # 最后一个 phase（main）做断言
+                if i == len(phases) - 1:
+                    self._assert_response(resp, label)
+                    if step_def.get("extract"):
+                        self._extract_state(resp.json(), step_def)
+
+                # phase 级日志
+                self._write_log(action, label, resp, "passed", "",
+                              phase_info={"index": i, "id": phase_id})
+
+            except AssertionError as e:
+                print(f"    ❌ {phase_label} 断言失败: {e}")
+                self._write_log(action, label, resp, "failed", str(e),
+                              phase_info={"index": i, "id": phase_id})
+                return False
+            except Exception as e:
+                print(f"    ❌ {phase_label} 失败: {e}")
+                self._write_log(action, label, resp, "failed",
+                              f"phase {phase_id}: {e}",
+                              phase_info={"index": i, "id": phase_id})
+                return False
+
+        print(f"  ✅ {label}成功")
+        return True
+
+    def _write_log(self, action, label, resp, result, message="", phase_info=None):
         """写一条结构化 API 调用日志（JSON Lines 格式）。"""
         if not self.log_file:
             return
@@ -310,6 +458,7 @@ class StepExecutor:
                 },
                 "assertion": result,
                 "assertion_message": message,
+                "phase": phase_info,
             }
             with open(self.log_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
@@ -446,6 +595,28 @@ class StepExecutor:
                 # is_array 时确保值是数组
                 if is_array and not isinstance(resolved, list):
                     resolved = [resolved] if resolved else value
+                body[key] = resolved
+            elif role == "phase_ref":
+                # 操作内 phase 引用：从前置 phase 的 extract 获取
+                source = role_config.get("source", "")
+                # source 格式: "phase_id.state_key"
+                if "." in source:
+                    state_key = source.split(".", 1)[1]
+                    resolved = self.state.get(state_key)
+                else:
+                    resolved = self.state.get(source)
+
+                if resolved is None:
+                    # 兜底：和 pre_api_ref 相同的 UUID 生成逻辑
+                    vtype = role_config.get("value_type", "hex_id")
+                    if vtype == "hex_id":
+                        resolved = uuid.uuid4().hex
+                    elif vtype == "uuid":
+                        resolved = str(uuid.uuid4())
+                    else:
+                        resolved = value
+                    print(f"    ⚠️ {key}: phase 提取失败，生成 {vtype}: {str(resolved)[:20]}")
+
                 body[key] = resolved
             elif role == "generate":
                 # 动态生成字段（无前置 API 来源时）
@@ -1032,8 +1203,18 @@ class TestRunner:
         return value
 
     def prepare_create_body(self, step_def: dict):
-        body_template = step_def.get("body_template", {})
-        field_roles = step_def.get("body_field_roles", {})
+        # 分支：单 API step vs phases step
+        phases = step_def.get("phases")
+        if phases:
+            # phases step：从 main phase（最后一个）获取 body 配置
+            main_phase = phases[-1]
+            body_template = main_phase.get("body_template", {})
+            field_roles = main_phase.get("body_field_roles", {})
+        else:
+            # 单 API step（原有逻辑）
+            body_template = step_def.get("body_template", {})
+            field_roles = step_def.get("body_field_roles", {})
+
         create_body = {}
         create_body_raw = {}  # 保存原始值（用于搜索验证）
 
