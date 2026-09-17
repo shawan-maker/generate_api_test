@@ -46,60 +46,115 @@ def _count_pathname_windows(all_calls: List[Dict], replay_windows: Dict) -> Dict
     return pathname_window_count
 
 
-def _response_has_entity_id(pathname: str, samples: Dict) -> bool:
-    """检查响应是否包含实体 ID（业务数据）。
+def _is_id_like_field(name: str) -> bool:
+    """判断字段名是否像 ID 字段（id, userId, orderId, policy_id 等）。"""
+    lower = name.lower()
+    if lower in ("id", "ids"):
+        return True
+    if lower.endswith("id") or lower.endswith("ids"):
+        return True
+    if lower.endswith("_id") or lower.endswith("_ids"):
+        return True
+    return False
 
-    用于区分核心 API 和校验类 API：
-    - 核心 API：响应包含 entity.id（如 POST /users → {"entity": {"id": "..."}}）
-    - 校验类 API：响应仅含 success 标志（如 POST /users/check → {"success": true}）
 
-    Args:
-        pathname: API 路径
-        samples: 响应样本字典 {pathname: [{status, body}, ...]}
-
-    Returns:
-        True 表示响应包含实体 ID（业务 API），False 表示无业务数据（校验类）
-    """
-    sample_list = samples.get(pathname, [])
-    if not sample_list:
+def _is_id_like_value(val: str) -> bool:
+    """判断值是否像 ID 值（hex 串、长数字、UUID 等）。"""
+    if not val or len(val) < 8:
         return False
+    if val.isdigit() and len(val) >= 8:
+        return True
+    if _is_hex_like(val):
+        return True
+    if len(val) == 36 and val.count("-") == 4:
+        return True
+    return False
 
+
+def _call_has_business_data(call: dict, samples: dict) -> bool:
+    """检查 API 调用是否涉及业务数据（非纯基础设施/校验类）。
+
+    三维检查：URL 路径 + query params + 响应 body。
+    用于 Layer 2 过滤，替代旧版 _response_has_entity_id。
+
+    注意：对于写操作（POST/PUT/DELETE），仅凭 URL 路径中的 ID 不足以判定，
+    必须结合响应体维度，以排除校验类接口（如 /users/{id}/check）。
+    """
+    method = call.get("method", "").upper()
+    pathname = call.get("pathname", "")
+
+    # ── 维度 1: URL 路径中有 ID 段 ──
+    # 仅对 GET 操作，URL 路径 ID 可直接判定为业务数据
+    # 对写操作，需要结合响应体维度确认
+    has_url_id = False
+    for part in pathname.split("/"):
+        if len(part) >= 20 and (part.isdigit() or _is_hex_like(part)):
+            has_url_id = True
+            if method == "GET":
+                return True
+            break
+
+    # ── 维度 2: query params 中有 ID 类参数 ──
+    # 同样仅对 GET 操作直接判定
+    qp = call.get("query_params", {})
+    if isinstance(qp, dict):
+        for key, val in qp.items():
+            if _is_id_like_field(key) and _is_id_like_value(str(val)):
+                if method == "GET":
+                    return True
+                break
+
+    # ── 维度 3: 响应 body 中有业务数据 ──
+    # 对所有操作都必须检查响应体
+    sample_list = samples.get(pathname, [])
     for sample in sample_list:
         body_text = sample.get("body", "")
         if not body_text:
             continue
-
         try:
             body = json.loads(body_text) if isinstance(body_text, str) else body_text
             if not isinstance(body, dict):
                 continue
+            if not body.get("success", True):
+                continue
 
-            # 尝试信封键提取实体
             entity = None
             for key in const.ENVELOPE_KEY_CANDIDATES:
-                if key in body and isinstance(body[key], dict):
+                if key in body:
                     entity = body[key]
                     break
-
-            # 如果没有信封键，检查 body 本身
             if entity is None:
                 entity = body
 
-            # 检查实体是否包含 ID 字段
+            # 写操作：字符串 entity 是校验接口特征（如 /users/check 返回 UUID）
+            if isinstance(entity, str) and method in ("POST", "PUT", "PATCH", "DELETE"):
+                continue
+
             if isinstance(entity, dict):
-                for id_field in const.COMMON_ID_FIELDS:
-                    if id_field in entity:
+                for field_name in entity:
+                    if _is_id_like_field(field_name):
                         return True
 
-                # 检查列表响应：entity.list[0].id / entity.rows[0].id
-                for list_key in const.LIST_KEY_CANDIDATES:
-                    items = entity.get(list_key)
-                    if isinstance(items, list) and len(items) > 0:
-                        first = items[0]
+                # 检查嵌套列表（如 entity.list, entity.rows）
+                for field_value in entity.values():
+                    if isinstance(field_value, list) and len(field_value) > 0:
+                        first = field_value[0]
                         if isinstance(first, dict):
-                            for id_field in const.COMMON_ID_FIELDS:
-                                if id_field in first:
-                                    return True
+                            if any(_is_id_like_field(k) for k in first):
+                                return True
+
+            if isinstance(entity, list) and len(entity) > 0:
+                first = entity[0]
+                if isinstance(first, dict):
+                    if any(_is_id_like_field(k) for k in first):
+                        return True
+
+            # entity 是 ID 类字符串（仅对 GET 有效，如 /resource/{id} 直接返回 ID）
+            if isinstance(entity, str) and _is_id_like_value(entity):
+                return True
+
+            if isinstance(entity, (int, float)) and entity != 0 and not isinstance(entity, bool):
+                return True
 
         except Exception:
             continue
@@ -156,7 +211,7 @@ def _build_candidate(call: dict, uniq_ep: dict, samples: dict) -> dict:
         "method": call["method"],
         "pathname": call["pathname"],
         "body_field_count": _request_body_field_count(call),
-        "response_has_id": _response_has_entity_id(call["pathname"], samples),
+        "response_has_id": _call_has_business_data(call, samples),
         "contexts": sorted(uniq_ep.get("contexts", set())),
         "bodies": uniq_ep.get("bodies", []),
         "request_body_sample": uniq_ep["bodies"][0] if uniq_ep.get("bodies") else None,
@@ -306,6 +361,36 @@ def _classify_by_behavior(call: dict, has_form_data: bool = False,
     return "other"
 
 
+def _score_core_candidate(call: dict, uniq: dict) -> int:
+    """对 core API 候选综合评分（越高越好）。
+
+    评分维度：
+    - 方法优先级：写操作 > GET（业务操作核心应该是写操作）
+    - 跨上下文惩罚：出现在越多操作中，越不可能是当前操作的核心 API
+    - 请求体字段数（保留原有逻辑）
+    """
+    score = 0
+    method = call.get("method", "").upper()
+    pathname = call.get("pathname", "")
+
+    # 1. 方法优先级
+    if method in ("POST", "PUT", "PATCH", "DELETE"):
+        score += 100
+    elif method == "GET":
+        score += 10
+
+    # 2. 跨上下文惩罚
+    key = f"{method} {pathname}"
+    ep = uniq.get(key, {})
+    context_count = len(ep.get("contexts", set()))
+    score -= context_count * 20
+
+    # 3. 请求体字段数
+    score += _request_body_field_count(call) * 2
+
+    return score
+
+
 def deduplicate_calls(all_calls: List[Dict], samples: Dict,
                       replay_windows: Dict = None) -> Dict:
     """去重合并相同端点的多次调用。
@@ -372,7 +457,7 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict,
                         continue
 
                 # Layer 2: 排除响应无业务数据的 API（校验类）
-                if not _response_has_entity_id(pathname, samples):
+                if not _call_has_business_data(call, samples):
                     continue
 
                 candidates.append(call)
@@ -385,17 +470,25 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict,
                 ep = uniq.get(key, {})
                 core_api_map[action] = [_build_candidate(first_api, ep, samples)]
             else:
-                # 收集所有候选，按请求体字段数降序排列（最佳候选在前）
-                candidates.sort(key=_request_body_field_count, reverse=True)
+                # 收集所有候选，按综合评分降序排列（最佳候选在前）
+                candidates.sort(key=lambda c: _score_core_candidate(c, uniq), reverse=True)
                 core_api_map[action] = [
                     _build_candidate(c, uniq.get(f"{c['method']} {c['pathname']}", {}), samples)
                     for c in candidates
                 ]
+                # 操作链识别：多个写操作 = 操作链，记录日志
+                write_candidates = [
+                    c for c in candidates
+                    if c.get("method", "").upper() in ("POST", "PUT", "PATCH", "DELETE")
+                ]
+                if len(write_candidates) >= 2:
+                    chain_names = [c['pathname'].split('/')[-1] for c in write_candidates]
+                    LOG.info(f"  {action}: 识别到 {len(write_candidates)} 步操作链: {chain_names}")
                 if len(candidates) > 1:
                     best = candidates[0]
                     LOG.debug(f"  core_api tiebreaker: {action} → "
                               f"{best['method']} {best['pathname']} "
-                              f"(字段数={_request_body_field_count(best)}, 共{len(candidates)}个候选)")
+                              f"(评分={_score_core_candidate(best, uniq)}, 共{len(candidates)}个候选)")
 
     return {
         "core_api_map": core_api_map,

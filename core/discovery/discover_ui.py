@@ -3993,43 +3993,53 @@ async def _verify_operation_success(page, operation_type: str, strict: bool = Fa
     if has_success:
         return True
 
-    # 1.5 检查 el-dialog / el-message-box 中的错误消息
-    # 操作失败时服务端可能弹出错误弹窗（而非 ElMessage.error toast）
-    dialog_error = await page.evaluate("""() => {
-        // 检查可见的 el-message-box 中的错误内容
-        const msgBoxes = document.querySelectorAll('.el-message-box__wrapper:not([style*="display: none"])');
-        for (const box of msgBoxes) {
-            if (box.offsetWidth === 0) continue;
-            const content = box.querySelector('.el-message-box__message, .el-message-box__content');
-            if (content) {
-                const text = content.textContent.trim();
-                if (text && (text.includes('失败') || text.includes('错误') || text.includes('异常')
-                    || text.includes('不能为空') || text.includes('请选择') || text.includes('error'))) {
-                    return text;
+    # 1.5 轮询等待 el-dialog / el-message-box 中的错误消息（给服务端响应时间）
+    # 操作失败时服务端可能延迟弹出错误弹窗，不能单次检查
+    for _poll in range(5):  # 最多轮询 5 次，每次 1s，共 5s
+        dialog_error = await page.evaluate("""() => {
+            const errKw = ['失败', '错误', '异常', 'error'];
+            // 检查可见的 el-message-box 中的错误内容
+            const msgBoxes = document.querySelectorAll('.el-message-box__wrapper:not([style*="display: none"])');
+            for (const box of msgBoxes) {
+                if (box.offsetWidth === 0) continue;
+                const content = box.querySelector('.el-message-box__message, .el-message-box__content');
+                if (content) {
+                    const text = content.textContent.trim();
+                    if (text && errKw.some(kw => text.includes(kw))) return text;
                 }
             }
-        }
-        // 检查可见的 el-dialog 中的 el-form-item__error
-        const dialogs = document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"])');
-        for (const d of dialogs) {
-            if (d.offsetWidth === 0) continue;
-            const errors = d.querySelectorAll('.el-form-item__error');
-            if (errors.length > 0) {
-                return Array.from(errors).map(e => e.textContent.trim()).join('; ');
-            }
-            // 检查 dialog 中的 el-alert（type=error）
-            const alerts = d.querySelectorAll('.el-alert--error, .el-alert--warning');
-            for (const a of alerts) {
-                if (a.offsetWidth > 0) {
-                    return a.textContent.trim();
+            // 检查可见的 el-dialog 中的错误
+            const dialogs = document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"])');
+            for (const d of dialogs) {
+                if (d.offsetWidth === 0) continue;
+                const errors = d.querySelectorAll('.el-form-item__error');
+                if (errors.length > 0) {
+                    return Array.from(errors).map(e => e.textContent.trim()).join('; ');
+                }
+                const alerts = d.querySelectorAll('.el-alert--error, .el-alert--warning');
+                for (const a of alerts) {
+                    if (a.offsetWidth > 0) return a.textContent.trim();
+                }
+                // 全文搜索：dialog 内包含失败关键字即判定错误
+                const dialogEl = d.querySelector('.el-dialog');
+                if (dialogEl) {
+                    const text = dialogEl.textContent.trim();
+                    if (errKw.some(kw => text.includes(kw))) return text.substring(0, 200);
                 }
             }
-        }
-        return null;
-    }""")
-    if dialog_error:
-        LOG.info(f"    检测到弹窗错误: {dialog_error[:80]}")
-        return False
+            return null;
+        }""")
+        if dialog_error:
+            LOG.info(f"    检测到弹窗错误: {dialog_error[:80]}")
+            return False
+        # 成功 toast 出现 → 立即跳出，不浪费轮询时间
+        has_success_toast = await page.evaluate("""() => {
+            const el = document.querySelector('.el-message--success, .el-message .el-icon-success');
+            return el && el.offsetWidth > 0;
+        }""")
+        if has_success_toast:
+            break
+        await page.wait_for_timeout(1000)
 
     # 2. 对于 create/update: 检查弹窗是否关闭
     if operation_type in ("create", "update"):

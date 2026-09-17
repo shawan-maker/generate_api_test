@@ -1428,6 +1428,25 @@ class MultiStepExecutor:
 
         # Step 5: 根据是否可编辑选择不同策略
         LOG.info(f"    el-select {label}: proceeding with is_editable={is_editable}, option_text='{option_text}'")
+
+        # Tree-select 特殊处理：跳过搜索过滤，直接选择第一个可见选项
+        # 原因：tree-select 的搜索过滤逻辑与标准 el-select 不兼容，会导致过滤失败
+        if is_editable:
+            is_tree_select = await self.page.evaluate("""() => {
+                const dds = document.querySelectorAll('.el-select-dropdown');
+                for (const dd of dds) {
+                    if (dd.offsetWidth > 0 && dd.offsetHeight > 0) {
+                        return !!dd.querySelector('.el-tree');
+                    }
+                }
+                return false;
+            }""")
+
+            if is_tree_select:
+                LOG.info(f"    el-select {label}: 检测到 tree-select，跳过搜索过滤，直接选择第一个选项")
+                is_editable = False  # 强制走 first-option 逻辑
+                option_text = ""     # 清空 option_text，让它自动选择第一个
+
         if is_editable:
             # 可编辑：先输入搜索，再选择
             filled = await self._try_step_patterns(steps.get("fill", {}), label=label, option_text=option_text)

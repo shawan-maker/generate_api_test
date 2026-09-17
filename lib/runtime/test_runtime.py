@@ -14,6 +14,8 @@ import json
 import sys
 import time
 import os
+import uuid
+import random
 from pathlib import Path
 from typing import Optional, Any
 
@@ -227,12 +229,14 @@ class StepExecutor:
             assertion = step_def.get("assertion", "")
             if assertion in ("search_verify", "search_not_found"):
                 search_param = step_def.get("search_param", "")
-                if search_param and "create_body_raw" in self.state:
-                    create_body_raw = self.state["create_body_raw"]
+                if search_param:
+                    create_body = self.state.get("create_body", {})
+                    create_body_raw = self.state.get("create_body_raw", {})
                     # search_param_source: create body 字段名 + API URL 参数名（如 userName）
                     # search_param: endpoint_classifier 提取的参数名（可能不准确）
                     search_source = step_def.get("search_param_source", search_param)
-                    search_value = create_body_raw.get(search_source, "")
+                    # 优先用 create_body（加了时间戳前缀的实际值），fallback 到 raw
+                    search_value = create_body.get(search_source) or create_body_raw.get(search_source, "")
                     if search_value:
                         url += f"&{search_source}={search_value}" if "?" in url else f"?{search_source}={search_value}"
 
@@ -324,19 +328,48 @@ class StepExecutor:
             for k, v in query_params.items():
                 if isinstance(v, str) and v.startswith("$"):
                     ref = v[1:]
+                    parts = None
                     if "." in ref:
                         parts = ref.split(".", 1)
                         if parts[0] == "create_body":
-                            resolved_params[k] = self.state.get("create_body", {}).get(parts[1], "")
+                            val = self.state.get("create_body", {}).get(parts[1], "")
                         else:
                             # 支持 pre_api_ref 格式: $api_id.field_name
                             # 先尝试完整 key，再回退到 field_name（state 中 key 不含 api_id 前缀）
                             val = self.state.get(ref, "")
                             if not val:
                                 val = self.state.get(parts[1], "")
-                            resolved_params[k] = val
                     else:
-                        resolved_params[k] = self.state.get(ref, "")
+                        val = self.state.get(ref, "")
+
+                    # ★ UUID 兜底：解析失败时优先使用 context 值，否则生成随机值
+                    if not val:
+                        # 1. 检查 state 中是否有同名 context 值可用
+                        ctx_val = ""
+                        if parts and len(parts) > 1:
+                            ctx_val = self.state.get(parts[1], "")
+                            # 如果 parts[1] 是提取路径名（如 entity_list_0_tenantId），
+                            # 尝试提取基础字段名（如 tenantId）
+                            if not ctx_val:
+                                # 从 "entity_list_0_tenantId" 提取 "tenantId"
+                                base_field = parts[1].split("_")[-1] if "_" in parts[1] else parts[1]
+                                if base_field != parts[1]:
+                                    ctx_val = self.state.get(base_field, "")
+                        else:
+                            ctx_val = self.state.get(ref, "")
+
+                        if ctx_val:
+                            val = ctx_val
+                        elif k.lower().endswith("id"):
+                            # 2. 生成并缓存（同一字段名复用同一 UUID）
+                            val = uuid.uuid4().hex
+                            self.state[ref] = val
+                            if parts and len(parts) > 1:
+                                self.state[parts[1]] = val
+                            print(f"  ⚠️ query param {k}: 解析为空，生成 hex_id: {val[:20]}")
+                        else:
+                            val = ""
+                    resolved_params[k] = val
                 else:
                     resolved_params[k] = v
             if resolved_params:
@@ -393,13 +426,40 @@ class StepExecutor:
                 # source 格式: "api_id.field_name"
                 if "." in source:
                     field_name = source.split(".", 1)[1]
-                    resolved = self.state.get(field_name, value)
+                    resolved = self.state.get(field_name)
                 else:
-                    resolved = self.state.get(source, value)
+                    resolved = self.state.get(source)
+
+                # ★ UUID 兜底：提取失败时根据值类型生成
+                if resolved is None:
+                    vtype = role_config.get("value_type", "hex_id")
+                    if vtype == "hex_id":
+                        resolved = uuid.uuid4().hex
+                    elif vtype == "uuid":
+                        resolved = str(uuid.uuid4())
+                    elif vtype == "numeric_id":
+                        resolved = str(random.randint(10000000, 99999999))
+                    else:
+                        resolved = value
+                    print(f"  ⚠️ {key}: 前置 API 提取失败，生成 {vtype}: {str(resolved)[:20]}")
+
                 # is_array 时确保值是数组
                 if is_array and not isinstance(resolved, list):
                     resolved = [resolved] if resolved else value
                 body[key] = resolved
+            elif role == "generate":
+                # 动态生成字段（无前置 API 来源时）
+                gen_type = role_config.get("type", "uuid")
+                if gen_type == "uuid":
+                    body[key] = str(uuid.uuid4())
+                elif gen_type == "hex":
+                    body[key] = uuid.uuid4().hex
+                elif gen_type == "random_int":
+                    min_val = role_config.get("min", 10000000)
+                    max_val = role_config.get("max", 99999999)
+                    body[key] = str(random.randint(min_val, max_val))
+                else:
+                    body[key] = str(uuid.uuid4())
             else:
                 body[key] = value
         return body

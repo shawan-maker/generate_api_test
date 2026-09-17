@@ -5,7 +5,7 @@
     "base_url": "https://10.151.61.248",
     "login_url": "https://10.151.61.248/estack/web/estack/login",
     "framework": "element-ui",
-    "generated_at": "2026-09-16 09:17:25",
+    "generated_at": "2026-09-16 18:59:03",
     "version": "1.0",
     "auth_config": {
       "token_key": "estackToken",
@@ -19,9 +19,9 @@
     "mainBodyRows": 10,
     "fixedRightRows": 10,
     "fixedLeftRows": 10,
-    "columnCount": 9,
+    "columnCount": 10,
     "operationColumnIndex": 8,
-    "operationColumnLocation": "last",
+    "operationColumnLocation": "middle",
     "tableWrappers": [
       {
         "cls": "el-table__header-wrapper",
@@ -162,6 +162,15 @@
               "fill_rule": {},
               "is_editable": true,
               "option_text": "普通用户"
+            },
+            {
+              "label": "部门角色",
+              "playwright_locator": ".el-form-item:nth-child(3) .el-select",
+              "type": "select",
+              "kb_category": "el-select",
+              "fill_rule": {},
+              "is_editable": false,
+              "option_text": "test123"
             }
           ],
           "description": "填充表单字段"
@@ -284,16 +293,16 @@
       "error_type": "required_field_empty",
       "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
       "nav_info": {
-        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=64944ee73a224f7a8e33e7ff04f4defb",
+        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=3a66c00f6a464b5c87e6a13164a1a86a",
         "depth": 0,
         "page_title": "eStack Enterprise",
         "has_form": false,
         "form_fields": [],
         "fill_data": {
-          "授权用户": "AT_AT_test_auto_521328",
-          "授权用户组": "AT_AT_test_auto_521328",
-          "授权角色": "AT_AT_test_auto_521328",
-          "授权范围": "AT_AT_test_auto_521328"
+          "授权用户": "AT_AT_test_auto_556143",
+          "授权用户组": "AT_AT_test_auto_556143",
+          "授权角色": "AT_AT_test_auto_556143",
+          "授权范围": "AT_AT_test_auto_556143"
         },
         "submit_result": {},
         "error_type": "required_field_empty",
@@ -438,30 +447,12 @@
     "迁移": {
       "display_name": "迁移",
       "description": "迁移",
-      "role": "generic",
-      "steps": [
-        {
-          "action": "find_row",
-          "description": "定位目标数据行"
-        },
-        {
-          "action": "click_row_more",
-          "item_text": "迁移",
-          "expand_strategy": "click",
-          "description": "点击下拉菜单项: 迁移"
-        },
-        {
-          "action": "confirm_dialog",
-          "description": "点击确认对话框"
-        },
-        {
-          "action": "assert_success",
-          "playwright_locator": ".el-message--success",
-          "description": "验证操作成功"
-        }
-      ],
+      "role": "unknown",
+      "steps": [],
       "marker": null,
-      "status": "success"
+      "status": "failed",
+      "error_type": "no_success_signal",
+      "error_text": "迁移 操作后未检测到成功信号（成功提示/数据变化）"
     },
     "删除": {
       "display_name": "删除",

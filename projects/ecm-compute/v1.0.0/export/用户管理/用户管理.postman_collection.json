@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "f444cbc5-605d-4ab6-a1b6-6eccaff091bb",
+    "_postman_id": "cb779fe2-1f05-4931-a0ef-7862661bf6ef",
     "name": "用户管理 API 测试",
     "description": "由 module_discovery Stage 5 自动导出",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -17,25 +17,19 @@
       "type": "string"
     },
     {
+      "key": "entity_list_0_id",
+      "value": "",
+      "type": "string",
+      "description": "由 前置 API: list 提取"
+    },
+    {
+      "key": "entity_list_0_tenantId",
+      "value": "",
+      "type": "string",
+      "description": "由 前置 API: list 提取"
+    },
+    {
       "key": "entity_adminId",
-      "value": "",
-      "type": "string",
-      "description": "由 获取当前用户信息 提取"
-    },
-    {
-      "key": "entity_countryCode",
-      "value": "",
-      "type": "string",
-      "description": "由 获取当前用户信息 提取"
-    },
-    {
-      "key": "entity_id",
-      "value": "",
-      "type": "string",
-      "description": "由 获取当前用户信息 提取"
-    },
-    {
-      "key": "entity_tenantId",
       "value": "",
       "type": "string",
       "description": "由 获取当前用户信息 提取"
@@ -51,18 +45,6 @@
       "value": "",
       "type": "string",
       "description": "由 获取当前用户信息 提取"
-    },
-    {
-      "key": "entity_0_id",
-      "value": "",
-      "type": "string",
-      "description": "由 前置 API: display-by-role 提取"
-    },
-    {
-      "key": "entity_userId",
-      "value": "",
-      "type": "string",
-      "description": "由 前置 API: reset 提取"
     }
   ],
   "item": [
@@ -99,92 +81,51 @@
                   "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
                   "});",
                   "",
+                  "var entity_list_0_id = jsonData.entity.list[0].id;",
+                  "if (entity_list_0_id !== undefined) pm.environment.set('entity_list_0_id', entity_list_0_id);",
+                  "var entity_list_0_tenantId = jsonData.entity.list[0].tenantId;",
+                  "if (entity_list_0_tenantId !== undefined) pm.environment.set('entity_list_0_tenantId', entity_list_0_tenantId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "unknown",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Status OK', function() {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
                   "var entity_adminId = jsonData.entity.adminId;",
                   "if (entity_adminId !== undefined) pm.environment.set('entity_adminId', entity_adminId);",
-                  "var entity_countryCode = jsonData.entity.countryCode;",
-                  "if (entity_countryCode !== undefined) pm.environment.set('entity_countryCode', entity_countryCode);",
-                  "var entity_id = jsonData.entity.id;",
-                  "if (entity_id !== undefined) pm.environment.set('entity_id', entity_id);",
-                  "var entity_tenantId = jsonData.entity.tenantId;",
-                  "if (entity_tenantId !== undefined) pm.environment.set('entity_tenantId', entity_tenantId);",
                   "var tenantId = jsonData.entity.tenantId;",
                   "if (tenantId !== undefined) pm.environment.set('tenantId', tenantId);",
                   "var adminId = jsonData.entity.id;",
                   "if (adminId !== undefined) pm.environment.set('adminId', adminId);"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "unknown",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}"
-            }
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "var jsonData = pm.response.json();",
-                  "pm.test('Status OK', function() {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
-                  "});",
-                  "",
-                  "var entity_0_id = jsonData.entity[0].id;",
-                  "if (entity_0_id !== undefined) pm.environment.set('entity_0_id', entity_0_id);"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "unknown",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}"
-            }
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "var jsonData = pm.response.json();",
-                  "pm.test('Status OK', function() {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
-                  "});",
-                  "",
-                  "var entity_userId = jsonData.entity.userId;",
-                  "if (entity_userId !== undefined) pm.environment.set('entity_userId', entity_userId);"
                 ]
               }
             }
@@ -214,7 +155,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userName\": \"{{name_userName}}\",\n  \"password\": \"H8NUmVnyOaHblUbcwNkNdRxb+ASuBwaQ/ePQk/btny0y5JT+kJZrv814N5RHi8kO+uIq+vYUuKsYYNJWAdFiY3DKPCVeXvQHHTT94DsM21hTnBBrBhgkYGPjIIS63r6jBQSRKNhYCwrvwlpUhVvg2eUFRUvpm4ThUgdPs9UhpeY=\",\n  \"name\": \"{{name_name}}\",\n  \"email\": \"ANHpfros+wQZh1fMwHb+rOQebGA9+W7eHYiFqNh5LA0v71okLPOBkUSz0vy9t9dGtHWNBbNhBsfmNgLcKUHmTgsBvhn8upOQTfx57LyOeKjGdI7zAhZtDXoQGIng7ERhm4r8KnZmCLBGuKO4OMEpKe5LAqpdkyY1q75SNd6lncA=\",\n  \"phone\": \"FK+zyF4yHVgRP9k4CPKQViySEm1LQUoephjlq8Pbv22kMePfal6GNrQegLpexecVodOOCz/eMeupCF1aO2fHY4EENuXHkEbS/Ax/5Z8ItAPK52ZdJioUGDKJBm16X8Cj64CnCT35szBS3olVxv5Gji0bZeappTKx3feBEqTcj/8=\",\n  \"description\": \"{{mutable_description}}\",\n  \"policyIds\": [\n    \"1f8e392309fc414c9d77d45d0315fedc\"\n  ],\n  \"adminId\": \"{{entity_adminId}}\",\n  \"tenantId\": \"{{entity_0_id}}\",\n  \"countryCode\": \"{{entity_countryCode}}\"\n}",
+              "raw": "{\n  \"userName\": \"{{name_userName}}\",\n  \"password\": \"Qo6E+yUJpiME0nXG9jQa7VTX1SKCBGFBVBsSo5wajcPVhUAmuQij23Lxze8SPj2tNKBx+tk1T4Fk+lr1Le+AYyiMsas1Wf1Kg2TgCcjkKoadjIobiCWHOFfDGOPgUMvDCD9pJVUNS1IkEcCCbOZMWgxtQ9AaDZEgu4pg5p05aH0=\",\n  \"name\": \"{{name_name}}\",\n  \"email\": \"hetrYUxjvozfsDhjkPwHRGvAV2cBIeQI17uIGXdNi8FZg4tJiN9LFmZDtt4Ktqg0YtD4MF9Tp266KYSFvQgiS0HS89W2ZIzFH6L2OLREDkshjKx3ZwJjCtRUoer2jFrzPnVtgFqPXYR1rwQJO/Zy+i+TSE2UfdXRh6rCMcfGafI=\",\n  \"phone\": \"Vznvh5G4j9mNPkxCURnRcO7Rk0TEWC3MvkgGA0pddxvkPmQyfB7HLawfQkt0qwY3JcqGUZ4VirQyTq2dCEXh6MLrEvo39cZrHhkvinwKUYSSrVEEQ86bzAsOZxJ6TOaQQ3bCO37blvr4MIujfPHguYkpPBgtd1M4pcqbi/xHd3o=\",\n  \"description\": \"{{mutable_description}}\",\n  \"policyIds\": \"{{entity_list_0_id}}\",\n  \"adminId\": \"{{adminId}}\",\n  \"tenantId\": \"{{tenantId}}\",\n  \"countryCode\": \"+86\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -305,7 +246,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": \"{{entity_userId}}\",\n  \"name\": \"{{name_name}}\",\n  \"description\": \"{{mutable_description}}\",\n  \"tenantId\": \"{{entity_0_id}}\",\n  \"countryCode\": \"{{entity_countryCode}}\",\n  \"adminId\": \"{{entity_id}}\"\n}",
+              "raw": "{\n  \"userId\": \"{{id}}\",\n  \"name\": \"{{name_name}}\",\n  \"description\": \"{{mutable_description}}\",\n  \"tenantId\": \"{{tenantId}}\",\n  \"countryCode\": \"+86\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -354,7 +295,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": \"{{entity_userId}}\",\n  \"tenantId\": \"{{entity_tenantId}}\",\n  \"adminId\": \"{{entity_id}}\"\n}",
+              "raw": "{\n  \"userId\": \"{{id}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -400,15 +341,6 @@
             ],
             "url": {
               "raw": "{{base_url}}/estack/api/estack/draco/v1/users/{id}/enable"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"tenantId\": \"{{entity_tenantId}}\",\n  \"adminId\": \"{{entity_id}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "response": []
@@ -452,7 +384,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": \"{{entity_userId}}\",\n  \"tenantId\": \"{{entity_tenantId}}\",\n  \"adminId\": \"{{entity_id}}\"\n}",
+              "raw": "{\n  \"userId\": \"{{id}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -485,7 +417,7 @@
         {
           "name": "12_重置密码",
           "request": {
-            "method": "GET",
+            "method": "POST",
             "header": [
               {
                 "key": "Content-Type",
@@ -497,13 +429,22 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/estack/api/estack/draco/v1/password-policy"
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/password-reset/reset"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"forceChangePassword\": 1,\n  \"isRandomPassword\": 1,\n  \"newPassword\": \"M5Gj2Vp2XLcdrlrjfd8HpaVZ988ssycFd1JKlvXZUXFiveODO+TGBtW/peWw2tLySLxlYyJ5HJV+3N8dKA9vdepSx2YCLjR0kINpbUFJdoqLwFnfATaKf1AoFzZlFxAAegEwBL0dfQBG1fggk1uV8mXB7XxIEqELPxEn9rd/Ryg=\",\n  \"passwordPolicy\": {\n    \"id\": \"90542be67d584ab09daa12e697fb041a\",\n    \"tenantId\": \"cec63451f8bf4ceebb9ada0b87d829bf\",\n    \"minPasswordLength\": 8,\n    \"requireLowercaseCharacters\": false,\n    \"requireUppercaseCharacters\": true,\n    \"requireNumbers\": true,\n    \"requireSymbols\": true,\n    \"minPasswordDifferentCharacter\": 0,\n    \"createdAt\": \"2023-08-30 10:07:14\",\n    \"updatedAt\": \"2025-03-08 18:39:42\",\n    \"deleted\": false,\n    \"userName\": null\n  },\n  \"userId\": \"{{id}}\",\n  \"noticeType\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           },
           "response": []
         },
         {
-          "name": "13_迁移",
+          "name": "13_搜索验证（重置密码后）",
           "request": {
             "method": "GET",
             "header": [
@@ -538,15 +479,6 @@
             ],
             "url": {
               "raw": "{{base_url}}/estack/api/estack/draco/v1/users/{id}"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"tenantId\": \"{{entity_tenantId}}\",\n  \"adminId\": \"{{entity_id}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "response": []

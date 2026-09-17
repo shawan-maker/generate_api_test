@@ -1,6 +1,6 @@
 """
 用户管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-16 09:54:09
+生成时间: 2026-09-17 13:59:18
 目标URL: https://10.151.61.248D:/Program Files (x86)/Git/estack/web/estack/user-center/user-manage/user
 
 执行流程:
@@ -16,7 +16,7 @@
   10. 锁定
   11. 搜索验证（锁定后）
   12. 重置密码
-  13. 迁移
+  13. 搜索验证（重置密码后）
   14. 删除
   15. 搜索验证（删除后）
 
@@ -91,14 +91,15 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userName": "AT_test_521452",
-        "password": "H8NUmVnyOaHblUbcwNkNdRxb+ASuBwaQ/ePQk/btny0y5JT+kJZrv814N5RHi8kO+uIq+vYUuKsYYNJWAdFiY3DKPCVeXvQHHTT94DsM21hTnBBrBhgkYGPjIIS63r6jBQSRKNhYCwrvwlpUhVvg2eUFRUvpm4ThUgdPs9UhpeY=",
-        "name": "AT_test_521452",
-        "email": "ANHpfros+wQZh1fMwHb+rOQebGA9+W7eHYiFqNh5LA0v71okLPOBkUSz0vy9t9dGtHWNBbNhBsfmNgLcKUHmTgsBvhn8upOQTfx57LyOeKjGdI7zAhZtDXoQGIng7ERhm4r8KnZmCLBGuKO4OMEpKe5LAqpdkyY1q75SNd6lncA=",
-        "phone": "FK+zyF4yHVgRP9k4CPKQViySEm1LQUoephjlq8Pbv22kMePfal6GNrQegLpexecVodOOCz/eMeupCF1aO2fHY4EENuXHkEbS/Ax/5Z8ItAPK52ZdJioUGDKJBm16X8Cj64CnCT35szBS3olVxv5Gji0bZeappTKx3feBEqTcj/8=",
-        "description": "auto_desc_521452",
+        "userName": "AT_test_612336",
+        "password": "Qo6E+yUJpiME0nXG9jQa7VTX1SKCBGFBVBsSo5wajcPVhUAmuQij23Lxze8SPj2tNKBx+tk1T4Fk+lr1Le+AYyiMsas1Wf1Kg2TgCcjkKoadjIobiCWHOFfDGOPgUMvDCD9pJVUNS1IkEcCCbOZMWgxtQ9AaDZEgu4pg5p05aH0=",
+        "name": "AT_test_612336",
+        "email": "hetrYUxjvozfsDhjkPwHRGvAV2cBIeQI17uIGXdNi8FZg4tJiN9LFmZDtt4Ktqg0YtD4MF9Tp266KYSFvQgiS0HS89W2ZIzFH6L2OLREDkshjKx3ZwJjCtRUoer2jFrzPnVtgFqPXYR1rwQJO/Zy+i+TSE2UfdXRh6rCMcfGafI=",
+        "phone": "Vznvh5G4j9mNPkxCURnRcO7Rk0TEWC3MvkgGA0pddxvkPmQyfB7HLawfQkt0qwY3JcqGUZ4VirQyTq2dCEXh6MLrEvo39cZrHhkvinwKUYSSrVEEQ86bzAsOZxJ6TOaQQ3bCO37blvr4MIujfPHguYkpPBgtd1M4pcqbi/xHd3o=",
+        "description": "auto_desc_612336",
         "policyIds": [
-          "1f8e392309fc414c9d77d45d0315fedc"
+          "1f8e392309fc414c9d77d45d0315fedc",
+          "e95978ecbbe1475aa5fa062fa3b4c163"
         ],
         "adminId": "644e7d7b19c744d6a1d3194b8d819fd3",
         "tenantId": "42ffdba38c58484f9be2bc1adf1672e6",
@@ -124,19 +125,20 @@ MANIFEST = {
           "role": "mutable"
         },
         "policyIds": {
-          "role": "static"
+          "role": "pre_api_ref",
+          "source": "list.entity_list_0_id",
+          "is_array": True
         },
         "adminId": {
-          "role": "pre_api_ref",
-          "source": "current_user.entity_adminId"
+          "role": "context",
+          "source": "context.adminId"
         },
         "tenantId": {
-          "role": "pre_api_ref",
-          "source": "display_by_role.entity_0_id"
+          "role": "context",
+          "source": "context.tenantId"
         },
         "countryCode": {
-          "role": "pre_api_ref",
-          "source": "current_user.entity_countryCode"
+          "role": "static"
         }
       },
       "requires": [],
@@ -155,7 +157,7 @@ MANIFEST = {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$display_by_role.entity_0_id",
+          "tenantId": "$list.entity_list_0_tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -192,17 +194,15 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "5c66380b79bc46db913dc83a04793142",
-        "name": "AT_test_521452",
-        "description": "auto_desc_521452",
+        "userId": "ecd57be47cbc4a0780bb355e6ff4d7a7",
+        "name": "AT_test_612336",
+        "description": "auto_desc_612336",
         "tenantId": "42ffdba38c58484f9be2bc1adf1672e6",
-        "countryCode": "+86",
-        "adminId": "93552edc908e4dadae761fff1fd0f24c"
+        "countryCode": "+86"
       },
       "body_field_roles": {
         "userId": {
-          "role": "pre_api_ref",
-          "source": "reset.entity_userId"
+          "role": "id_ref"
         },
         "name": {
           "role": "name"
@@ -211,16 +211,11 @@ MANIFEST = {
           "role": "mutable"
         },
         "tenantId": {
-          "role": "pre_api_ref",
-          "source": "display_by_role.entity_0_id"
+          "role": "context",
+          "source": "context.tenantId"
         },
         "countryCode": {
-          "role": "pre_api_ref",
-          "source": "current_user.entity_countryCode"
-        },
-        "adminId": {
-          "role": "pre_api_ref",
-          "source": "current_user.entity_id"
+          "role": "static"
         }
       },
       "requires": [
@@ -234,7 +229,7 @@ MANIFEST = {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$display_by_role.entity_0_id",
+          "tenantId": "$list.entity_list_0_tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -257,22 +252,11 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "5c66380b79bc46db913dc83a04793142",
-        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
-        "adminId": "93552edc908e4dadae761fff1fd0f24c"
+        "userId": "ecd57be47cbc4a0780bb355e6ff4d7a7"
       },
       "body_field_roles": {
         "userId": {
-          "role": "pre_api_ref",
-          "source": "reset.entity_userId"
-        },
-        "tenantId": {
-          "role": "pre_api_ref",
-          "source": "current_user.entity_tenantId"
-        },
-        "adminId": {
-          "role": "pre_api_ref",
-          "source": "current_user.entity_id"
+          "role": "id_ref"
         }
       },
       "requires": [
@@ -286,7 +270,7 @@ MANIFEST = {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$display_by_role.entity_0_id",
+          "tenantId": "$list.entity_list_0_tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -308,20 +292,8 @@ MANIFEST = {
         "pathname": "/estack/api/estack/draco/v1/users/{id}/enable",
         "query_params": {}
       },
-      "body_template": {
-        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
-        "adminId": "93552edc908e4dadae761fff1fd0f24c"
-      },
-      "body_field_roles": {
-        "tenantId": {
-          "role": "pre_api_ref",
-          "source": "current_user.entity_tenantId"
-        },
-        "adminId": {
-          "role": "pre_api_ref",
-          "source": "current_user.entity_id"
-        }
-      },
+      "body_template": {},
+      "body_field_roles": {},
       "requires": [
         "id"
       ]
@@ -333,7 +305,7 @@ MANIFEST = {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$display_by_role.entity_0_id",
+          "tenantId": "$list.entity_list_0_tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -356,22 +328,11 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userId": "5c66380b79bc46db913dc83a04793142",
-        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
-        "adminId": "93552edc908e4dadae761fff1fd0f24c"
+        "userId": "ecd57be47cbc4a0780bb355e6ff4d7a7"
       },
       "body_field_roles": {
         "userId": {
-          "role": "pre_api_ref",
-          "source": "reset.entity_userId"
-        },
-        "tenantId": {
-          "role": "pre_api_ref",
-          "source": "current_user.entity_tenantId"
-        },
-        "adminId": {
-          "role": "pre_api_ref",
-          "source": "current_user.entity_id"
+          "role": "id_ref"
         }
       },
       "requires": [
@@ -385,7 +346,7 @@ MANIFEST = {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$display_by_role.entity_0_id",
+          "tenantId": "$list.entity_list_0_tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -403,29 +364,75 @@ MANIFEST = {
       "action": "重置密码",
       "label": "重置密码",
       "api": {
-        "method": "GET",
-        "pathname": "/estack/api/estack/draco/v1/password-policy",
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/password-reset/reset",
         "query_params": {}
       },
-      "body_template": {},
-      "body_field_roles": {},
+      "body_template": {
+        "forceChangePassword": 1,
+        "isRandomPassword": 1,
+        "newPassword": "M5Gj2Vp2XLcdrlrjfd8HpaVZ988ssycFd1JKlvXZUXFiveODO+TGBtW/peWw2tLySLxlYyJ5HJV+3N8dKA9vdepSx2YCLjR0kINpbUFJdoqLwFnfATaKf1AoFzZlFxAAegEwBL0dfQBG1fggk1uV8mXB7XxIEqELPxEn9rd/Ryg=",
+        "passwordPolicy": {
+          "id": "90542be67d584ab09daa12e697fb041a",
+          "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
+          "minPasswordLength": 8,
+          "requireLowercaseCharacters": False,
+          "requireUppercaseCharacters": True,
+          "requireNumbers": True,
+          "requireSymbols": True,
+          "minPasswordDifferentCharacter": 0,
+          "createdAt": "2023-08-30 10:07:14",
+          "updatedAt": "2025-03-08 18:39:42",
+          "deleted": False,
+          "userName": None
+        },
+        "userId": "ecd57be47cbc4a0780bb355e6ff4d7a7",
+        "noticeType": []
+      },
+      "body_field_roles": {
+        "forceChangePassword": {
+          "role": "static"
+        },
+        "isRandomPassword": {
+          "role": "static"
+        },
+        "newPassword": {
+          "role": "static"
+        },
+        "passwordPolicy": {
+          "role": "static"
+        },
+        "userId": {
+          "role": "id_ref"
+        },
+        "noticeType": {
+          "role": "static"
+        }
+      },
       "requires": [
         "id"
       ]
     },
     {
-      "action": "迁移",
-      "label": "迁移",
+      "action": "get",
+      "label": "搜索验证（重置密码后）",
       "api": {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
-        "query_params": {}
+        "query_params": {
+          "tenantId": "$list.entity_list_0_tenantId",
+          "pageNum": "1",
+          "pageSize": "10"
+        }
       },
       "body_template": {},
       "body_field_roles": {},
       "requires": [
         "id"
-      ]
+      ],
+      "assertion": "search_verify",
+      "search_param": "name",
+      "search_param_source": "userName"
     },
     {
       "action": "删除",
@@ -435,20 +442,8 @@ MANIFEST = {
         "pathname": "/estack/api/estack/draco/v1/users/{id}",
         "query_params": {}
       },
-      "body_template": {
-        "tenantId": "cec63451f8bf4ceebb9ada0b87d829bf",
-        "adminId": "93552edc908e4dadae761fff1fd0f24c"
-      },
-      "body_field_roles": {
-        "tenantId": {
-          "role": "pre_api_ref",
-          "source": "current_user.entity_tenantId"
-        },
-        "adminId": {
-          "role": "pre_api_ref",
-          "source": "current_user.entity_id"
-        }
-      },
+      "body_template": {},
+      "body_field_roles": {},
       "requires": [
         "id"
       ]
@@ -460,7 +455,7 @@ MANIFEST = {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$display_by_role.entity_0_id",
+          "tenantId": "$list.entity_list_0_tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -489,6 +484,32 @@ MANIFEST = {
   },
   "pre_apis": [
     {
+      "name": "前置 API: list",
+      "id": "list",
+      "method": "POST",
+      "pathname": "/estack/api/estack/draco/v1/policies/list",
+      "depends_on": [],
+      "extracts": [
+        {
+          "name": "entity_list_0_id",
+          "path": "entity.list[0].id",
+          "used_by": [
+            "创建用户"
+          ]
+        },
+        {
+          "name": "entity_list_0_tenantId",
+          "path": "entity.list[0].tenantId",
+          "used_by": [
+            "创建用户",
+            "编辑"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {}
+    },
+    {
       "name": "获取当前用户信息",
       "id": "current_user",
       "method": "GET",
@@ -500,35 +521,6 @@ MANIFEST = {
           "path": "entity.adminId",
           "used_by": [
             "创建用户"
-          ]
-        },
-        {
-          "name": "entity_countryCode",
-          "path": "entity.countryCode",
-          "used_by": [
-            "创建用户",
-            "编辑"
-          ]
-        },
-        {
-          "name": "entity_id",
-          "path": "entity.id",
-          "used_by": [
-            "编辑",
-            "冻结",
-            "启用",
-            "锁定",
-            "删除"
-          ]
-        },
-        {
-          "name": "entity_tenantId",
-          "path": "entity.tenantId",
-          "used_by": [
-            "冻结",
-            "启用",
-            "锁定",
-            "删除"
           ]
         },
         {
@@ -548,51 +540,11 @@ MANIFEST = {
       ],
       "body_template": {},
       "query_params": {}
-    },
-    {
-      "name": "前置 API: display-by-role",
-      "id": "display_by_role",
-      "method": "GET",
-      "pathname": "/estack/api/estack/draco/v1/tenants/display-by-role",
-      "depends_on": [],
-      "extracts": [
-        {
-          "name": "entity_0_id",
-          "path": "entity[0].id",
-          "used_by": [
-            "创建用户",
-            "编辑"
-          ]
-        }
-      ],
-      "body_template": {},
-      "query_params": {}
-    },
-    {
-      "name": "前置 API: reset",
-      "id": "reset",
-      "method": "POST",
-      "pathname": "/estack/api/estack/draco/v1/password-reset/reset",
-      "depends_on": [],
-      "extracts": [
-        {
-          "name": "entity_userId",
-          "path": "entity.userId",
-          "used_by": [
-            "编辑",
-            "冻结",
-            "锁定"
-          ]
-        }
-      ],
-      "body_template": {},
-      "query_params": {}
     }
   ],
   "pre_api_refs": [
-    "current_user",
-    "display_by_role",
-    "reset"
+    "list",
+    "current_user"
   ]
 }
 

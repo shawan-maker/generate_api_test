@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 from core.discovery.endpoint_classifier import (
     EndpointClassifier, deduplicate_calls, _classify_by_behavior,
-    _response_has_entity_id, _call_has_distinctive_params,
+    _call_has_business_data, _call_has_distinctive_params,
     _request_body_field_count, _count_pathname_windows,
 )
 from core.discovery.stage_validators import (
@@ -542,8 +542,13 @@ class TestInfrastructureAPIs:
 
 
 # ============================================================
-# _response_has_entity_id 响应特征检测测试
+# _call_has_business_data 响应特征检测测试
 # ============================================================
+
+def _response_has_entity_id(pathname, samples):
+    """辅助函数：适配旧测试到新接口 _call_has_business_data(call, samples)"""
+    call = {"method": "GET", "pathname": pathname}
+    return _call_has_business_data(call, samples)
 
 class TestResponseHasEntityId:
     """测试响应是否包含实体 ID（Layer 2 过滤核心）"""

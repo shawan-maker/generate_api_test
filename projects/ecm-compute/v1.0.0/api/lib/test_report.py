@@ -219,7 +219,14 @@ def generate_postman_report(api_calls: list, events: list, module_name: str) -> 
         label = call.get("step_label", "")
 
         # 判断是否成功
-        is_ok = assertion == "passed" or (status >= 200 and status < 300)
+        # assertion 明确为失败/错误时，不以 HTTP 状态码覆盖
+        if assertion in ("failed", "error"):
+            is_ok = False
+        elif assertion == "passed":
+            is_ok = True
+        else:
+            # 无断言的步骤，按 HTTP 状态码判断
+            is_ok = 200 <= status < 300
         badge_class = "b-ok" if is_ok else "b-fail"
         badge_text = "✅ 通过" if is_ok else "❌ 失败"
 

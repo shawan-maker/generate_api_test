@@ -5,7 +5,7 @@
     "base_url": "https://10.151.61.248",
     "login_url": "https://10.151.61.248/estack/web/estack/login",
     "framework": "element-ui",
-    "generated_at": "2026-09-16 18:37:09",
+    "generated_at": "2026-09-16 18:59:03",
     "version": "1.0",
     "auth_config": {
       "token_key": "estackToken",
@@ -293,16 +293,16 @@
       "error_type": "required_field_empty",
       "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
       "nav_info": {
-        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=6e258889963b4d7185c230bad8a769af",
+        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=3a66c00f6a464b5c87e6a13164a1a86a",
         "depth": 0,
         "page_title": "eStack Enterprise",
         "has_form": false,
         "form_fields": [],
         "fill_data": {
-          "授权用户": "AT_AT_test_auto_554814",
-          "授权用户组": "AT_AT_test_auto_554814",
-          "授权角色": "AT_AT_test_auto_554814",
-          "授权范围": "AT_AT_test_auto_554814"
+          "授权用户": "AT_AT_test_auto_556143",
+          "授权用户组": "AT_AT_test_auto_556143",
+          "授权角色": "AT_AT_test_auto_556143",
+          "授权范围": "AT_AT_test_auto_556143"
         },
         "submit_result": {},
         "error_type": "required_field_empty",

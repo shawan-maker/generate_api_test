@@ -142,7 +142,7 @@ def _sync_runtime_lib(api_dir: Path):
       └── lib/runtime/global_pre_apis.py  (条件导入，前置 API)
     """
     import shutil
-    src_lib = Path(__file__).resolve().parent.parent / "lib"
+    src_lib = Path(__file__).resolve().parent.parent.parent / "lib"
     dst_lib = api_dir / "lib"
     dst_lib.mkdir(parents=True, exist_ok=True)
 

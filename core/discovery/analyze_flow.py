@@ -1482,15 +1482,20 @@ def build_manifest(analysis: dict, capture_result: dict,
             for field_name in list(field_roles.keys()):
                 key = f"{action}.{field_name}"
                 if key in field_resolutions:
-                    # 保护 name/mutable 字段不被 pre_api_ref 覆盖
-                    # 这些是业务测试值，运行时应自动生成唯一值
+                    # 保护 name/mutable/id_ref 字段不被 Phase B 的 generate_random 覆盖
+                    # name/mutable 是业务测试值；id_ref 是步骤间引用（应使用 state['id']）
                     existing_role = field_roles[field_name].get("role", "")
-                    if existing_role in ("name", "mutable"):
+                    if existing_role in ("name", "mutable", "context", "id_ref"):
                         continue
                     resolution = field_resolutions[key]
                     strategy = resolution.get("strategy", "")
 
-                    if strategy == "value_pattern_analysis":
+                    if strategy == "generate_random":
+                        field_roles[field_name] = {
+                            "role": "generate",
+                            "value_type": resolution.get("value_type", "hex_id"),
+                        }
+                    elif strategy == "value_pattern_analysis":
                         # 值模式分析结果：标记为 test_value
                         field_roles[field_name] = {
                             "role": "test_value",
@@ -1589,8 +1594,8 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
 
     LOG.info(f"  Phase 1: 收集到 {len(param_inventory)} 个参数")
 
-    # Phase 2: 构建前置 API 索引（扁平化所有前置 API 响应）
-    pre_api_index = {}  # {value_str: (api, field_info)}
+    # Phase 2: 构建前置 API 索引（扁平化所有前置 API 响应，同值多源）
+    pre_api_index = {}  # {value_str: [source_entries]}
     for api in pre_api_candidates:
         body_text = api.get('response_sample', {}).get('response_body', '')
         if not body_text:
@@ -1605,14 +1610,17 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
             path = field_info.get('path', '')
             value = _extract_by_path_generic(body, path)
             if value is not None:
-                # 将值转换为字符串作为索引键
                 key = str(value)
+                entry = {
+                    'api': api,
+                    'field': field_info,
+                    'value': value,
+                    'value_type': _classify_value_type(value),
+                    'path_depth': path.count('.') + path.count('['),
+                }
                 if key not in pre_api_index:
-                    pre_api_index[key] = {
-                        'api': api,
-                        'field': field_info,
-                        'value': value
-                    }
+                    pre_api_index[key] = []
+                pre_api_index[key].append(entry)
 
     LOG.info(f"  Phase 2: 前置 API 索引包含 {len(pre_api_index)} 个值")
 
@@ -1623,16 +1631,16 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
     for param in param_inventory:
         resolution = _resolve_parameter_source(param, pre_api_index)
         if resolution:
-            # 使用字符串键 "action.field" 而非元组，以便 JSON 序列化
             key = f"{param['step_action']}.{param['field_name']}"
             field_resolutions[key] = resolution
-            # 记录使用的前置 API
-            api_id = resolution['source'].split('.')[0]
-            if api_id not in used_apis:
-                used_apis[api_id] = resolution['api']
+            strategy = resolution.get("strategy", "")
+            # generate_random 不加入 used_apis（不依赖任何前置 API）
+            if strategy != "generate_random":
+                api_id = resolution['source'].split('.')[0]
+                if api_id not in used_apis:
+                    used_apis[api_id] = resolution['api']
         else:
-            # ★ 值模式分析降级（仅对 create 步骤）
-            # 当三策略匹配都返回 None 时，根据值的特征判断是否为用户输入字段
+            # 非系统 ID 类型值 → 原有值模式分析降级逻辑
             if id_producer and param['step_action'] == id_producer:
                 pattern = _analyze_value_pattern(param['field_name'], param['field_value'])
                 if pattern and pattern['role'] == 'test_value':
@@ -1753,17 +1761,72 @@ def _analyze_value_pattern(field_name: str, value) -> dict:
     return None
 
 
+def _classify_value_type(value) -> str:
+    """根据值本身特征分类（不看参数名，只看值的特征）。
+
+    Returns:
+        "hex_id"     — 32字符十六进制串 (如 "42ffdba38c58484f9be2bc1adf1672e6")
+        "uuid"       — 标准 UUID 格式 (如 "550e8400-e29b-41d4-a716-446655440000")
+        "numeric_id" — 8位以上纯数字
+        "boolean"    — 布尔值
+        "number"     — 普通数字
+        "string"     — 其他字符串
+    """
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, (int, float)):
+        return "number"
+    if not isinstance(value, str) or not value:
+        return "string"
+    if re.fullmatch(r'[0-9a-fA-F]{32,}', value):
+        return "hex_id"
+    if len(value) == 36 and value.count('-') == 4 and re.fullmatch(r'[0-9a-fA-F\-]+', value):
+        return "uuid"
+    if value.isdigit() and len(value) >= 8:
+        return "numeric_id"
+    return "string"
+
+
+def _is_system_id_type(value_type: str) -> bool:
+    """判断值类型是否属于"系统 ID 类"——必须从前置 API 获取或动态生成。"""
+    return value_type in ("hex_id", "uuid", "numeric_id")
+
+
+def _pick_best_source(entries: list, request_field_name: str) -> dict:
+    """从同一值的多个前置 API 来源中选择最可靠的。
+
+    评分规则（不依赖参数名，纯粹基于来源质量）：
+    1. 路径深度浅优先（entity.tenantId 优于 entity.list[0].tenantId）
+    2. 字段名叶子节点匹配加分（仅作 tiebreaker）
+    """
+    def score(entry):
+        s = 0
+        # 路径越浅越可靠（直接字段 > 列表项字段）
+        s -= entry['path_depth'] * 10
+        # 字段名叶子节点匹配加分（仅作 tiebreaker）
+        leaf = entry['field']['name'].rsplit('_', 1)[-1].lower()
+        if leaf == request_field_name.lower():
+            s += 5
+        return s
+
+    return max(entries, key=score)
+
+
 def _resolve_parameter_source(param: dict, pre_api_index: dict) -> dict:
     """
-    使用三策略匹配解析参数来源。
+    值类型驱动的字段来源解析。
 
-    策略 1: 精确值匹配
-    策略 2: 字段名启发式 + 值比对门控
-    策略 3: 列表成员检查
+    核心原则：根据值的类型和值本身匹配，不依赖参数名。
+    - 系统 ID 类型（hex_id/uuid/numeric_id）必须从前置 API 获取或动态生成
+    - 非系统 ID 类型（短字符串、布尔值等）不尝试匹配前置 API
+
+    策略 1: 精确值匹配 + 多源选择（路径浅优先）
+    策略 2: 列表成员检查
+    策略 3: generate 兜底（系统 ID 无来源时生成随机值）
 
     Args:
         param: 参数信息 {step_action, field_name, field_value}
-        pre_api_index: 前置 API 索引 {value_str: {api, field, value}}
+        pre_api_index: 前置 API 索引 {value_str: [source_entries]}
 
     Returns:
         解析结果 {source, api, strategy} 或 None
@@ -1780,54 +1843,39 @@ def _resolve_parameter_source(param: dict, pre_api_index: dict) -> dict:
         is_array = True
 
     field_value_str = str(field_value)
+    value_type = _classify_value_type(field_value)
 
-    # ── 纯值驱动匹配：不再用字段名后缀做门卫 ──
-    # 值本身就是最好的标识，匹配上了自然就知道来源，不需要关心字段叫什么
+    # ── 值类型预过滤：非系统 ID 类型不匹配前置 API ──
+    if not _is_system_id_type(value_type):
+        return None
 
-    # 策略 1: 精确值匹配（最高优先级，直接按值搜索，不做字段名过滤）
+    # ── 策略 1: 精确值匹配 + 多源选择 ──
     if field_value_str in pre_api_index:
-        info = pre_api_index[field_value_str]
-        api_id = info['api']['id']
-        field_name_in_api = info['field']['name']
+        entries = pre_api_index[field_value_str]
+        best = _pick_best_source(entries, field_name) if len(entries) > 1 else entries[0]
+        api_id = best['api']['id']
+        field_name_in_api = best['field']['name']
         return {
             'source': f"{api_id}.{field_name_in_api}",
-            'api': info['api'],
+            'api': best['api'],
             'strategy': 'exact_value_match',
             'is_array': is_array
         }
 
-    # 策略 2: 字段名启发式 + 值比对门控（降级方案，仅当值匹配失败时尝试）
-    # 字段名完全匹配（取路径最后一段），不做子串匹配
-    for value_str, info in pre_api_index.items():
-        api_field_name = info['field']['name']
-        api_field_leaf = api_field_name.rsplit('_', 1)[-1].lower()
-        if field_name.lower() == api_field_leaf or field_name.lower() == api_field_name.lower():
-            # ★ 新增：字段名匹配时，检查值是否一致
-            if value_str == field_value_str:
-                # 值一致 → 系统引用
-                api_id = info['api']['id']
-                return {
-                    'source': f"{api_id}.{api_field_name}",
-                    'api': info['api'],
-                    'strategy': 'field_name_and_value_match',
-                    'is_array': False
-                }
-            else:
-                # 字段名匹配但值不同 → 用户输入字段，不是系统引用
-                LOG.debug(f"    字段 {field_name}: 名称匹配但值不同 "
-                          f"(请求值={field_value_str[:30]}..., "
-                          f"响应值={value_str[:30]}...) → 判定为用户输入")
-                return None  # 不返回，交给值模式分析
+    # ── 策略 2: 列表成员检查（参数值是否在某个列表响应中）──
+    seen_apis = set()
+    for value_str, entries in pre_api_index.items():
+        for entry in entries:
+            field_path = entry['field']['path']
+            if '[0]' not in field_path:
+                continue
+            api = entry['api']
+            api_key = api.get('id', '') + field_path
+            if api_key in seen_apis:
+                continue
+            seen_apis.add(api_key)
 
-    # 策略 3: 列表成员检查（参数值是否在某个列表响应中）
-    # 检查前置 API 索引中的列表字段
-    for value_str, info in pre_api_index.items():
-        field_path = info['field']['path']
-        # 检查是否为列表字段（路径包含 [0]）
-        if '[0]' in field_path:
-            # 提取列表路径（去掉 [0] 部分）
             list_path = field_path.split('[0]')[0]
-            api = info['api']
             body_text = api.get('response_sample', {}).get('response_body', '')
             if not body_text:
                 continue
@@ -1835,13 +1883,12 @@ def _resolve_parameter_source(param: dict, pre_api_index: dict) -> dict:
                 body = json.loads(body_text) if isinstance(body_text, str) else body_text
                 list_value = _extract_by_path_generic(body, list_path)
                 if isinstance(list_value, list):
-                    # 检查参数值是否在列表中
                     for item in list_value:
                         if isinstance(item, dict):
                             item_id = item.get('id')
                             if str(item_id) == field_value_str:
                                 api_id = api['id']
-                                field_name_in_api = info['field']['name']
+                                field_name_in_api = entry['field']['name']
                                 return {
                                     'source': f"{api_id}.{field_name_in_api}",
                                     'api': api,
@@ -1851,7 +1898,12 @@ def _resolve_parameter_source(param: dict, pre_api_index: dict) -> dict:
             except Exception:
                 continue
 
-    return None
+    # ── 策略 3: 无匹配但值是系统 ID → 标记运行时生成 ──
+    return {
+        'source': '',
+        'strategy': 'generate_random',
+        'value_type': value_type,
+    }
 
 
 def _topological_sort_pre_apis(used_apis: dict) -> list:
