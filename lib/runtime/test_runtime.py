@@ -11,6 +11,7 @@ test_runtime.py — 通用测试运行时库
 """
 
 import json
+import re
 import sys
 import time
 import os
@@ -397,6 +398,20 @@ class StepExecutor:
 
                 last_resp = resp
 
+                # 非最终 phase：轻量级校验（HTTP 2xx + 业务成功标记）
+                if i < len(phases) - 1:
+                    if not (200 <= resp.status_code < 300):
+                        raise AssertionError(f"phase {phase_id} HTTP {resp.status_code}")
+                    try:
+                        resp_json = resp.json()
+                        if isinstance(resp_json, dict):
+                            success_val = resp_json.get("success", resp_json.get("code"))
+                            if success_val is False or (isinstance(success_val, int) and success_val not in (0, 200)):
+                                msg = resp_json.get("message", resp_json.get("msg", ""))
+                                raise AssertionError(f"phase {phase_id} 业务失败: {msg}")
+                    except (ValueError, AttributeError):
+                        pass  # 无法解析 JSON 时不阻塞
+
                 # 最后一个 phase（main）做断言
                 if i == len(phases) - 1:
                     self._assert_response(resp, label)
@@ -467,9 +482,15 @@ class StepExecutor:
 
     def _build_url(self, api: dict) -> str:
         pathname = api["pathname"]
-        if "{id}" in pathname:
-            id_val = self.state.get("id", "")
-            pathname = pathname.replace("{id}", str(id_val))
+        # 替换任意 {paramName} 占位符（不仅限于 {id}）
+        placeholders = re.findall(r'\{(\w+)\}', pathname)
+        for key in placeholders:
+            val = self.state.get(key, "")
+            if val:
+                pathname = pathname.replace(f"{{{key}}}", str(val))
+            elif key == "id":
+                # 兼容：id 为空时保留原行为（替换为空字符串）
+                pathname = pathname.replace("{id}", "")
         url = self.base_url + pathname
         query_params = api.get("query_params", {})
         if query_params:
@@ -632,8 +653,62 @@ class StepExecutor:
                 else:
                     body[key] = str(uuid.uuid4())
             else:
-                body[key] = value
+                # static 值 — 检查嵌套对象中是否有动态字段定义
+                if isinstance(value, dict):
+                    prefix = f"{key}."
+                    nested_roles = {
+                        rk[len(prefix):]: rv
+                        for rk, rv in field_roles.items()
+                        if rk.startswith(prefix)
+                    }
+                    if nested_roles:
+                        body[key] = self._build_body_nested(value, nested_roles)
+                    else:
+                        body[key] = value
+                else:
+                    body[key] = value
         return body
+
+    def _build_body_nested(self, template, field_roles):
+        """递归处理嵌套对象中的动态字段。
+
+        仅当 field_roles 中存在 "key.subkey" 格式时才触发，
+        否则行为与普通 static 复制完全一致。
+        """
+        result = {}
+        for key, value in template.items():
+            role_config = field_roles.get(key, {"role": "static"})
+            role = role_config.get("role", "static")
+            if role == "static" and isinstance(value, dict):
+                prefix = f"{key}."
+                nested_roles = {
+                    rk[len(prefix):]: rv
+                    for rk, rv in field_roles.items()
+                    if rk.startswith(prefix)
+                }
+                result[key] = self._build_body_nested(value, nested_roles) if nested_roles else value
+            elif role == "static":
+                result[key] = value
+            elif role == "id_ref":
+                result[key] = self.state.get("id", "")
+            elif role == "context":
+                source = role_config.get("source", f"context.{key}")
+                if "." in source:
+                    field = source.split(".", 1)[1]
+                    result[key] = self.state.get(field, value)
+                else:
+                    result[key] = self.state.get(key, value)
+            elif role == "generate":
+                gen_type = role_config.get("type", "uuid")
+                if gen_type == "uuid":
+                    result[key] = str(uuid.uuid4())
+                elif gen_type == "hex":
+                    result[key] = uuid.uuid4().hex
+                else:
+                    result[key] = str(uuid.uuid4())
+            else:
+                result[key] = value
+        return result
 
     def _send_request(self, method: str, url: str, body: dict,
                       step_action: str = "", step_label: str = "") -> requests.Response:
