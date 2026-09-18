@@ -896,130 +896,6 @@ def _discover_response_contract(response_samples: dict) -> dict:
     }
 
 
-def _classify_body_fields(body_sample: dict, id_field_details: dict,
-                          create_body_sample: dict = None,
-                          context_field_names: set = None) -> dict:
-    """为请求体中每个字段标注角色（role）。
-
-    替代 gen_test.py 中 _gen_payload_code() 的硬编码字段分类。
-
-    角色说明：
-    - "id_ref":    ID 引用字段，运行时从 state['id'] 获取
-    - "context":   上下文字段（tenantId 等），从 state 或 create_body 获取
-    - "name":      名称字段，运行时添加 AT_{TS}_ 前缀
-    - "mutable":   可变字段（description 等），运行时生成新值
-    - "static":    静态字段，直接复制 body_template 的值
-
-    Args:
-        body_sample: 请求体样本 dict
-        id_field_details: Stage 3 分析的 ID 字段详情
-                          {field_name: {source_crud, sample_value, path}}
-        create_body_sample: create 步骤的 body 样本（用于判断 context 字段）
-        context_field_names: auth_profile.context_fields 中声明的字段名集合
-
-    Returns:
-        {field_name: {"role": ..., "source": ...}} 字典
-    """
-    if not body_sample:
-        return {}
-
-    context_field_names = context_field_names or set()
-
-    id_field_names = set()
-    if id_field_details:
-        id_field_names = set(id_field_details.keys())
-    id_field_names.add(const.DEFAULT_ID_FIELD)  # 始终包含默认 ID 字段
-
-    # context 字段优先级高于 id_ref：在 context_fields 中声明的字段，
-    # 即使名称出现在 id_field_details 中，也标记为 context
-    effective_id_fields = id_field_names - context_field_names
-
-    create_keys = set()
-    if create_body_sample and isinstance(create_body_sample, dict):
-        create_keys = set(create_body_sample.keys())
-
-    roles = {}
-    for key, value in body_sample.items():
-        key_lower = key.lower()
-
-        # 0. 上下文字段优先：在 auth_profile.context_fields 中声明
-        #    但需要值匹配验证：如果当前值与 create body 中的值不同，可能是不同语义
-        if key in context_field_names:
-            create_value = (create_body_sample or {}).get(key)
-            if create_value is not None and value != create_value:
-                # 值不同 → 虽然字段名匹配 context_fields，但语义不同（如迁移的目标 tenantId）
-                roles[key] = {"role": "static"}
-                LOG.debug(f"    _classify_body_fields: {key} 值与 create body 不同 "
-                          f"({value} vs {create_value})，降级为 static")
-            else:
-                roles[key] = {"role": "context", "source": f"context.{key}"}
-            continue
-
-        # 1. ID 引用字段：在 id_field_details 中出现（排除 context 字段），或字段名匹配 ID 模式
-        if key in effective_id_fields:
-            roles[key] = {"role": "id_ref"}
-            continue
-
-        # 判断辅助标志
-        is_name_like = any(kw in key_lower for kw in const.NAME_FIELD_KEYWORDS)
-        is_mutable_like = any(kw in key_lower for kw in const.MUTABLE_FIELD_KEYWORDS)
-        ends_with_id = (key_lower.endswith("id") and key_lower != "id")
-        ends_with_ids = (key_lower.endswith("ids") and key_lower != "ids")
-
-        # 2. ID 引用字段（补充）：以 Id/Ids 结尾、不在 create body 中、非名称类
-        #    例: roleId, policyId, userId, userIds（在 delete/update body 中出现但不在 create body 中）
-        if (ends_with_id or ends_with_ids) and key not in create_keys and not is_name_like:
-            roles[key] = {"role": "id_ref"}
-            continue
-
-        # 3. 上下文字段：以 Id 结尾且在 create body 中出现的字段
-        #    例: tenantId, adminId（从创建时传递的上下文）
-        #    但需要值匹配验证：如果当前值与 create body 中的值不同，不是 context
-        if ends_with_id and key in create_keys and not is_name_like:
-            create_value = (create_body_sample or {}).get(key)
-            if create_value is not None and value != create_value:
-                # 值不同 → 不是上下文引用，保持 static（如迁移的 tenantId 是目标部门）
-                roles[key] = {"role": "static"}
-                LOG.debug(f"    _classify_body_fields: {key} 值与 create body 不同 "
-                          f"({value} vs {create_value})，保持 static")
-            else:
-                roles[key] = {"role": "context", "source": f"create_body.{key}"}
-            continue
-
-        # 4. 名称字段：字段名含 name/title/label 且值是短可读字符串
-        if is_name_like and isinstance(value, str) and 1 < len(value) < 50:
-            roles[key] = {"role": "name"}
-            continue
-
-        # 4. 可变字段：description 类字段
-        if is_mutable_like:
-            roles[key] = {"role": "mutable"}
-            continue
-
-        # 5. 静态字段：其他所有
-        roles[key] = {"role": "static"}
-
-    # 降级分析：对 static 字段的长字符串做值模式分析
-    # 识别加密值、邮箱、手机号等用户输入字段
-    # 跳过 ID 类字段（以 Id/Ids 结尾）— 它们是系统引用，不应被降级
-    for key, role_info in roles.items():
-        if role_info.get("role") == "static":
-            key_lower = key.lower()
-            if key_lower.endswith("id") or key_lower.endswith("ids"):
-                continue  # ID 字段保持 static
-            value = body_sample[key]
-            if isinstance(value, str) and len(value) > 20:
-                pattern = _analyze_value_pattern(key, value)
-                if pattern and pattern["role"] == "test_value":
-                    roles[key] = {
-                        "role": "test_value",
-                        "value_pattern": pattern["value_pattern"],
-                    }
-                    LOG.debug(f"    _classify_body_fields: {key} 降级为 test_value/{pattern['value_pattern']}")
-
-    return roles
-
-
 def _build_auth_profile(profile: dict) -> dict:
     """从项目 profile dict 构建 manifest 中的 auth_profile。
 
@@ -1092,6 +968,7 @@ def build_manifest(analysis: dict, capture_result: dict,
     core_apis = analysis.get("core_apis", {})
     crud_order = analysis.get("crud_order", [])
     infra_apis = infra_apis or set()
+    pre_api_candidates = capture_result.get("pre_api_candidates", [])
 
     # 获取 id_producer 和 last_write_op（用于替代硬编码的 "create"/"delete"）
     id_producer = analysis.get("dependencies", {}).get("id_producer")
@@ -1114,6 +991,47 @@ def build_manifest(analysis: dict, capture_result: dict,
     # 5. 获取 context_fields 字段名（用于优先标记 context 角色）
     context_fields = auth_profile.get("context_fields", {})
     context_field_names = set(context_fields.keys())
+
+    # 6. 构建值索引（v2.0：5 角色分类的核心数据源）
+    create_response_sample = None
+    if id_producer and id_producer in core_apis:
+        create_eps = core_apis[id_producer]
+        create_resp_samples = response_samples.get(create_eps[0].get("pathname", ""), [])
+        if create_resp_samples:
+            try:
+                body_text = create_resp_samples[0].get("body", "{}")
+                create_response_sample = json.loads(body_text) if isinstance(body_text, str) else body_text
+            except Exception:
+                pass
+
+    # 收集操作链候选（来自 core_api_map 中的非主 API）
+    chain_candidates = []
+    for action, eps in core_apis.items():
+        if len(eps) > 1:
+            # 操作链：除了第一个主 API 外的其他 API
+            for ep in eps[1:]:
+                if ep.get("method") == "GET":
+                    # 构建 chain candidate 格式
+                    api_id = ep.get("pathname", "").split("/")[-1].replace("-", "_")
+                    chain_candidates.append({
+                        "id": api_id,
+                        "method": "GET",
+                        "pathname": ep.get("pathname", ""),
+                        "context": action,
+                        "timestamp": 0.0,
+                        "response_sample": {
+                            "response_body": response_samples.get(ep.get("pathname", ""), [{}])[0].get("body", "")
+                        },
+                        "extracted_fields": [],  # 将在 build_value_index 中动态提取
+                    })
+
+    value_index = build_value_index(
+        pre_api_candidates=pre_api_candidates,
+        create_body_sample=create_body_sample,
+        create_response_sample=create_response_sample,
+        context_fields=context_fields,
+        chain_candidates=chain_candidates,
+    )
 
     # 获取可用的验证端点（query / detail）
     # 优先从 core_apis 获取；如果 query/detail 被同现过滤器误杀，
@@ -1263,15 +1181,19 @@ def build_manifest(analysis: dict, capture_result: dict,
         field_resolutions = pre_api_chain.get("field_resolutions", {})
 
     def _get_create_pre_api_ref_source(field_name):
-        """检查 create 步骤中指定字段是否有 pre_api_ref 解析，返回其 source 或 None。
+        """检查 create 步骤中指定字段的 context 来源，返回其 source 或 None。
 
         用于 verify 步骤的 query_params 生成：如果 create body 中某字段使用了
-        pre_api_ref（如 tenantId ← display_by_role.entity_0_id），verify 步骤
+        context（如 tenantId ← current_user.entity_tenantId），verify 步骤
         的 query_params 也应引用相同来源，确保 tenantId 一致。
         """
-        key = f"{id_producer}.{field_name}"
-        if key in field_resolutions:
-            return field_resolutions[key].get("source", "")
+        # 在 steps 中找到 create 步骤的 body_field_roles
+        for step in steps:
+            if step.get("action") == id_producer:
+                field_roles = step.get("body_field_roles", {})
+                role_info = field_roles.get(field_name, {})
+                if role_info.get("role") == "context":
+                    return role_info.get("source", "")
         return None
 
     def _make_step(action, ep, body_sample, assertion=None):
@@ -1279,11 +1201,14 @@ def build_manifest(analysis: dict, capture_result: dict,
         # 处理数组格式请求体（如 batch delete ["id1", "id2"]）
         if isinstance(body_sample, list):
             field_roles = {
-                "__array_items__": {"role": "id_ref", "source": f"{id_producer}.id"}
+                "__array_items__": {"role": "context", "source": f"create.id", "is_array": True}
             }
         else:
-            field_roles = _classify_body_fields(
-                body_sample, id_field_details, create_body_sample, context_field_names
+            # For create step, exclude create_body sources to prevent self-reference
+            exclude = {"create_body"} if action == id_producer else None
+            field_roles = classify_fields(
+                body_sample, value_index, create_body_sample, current_action=action,
+                exclude_sources=exclude, pre_api_candidates=pre_api_candidates
             )
 
         extract = None
@@ -1328,8 +1253,9 @@ def build_manifest(analysis: dict, capture_result: dict,
         # 核心 API（最后执行）
         core_ep = eps[0]
         core_body = _parse_body(core_ep)
-        core_roles = _classify_body_fields(
-            core_body, id_field_details, create_body_sample, context_field_names
+        core_roles = classify_fields(
+            core_body, value_index, create_body_sample, current_action=action,
+            pre_api_candidates=pre_api_candidates
         )
 
         # 前置 phases（反转，最少的先执行）
@@ -1340,8 +1266,9 @@ def build_manifest(analysis: dict, capture_result: dict,
         for pep in prepare_eps:
             phase_id = pep["pathname"].split("/")[-1]  # 如 "generate"
             pbody = _parse_body(pep)
-            proles = _classify_body_fields(
-                pbody, id_field_details, create_body_sample, context_field_names
+            proles = classify_fields(
+                pbody, value_index, create_body_sample, current_action=action,
+                pre_api_candidates=pre_api_candidates
             )
 
             # 推导 extract：从响应样本中提取与核心 body 同名字段
@@ -1374,9 +1301,6 @@ def build_manifest(analysis: dict, capture_result: dict,
             "body_field_roles": core_roles,
         })
 
-        # 更新核心 phase 的 field_roles：引用前置 phase 的 extract
-        _apply_phase_refs(core_roles, all_extracts)
-
         # 后处理：服务端特殊验证逻辑
         # 当 isRandomPassword=1 时，服务端仍会验证 newPassword 格式（如 RSA 加密），
         # 但忽略实际值。因此 newPassword 应保持原始 RSA 模板值（static），
@@ -1384,7 +1308,7 @@ def build_manifest(analysis: dict, capture_result: dict,
         if isinstance(core_body, dict):
             is_random = core_body.get("isRandomPassword")
             if is_random and "newPassword" in core_roles:
-                if core_roles["newPassword"].get("role") == "phase_ref":
+                if core_roles["newPassword"].get("role") != "static":
                     # 恢复为 static，使用原始 RSA 模板值
                     core_roles["newPassword"] = {"role": "static"}
                     LOG.info("  操作链: newPassword 恢复为 static（isRandomPassword=1 时服务端验证格式但忽略值）")
@@ -1478,20 +1402,6 @@ def build_manifest(analysis: dict, capture_result: dict,
 
         return extracts
 
-    def _apply_phase_refs(core_roles, all_extracts):
-        """将核心 phase 的 field_roles 中匹配前置 phase extract 的字段
-        标记为 phase_ref。
-        """
-        for field_name in core_roles:
-            if field_name in all_extracts:
-                existing_role = core_roles[field_name].get("role", "")
-                # 只覆盖 static 和 generate，不覆盖 id_ref/name/mutable/context
-                if existing_role in ("static", "generate", "test_value"):
-                    core_roles[field_name] = {
-                        "role": "phase_ref",
-                        "source": all_extracts[field_name],
-                    }
-
     def _make_verify_step(verify_action, label, assertion):
         """构建验证步骤（基于可用的验证端点）。"""
         if verify_action not in verify_endpoints:
@@ -1500,8 +1410,9 @@ def build_manifest(analysis: dict, capture_result: dict,
         ep = verify_endpoints[verify_action]["ep"]
         body_sample = verify_endpoints[verify_action]["body_sample"]
 
-        field_roles = _classify_body_fields(
-            body_sample, id_field_details, create_body_sample, context_field_names
+        field_roles = classify_fields(
+            body_sample, value_index, create_body_sample, current_action=verify_action,
+            pre_api_candidates=pre_api_candidates
         )
         pathname = re.sub(r"[0-9a-f]{20,}", "{id}", ep["pathname"])
 
@@ -1606,9 +1517,6 @@ def build_manifest(analysis: dict, capture_result: dict,
 
         return plans
 
-    # 追踪哪些 step/action 使用了 phases（用于 Pass 2 保护 phase_ref 角色）
-    phase_ref_fields = {}  # {action: set(field_names)}
-
     for action in crud_order:
         eps = core_apis.get(action, [])
         if not eps:
@@ -1616,7 +1524,7 @@ def build_manifest(analysis: dict, capture_result: dict,
 
         # 分支：单 API vs 多 API 操作链
         if len(eps) == 1:
-            # 单 API 操作（向后兼容）
+            # 单 API 操作
             ep = eps[0]
             body_sample = _parse_body(ep)
 
@@ -1626,17 +1534,6 @@ def build_manifest(analysis: dict, capture_result: dict,
             # 多 API 操作链：生成带 phases 的 step
             phased_step = _make_phased_step(action, eps)
             steps.append(phased_step)
-
-            # 提取步骤中的 phase_ref 字段（用于后续 Phase B 保护）
-            phases = phased_step.get("phases", [])
-            for phase in phases:
-                if phase.get("id") == "main":
-                    field_roles = phase.get("body_field_roles", {})
-                    for field_name, role_config in field_roles.items():
-                        if role_config.get("role") == "phase_ref":
-                            if action not in phase_ref_fields:
-                                phase_ref_fields[action] = set()
-                            phase_ref_fields[action].add(field_name)
 
         # 根据可用端点自动规划验证步骤
         for verify_action, label, assertion in _plan_verify_steps(action):
@@ -1666,24 +1563,48 @@ def build_manifest(analysis: dict, capture_result: dict,
             }
 
             # 从 field_resolutions 找出哪些字段是从这个 API 提取的
+            # 同时扫描 steps 中的 body_field_roles，收集 context 来源
+            api_id_prefix = api_info["id"] + "."
+            # 从 steps 中收集 context 字段引用此 API 的
+            for step in steps:
+                for fr_target in [step.get("body_field_roles", {})] + [
+                    p.get("body_field_roles", {}) for p in step.get("phases", [])
+                ]:
+                    for field_name, role_info in (fr_target or {}).items():
+                        if role_info.get("role") == "context":
+                            source = role_info.get("source", "")
+                            if source.startswith(api_id_prefix):
+                                extract_name = source.split(".", 1)[1]
+                                # 查找对应的 extracted_fields 获取 path
+                                for ef in api_info.get("extracted_fields", []):
+                                    if ef["name"] == extract_name:
+                                        if not any(e["name"] == extract_name for e in pre_api_entry["extracts"]):
+                                            # 收集 used_by 信息
+                                            used_by = set()
+                                            for s in steps:
+                                                if s.get("body_field_roles", {}).get(field_name, {}).get("source") == source:
+                                                    used_by.add(s.get("action", ""))
+                                            pre_api_entry["extracts"].append({
+                                                "name": extract_name,
+                                                "path": ef["path"],
+                                                "used_by": list(used_by) if used_by else ["*"]
+                                            })
+                                        break
+
+            # 兼容旧格式：也从 field_resolutions 中收集
             for key, resolution in field_resolutions.items():
-                # key 格式: "action.field"
                 step_action, field_name = key.split('.', 1)
                 source = resolution.get("source", "")
-                if source.startswith(api_info["id"] + "."):
+                if source.startswith(api_id_prefix):
                     extract_name = source.split(".", 1)[1]
-                    # 查找对应的 extracted_fields 获取 path
                     for ef in api_info.get("extracted_fields", []):
                         if ef["name"] == extract_name:
-                            # 避免重复
                             if not any(e["name"] == extract_name for e in pre_api_entry["extracts"]):
-                                # 收集 used_by 信息
                                 used_by = []
                                 for k, res in field_resolutions.items():
                                     if res.get("source") == source:
                                         action, _ = k.split('.', 1)
                                         used_by.append(action)
-
                                 pre_api_entry["extracts"].append({
                                     "name": extract_name,
                                     "path": ef["path"],
@@ -1733,52 +1654,6 @@ def build_manifest(analysis: dict, capture_result: dict,
                     if already_extracted:
                         break
 
-        # 应用 field_resolutions 到 steps 的 body_field_roles
-        for step in steps:
-            action = step.get("action", "")
-
-            # 收集需要处理的 body_field_roles：单 API step + phases step 的 main phase
-            roles_targets = []
-            step_field_roles = step.get("body_field_roles", {})
-            if step_field_roles:
-                roles_targets.append(step_field_roles)
-
-            # phases step：处理每个 phase 的 body_field_roles
-            for phase in step.get("phases", []):
-                phase_roles = phase.get("body_field_roles", {})
-                if phase_roles:
-                    roles_targets.append(phase_roles)
-
-            for field_roles in roles_targets:
-                for field_name in list(field_roles.keys()):
-                    key = f"{action}.{field_name}"
-                    if key in field_resolutions:
-                        # 保护 name/mutable/id_ref/phase_ref/static/test_value 字段不被 Phase B 覆盖
-                        existing_role = field_roles[field_name].get("role", "")
-                        if existing_role in ("name", "mutable", "context", "id_ref", "phase_ref", "static", "test_value"):
-                            continue
-                        resolution = field_resolutions[key]
-                        strategy = resolution.get("strategy", "")
-
-                        if strategy == "generate_random":
-                            field_roles[field_name] = {
-                                "role": "generate",
-                                "value_type": resolution.get("value_type", "hex_id"),
-                            }
-                        elif strategy == "value_pattern_analysis":
-                            field_roles[field_name] = {
-                                "role": "test_value",
-                                "value_pattern": resolution["value_pattern"],
-                            }
-                        else:
-                            # pre_api_ref 来源
-                            field_roles[field_name] = {
-                                "role": "pre_api_ref",
-                                "source": resolution["source"],
-                            }
-                            if resolution.get("is_array"):
-                                field_roles[field_name]["is_array"] = True
-
     manifest = {
         "manifest_version": manifest_version,
         "module": {
@@ -1815,121 +1690,110 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
                                id_field_details: dict,
                                id_producer: str = None) -> dict:
     """
-    递归追踪参数依赖链，生成前置 API 列表。
+    前置 API 依赖链追踪（v2.0 使用 5 角色分类引擎）。
 
-    分析业务 API 的请求体参数，识别哪些参数应从前置 API 动态获取。
-    使用三策略匹配算法：精确值匹配 → 字段名启发式 → 列表成员检查。
+    使用新的值索引驱动的分类系统，一次完成字段分类和前置 API 识别。
 
     Args:
         core_apis: 核心 CRUD API 字典 {category: [endpoints]}
         response_samples: 响应样本字典
         pre_api_candidates: 前置 API 候选列表（来自 Phase A）
-        context_fields: 上下文字段配置（预留参数）
+        context_fields: 上下文字段配置
         id_field_details: ID 字段详情
+        id_producer: ID 生产者操作名
 
     Returns:
         {
             'pre_apis': [...],  # 排序后的前置 API 列表
-            'field_resolutions': {...}  # 字段解析映射
+            'field_resolutions': {...}  # 字段解析映射（用于 query_params）
         }
     """
-    LOG.info(f"[Phase B] 开始前置 API 依赖链追踪...")
+    LOG.info(f"[Phase B] 开始前置 API 依赖链追踪 (v2.0)...")
 
-    # Phase 1: 构建参数清单（从业务 API 的请求体中提取）
-    param_inventory = []
-    for category, endpoints in core_apis.items():
+    # 1. 获取 create body 样本和响应
+    create_body_sample = None
+    create_response_sample = None
+    if id_producer and id_producer in core_apis:
+        create_ep = core_apis[id_producer][0]
+        create_body_sample = _parse_body(create_ep)
+        # 获取 create 响应
+        create_resp_samples = response_samples.get(create_ep.get("pathname", ""), [])
+        if create_resp_samples:
+            try:
+                body_text = create_resp_samples[0].get("body", "{}")
+                create_response_sample = json.loads(body_text) if isinstance(body_text, str) else body_text
+            except Exception:
+                pass
+
+    # 2. 构建值索引
+    value_index = build_value_index(
+        pre_api_candidates=pre_api_candidates,
+        create_body_sample=create_body_sample,
+        create_response_sample=create_response_sample,
+        context_fields=context_fields,
+    )
+
+    # 3. 对每个操作进行分类，收集 used_apis
+    used_apis = {}
+    field_resolutions = {}
+    for action, endpoints in core_apis.items():
         if not endpoints:
             continue
-        ep = endpoints[0]  # 只处理 main endpoint，避免 chain candidate 污染
+        ep = endpoints[0]
         body_sample = _parse_body(ep)
         if not body_sample or not isinstance(body_sample, dict):
             continue
-        for field_name, field_value in body_sample.items():
-            # 追踪标量值和列表值
-            if isinstance(field_value, list):
-                # 列表值：保留整个列表，_resolve_parameter_source 会处理
-                if field_value:  # 非空列表
-                    param_inventory.append({
-                        'step_action': category,
-                        'field_name': field_name,
-                        'field_value': field_value,
-                        'pathname': ep.get('pathname', '')
-                    })
-            elif isinstance(field_value, (str, int, float, bool)):
-                param_inventory.append({
-                    'step_action': category,
-                    'field_name': field_name,
-                    'field_value': field_value,
-                    'pathname': ep.get('pathname', '')
-                })
 
-    LOG.info(f"  Phase 1: 收集到 {len(param_inventory)} 个参数")
+        # 使用新的 5 角色分类
+        field_roles = classify_fields(
+            body_sample, value_index, create_body_sample, current_action=action,
+            pre_api_candidates=pre_api_candidates
+        )
 
-    # Phase 2: 构建前置 API 索引（扁平化所有前置 API 响应，同值多源）
-    pre_api_index = {}  # {value_str: [source_entries]}
-    for api in pre_api_candidates:
-        body_text = api.get('response_sample', {}).get('response_body', '')
-        if not body_text:
-            continue
-        try:
-            body = json.loads(body_text) if isinstance(body_text, str) else body_text
-        except Exception:
-            continue
+        # 收集 context 来源的前置 API
+        for field_name, role_info in field_roles.items():
+            if role_info.get("role") == "context":
+                source = role_info.get("source", "")
+                if "." in source:
+                    api_id = source.split(".", 1)[0]
+                    # 跳过 create_body 和 create（不是真正的前置 API）
+                    if api_id not in ("create_body", "create"):
+                        # 优先从 value_index 获取 api_info
+                        entry = value_index.lookup(body_sample.get(field_name, ""))
+                        if entry and entry.get("source_api") == api_id:
+                            api_info = entry.get("api_info")
+                            if api_info:
+                                used_apis[api_id] = api_info
+                        else:
+                            # 回退：直接从 pre_api_candidates 按 api_id 查找
+                            for candidate in pre_api_candidates:
+                                if candidate.get("id") == api_id:
+                                    used_apis[api_id] = candidate
+                                    break
 
-        # 提取所有可提取字段
-        for field_info in api.get('extracted_fields', []):
-            path = field_info.get('path', '')
-            value = _extract_by_path_generic(body, path)
-            if value is not None:
-                key = str(value)
-                entry = {
-                    'api': api,
-                    'field': field_info,
-                    'value': value,
-                    'value_type': _classify_value_type(value),
-                    'path_depth': path.count('.') + path.count('['),
-                }
-                if key not in pre_api_index:
-                    pre_api_index[key] = []
-                pre_api_index[key].append(entry)
+        # 链式依赖追踪
+        resolve_chain(
+            body_sample, field_roles, value_index, used_apis,
+            current_action=action
+        )
 
-    LOG.info(f"  Phase 2: 前置 API 索引包含 {len(pre_api_index)} 个值")
-
-    # Phase 3: 三策略匹配 + 值模式分析降级
-    field_resolutions = {}
-    used_apis = {}  # {api_id: api_info}
-
-    for param in param_inventory:
-        resolution = _resolve_parameter_source(param, pre_api_index)
-        if resolution:
-            key = f"{param['step_action']}.{param['field_name']}"
-            field_resolutions[key] = resolution
-            strategy = resolution.get("strategy", "")
-            # generate_random 不加入 used_apis（不依赖任何前置 API）
-            if strategy != "generate_random":
-                api_id = resolution['source'].split('.')[0]
-                if api_id not in used_apis:
-                    used_apis[api_id] = resolution['api']
-        else:
-            # 非系统 ID 类型值 → 原有值模式分析降级逻辑
-            if id_producer and param['step_action'] == id_producer:
-                pattern = _analyze_value_pattern(param['field_name'], param['field_value'])
-                if pattern and pattern['role'] == 'test_value':
-                    key = f"{param['step_action']}.{param['field_name']}"
+        # 构建 field_resolutions（用于 verify 步骤的 query_params）
+        for field_name, role_info in field_roles.items():
+            if role_info.get("role") == "context":
+                source = role_info.get("source", "")
+                if source and not source.startswith(("create_body.", "create.")):
+                    key = f"{action}.{field_name}"
                     field_resolutions[key] = {
-                        'source': '',
-                        'strategy': 'value_pattern_analysis',
-                        'value_pattern': pattern['value_pattern'],
+                        "source": source,
+                        "strategy": "exact_value_match",
                     }
-                    LOG.debug(f"    值模式降级: {param['field_name']} → "
-                              f"test_value/{pattern['value_pattern']}")
 
-    LOG.info(f"  Phase 3: 解析了 {len(field_resolutions)} 个字段来源")
+    LOG.info(f"  收集到 {len(used_apis)} 个前置 API")
 
-    # Phase 4: 拓扑排序（处理前置 API 之间的依赖）
+    # 4. 拓扑排序
     pre_apis = _topological_sort_pre_apis(used_apis)
 
-    # Phase 5: 添加 context_fields 提取（确保 query_params 引用的字段被提取）
+    # 5. 添加 context_fields 提取（确保 query_params 引用的字段被提取）
     if context_fields:
         for field_name, field_config in context_fields.items():
             path = field_config.get('path', '')
@@ -1950,10 +1814,9 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
                 continue
 
             # 找到能提供此字段的 pre_api（根据 path 前缀匹配）
-            path_prefix = path.split('.')[0]  # 例如 "entity"
+            path_prefix = path.split('.')[0]
             target_api = None
             for pre_api in pre_apis:
-                # 检查该 pre_api 的响应是否包含此路径前缀
                 body_text = pre_api.get('response_sample', {}).get('response_body', '')
                 if body_text:
                     try:
@@ -1965,14 +1828,13 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
                         continue
 
             if target_api:
-                # 添加提取字段
                 if 'extracts' not in target_api:
                     target_api['extracts'] = []
                 target_api['extracts'].append({
                     'name': field_name,
                     'path': path
                 })
-                LOG.info(f"  Phase 5: 添加 context_field 提取: {field_name} -> {path} (from {target_api.get('id')})")
+                LOG.info(f"  添加 context_field 提取: {field_name} -> {path} (from {target_api.get('id')})")
 
     return {
         'pre_apis': pre_apis,
@@ -1981,17 +1843,17 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
 
 
 def _analyze_value_pattern(field_name: str, value) -> dict:
-    """根据值的特征推断字段角色（方案 B 降级：值模式分析）。
+    """根据值的特征推断字段角色（值模式分析）。
 
     主要数据驱动（看值本身的特征），对加密/不可读值用字段名辅助判断。
-    用于区分「系统引用字段」和「用户输入字段」。
+    用于区分「动态生成字段」和「系统固定值」。
 
     Args:
         field_name: 字段名（加密值时用作辅助信号）
         value: 字段值
 
     Returns:
-        {"role": "test_value"|"static", "value_pattern": "..."} 或 None
+        {"role": "generate"|"static", "pattern": "..."} 或 None
     """
     if not isinstance(value, str) or not value:
         return None
@@ -2000,7 +1862,7 @@ def _analyze_value_pattern(field_name: str, value) -> dict:
 
     # 1. 长十六进制串（≥32 字符）→ hash/加密值，不可重放
     if re.fullmatch(r'[0-9a-fA-F]{32,}', value):
-        return {"role": "test_value", "value_pattern": "hex_hash"}
+        return {"role": "generate", "pattern": "hex_hash"}
 
     # 2. 长 Base64 串（≥50 字符，含 +/=）→ 加密值，不可重放
     #    对加密值用字段名辅助判断应生成什么类型的测试值
@@ -2008,22 +1870,22 @@ def _analyze_value_pattern(field_name: str, value) -> dict:
         # 字段名含敏感信息（phone/email/password）→ 标记为 static，复用原始加密值
         # 原因：服务端要求加密后的值，我们无法生成有效的加密值（不知道公钥）
         if any(kw in fn_lower for kw in ('phone', 'mobile', 'cell', 'email', 'mail', 'password', 'passwd', 'pwd')):
-            return {"role": "static", "value_pattern": "encrypted_sensitive"}
-        return {"role": "test_value", "value_pattern": "base64_encrypted"}
+            return {"role": "static", "pattern": "encrypted_sensitive"}
+        return {"role": "generate", "pattern": "base64_encrypted"}
 
     # 3. 短可读字符串 — 进一步分析子模式
     if len(value) < 80:
         # 3a. 含 @ → 邮箱
         if '@' in value and '.' in value.split('@')[-1]:
-            return {"role": "test_value", "value_pattern": "email"}
+            return {"role": "generate", "pattern": "email"}
 
         # 3b. 纯数字且长度 8-15 → 手机号
         if re.fullmatch(r'\+?\d{8,15}', value):
-            return {"role": "test_value", "value_pattern": "phone"}
+            return {"role": "generate", "pattern": "phone"}
 
         # 3c. 短可读字符串（含字母，长度 2-50）→ 名称/文本
         if 2 <= len(value) <= 50 and re.search(r'[a-zA-Z一-鿿]', value):
-            return {"role": "test_value", "value_pattern": "text"}
+            return {"role": "generate", "pattern": "text"}
 
     # 4. 短固定格式值（如 "+86", "1", "ACTIVE"）→ 静态
     if len(value) <= 10:
@@ -2058,123 +1920,503 @@ def _classify_value_type(value) -> str:
     return "string"
 
 
-def _is_system_id_type(value_type: str) -> bool:
-    """判断值类型是否属于"系统 ID 类"——必须从前置 API 获取或动态生成。"""
-    return value_type in ("hex_id", "uuid", "numeric_id")
+def _is_system_id_value(value) -> bool:
+    """判断值是否是系统 ID 类型（hex_id、uuid、长 numeric_id、长 alphanumeric ID）。
 
-
-def _pick_best_source(entries: list, request_field_name: str) -> dict:
-    """从同一值的多个前置 API 来源中选择最可靠的。
-
-    评分规则（不依赖参数名，纯粹基于来源质量）：
-    1. 路径深度浅优先（entity.tenantId 优于 entity.list[0].tenantId）
-    2. 字段名叶子节点匹配加分（仅作 tiebreaker）
+    这些类型的值在不同环境/时间点会变化，不能仅靠精确值匹配。
+    当值匹配失败时，需要用字段名回退匹配。
     """
-    def score(entry):
-        s = 0
-        # 路径越浅越可靠（直接字段 > 列表项字段）
-        s -= entry['path_depth'] * 10
-        # 字段名叶子节点匹配加分（仅作 tiebreaker）
-        leaf = entry['field']['name'].rsplit('_', 1)[-1].lower()
-        if leaf == request_field_name.lower():
-            s += 5
-        return s
+    vtype = _classify_value_type(value)
+    if vtype in ("hex_id", "uuid", "numeric_id"):
+        return True
+    # 补充：长 alphanumeric ID（32+ 字符，混合字母和数字）
+    # 真实系统中 ID 不一定只用 hex 字符，可能包含 g-z 等字母
+    if isinstance(value, str) and len(value) >= 32 and re.fullmatch(r'[a-zA-Z0-9]+', value):
+        has_digit = any(c.isdigit() for c in value)
+        has_alpha = any(c.isalpha() for c in value)
+        if has_digit and has_alpha:
+            return True
+    return False
 
-    return max(entries, key=score)
 
+def _field_name_fallback(key: str, value, pre_api_candidates: list,
+                         exclude_sources: set = None) -> Optional[dict]:
+    """字段名回退匹配：对系统 ID 类型的值，按字段名在前置 API 响应中查找。
 
-def _resolve_parameter_source(param: dict, pre_api_index: dict) -> dict:
-    """
-    值类型驱动的字段来源解析。
-
-    核心原则：根据值的类型和值本身匹配，不依赖参数名。
-    - 系统 ID 类型（hex_id/uuid/numeric_id）必须从前置 API 获取或动态生成
-    - 非系统 ID 类型（短字符串、布尔值等）不尝试匹配前置 API
-
-    策略 1: 精确值匹配 + 多源选择（路径浅优先）
-    策略 2: 列表成员检查
-    策略 3: generate 兜底（系统 ID 无来源时生成随机值）
+    当精确值匹配失败时（例如 hex_id 在不同环境/时间不同），
+    通过字段名 + 系统 ID 类型判断字段来源。
 
     Args:
-        param: 参数信息 {step_action, field_name, field_value}
-        pre_api_index: 前置 API 索引 {value_str: [source_entries]}
+        key: 请求体字段名（如 "tenantId"）
+        value: 字段值（应为系统 ID 类型）
+        pre_api_candidates: 前置 API 候选列表
+        exclude_sources: 要排除的来源前缀集合
 
     Returns:
-        解析结果 {source, api, strategy} 或 None
+        匹配的 entry dict 或 None
     """
-    field_name = param['field_name']
-    field_value = param['field_value']
-
-    # 处理列表值：如果值是一个列表，检查第一个元素
-    is_array = False
-    if isinstance(field_value, list):
-        if not field_value:
-            return None
-        field_value = field_value[0]
-        is_array = True
-
-    field_value_str = str(field_value)
-    value_type = _classify_value_type(field_value)
-
-    # ── 值类型预过滤：非系统 ID 类型不匹配前置 API ──
-    if not _is_system_id_type(value_type):
+    if not pre_api_candidates or not _is_system_id_value(value):
         return None
 
-    # ── 策略 1: 精确值匹配 + 多源选择 ──
-    if field_value_str in pre_api_index:
-        entries = pre_api_index[field_value_str]
-        best = _pick_best_source(entries, field_name) if len(entries) > 1 else entries[0]
-        api_id = best['api']['id']
-        field_name_in_api = best['field']['name']
-        return {
-            'source': f"{api_id}.{field_name_in_api}",
-            'api': best['api'],
-            'strategy': 'exact_value_match',
-            'is_array': is_array
-        }
+    key_norm = re.sub(r'[_\-\s]', '', key.lower())
+    for api in pre_api_candidates:
+        api_id = api.get("id", "")
+        if exclude_sources and any(api_id.startswith(prefix) for prefix in exclude_sources):
+            continue
+        for field_info in api.get("extracted_fields", []):
+            field_name = field_info.get("name", "")
+            # 归一化比较：去掉 _/-/空格，统一小写
+            # "tenant_id" → "tenantid" == "tenantId" → "tenantid"
+            # "entity_0_tenantId" → 叶子 "tenantId" → "tenantid"
+            fn_norm = re.sub(r'[_\-\s]', '', field_name.lower())
+            leaf = field_name.rsplit("_", 1)[-1] if "_" in field_name else field_name
+            leaf_norm = re.sub(r'[_\-\s]', '', leaf.lower())
+            if fn_norm == key_norm or leaf_norm == key_norm:
+                source_path = f"{api_id}.{field_name}"
+                return {
+                    "source_api": api_id,
+                    "source_path": source_path,
+                    "field_leaf": leaf.lower(),
+                    "api_info": api,
+                }
+    return None
 
-    # ── 策略 2: 列表成员检查（参数值是否在某个列表响应中）──
-    seen_apis = set()
-    for value_str, entries in pre_api_index.items():
-        for entry in entries:
-            field_path = entry['field']['path']
-            if '[0]' not in field_path:
-                continue
-            api = entry['api']
-            api_key = api.get('id', '') + field_path
-            if api_key in seen_apis:
-                continue
-            seen_apis.add(api_key)
 
-            list_path = field_path.split('[0]')[0]
-            body_text = api.get('response_sample', {}).get('response_body', '')
-            if not body_text:
-                continue
-            try:
-                body = json.loads(body_text) if isinstance(body_text, str) else body_text
-                list_value = _extract_by_path_generic(body, list_path)
-                if isinstance(list_value, list):
-                    for item in list_value:
-                        if isinstance(item, dict):
-                            item_id = item.get('id')
-                            if str(item_id) == field_value_str:
-                                api_id = api['id']
-                                field_name_in_api = entry['field']['name']
-                                return {
-                                    'source': f"{api_id}.{field_name_in_api}",
-                                    'api': api,
-                                    'strategy': 'list_membership',
-                                    'is_array': True
-                                }
-            except Exception:
-                continue
+# ========== 值索引与 5 角色分类引擎（v2.0） ==========
 
-    # ── 策略 3: 无匹配但值是系统 ID → 标记运行时生成 ──
-    return {
-        'source': '',
-        'strategy': 'generate_random',
-        'value_type': value_type,
+
+def is_noise_value(value) -> bool:
+    """过滤过于常见、不能作为匹配依据的值。
+
+    噪声值包括：布尔值、空值、短字符串、小数字、通用枚举值等。
+    这些值在前置 API 响应中大量出现，不能作为字段来源的可靠匹配依据。
+
+    Args:
+        value: 任意类型的值
+
+    Returns:
+        True 表示是噪声值，不应参与值匹配
+    """
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return True
+    s = str(value).strip()
+    if not s or len(s) < 3:
+        return True
+    s_lower = s.lower()
+    # 通用枚举/固定值
+    noise_literals = {
+        "true", "false", "null", "none", "0", "1", "-1", "[]", "{}",
+        "active", "enable", "disable", "disabled", "pending", "deleted",
+        "success", "ok", "yes", "no", "on", "off", "male", "female",
     }
+    if s_lower in noise_literals:
+        return True
+    # 纯数字且 < 100
+    if s.isdigit() and int(s) < 100:
+        return True
+    return False
+
+
+class ValueIndex:
+    """值 → 来源路径的索引。
+
+    扫描所有前置 API 响应 + create body + create 响应，构建扁平化的值到来源路径映射。
+    支持多源匹配和评分排序。
+    """
+
+    def __init__(self):
+        self.index: dict[str, list[dict]] = {}  # {value_str: [entry, ...]}
+
+    def add(self, value_str: str, source_api: str, source_path: str,
+            field_leaf: str, path_depth: int,
+            timestamp: float = 0.0, context: str = "",
+            api_info: dict = None):
+        """添加一个值到索引中。
+
+        Args:
+            value_str: 值的字符串形式
+            source_api: 来源 API 标识（如 "current_user"）
+            source_path: 完整来源路径（如 "current_user.entity_tenantId"）
+            field_leaf: 路径叶子节点名（如 "tenantId"）
+            path_depth: 路径深度
+            timestamp: API 调用时间戳
+            context: 所属时间窗口（如 "init", "replay:迁移"）
+            api_info: 完整的 API 信息 dict（用于链式追踪）
+        """
+        if is_noise_value(value_str):
+            return
+        entry = {
+            "value": value_str,
+            "source_api": source_api,
+            "source_path": source_path,
+            "field_leaf": field_leaf.lower(),
+            "path_depth": path_depth,
+            "timestamp": timestamp,
+            "context": context,
+            "api_info": api_info,
+        }
+        self.index.setdefault(value_str, []).append(entry)
+
+    def lookup(self, value, request_field_name: str = "",
+               current_action: str = "",
+               exclude_sources: set = None) -> Optional[dict]:
+        """在索引中查找匹配项。
+
+        多源匹配时的评分规则：
+          1. 时序优先：同操作窗口内的 API (+100) > init (+50) > 其他 (+10)
+          2. 字段名匹配：request body 字段名与响应路径叶子一致 (+30)
+          3. 路径深度：浅优先 (-depth * 10)
+
+        Args:
+            value: 要查找的值（支持标量和列表，列表取第一个元素）
+            request_field_name: 请求体中的字段名（用于消歧）
+            current_action: 当前操作名（用于时序优先级）
+            exclude_sources: 要排除的来源前缀集合（如 {"create_body"} 排除自引用）
+
+        Returns:
+            匹配的 entry dict 或 None
+        """
+        # 处理列表值
+        if isinstance(value, list):
+            if not value:
+                return None
+            value = value[0]
+        value_str = str(value)
+
+        entries = self.index.get(value_str)
+        if not entries:
+            return None
+
+        # 过滤排除的来源
+        if exclude_sources:
+            entries = [e for e in entries if not any(e.get("source_path", "").startswith(prefix) for prefix in exclude_sources)]
+            if not entries:
+                return None
+
+        if len(entries) == 1:
+            return entries[0]
+
+        def score(entry: dict) -> float:
+            s = 0.0
+            # 时序优先级
+            ctx = entry.get("context", "")
+            if current_action and ctx:
+                ctx_action = ctx.replace("replay:", "")
+                if ctx_action == current_action:
+                    s += 100
+                elif ctx == "init" or ctx == "":
+                    s += 50
+                else:
+                    s += 10
+            # 字段名匹配
+            if request_field_name and entry.get("field_leaf") == request_field_name.lower():
+                s += 30
+            # 路径深度
+            s -= entry.get("path_depth", 0) * 10
+            return s
+
+        return max(entries, key=score)
+
+
+def build_value_index(pre_api_candidates: list, create_body_sample: dict,
+                      create_response_sample: dict = None,
+                      context_fields: dict = None,
+                      replay_windows: dict = None,
+                      chain_candidates: list = None) -> ValueIndex:
+    """构建值 → 来源路径的索引。
+
+    扫描所有可用数据源，将响应中的值扁平化为 value_str → source_path 映射。
+
+    数据源（按添加顺序）：
+    1. pre_api_candidates 响应（前置 GET API）
+    2. chain_candidates 响应（操作链中的 GET API，如迁移时的部门树）
+    3. create 请求体本身
+    4. create 响应体（entity 字段）
+
+    Args:
+        pre_api_candidates: 前置 API 候选列表
+        create_body_sample: 创建步骤的请求体
+        create_response_sample: 创建步骤的响应体 dict（已解析）
+        context_fields: auth_profile 中声明的上下文字段
+        replay_windows: 操作时间窗口（用于时序）
+        chain_candidates: 操作链候选列表（来自 core_api_map 中的非主 API）
+
+    Returns:
+        ValueIndex 实例
+    """
+    vi = ValueIndex()
+    replay_windows = replay_windows or {}
+
+    # ── 来源 1: 前置 API 响应 ──
+    for api in (pre_api_candidates or []):
+        api_id = api.get("id", "")
+        api_context = api.get("context", "init")
+        api_timestamp = api.get("timestamp", 0.0)
+        body_text = api.get("response_sample", {}).get("response_body", "")
+        if not body_text:
+            continue
+        try:
+            body = json.loads(body_text) if isinstance(body_text, str) else body_text
+        except Exception:
+            continue
+
+        for field_info in api.get("extracted_fields", []):
+            path = field_info.get("path", "")
+            field_name = field_info.get("name", "")
+            if not path or not field_name:
+                continue
+            value = _extract_by_path_generic(body, path)
+            if value is None:
+                continue
+            # source_path 格式: "api_id.field_name"
+            source_path = f"{api_id}.{field_name}"
+            # field_leaf: 从 field_name 中提取叶子（如 "entity_0_children_0_id" → "id"）
+            field_leaf = field_name.rsplit("_", 1)[-1] if "_" in field_name else field_name
+            path_depth = path.count(".") + path.count("[")
+            vi.add(
+                value_str=str(value),
+                source_api=api_id,
+                source_path=source_path,
+                field_leaf=field_leaf,
+                path_depth=path_depth,
+                timestamp=api_timestamp,
+                context=api_context,
+                api_info=api,
+            )
+
+    # ── 来源 2: 操作链候选响应（如迁移时的部门树 API）──
+    for api in (chain_candidates or []):
+        api_id = api.get("id", "")
+        api_context = api.get("context", "init")
+        api_timestamp = api.get("timestamp", 0.0)
+        body_text = api.get("response_sample", {}).get("response_body", "")
+        if not body_text:
+            continue
+        try:
+            body = json.loads(body_text) if isinstance(body_text, str) else body_text
+        except Exception:
+            continue
+
+        for field_info in api.get("extracted_fields", []):
+            path = field_info.get("path", "")
+            field_name = field_info.get("name", "")
+            if not path or not field_name:
+                continue
+            value = _extract_by_path_generic(body, path)
+            if value is None:
+                continue
+            source_path = f"{api_id}.{field_name}"
+            field_leaf = field_name.rsplit("_", 1)[-1] if "_" in field_name else field_name
+            path_depth = path.count(".") + path.count("[")
+            vi.add(
+                value_str=str(value),
+                source_api=api_id,
+                source_path=source_path,
+                field_leaf=field_leaf,
+                path_depth=path_depth,
+                timestamp=api_timestamp,
+                context=api_context,
+                api_info=api,
+            )
+
+    # ── 来源 3: create 请求体 ──
+    if create_body_sample and isinstance(create_body_sample, dict):
+        for field_name, value in create_body_sample.items():
+            if isinstance(value, (str, int, float, bool)):
+                vi.add(
+                    value_str=str(value),
+                    source_api="create_body",
+                    source_path=f"create_body.{field_name}",
+                    field_leaf=field_name,
+                    path_depth=0,
+                    timestamp=0,
+                    context="create",
+                )
+
+    # ── 来源 3: create 响应体 ──
+    if create_response_sample and isinstance(create_response_sample, dict):
+        # 遍历 entity 下的所有字段
+        entity = None
+        for ek in const.ENVELOPE_KEY_CANDIDATES:
+            if ek in create_response_sample and isinstance(create_response_sample[ek], dict):
+                entity = create_response_sample[ek]
+                break
+        if entity is None:
+            entity = create_response_sample
+        if isinstance(entity, dict):
+            for field_name, value in entity.items():
+                if isinstance(value, (str, int, float, bool)):
+                    vi.add(
+                        value_str=str(value),
+                        source_api="create",
+                        source_path=f"create.{field_name}",
+                        field_leaf=field_name,
+                        path_depth=1,
+                        timestamp=0,
+                        context="create_response",
+                    )
+
+    LOG.info(f"  [ValueIndex] 构建完成: {len(vi.index)} 个唯一值")
+    return vi
+
+
+def classify_fields(body_sample: dict, value_index: ValueIndex,
+                    create_body_sample: dict = None,
+                    current_action: str = "",
+                    exclude_sources: set = None,
+                    pre_api_candidates: list = None) -> dict:
+    """为请求体中每个字段标注角色（5 角色体系 v2.0）。
+
+    一次分类完成，不再有两阶段覆盖。纯粹靠值匹配驱动 context 识别。
+
+    分类优先级：
+    Pass 1: name     → 字段名含 name/title/label + 值是短可读字符串
+    Pass 2: mutable  → 字段名含 description/memo/remark/note/content
+    Pass 3a: context → value_index.lookup(value, key, current_action) 精确值命中
+    Pass 3b: context → 字段名回退（系统 ID 类型 + 字段名匹配前置 API 提取字段）
+    Pass 4: generate → _analyze_value_pattern 返回 generate 类型
+    Pass 5: static   → 兜底
+
+    Args:
+        body_sample: 请求体样本 dict
+        value_index: 全局值索引
+        create_body_sample: create 步骤的请求体（用于 name 字段的交叉验证）
+        current_action: 当前操作名（用于时序优先级）
+        exclude_sources: 要排除的来源前缀集合（如 {"create_body"} 排除自引用）
+        pre_api_candidates: 前置 API 候选列表（用于字段名回退匹配）
+
+    Returns:
+        {field_name: {"role": ..., "source": ...}} 字典
+    """
+    if not body_sample:
+        return {}
+
+    roles = {}
+    for key, value in body_sample.items():
+        key_lower = key.lower()
+
+        # ── Pass 1: name ──
+        is_name_like = any(kw in key_lower for kw in const.NAME_FIELD_KEYWORDS)
+        if is_name_like and isinstance(value, str) and 1 < len(value) < 50:
+            roles[key] = {"role": "name"}
+            continue
+
+        # ── Pass 2: mutable ──
+        is_mutable_like = any(kw in key_lower for kw in const.MUTABLE_FIELD_KEYWORDS)
+        if is_mutable_like:
+            roles[key] = {"role": "mutable"}
+            continue
+
+        # ── Pass 3a: context（精确值匹配） ──
+        match = value_index.lookup(value, request_field_name=key,
+                                   current_action=current_action,
+                                   exclude_sources=exclude_sources)
+        if match:
+            roles[key] = {"role": "context", "source": match["source_path"]}
+            continue
+
+        # ── Pass 3b: context（字段名回退，系统 ID 类型专用） ──
+        # 当值是 hex_id/uuid/numeric_id 等系统 ID 类型，但精确值匹配失败时，
+        # 用字段名在前置 API 提取字段中查找。这解决了不同环境/时间点 ID 值变化的问题。
+        fallback = _field_name_fallback(key, value, pre_api_candidates, exclude_sources)
+        if fallback:
+            roles[key] = {"role": "context", "source": fallback["source_path"]}
+            LOG.debug(f"    classify_fields: {key} → context/{fallback['source_path']} (字段名回退)")
+            continue
+
+        # ── Pass 4: generate（值模式分析） ──
+        if isinstance(value, str) and len(value) > 20:
+            pattern = _analyze_value_pattern(key, value)
+            if pattern and pattern.get("role") == "generate":
+                roles[key] = {"role": "generate", "pattern": pattern["pattern"]}
+                LOG.debug(f"    classify_fields: {key} → generate/{pattern['pattern']}")
+                continue
+            # encrypted_sensitive 返回 role="static" → 落入 Pass 5
+
+        # ── Pass 5: static（兜底） ──
+        roles[key] = {"role": "static"}
+
+    return roles
+
+
+def resolve_chain(body_sample: dict, field_roles: dict,
+                  value_index: ValueIndex, used_apis: dict,
+                  current_action: str = "",
+                  seen_apis: set = None, depth: int = 0,
+                  max_depth: int = 5):
+    """链式依赖追踪：确保 context 来源的前置 API 本身参数也被追踪。
+
+    对每个 role=context 的字段，检查其来源 API 是否有自身的 query_params/body 参数
+    需要从前置 API 获取。递归追踪直到无参数或达到最大深度。
+
+    Args:
+        body_sample: 当前操作的请求体
+        field_roles: classify_fields 的输出（会被原地修改以更新 source）
+        value_index: 全局值索引
+        used_apis: 已使用的前置 API 集合（会被原地修改）
+        current_action: 当前操作名
+        seen_apis: 当前链中已访问的 API（防止循环）
+        depth: 当前递归深度
+        max_depth: 最大链深度
+    """
+    if seen_apis is None:
+        seen_apis = set()
+    if depth >= max_depth:
+        LOG.warning(f"  [resolve_chain] 达到最大深度 {max_depth}，停止")
+        return
+
+    for key, role_info in field_roles.items():
+        if role_info.get("role") != "context":
+            continue
+        source = role_info.get("source", "")
+        if "." not in source:
+            continue
+        api_id = source.split(".", 1)[0]
+        # 跳过 create_body 和 create（不是真正的前置 API）
+        if api_id in ("create_body", "create"):
+            continue
+        if api_id in seen_apis:
+            continue
+
+        # 找到来源 API 的信息
+        entry = value_index.lookup(
+            body_sample.get(key, ""),
+            request_field_name=key,
+            current_action=current_action,
+        )
+        if not entry or entry.get("source_api") != api_id:
+            continue
+
+        api_info = entry.get("api_info")
+        if not api_info:
+            continue
+
+        # 记录使用的前置 API
+        used_apis[api_id] = api_info
+        new_seen = seen_apis | {api_id}
+
+        # 检查来源 API 本身的 query_params 是否需要追踪
+        source_api_params = api_info.get("query_params", {})
+        if not source_api_params:
+            # 从 query_params_samples 获取
+            qps = api_info.get("query_params_samples", [])
+            if qps and isinstance(qps, list) and len(qps) > 0:
+                source_api_params = qps[0] if isinstance(qps[0], dict) else {}
+
+        for param_name, param_value in source_api_params.items():
+            if is_noise_value(param_value):
+                continue
+            sub_match = value_index.lookup(
+                param_value, request_field_name=param_name,
+                current_action=current_action,
+            )
+            if sub_match and sub_match.get("source_api") != api_id:
+                sub_api_id = sub_match["source_api"]
+                if sub_api_id not in ("create_body", "create") and sub_api_id not in new_seen:
+                    used_apis[sub_api_id] = sub_match.get("api_info")
+                    LOG.debug(f"    [resolve_chain] {api_id}.{param_name} ← {sub_match['source_path']}")
 
 
 def _topological_sort_pre_apis(used_apis: dict) -> list:
@@ -2259,11 +2501,19 @@ def _extract_by_path_generic(obj: dict, path: str):
             # 下一个部分是索引
             i += 1
             if i < len(parts):
-                try:
-                    index = int(parts[i])
-                    value = value[index]
-                except (ValueError, IndexError, TypeError):
-                    return None
+                idx_str = parts[i]
+                if idx_str == '*':
+                    # 通配符：取第一个元素（用于 [*] 路径）
+                    if isinstance(value, list) and value:
+                        value = value[0]
+                    else:
+                        return None
+                else:
+                    try:
+                        index = int(idx_str)
+                        value = value[index]
+                    except (ValueError, IndexError, TypeError):
+                        return None
             i += 1
             # 跳过 ']'
             if i < len(parts) and parts[i] == ']':
@@ -2275,8 +2525,5 @@ def _extract_by_path_generic(obj: dict, path: str):
             else:
                 return None
             i += 1
-
-        if value is None:
-            return None
 
     return value

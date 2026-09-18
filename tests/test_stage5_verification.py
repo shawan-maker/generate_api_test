@@ -80,7 +80,7 @@ def test_export_artifacts():
         assert "info" in collection
         assert "item" in collection
         assert collection["info"]["name"] == "测试模块 API 测试"
-        print("✓ Postman Collection 导出成功")
+        print("OK Postman Collection 导出成功")
 
         # 测试 helpers 导出
         helpers_path = output_dir / "helpers.py"
@@ -92,13 +92,13 @@ def test_export_artifacts():
 
         assert "def get_token_by_cookie" in helpers_code
         assert "def gen_timestamp" in helpers_code
-        print("✓ helpers.py 导出成功")
+        print("OK helpers.py 导出成功")
 
         # 测试 Excel 导出
         excel_path = output_dir / "test_params.xlsx"
         export_excel_params(test_manifest, excel_path)
         assert excel_path.exists(), "Excel 参数文件未生成"
-        print("✓ Excel 参数文件导出成功")
+        print("OK Excel 参数文件导出成功")
 
         # 测试批量导出
         batch_dir = output_dir / "batch_export"
@@ -107,9 +107,9 @@ def test_export_artifacts():
         assert "postman" in results
         assert "helpers" in results
         assert "excel" in results
-        print("✓ 批量导出成功")
+        print("OK 批量导出成功")
 
-        print("\n✅ 所有导出测试通过")
+        print("\n[PASS] 所有导出测试通过")
         return True
 
     finally:
@@ -206,7 +206,7 @@ def test_pre_api_tracking():
     assert tenant_resolution["source"] == "current_user.tenant_id", \
         f"tenantId 解析来源错误: {tenant_resolution['source']}"
 
-    print("✓ 前置 API 依赖链追踪测试通过")
+    print("OK 前置 API 依赖链追踪测试通过")
     print(f"  - 识别到 {len(pre_apis)} 个前置 API")
     print(f"  - 解析了 {len(field_resolutions)} 个字段依赖")
 
@@ -265,7 +265,7 @@ def test_runtime_pre_api_execution():
     result = runner._extract_with_array_index(test_data, "data.list[1].id")
     assert result == "item_2", f"数组索引提取失败: {result}"
 
-    print("✓ 运行时前置 API 执行测试通过")
+    print("OK 运行时前置 API 执行测试通过")
     return True
 
 

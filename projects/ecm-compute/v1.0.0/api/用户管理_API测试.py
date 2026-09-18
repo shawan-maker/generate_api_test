@@ -1,6 +1,6 @@
 """
 用户管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-17 19:56:15
+生成时间: 2026-09-18 12:33:07
 目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/user
 
 执行流程:
@@ -130,14 +130,15 @@ MANIFEST = {
         },
         "adminId": {
           "role": "context",
-          "source": "context.adminId"
+          "source": "current_user.entity_adminId"
         },
         "tenantId": {
           "role": "context",
-          "source": "context.tenantId"
+          "source": "create.tenantId"
         },
         "countryCode": {
-          "role": "static"
+          "role": "context",
+          "source": "current_user.entity_countryCode"
         }
       },
       "requires": [],
@@ -156,7 +157,7 @@ MANIFEST = {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$create.tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -201,7 +202,8 @@ MANIFEST = {
       },
       "body_field_roles": {
         "userId": {
-          "role": "id_ref"
+          "role": "context",
+          "source": "create.id"
         },
         "name": {
           "role": "name"
@@ -211,10 +213,11 @@ MANIFEST = {
         },
         "tenantId": {
           "role": "context",
-          "source": "context.tenantId"
+          "source": "create_body.tenantId"
         },
         "countryCode": {
-          "role": "static"
+          "role": "context",
+          "source": "current_user.entity_countryCode"
         }
       },
       "requires": [
@@ -228,7 +231,7 @@ MANIFEST = {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$create.tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -255,7 +258,8 @@ MANIFEST = {
       },
       "body_field_roles": {
         "userId": {
-          "role": "id_ref"
+          "role": "context",
+          "source": "create.id"
         }
       },
       "requires": [
@@ -269,7 +273,7 @@ MANIFEST = {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$create.tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -304,7 +308,7 @@ MANIFEST = {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$create.tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -331,7 +335,8 @@ MANIFEST = {
       },
       "body_field_roles": {
         "userId": {
-          "role": "id_ref"
+          "role": "context",
+          "source": "create.id"
         }
       },
       "requires": [
@@ -345,7 +350,7 @@ MANIFEST = {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$create.tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -404,7 +409,8 @@ MANIFEST = {
           "role": "static"
         },
         "userId": {
-          "role": "id_ref"
+          "role": "context",
+          "source": "create.id"
         },
         "noticeType": {
           "role": "static"
@@ -421,7 +427,7 @@ MANIFEST = {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$create.tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -451,10 +457,12 @@ MANIFEST = {
       },
       "body_field_roles": {
         "tenantId": {
-          "role": "static"
+          "role": "context",
+          "source": "current_user.entity_tenantId"
         },
         "userIds": {
-          "role": "id_ref"
+          "role": "context",
+          "source": "create.id"
         }
       },
       "requires": [
@@ -468,7 +476,7 @@ MANIFEST = {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$create.tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -503,7 +511,7 @@ MANIFEST = {
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$create.tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -543,6 +551,21 @@ MANIFEST = {
           "path": "entity.adminId",
           "used_by": [
             "创建用户"
+          ]
+        },
+        {
+          "name": "entity_countryCode",
+          "path": "entity.countryCode",
+          "used_by": [
+            "创建用户",
+            "编辑"
+          ]
+        },
+        {
+          "name": "entity_tenantId",
+          "path": "entity.tenantId",
+          "used_by": [
+            "迁移"
           ]
         },
         {

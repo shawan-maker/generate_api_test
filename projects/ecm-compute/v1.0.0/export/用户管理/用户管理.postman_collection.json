@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "c0045465-4688-40f4-b47c-9b34105e804f",
+    "_postman_id": "211e6e30-e517-4462-94bd-0d0c7c221869",
     "name": "用户管理 API 测试",
     "description": "由 module_discovery Stage 5 自动导出",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -18,6 +18,18 @@
     },
     {
       "key": "entity_adminId",
+      "value": "",
+      "type": "string",
+      "description": "由 获取当前用户信息 提取"
+    },
+    {
+      "key": "entity_countryCode",
+      "value": "",
+      "type": "string",
+      "description": "由 获取当前用户信息 提取"
+    },
+    {
+      "key": "entity_tenantId",
       "value": "",
       "type": "string",
       "description": "由 获取当前用户信息 提取"
@@ -71,6 +83,10 @@
                   "",
                   "var entity_adminId = jsonData.entity.adminId;",
                   "if (entity_adminId !== undefined) pm.environment.set('entity_adminId', entity_adminId);",
+                  "var entity_countryCode = jsonData.entity.countryCode;",
+                  "if (entity_countryCode !== undefined) pm.environment.set('entity_countryCode', entity_countryCode);",
+                  "var entity_tenantId = jsonData.entity.tenantId;",
+                  "if (entity_tenantId !== undefined) pm.environment.set('entity_tenantId', entity_tenantId);",
                   "var tenantId = jsonData.entity.tenantId;",
                   "if (tenantId !== undefined) pm.environment.set('tenantId', tenantId);",
                   "var adminId = jsonData.entity.id;",
@@ -104,7 +120,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userName\": \"{{name_userName}}\",\n  \"password\": \"MC9Oa+R6mpVwjCo+yXnB+CYmhxmkKeXv2AJGPKX7qN2x4NNok0z/Qi9Hm9+whRyY7l+w3MUkuu087o+B3kW5XsXY6t8mFXo85fx9hD+cczLIt9UwGuT7wxXQubVZdS0i5LgHJ8Um/I8TgXwhS639cSGyUo9Tj7RLu1HC0gSTYnc=\",\n  \"name\": \"{{name_name}}\",\n  \"email\": \"gwVhneR4xcvXwihBD7DIjEe3l4SE5q7jELGxOukLMFdWEije8Yo4DPZMZwt9KIzt9s7oLJUTB/l5LPMiNAeq1OlVfw34KmNi/8Is2FQnsvSF9a7Aef3ssfen2Z3938efGpXh/dY++FXaCKwQkxxRNdRA1AEOFnpPDBk7WIFcgrk=\",\n  \"phone\": \"HZWD8w26JXZnTAr+HJMMvXzZ/DX9kzpb2XBOpWihTP1Ipx9y0isSZ4z1HZK53GhRe8c15zAdUB6Vv+7fTrFmAIiW0nf00olD6t3uKRHrg4M3KjsLffRigUdVdTuv92yQ5r4NFBiIPpUaSOEsmspZVbdAduoZoYJUVVf6fIoC6mw=\",\n  \"description\": \"{{mutable_description}}\",\n  \"policyIds\": [\n    \"1f8e392309fc414c9d77d45d0315fedc\"\n  ],\n  \"adminId\": \"{{adminId}}\",\n  \"tenantId\": \"{{tenantId}}\",\n  \"countryCode\": \"+86\"\n}",
+              "raw": "{\n  \"userName\": \"{{name_userName}}\",\n  \"password\": \"MC9Oa+R6mpVwjCo+yXnB+CYmhxmkKeXv2AJGPKX7qN2x4NNok0z/Qi9Hm9+whRyY7l+w3MUkuu087o+B3kW5XsXY6t8mFXo85fx9hD+cczLIt9UwGuT7wxXQubVZdS0i5LgHJ8Um/I8TgXwhS639cSGyUo9Tj7RLu1HC0gSTYnc=\",\n  \"name\": \"{{name_name}}\",\n  \"email\": \"gwVhneR4xcvXwihBD7DIjEe3l4SE5q7jELGxOukLMFdWEije8Yo4DPZMZwt9KIzt9s7oLJUTB/l5LPMiNAeq1OlVfw34KmNi/8Is2FQnsvSF9a7Aef3ssfen2Z3938efGpXh/dY++FXaCKwQkxxRNdRA1AEOFnpPDBk7WIFcgrk=\",\n  \"phone\": \"HZWD8w26JXZnTAr+HJMMvXzZ/DX9kzpb2XBOpWihTP1Ipx9y0isSZ4z1HZK53GhRe8c15zAdUB6Vv+7fTrFmAIiW0nf00olD6t3uKRHrg4M3KjsLffRigUdVdTuv92yQ5r4NFBiIPpUaSOEsmspZVbdAduoZoYJUVVf6fIoC6mw=\",\n  \"description\": \"{{mutable_description}}\",\n  \"policyIds\": [\n    \"1f8e392309fc414c9d77d45d0315fedc\"\n  ],\n  \"adminId\": \"{{entity_adminId}}\",\n  \"tenantId\": \"{{tenantId}}\",\n  \"countryCode\": \"{{entity_countryCode}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -195,7 +211,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": \"{{id}}\",\n  \"name\": \"{{name_name}}\",\n  \"description\": \"{{mutable_description}}\",\n  \"tenantId\": \"{{tenantId}}\",\n  \"countryCode\": \"+86\"\n}",
+              "raw": "{\n  \"userId\": \"{{id}}\",\n  \"name\": \"{{name_name}}\",\n  \"description\": \"{{mutable_description}}\",\n  \"tenantId\": \"{{tenantId}}\",\n  \"countryCode\": \"{{entity_countryCode}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -431,7 +447,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"tenantId\": \"5bcbffa731154b1da9c3dd41356088d8\",\n  \"userIds\": \"{{id}}\"\n}",
+              "raw": "{\n  \"tenantId\": \"{{entity_tenantId}}\",\n  \"userIds\": \"{{id}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

@@ -56,7 +56,7 @@ def _generate_test_value(pattern: str, ts: str) -> str:
     根据 Stage 3 分析出的 value_pattern 生成对应的测试值。
 
     Args:
-        pattern: 值模式类型（email/phone/hex_hash/base64_encrypted/text）
+        pattern: 值模式类型（email/phone/hex_hash/base64_encrypted/text/uuid/hex_id/random_int）
         ts: 时间戳后缀，确保唯一性
 
     Returns:
@@ -69,6 +69,12 @@ def _generate_test_value(pattern: str, ts: str) -> str:
     elif pattern in ("hex_hash", "base64_encrypted"):
         # 加密/hash 值：使用固定测试密码（明文，由服务端加密）
         return const.DEFAULT_TEST_PASSWORD
+    elif pattern == "uuid":
+        return str(uuid.uuid4())
+    elif pattern == "hex_id":
+        return uuid.uuid4().hex
+    elif pattern == "random_int":
+        return str(random.randint(10000000, 99999999))
     else:
         # 通用文本
         return f"auto_{ts}"
@@ -504,7 +510,7 @@ class StepExecutor:
                         if parts[0] == "create_body":
                             val = self.state.get("create_body", {}).get(parts[1], "")
                         else:
-                            # 支持 pre_api_ref 格式: $api_id.field_name
+                            # 支持 context source 格式: $api_id.field_name
                             # 先尝试完整 key，再回退到 field_name（state 中 key 不含 api_id 前缀）
                             val = self.state.get(ref, "")
                             if not val:
@@ -548,6 +554,7 @@ class StepExecutor:
         return url
 
     def _build_body(self, step_def: dict):
+        """构建请求体，根据 5 角色体系动态替换字段值。"""
         body_template = step_def.get("body_template", {})
         field_roles = step_def.get("body_field_roles", {})
         if not body_template:
@@ -556,114 +563,57 @@ class StepExecutor:
         # 数组格式请求体（如 batch delete ["id1", "id2"]）
         if isinstance(body_template, list):
             arr_role = field_roles.get("__array_items__", {})
-            if arr_role.get("role") == "id_ref":
-                # 将数组中每个元素替换为 create 返回的 ID
-                return [self.state.get("id", "")] * len(body_template)
+            if arr_role.get("role") == "context":
+                source = arr_role.get("source", "create.id")
+                # 从 context 解析 ID
+                if "." in source:
+                    api_id, field_name = source.split(".", 1)
+                    if api_id == "create":
+                        actual_id = self.state.get("id", "")
+                    else:
+                        actual_id = self.state.get(field_name, "")
+                else:
+                    actual_id = self.state.get("id", "")
+                return [actual_id] * len(body_template)
             return list(body_template)
 
         body = {}
         for key, value in body_template.items():
             role_config = field_roles.get(key, {"role": "static"})
             role = role_config.get("role", "static")
-            if role == "id_ref":
-                actual_id = self.state.get("id", "")
-                # 保持原始类型：如果模板值是数组，生成数组
-                if isinstance(value, list):
-                    body[key] = [actual_id] * len(value)
-                else:
-                    body[key] = actual_id
-            elif role == "context":
-                source = role_config.get("source", f"context.{key}")
-                if source.startswith("context."):
-                    field = source.split(".", 1)[1]
-                    body[key] = self.state.get(field, "")
-                elif source.startswith("create_body."):
-                    field = source.split(".", 1)[1]
-                    body[key] = self.state.get("create_body", {}).get(field, value)
-                else:
-                    body[key] = self.state.get(key, value)
-            elif role == "name":
+
+            if role == "name":
+                # name 角色：复用创建时的唯一名称
                 if isinstance(value, str):
                     create_body = self.state.get("create_body", {})
                     body[key] = create_body.get(key, value)
                 else:
                     body[key] = value
+
             elif role == "mutable":
+                # mutable 角色：生成 "Updated_{ts}"
                 mutable_prefix = self.config.get("test_data", {}).get("mutable_prefix", "Updated_")
                 body[key] = f"{mutable_prefix}{self.ts}"
-            elif role == "test_value":
-                pattern = role_config.get("value_pattern", "text")
-                body[key] = _generate_test_value(pattern, self.ts)
-            elif role == "pre_api_ref":
-                # 前置 API 引用：从前置 API 提取的字段
-                source = role_config.get("source", "")
+
+            elif role == "context":
+                # context 角色：从 state 中解析值
+                source = role_config.get("source", f"context.{key}")
                 is_array = role_config.get("is_array", False)
-                # source 格式: "api_id.field_name"
-                if "." in source:
-                    field_name = source.split(".", 1)[1]
-                    resolved = self.state.get(field_name)
-                else:
-                    resolved = self.state.get(source)
-
-                # ★ UUID 兜底：提取失败时根据值类型生成
-                if resolved is None:
-                    vtype = role_config.get("value_type", "hex_id")
-                    if vtype == "hex_id":
-                        resolved = uuid.uuid4().hex
-                    elif vtype == "uuid":
-                        resolved = str(uuid.uuid4())
-                    elif vtype == "numeric_id":
-                        resolved = str(random.randint(10000000, 99999999))
-                    else:
-                        resolved = value
-                    print(f"  ⚠️ {key}: 前置 API 提取失败，生成 {vtype}: {str(resolved)[:20]}")
-
-                # is_array 时确保值是数组
-                if is_array and not isinstance(resolved, list):
-                    resolved = [resolved] if resolved else value
+                resolved = self._resolve_context_value(source, key, value, is_array)
                 body[key] = resolved
-            elif role == "phase_ref":
-                # 操作内 phase 引用：从前置 phase 的 extract 获取
-                source = role_config.get("source", "")
-                # source 格式: "phase_id.state_key"
-                if "." in source:
-                    state_key = source.split(".", 1)[1]
-                    resolved = self.state.get(state_key)
-                else:
-                    resolved = self.state.get(source)
 
-                if resolved is None:
-                    # 兜底：和 pre_api_ref 相同的 UUID 生成逻辑
-                    vtype = role_config.get("value_type", "hex_id")
-                    if vtype == "hex_id":
-                        resolved = uuid.uuid4().hex
-                    elif vtype == "uuid":
-                        resolved = str(uuid.uuid4())
-                    else:
-                        resolved = value
-                    print(f"    ⚠️ {key}: phase 提取失败，生成 {vtype}: {str(resolved)[:20]}")
-
-                body[key] = resolved
             elif role == "generate":
-                # 动态生成字段（无前置 API 来源时）
-                gen_type = role_config.get("type", "uuid")
-                if gen_type == "uuid":
-                    generated = str(uuid.uuid4())
-                elif gen_type == "hex":
-                    generated = uuid.uuid4().hex
-                elif gen_type == "random_int":
-                    min_val = role_config.get("min", 10000000)
-                    max_val = role_config.get("max", 99999999)
-                    generated = str(random.randint(min_val, max_val))
-                else:
-                    generated = str(uuid.uuid4())
+                # generate 角色：按 pattern 生成值
+                pattern = role_config.get("pattern", "uuid")
+                generated = _generate_test_value(pattern, self.ts)
                 # 保持原始值的类型：如果模板值是数组，将生成值包裹为数组
                 if isinstance(value, list):
                     body[key] = [generated]
                 else:
                     body[key] = generated
+
             else:
-                # static 值 — 检查嵌套对象中是否有动态字段定义
+                # static 角色：原样保留，嵌套 dict 递归处理
                 if isinstance(value, dict):
                     prefix = f"{key}."
                     nested_roles = {
@@ -677,47 +627,110 @@ class StepExecutor:
                         body[key] = value
                 else:
                     body[key] = value
+
         return body
+
+    def _resolve_context_value(self, source: str, field_name: str, default_value, is_array: bool):
+        """解析 context 角色的值。
+
+        Args:
+            source: 来源路径，格式如 "auth.tenantId"、"create.id"、"api_id.field_name"
+            field_name: 字段名（用于兜底查找）
+            default_value: 默认值
+            is_array: 是否数组类型
+
+        Returns:
+            解析后的值
+        """
+        resolved = None
+
+        if source.startswith("auth."):
+            # auth.xxx → 从 state 直接查找
+            field = source.split(".", 1)[1]
+            resolved = self.state.get(field)
+        elif source.startswith("create."):
+            # create.xxx → 从 state 直接查找（id_producer 提取的 ID）
+            field = source.split(".", 1)[1]
+            if field == "id":
+                resolved = self.state.get("id")
+            else:
+                resolved = self.state.get(field)
+        elif source.startswith("create_body."):
+            # create_body.xxx → 从 create_body 中查找
+            field = source.split(".", 1)[1]
+            resolved = self.state.get("create_body", {}).get(field, default_value)
+        elif "." in source:
+            # api_id.field_name → 从 state 查找 field_name
+            parts = source.split(".", 1)
+            field_name_part = parts[1]
+            resolved = self.state.get(field_name_part)
+        else:
+            # 无点号，直接用 source 查找
+            resolved = self.state.get(source)
+
+        # UUID 兜底：解析失败时根据字段名生成
+        if resolved is None:
+            if field_name.lower().endswith("id"):
+                resolved = uuid.uuid4().hex
+                print(f"  ⚠️ {field_name}: context 提取失败，生成 hex_id: {str(resolved)[:20]}")
+            else:
+                resolved = default_value
+
+        # is_array 时确保值是数组
+        if is_array and not isinstance(resolved, list):
+            resolved = [resolved] if resolved else default_value
+
+        return resolved
 
     def _build_body_nested(self, template, field_roles):
         """递归处理嵌套对象中的动态字段。
 
-        仅当 field_roles 中存在 "key.subkey" 格式时才触发，
-        否则行为与普通 static 复制完全一致。
+        支持 5 角色体系（name/mutable/context/generate/static）。
         """
         result = {}
         for key, value in template.items():
             role_config = field_roles.get(key, {"role": "static"})
             role = role_config.get("role", "static")
-            if role == "static" and isinstance(value, dict):
-                prefix = f"{key}."
-                nested_roles = {
-                    rk[len(prefix):]: rv
-                    for rk, rv in field_roles.items()
-                    if rk.startswith(prefix)
-                }
-                result[key] = self._build_body_nested(value, nested_roles) if nested_roles else value
-            elif role == "static":
-                result[key] = value
-            elif role == "id_ref":
-                result[key] = self.state.get("id", "")
+
+            # name 角色
+            if role == "name":
+                create_body = self.state.get("create_body", {})
+                result[key] = create_body.get(key, value) if isinstance(create_body, dict) else value
+
+            # mutable 角色
+            elif role == "mutable":
+                mutable_prefix = self.config.get("test_data", {}).get("mutable_prefix", "Updated_")
+                result[key] = f"{mutable_prefix}{self.ts}"
+
+            # context 角色
             elif role == "context":
                 source = role_config.get("source", f"context.{key}")
-                if "." in source:
-                    field = source.split(".", 1)[1]
-                    result[key] = self.state.get(field, value)
-                else:
-                    result[key] = self.state.get(key, value)
+                is_array = role_config.get("is_array", False)
+                resolved = self._resolve_context_value(source, key, value, is_array)
+                result[key] = resolved
+
+            # generate 角色
             elif role == "generate":
-                gen_type = role_config.get("type", "uuid")
-                if gen_type == "uuid":
-                    result[key] = str(uuid.uuid4())
-                elif gen_type == "hex":
-                    result[key] = uuid.uuid4().hex
+                pattern = role_config.get("pattern", "text")
+                generated = _generate_test_value(pattern, self.ts)
+                if isinstance(value, list):
+                    result[key] = [generated]
                 else:
-                    result[key] = str(uuid.uuid4())
+                    result[key] = generated
+
+            # static 角色（默认）
             else:
-                result[key] = value
+                if isinstance(value, dict):
+                    prefix = f"{key}."
+                    nested_roles = {
+                        rk[len(prefix):]: rv
+                        for rk, rv in field_roles.items()
+                        if rk.startswith(prefix)
+                    }
+                    result[key] = self._build_body_nested(value, nested_roles) if nested_roles else value
+                else:
+                    result[key] = value
+
         return result
 
     def _send_request(self, method: str, url: str, body: dict,
@@ -1317,8 +1330,8 @@ class TestRunner:
                 else:
                     prefix_len = len(name_prefix)
                     create_body[key] = f"{name_prefix}{self.ts}_{value[prefix_len:]}"
-            elif role == "test_value":
-                pattern = role_config.get("value_pattern", "text")
+            elif role == "generate":
+                pattern = role_config.get("pattern", "text")
                 create_body[key] = _generate_test_value(pattern, self.ts)
             else:
                 create_body[key] = value

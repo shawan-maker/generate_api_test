@@ -102,14 +102,15 @@
         },
         "adminId": {
           "role": "context",
-          "source": "context.adminId"
+          "source": "current_user.entity_adminId"
         },
         "tenantId": {
           "role": "context",
-          "source": "context.tenantId"
+          "source": "create.tenantId"
         },
         "countryCode": {
-          "role": "static"
+          "role": "context",
+          "source": "current_user.entity_countryCode"
         }
       },
       "requires": [],
@@ -128,7 +129,7 @@
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$create.tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -173,7 +174,8 @@
       },
       "body_field_roles": {
         "userId": {
-          "role": "id_ref"
+          "role": "context",
+          "source": "create.id"
         },
         "name": {
           "role": "name"
@@ -183,10 +185,11 @@
         },
         "tenantId": {
           "role": "context",
-          "source": "context.tenantId"
+          "source": "create_body.tenantId"
         },
         "countryCode": {
-          "role": "static"
+          "role": "context",
+          "source": "current_user.entity_countryCode"
         }
       },
       "requires": [
@@ -200,7 +203,7 @@
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$create.tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -227,7 +230,8 @@
       },
       "body_field_roles": {
         "userId": {
-          "role": "id_ref"
+          "role": "context",
+          "source": "create.id"
         }
       },
       "requires": [
@@ -241,7 +245,7 @@
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$create.tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -276,7 +280,7 @@
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$create.tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -303,7 +307,8 @@
       },
       "body_field_roles": {
         "userId": {
-          "role": "id_ref"
+          "role": "context",
+          "source": "create.id"
         }
       },
       "requires": [
@@ -317,7 +322,7 @@
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$create.tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -376,7 +381,8 @@
           "role": "static"
         },
         "userId": {
-          "role": "id_ref"
+          "role": "context",
+          "source": "create.id"
         },
         "noticeType": {
           "role": "static"
@@ -393,7 +399,7 @@
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$create.tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -423,10 +429,12 @@
       },
       "body_field_roles": {
         "tenantId": {
-          "role": "static"
+          "role": "context",
+          "source": "current_user.entity_tenantId"
         },
         "userIds": {
-          "role": "id_ref"
+          "role": "context",
+          "source": "create.id"
         }
       },
       "requires": [
@@ -440,7 +448,7 @@
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$create.tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -475,7 +483,7 @@
         "method": "GET",
         "pathname": "/estack/api/estack/draco/v1/tenants/users",
         "query_params": {
-          "tenantId": "$tenantId",
+          "tenantId": "$create.tenantId",
           "pageNum": "1",
           "pageSize": "10"
         }
@@ -515,6 +523,21 @@
           "path": "entity.adminId",
           "used_by": [
             "创建用户"
+          ]
+        },
+        {
+          "name": "entity_countryCode",
+          "path": "entity.countryCode",
+          "used_by": [
+            "创建用户",
+            "编辑"
+          ]
+        },
+        {
+          "name": "entity_tenantId",
+          "path": "entity.tenantId",
+          "used_by": [
+            "迁移"
           ]
         },
         {

@@ -84,6 +84,8 @@ Thumbs.db
 
 # ============ 根目录 stray 目录 ============
 /report/
+/workspace/
+/backup/
 
 # ============ JSONL 日志 ============
 **/*.jsonl

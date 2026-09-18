@@ -196,10 +196,13 @@ def _build_postman_request_item(step_def: dict, base_url: str,
 
 
 def _resolve_postman_body(body_template, field_roles: dict):
-    """将 body_template 中的动态字段替换为 Postman {{variable}} 引用。"""
+    """将 body_template 中的动态字段替换为 Postman {{variable}} 引用。
+
+    支持 5 角色体系（name/mutable/context/generate/static）。
+    """
     if isinstance(body_template, list):
         arr_role = field_roles.get("__array_items__", {})
-        if arr_role.get("role") == "id_ref":
+        if arr_role.get("role") == "context":
             return ["{{id}}"]
         return body_template
 
@@ -208,34 +211,36 @@ def _resolve_postman_body(body_template, field_roles: dict):
         role_config = field_roles.get(key, {"role": "static"})
         role = role_config.get("role", "static")
 
-        if role == "id_ref":
-            result[key] = "{{id}}"
+        # name 角色
+        if role == "name":
+            result[key] = "{{name_" + key + "}}"
+
+        # mutable 角色
+        elif role == "mutable":
+            result[key] = "{{mutable_" + key + "}}"
+
+        # context 角色
         elif role == "context":
             source = role_config.get("source", f"context.{key}")
-            var_name = source.replace(".", "_").replace("context_", "")
-            result[key] = "{{" + var_name + "}}"
-        elif role == "pre_api_ref":
-            source = role_config.get("source", key)
             # source 格式: "api_id.field_name" → 取 field_name
             if "." in source:
                 var_name = source.split(".", 1)[1]
             else:
                 var_name = source
+            # 特殊处理：create.id → id
+            if var_name == "create.id":
+                var_name = "id"
             result[key] = "{{" + var_name + "}}"
-        elif role == "phase_ref":
-            source = role_config.get("source", key)
-            # source 格式: "phase_id.state_key" → 取 state_key
-            if "." in source:
-                var_name = source.split(".", 1)[1]
-            else:
-                var_name = source
-            result[key] = "{{" + var_name + "}}"
-        elif role == "name":
-            result[key] = "{{name_" + key + "}}"
-        elif role == "mutable":
-            result[key] = "{{mutable_" + key + "}}"
+
+        # generate 角色
+        elif role == "generate":
+            pattern = role_config.get("pattern", "text")
+            result[key] = "{{gen_" + key + "_" + pattern + "}}"
+
+        # static 角色（默认）
         else:
             result[key] = value
+
     return result
 
 
