@@ -1364,6 +1364,47 @@ class MultiStepExecutor:
             LOG.warning(f"    el-select {label} 缺少 selector（Stage 1 未提供）")
             return False, {}
 
+        # Step 0: 检查下拉框是否已有默认选中值（避免重复点击导致取消选中）
+        if not option_text:
+            # 仅自动发现模式（option_text 为空）时检查，用户明确指定值时跳过
+            has_default = await self.page.evaluate("""(selector) => {
+                const sel = document.querySelector(selector);
+                if (!sel) return {hasValue: false};
+
+                // 多选模式（tag）
+                const tags = sel.querySelectorAll('.el-tag');
+                if (tags && tags.length > 0) {
+                    return {
+                        hasValue: true,
+                        mode: 'multiple',
+                        values: Array.from(tags).map(t =>
+                            (t.querySelector('.el-select__tags-text') || t).textContent.trim()
+                        )
+                    };
+                }
+
+                // 单选模式
+                const input = sel.querySelector('.el-input__inner');
+                const selectedLabel = sel.querySelector('.el-select__selected-item');
+                const value = selectedLabel?.textContent?.trim() || input?.value || '';
+                if (value) {
+                    return {hasValue: true, mode: 'single', value: value};
+                }
+
+                return {hasValue: false};
+            }""", selector)
+
+            if has_default.get("hasValue"):
+                mode = has_default.get("mode", "single")
+                if mode == "multiple":
+                    vals = has_default.get("values", [])
+                    LOG.info(f"    el-select {label}: 多选已有默认值 {vals}，跳过")
+                    return True, {"is_editable": False, "option_text": ", ".join(vals)}
+                else:
+                    val = has_default.get("value", "")
+                    LOG.info(f"    el-select {label}: 单选已有默认值 '{val}'，跳过")
+                    return True, {"is_editable": False, "option_text": val}
+
         expanded = await self._expand_by_selector(selector, label)
         if not expanded:
             LOG.debug(f"    el-select {label}: expand failed")

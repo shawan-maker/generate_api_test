@@ -566,7 +566,12 @@ class StepExecutor:
             role_config = field_roles.get(key, {"role": "static"})
             role = role_config.get("role", "static")
             if role == "id_ref":
-                body[key] = self.state.get("id", "")
+                actual_id = self.state.get("id", "")
+                # 保持原始类型：如果模板值是数组，生成数组
+                if isinstance(value, list):
+                    body[key] = [actual_id] * len(value)
+                else:
+                    body[key] = actual_id
             elif role == "context":
                 source = role_config.get("source", f"context.{key}")
                 if source.startswith("context."):
@@ -643,15 +648,20 @@ class StepExecutor:
                 # 动态生成字段（无前置 API 来源时）
                 gen_type = role_config.get("type", "uuid")
                 if gen_type == "uuid":
-                    body[key] = str(uuid.uuid4())
+                    generated = str(uuid.uuid4())
                 elif gen_type == "hex":
-                    body[key] = uuid.uuid4().hex
+                    generated = uuid.uuid4().hex
                 elif gen_type == "random_int":
                     min_val = role_config.get("min", 10000000)
                     max_val = role_config.get("max", 99999999)
-                    body[key] = str(random.randint(min_val, max_val))
+                    generated = str(random.randint(min_val, max_val))
                 else:
-                    body[key] = str(uuid.uuid4())
+                    generated = str(uuid.uuid4())
+                # 保持原始值的类型：如果模板值是数组，将生成值包裹为数组
+                if isinstance(value, list):
+                    body[key] = [generated]
+                else:
+                    body[key] = generated
             else:
                 # static 值 — 检查嵌套对象中是否有动态字段定义
                 if isinstance(value, dict):

@@ -242,6 +242,10 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
             pass_marker = created_marker if needs_marker else None
             result = await replay_from_playbook(page, steps, button_driver, pass_marker, interceptor)
 
+            # 检查 assert_success 标记（软断言，不影响 marker 提取和 replay_windows）
+            if result.get("assertion_failed"):
+                LOG.warning(f"  ⚠️ {action} 未检测到成功消息（assertion_failed），API 仍会被捕获")
+
             # 如果是 create 类操作且成功，记录 marker
             op_role = op.get("role", "")
             if op_role == "create":
@@ -296,6 +300,8 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
         # ★ 记录操作结束时间
         op_end = time.time()
         replay_windows[action] = {"start": op_start, "end": op_end}
+        if result.get("assertion_failed"):
+            replay_windows[action]["assertion_failed"] = True
 
         continue
 

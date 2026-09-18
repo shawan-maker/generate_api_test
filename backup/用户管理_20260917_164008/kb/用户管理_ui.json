@@ -303,9 +303,9 @@
   "page_structure": {
     "hasFixedLeft": true,
     "hasFixedRight": true,
-    "mainBodyRows": 4,
-    "fixedRightRows": 4,
-    "fixedLeftRows": 4,
+    "mainBodyRows": 10,
+    "fixedRightRows": 10,
+    "fixedLeftRows": 10,
     "columnCount": 10,
     "operationColumnIndex": 8,
     "operationColumnLocation": "middle",
@@ -316,7 +316,7 @@
       },
       {
         "cls": "el-table__body-wrapper is-scrolling-left",
-        "rowCount": 4
+        "rowCount": 10
       },
       {
         "cls": "el-table__fixed-header-wrapper",
@@ -324,7 +324,7 @@
       },
       {
         "cls": "el-table__fixed-body-wrapper",
-        "rowCount": 4
+        "rowCount": 10
       },
       {
         "cls": "el-table__fixed-header-wrapper",
@@ -332,7 +332,7 @@
       },
       {
         "cls": "el-table__fixed-body-wrapper",
-        "rowCount": 4
+        "rowCount": 10
       }
     ]
   },
@@ -341,15 +341,15 @@
     "创建用户": {
       "success": true,
       "fill_data": {
-        "账号": "AT_test_646550",
-        "姓名": "AT_test_646550",
+        "账号": "AT_test_556070",
+        "姓名": "AT_test_556070",
         "密码": "Test@123456",
         "确认密码": "Test@123456",
-        "手机号": "13889183799",
-        "邮箱": "at_646547@test.com",
-        "描述": "auto_test_646550",
-        "系统角色": "AT_test_646550",
-        "部门角色": "AT_test_646550"
+        "手机号": "13827472826",
+        "邮箱": "at_556067@test.com",
+        "描述": "auto_test_556070",
+        "系统角色": "AT_test_556070",
+        "部门角色": "AT_test_556070"
       },
       "fill_rules": {
         "账号": {
@@ -504,8 +504,16 @@
           "kb_category": "el-select",
           "selector": ".el-form-item:nth-child(2) .el-select",
           "fill_rule": {},
-          "is_editable": false,
+          "is_editable": true,
           "option_text": "普通用户"
+        },
+        {
+          "label": "部门角色",
+          "kb_category": "el-select",
+          "selector": ".el-form-item:nth-child(3) .el-select",
+          "fill_rule": {},
+          "is_editable": false,
+          "option_text": "test123"
         }
       ],
       "radio_field_details": []
@@ -584,16 +592,16 @@
       "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
       "trigger_text": "授权",
       "nav_info": {
-        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=0ac205dffe024d678f7efe04f1602638",
+        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=3a66c00f6a464b5c87e6a13164a1a86a",
         "depth": 0,
         "page_title": "eStack Enterprise",
         "has_form": false,
         "form_fields": [],
         "fill_data": {
-          "授权用户": "AT_AT_test_auto_646594",
-          "授权用户组": "AT_AT_test_auto_646594",
-          "授权角色": "AT_AT_test_auto_646594",
-          "授权范围": "AT_AT_test_auto_646594"
+          "授权用户": "AT_AT_test_auto_556143",
+          "授权用户组": "AT_AT_test_auto_556143",
+          "授权角色": "AT_AT_test_auto_556143",
+          "授权范围": "AT_AT_test_auto_556143"
         },
         "submit_result": {},
         "error_type": "required_field_empty",
@@ -705,15 +713,6 @@
       },
       "confirmed": "确认",
       "trigger_text": "重置密码",
-      "dialog_fills": [
-        {
-          "label": "通知方式",
-          "kb_category": "el-select",
-          "selector": ".el-form-item:nth-child(3) .el-select",
-          "is_editable": false,
-          "option_text": "邮箱通知"
-        }
-      ],
       "post_confirm_state": {
         "dialog_remains": false,
         "has_form_in_dialog": false
@@ -729,36 +728,10 @@
       "confirm_button_text_verified": "确认"
     },
     "迁移": {
-      "success": true,
-      "selectors": {
-        "trigger": "迁移",
-        "row_selector": "更多 > 迁移",
-        "confirm": "确 定"
-      },
-      "confirmed": "确 定",
+      "success": false,
+      "error_type": "no_success_signal",
       "trigger_text": "迁移",
-      "dialog_fills": [
-        {
-          "label": "待迁移部门",
-          "kb_category": "el-select",
-          "selector": ".el-form-item:nth-child(2) .el-select",
-          "is_editable": false,
-          "option_text": "ssssss"
-        }
-      ],
-      "post_confirm_state": {
-        "dialog_remains": false,
-        "has_form_in_dialog": false
-      },
-      "is_dropdown_operation": true,
-      "dropdown_parent_selector": ".el-dropdown",
-      "dropdown_item_locator": ".el-dropdown-menu__item:has-text('迁移')",
-      "dropdown_item_text": "迁移",
-      "dropdown_trigger_method": "hover",
-      "checkbox_locator": ".el-checkbox__input",
-      "expand_strategy_verified": "click",
-      "dropdown_item_text_verified": "迁移",
-      "confirm_button_text_verified": "确 定"
+      "error_text": "迁移 操作后未检测到成功信号（成功提示/数据变化）"
     },
     "删除": {
       "success": true,

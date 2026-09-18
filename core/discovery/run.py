@@ -56,6 +56,28 @@ logging.basicConfig(
 LOG = logging.getLogger("run")
 
 
+def _normalize_url(url: str, base_url: str) -> str:
+    """规范化 URL 路径，修复 MSYS2/Git Bash 路径转换问题。
+
+    MSYS2/Git Bash 会将 --url /estack/web/... 自动转换为
+    D:/Program Files (x86)/Git/estack/web/...，导致拼接异常。
+
+    检测并修复此类被破坏的路径。
+    """
+    if url.startswith("http"):
+        return url
+
+    # MSYS2 路径转换修复：检测是否包含 Windows 驱动器盘符（如 D:/）
+    import re
+    msys_match = re.match(r'^[A-Za-z]:[/\\].*?[/\\](estack|api|web)(/.+)$', url)
+    if msys_match:
+        # 提取真实路径部分（从已知前缀开始）
+        url = "/" + msys_match.group(1) + msys_match.group(2)
+        LOG.debug(f"  URL 路径修复（MSYS2 转换）: {url}")
+
+    return base_url.rstrip("/") + url
+
+
 def parse_args():
     ap = argparse.ArgumentParser(description="模块级 API 自动化发现")
     ap.add_argument("--project", required=True, help="项目 ID (projects/<id>/)")
@@ -736,7 +758,7 @@ async def main():
         LOG.error("单模块模式需要 --url 和 --module 参数")
         sys.exit(1)
 
-    target_url = base_url.rstrip("/") + args.url if not args.url.startswith("http") else args.url
+    target_url = _normalize_url(args.url, base_url)
 
     # 离线模式: Stage 3+4 → 运行脚本 → Stage 5（如果脚本成功）
     if args.offline:

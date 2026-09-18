@@ -221,12 +221,34 @@ def _build_core_apis_from_core_api_map(core_api_map: dict, infra_apis: set) -> d
         core_apis[target_cat].append(selected)
 
         # ★ 保留其他写操作候选（操作链）
-        others = [
-            c for c in candidates
-            if c is not selected
-            and c.get("method", "").upper() in ("POST", "PUT", "PATCH", "DELETE")
-            and c.get("body_field_count", 0) > 0
-        ]
+        # 过滤条件：
+        #   1. 是写操作（POST/PUT/PATCH/DELETE）且有 body
+        #   2. pathname 不以 /list, /search, /query 结尾（这些是伪写操作=查询）
+        #   3. 与核心 API 共享资源路径前缀（排除不同资源的 API）
+        core_pathname = selected.get("pathname", "")
+        core_resource = "/".join(core_pathname.rstrip("/").split("/")[:-1])  # 如 /estack/api/estack/draco/v1/users
+        query_suffixes = ("/list", "/search", "/query", "/check", "/validate", "/generate")
+
+        others = []
+        for c in candidates:
+            if c is selected:
+                continue
+            if c.get("method", "").upper() not in ("POST", "PUT", "PATCH", "DELETE"):
+                continue
+            if c.get("body_field_count", 0) <= 0:
+                continue
+            # 排除伪写操作（pathname 以 /list 等结尾 = 实际是查询）
+            c_pathname = c.get("pathname", "")
+            if any(c_pathname.endswith(s) for s in query_suffixes):
+                LOG.debug(f"  操作链过滤: {action_name} 跳过 {c_pathname}（伪写操作：以 {c_pathname.split('/')[-1]} 结尾）")
+                continue
+            # 排除不同资源路径的 API
+            c_resource = "/".join(c_pathname.rstrip("/").split("/")[:-1])
+            if core_resource and c_resource and core_resource != c_resource:
+                LOG.debug(f"  操作链过滤: {action_name} 跳过 {c_pathname}（资源路径 {c_resource} != {core_resource}）")
+                continue
+            others.append(c)
+
         for other in others:
             core_apis[target_cat].append(other)
             LOG.info(f"  操作链: {action_name} 追加 "
@@ -921,8 +943,16 @@ def _classify_body_fields(body_sample: dict, id_field_details: dict,
         key_lower = key.lower()
 
         # 0. 上下文字段优先：在 auth_profile.context_fields 中声明
+        #    但需要值匹配验证：如果当前值与 create body 中的值不同，可能是不同语义
         if key in context_field_names:
-            roles[key] = {"role": "context", "source": f"context.{key}"}
+            create_value = (create_body_sample or {}).get(key)
+            if create_value is not None and value != create_value:
+                # 值不同 → 虽然字段名匹配 context_fields，但语义不同（如迁移的目标 tenantId）
+                roles[key] = {"role": "static"}
+                LOG.debug(f"    _classify_body_fields: {key} 值与 create body 不同 "
+                          f"({value} vs {create_value})，降级为 static")
+            else:
+                roles[key] = {"role": "context", "source": f"context.{key}"}
             continue
 
         # 1. ID 引用字段：在 id_field_details 中出现（排除 context 字段），或字段名匹配 ID 模式
@@ -934,17 +964,26 @@ def _classify_body_fields(body_sample: dict, id_field_details: dict,
         is_name_like = any(kw in key_lower for kw in const.NAME_FIELD_KEYWORDS)
         is_mutable_like = any(kw in key_lower for kw in const.MUTABLE_FIELD_KEYWORDS)
         ends_with_id = (key_lower.endswith("id") and key_lower != "id")
+        ends_with_ids = (key_lower.endswith("ids") and key_lower != "ids")
 
-        # 2. ID 引用字段（补充）：以 Id 结尾、不在 create body 中、非名称类
-        #    例: roleId, policyId, userId（在 delete/update body 中出现但不在 create body 中）
-        if ends_with_id and key not in create_keys and not is_name_like:
+        # 2. ID 引用字段（补充）：以 Id/Ids 结尾、不在 create body 中、非名称类
+        #    例: roleId, policyId, userId, userIds（在 delete/update body 中出现但不在 create body 中）
+        if (ends_with_id or ends_with_ids) and key not in create_keys and not is_name_like:
             roles[key] = {"role": "id_ref"}
             continue
 
         # 3. 上下文字段：以 Id 结尾且在 create body 中出现的字段
         #    例: tenantId, adminId（从创建时传递的上下文）
+        #    但需要值匹配验证：如果当前值与 create body 中的值不同，不是 context
         if ends_with_id and key in create_keys and not is_name_like:
-            roles[key] = {"role": "context", "source": f"create_body.{key}"}
+            create_value = (create_body_sample or {}).get(key)
+            if create_value is not None and value != create_value:
+                # 值不同 → 不是上下文引用，保持 static（如迁移的 tenantId 是目标部门）
+                roles[key] = {"role": "static"}
+                LOG.debug(f"    _classify_body_fields: {key} 值与 create body 不同 "
+                          f"({value} vs {create_value})，保持 static")
+            else:
+                roles[key] = {"role": "context", "source": f"create_body.{key}"}
             continue
 
         # 4. 名称字段：字段名含 name/title/label 且值是短可读字符串
@@ -962,8 +1001,12 @@ def _classify_body_fields(body_sample: dict, id_field_details: dict,
 
     # 降级分析：对 static 字段的长字符串做值模式分析
     # 识别加密值、邮箱、手机号等用户输入字段
+    # 跳过 ID 类字段（以 Id/Ids 结尾）— 它们是系统引用，不应被降级
     for key, role_info in roles.items():
         if role_info.get("role") == "static":
+            key_lower = key.lower()
+            if key_lower.endswith("id") or key_lower.endswith("ids"):
+                continue  # ID 字段保持 static
             value = body_sample[key]
             if isinstance(value, str) and len(value) > 20:
                 pattern = _analyze_value_pattern(key, value)
@@ -1710,9 +1753,9 @@ def build_manifest(analysis: dict, capture_result: dict,
                 for field_name in list(field_roles.keys()):
                     key = f"{action}.{field_name}"
                     if key in field_resolutions:
-                        # 保护 name/mutable/id_ref/phase_ref 字段不被 Phase B 覆盖
+                        # 保护 name/mutable/id_ref/phase_ref/static/test_value 字段不被 Phase B 覆盖
                         existing_role = field_roles[field_name].get("role", "")
-                        if existing_role in ("name", "mutable", "context", "id_ref", "phase_ref"):
+                        if existing_role in ("name", "mutable", "context", "id_ref", "phase_ref", "static", "test_value"):
                             continue
                         resolution = field_resolutions[key]
                         strategy = resolution.get("strategy", "")

@@ -490,6 +490,18 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict,
                               f"{best['method']} {best['pathname']} "
                               f"(评分={_score_core_candidate(best, uniq)}, 共{len(candidates)}个候选)")
 
+    # 后校验：非 query 操作必须有写操作 API（POST/PUT/PATCH/DELETE）
+    for action, candidates in list(core_api_map.items()):
+        if action in ("init", "query"):
+            continue
+        has_write = any(
+            c.get("method", "").upper() in ("POST", "PUT", "PATCH", "DELETE")
+            for c in candidates
+        )
+        if not has_write:
+            LOG.warning(f"  ⚠️ {action} 只有 GET 请求，无写操作 API，标记为 capture_incomplete")
+            core_api_map[action] = []
+
     return {
         "core_api_map": core_api_map,
         "all_endpoints": [{"method": e["method"], "pathname": e["pathname"],

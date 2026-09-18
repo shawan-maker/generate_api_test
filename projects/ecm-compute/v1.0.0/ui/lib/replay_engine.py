@@ -187,7 +187,9 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
                 await _step_navigate_back(page, step)
 
             elif action == "assert_success":
-                await _step_assert_success(page, step)
+                passed = await _step_assert_success(page, step)
+                if not passed:
+                    result["assertion_failed"] = True
 
             elif action == "assert_row_disappeared":
                 await _step_assert_row_disappeared(page, step, button_driver, marker)
@@ -697,22 +699,25 @@ async def _step_click_confirm_dialog_legacy(page, step: dict):
     # 不再调用通用的 confirm_dialog() 回退
 
 
-async def _step_assert_success(page, step: dict):
-    """步骤：验证操作成功（软断言，失败仅 warning 不阻断）"""
+async def _step_assert_success(page, step: dict) -> bool:
+    """步骤：验证操作成功（软断言，失败仅标记不阻断）
+
+    Returns:
+        True 表示检测到成功提示，False 表示未检测到（超时）
+    """
     locator = step.get("playwright_locator")
 
     if not locator:
         LOG.warning(f"    assert_success 步骤缺少 locator（Stage 1 未提供），跳过验证")
-        return
+        return True  # 无 locator 视为通过（不标记失败）
 
     try:
         await page.wait_for_selector(locator, state="visible", timeout=5000)
-        LOG.debug(f"    ✓ 操作成功验证通过: {locator}")
-    except Exception as e:
-        # 软断言：断言失败不阻断后续步骤（marker 提取等）
-        # 操作可能已成功（API 已触发），仅未检测到成功消息
-        LOG.warning(f"    ⚠️ assert_success 超时（不影响操作）: {locator} - {str(e)[:100]}")
-        # 不抛出异常，允许后续步骤继续执行
+        LOG.info(f"    ✓ 操作成功验证通过: {locator}")
+        return True
+    except Exception:
+        LOG.warning(f"    ⚠️ assert_success 未检测到 {locator}（timeout 5s），标记为 assertion_failed")
+        return False
 
 
 async def _step_assert_row_disappeared(page, step: dict, button_driver: ButtonDriver, marker: str):

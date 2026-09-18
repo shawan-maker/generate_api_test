@@ -1,0 +1,1707 @@
+{
+  "crud_order": [
+    "创建用户",
+    "query",
+    "编辑",
+    "冻结",
+    "启用",
+    "锁定",
+    "重置密码",
+    "删除"
+  ],
+  "core_apis": {
+    "创建用户": [
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/users",
+        "body_field_count": 10,
+        "response_has_id": true,
+        "contexts": [
+          "replay:创建用户"
+        ],
+        "bodies": [
+          "{\"userName\":\"AT_test_612336\",\"password\":\"Qo6E+yUJpiME0nXG9jQa7VTX1SKCBGFBVBsSo5wajcPVhUAmuQij23Lxze8SPj2tNKBx+tk1T4Fk+lr1Le+AYyiMsas1Wf1Kg2TgCcjkKoadjIobiCWHOFfDGOPgUMvDCD9pJVUNS1IkEcCCbOZMWgxtQ9AaDZEgu4pg5p05aH0=\",\"name\":\"AT_test_612336\",\"email\":\"hetrYUxjvozfsDhjkPwHRGvAV2cBIeQI17uIGXdNi8FZg4tJiN9LFmZDtt4Ktqg0YtD4MF9Tp266KYSFvQgiS0HS89W2ZIzFH6L2OLREDkshjKx3ZwJjCtRUoer2jFrzPnVtgFqPXYR1rwQJO/Zy+i+TSE2UfdXRh6rCMcfGafI=\",\"phone\":\"Vznvh5G4j9mNPkxCURnRcO7Rk0TEWC3MvkgGA0pddxvkPmQyfB7HLawfQkt0qwY3JcqGUZ4VirQyTq2dCEXh6MLrEvo39cZrHhkvinwKUYSSrVEEQ86bzAsOZxJ6TOaQQ3bCO37blvr4MIujfPHguYkpPBgtd1M4pcqbi/xHd3o=\",\"description\":\"auto_desc_612336\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\",\"e95978ecbbe1475aa5fa062fa3b4c163\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"42ffdba38c58484f9be2bc1adf1672e6\",\"countryCode\":\"+86\"}"
+        ],
+        "request_body_sample": "{\"userName\":\"AT_test_612336\",\"password\":\"Qo6E+yUJpiME0nXG9jQa7VTX1SKCBGFBVBsSo5wajcPVhUAmuQij23Lxze8SPj2tNKBx+tk1T4Fk+lr1Le+AYyiMsas1Wf1Kg2TgCcjkKoadjIobiCWHOFfDGOPgUMvDCD9pJVUNS1IkEcCCbOZMWgxtQ9AaDZEgu4pg5p05aH0=\",\"name\":\"AT_test_612336\",\"email\":\"hetrYUxjvozfsDhjkPwHRGvAV2cBIeQI17uIGXdNi8FZg4tJiN9LFmZDtt4Ktqg0YtD4MF9Tp266KYSFvQgiS0HS89W2ZIzFH6L2OLREDkshjKx3ZwJjCtRUoer2jFrzPnVtgFqPXYR1rwQJO/Zy+i+TSE2UfdXRh6rCMcfGafI=\",\"phone\":\"Vznvh5G4j9mNPkxCURnRcO7Rk0TEWC3MvkgGA0pddxvkPmQyfB7HLawfQkt0qwY3JcqGUZ4VirQyTq2dCEXh6MLrEvo39cZrHhkvinwKUYSSrVEEQ86bzAsOZxJ6TOaQQ3bCO37blvr4MIujfPHguYkpPBgtd1M4pcqbi/xHd3o=\",\"description\":\"auto_desc_612336\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\",\"e95978ecbbe1475aa5fa062fa3b4c163\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"42ffdba38c58484f9be2bc1adf1672e6\",\"countryCode\":\"+86\"}",
+        "query_params": {},
+        "query_params_samples": []
+      }
+    ],
+    "query": [
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "body_field_count": 0,
+        "response_has_id": true,
+        "contexts": [
+          "init",
+          "replay:query",
+          "replay:冻结",
+          "replay:创建用户",
+          "replay:删除",
+          "replay:启用",
+          "replay:编辑",
+          "replay:锁定"
+        ],
+        "bodies": [],
+        "request_body_sample": null,
+        "query_params": {},
+        "query_params_samples": [
+          {
+            "tenantId": "42ffdba38c58484f9be2bc1adf1672e6",
+            "pageNum": "1",
+            "pageSize": "10"
+          },
+          {
+            "tenantId": "42ffdba38c58484f9be2bc1adf1672e6",
+            "pageNum": "1",
+            "pageSize": "10",
+            "name": "AT_test_612336"
+          }
+        ],
+        "search_param": "name"
+      }
+    ],
+    "编辑": [
+      {
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/users/ecd57be47cbc4a0780bb355e6ff4d7a7",
+        "body_field_count": 5,
+        "response_has_id": true,
+        "contexts": [
+          "replay:编辑"
+        ],
+        "bodies": [
+          "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\",\"name\":\"AT_test_612336\",\"description\":\"auto_desc_612336\",\"tenantId\":\"42ffdba38c58484f9be2bc1adf1672e6\",\"countryCode\":\"+86\"}"
+        ],
+        "request_body_sample": "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\",\"name\":\"AT_test_612336\",\"description\":\"auto_desc_612336\",\"tenantId\":\"42ffdba38c58484f9be2bc1adf1672e6\",\"countryCode\":\"+86\"}",
+        "query_params": {},
+        "query_params_samples": []
+      }
+    ],
+    "冻结": [
+      {
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/users/ecd57be47cbc4a0780bb355e6ff4d7a7/suspend",
+        "body_field_count": 1,
+        "response_has_id": true,
+        "contexts": [
+          "replay:冻结"
+        ],
+        "bodies": [
+          "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\"}"
+        ],
+        "request_body_sample": "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\"}",
+        "query_params": {},
+        "query_params_samples": []
+      }
+    ],
+    "启用": [
+      {
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/users/ecd57be47cbc4a0780bb355e6ff4d7a7/enable",
+        "body_field_count": 0,
+        "response_has_id": true,
+        "contexts": [
+          "replay:启用"
+        ],
+        "bodies": [
+          "{}"
+        ],
+        "request_body_sample": "{}",
+        "query_params": {},
+        "query_params_samples": []
+      }
+    ],
+    "锁定": [
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/users/lock/ecd57be47cbc4a0780bb355e6ff4d7a7",
+        "body_field_count": 1,
+        "response_has_id": true,
+        "contexts": [
+          "replay:锁定"
+        ],
+        "bodies": [
+          "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\"}"
+        ],
+        "request_body_sample": "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\"}",
+        "query_params": {},
+        "query_params_samples": []
+      }
+    ],
+    "重置密码": [
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/password-reset/reset",
+        "body_field_count": 6,
+        "response_has_id": true,
+        "contexts": [
+          "replay:重置密码"
+        ],
+        "bodies": [
+          "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"M5Gj2Vp2XLcdrlrjfd8HpaVZ988ssycFd1JKlvXZUXFiveODO+TGBtW/peWw2tLySLxlYyJ5HJV+3N8dKA9vdepSx2YCLjR0kINpbUFJdoqLwFnfATaKf1AoFzZlFxAAegEwBL0dfQBG1fggk1uV8mXB7XxIEqELPxEn9rd/Ryg=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\",\"noticeType\":[]}"
+        ],
+        "request_body_sample": "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"M5Gj2Vp2XLcdrlrjfd8HpaVZ988ssycFd1JKlvXZUXFiveODO+TGBtW/peWw2tLySLxlYyJ5HJV+3N8dKA9vdepSx2YCLjR0kINpbUFJdoqLwFnfATaKf1AoFzZlFxAAegEwBL0dfQBG1fggk1uV8mXB7XxIEqELPxEn9rd/Ryg=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\",\"noticeType\":[]}",
+        "query_params": {},
+        "query_params_samples": []
+      },
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/password-reset/generate",
+        "body_field_count": 3,
+        "response_has_id": true,
+        "contexts": [
+          "replay:重置密码"
+        ],
+        "bodies": [
+          "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}"
+        ],
+        "request_body_sample": "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}",
+        "query_params": {},
+        "query_params_samples": []
+      }
+    ],
+    "删除": [
+      {
+        "method": "DELETE",
+        "pathname": "/estack/api/estack/draco/v1/users/ecd57be47cbc4a0780bb355e6ff4d7a7",
+        "body_field_count": 0,
+        "response_has_id": true,
+        "contexts": [
+          "replay:删除"
+        ],
+        "bodies": [
+          "{}"
+        ],
+        "request_body_sample": "{}",
+        "query_params": {},
+        "query_params_samples": []
+      }
+    ]
+  },
+  "api_by_button": {
+    "创建用户": [
+      {
+        "category": "创建用户",
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/users",
+        "body_sample": "{\"userName\":\"AT_test_612336\",\"password\":\"Qo6E+yUJpiME0nXG9jQa7VTX1SKCBGFBVBsSo5wajcPVhUAmuQij23Lxze8SPj2tNKBx+tk1T4Fk+lr1Le+AYyiMsas1Wf1Kg2TgCcjkKoadjIobiCWHOFfDGOPgUMvDCD9pJVUNS1IkEcCCbOZMWgxtQ9AaDZEgu4pg5p05aH0=\",\"name\":\"AT_test_612336\",\"email\":\"hetrYUxjvozfsDhjkPwHRGvAV2cBIeQI17uIGXdNi8FZg4tJiN9LFmZDtt4Ktqg0YtD4MF9Tp266KYSFvQgiS0HS89W2ZIzFH6L2OLREDkshjKx3ZwJjCtRUoer2jFrzPnVtgFqPXYR1rwQJO/Zy+i+TSE2UfdXRh6rCMcfGafI=\",\"phone\":\"Vznvh5G4j9mNPkxCURnRcO7Rk0TEWC3MvkgGA0pddxvkPmQyfB7HLawfQkt0qwY3JcqGUZ4VirQyTq2dCEXh6MLrEvo39cZrHhkvinwKUYSSrVEEQ86bzAsOZxJ6TOaQQ3bCO37blvr4MIujfPHguYkpPBgtd1M4pcqbi/xHd3o=\",\"description\":\"auto_desc_612336\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\",\"e95978ecbbe1475aa5fa062fa3b4c163\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"42ffdba38c58484f9be2bc1adf1672e6\",\"countryCode\":\"+86\"}",
+        "query_params": {}
+      },
+      {
+        "category": "query",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "body_sample": null,
+        "query_params": {}
+      }
+    ],
+    "query": [
+      {
+        "category": "query",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "body_sample": null,
+        "query_params": {}
+      }
+    ],
+    "冻结": [
+      {
+        "category": "query",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "body_sample": null,
+        "query_params": {}
+      },
+      {
+        "category": "冻结",
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/users/ecd57be47cbc4a0780bb355e6ff4d7a7/suspend",
+        "body_sample": "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\"}",
+        "query_params": {}
+      }
+    ],
+    "删除": [
+      {
+        "category": "query",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "body_sample": null,
+        "query_params": {}
+      },
+      {
+        "category": "删除",
+        "method": "DELETE",
+        "pathname": "/estack/api/estack/draco/v1/users/ecd57be47cbc4a0780bb355e6ff4d7a7",
+        "body_sample": "{}",
+        "query_params": {}
+      }
+    ],
+    "启用": [
+      {
+        "category": "query",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "body_sample": null,
+        "query_params": {}
+      },
+      {
+        "category": "启用",
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/users/ecd57be47cbc4a0780bb355e6ff4d7a7/enable",
+        "body_sample": "{}",
+        "query_params": {}
+      }
+    ],
+    "编辑": [
+      {
+        "category": "query",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "body_sample": null,
+        "query_params": {}
+      },
+      {
+        "category": "编辑",
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/users/ecd57be47cbc4a0780bb355e6ff4d7a7",
+        "body_sample": "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\",\"name\":\"AT_test_612336\",\"description\":\"auto_desc_612336\",\"tenantId\":\"42ffdba38c58484f9be2bc1adf1672e6\",\"countryCode\":\"+86\"}",
+        "query_params": {}
+      }
+    ],
+    "锁定": [
+      {
+        "category": "query",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "body_sample": null,
+        "query_params": {}
+      },
+      {
+        "category": "锁定",
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/users/lock/ecd57be47cbc4a0780bb355e6ff4d7a7",
+        "body_sample": "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\"}",
+        "query_params": {}
+      }
+    ],
+    "重置密码": [
+      {
+        "category": "重置密码",
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/password-reset/reset",
+        "body_sample": "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"M5Gj2Vp2XLcdrlrjfd8HpaVZ988ssycFd1JKlvXZUXFiveODO+TGBtW/peWw2tLySLxlYyJ5HJV+3N8dKA9vdepSx2YCLjR0kINpbUFJdoqLwFnfATaKf1AoFzZlFxAAegEwBL0dfQBG1fggk1uV8mXB7XxIEqELPxEn9rd/Ryg=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\",\"noticeType\":[]}",
+        "query_params": {}
+      },
+      {
+        "category": "重置密码",
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/password-reset/generate",
+        "body_sample": "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}",
+        "query_params": {}
+      }
+    ]
+  },
+  "dependencies": {
+    "id_producer": "创建用户",
+    "id_field_details": {
+      "id": {
+        "source_action": "创建用户",
+        "sample_value": "ecd57be47cbc4a0780bb355e6ff4d7a7",
+        "path": "entity.id"
+      }
+    },
+    "injections": {}
+  },
+  "state_assertions": {
+    "state_field": "state",
+    "values_by_crud": {
+      "创建用户": "ENABLE",
+      "编辑": "ENABLE",
+      "冻结": "DISABLE",
+      "启用": "ENABLE",
+      "删除": "ENABLE"
+    },
+    "after_create": "ENABLE",
+    "after_delete": "NOT_EXIST"
+  },
+  "pre_api_chain": {
+    "pre_apis": [
+      {
+        "name": "前置 API: list",
+        "id": "list",
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/policies/list",
+        "response_sample": {
+          "response_body": "{\n  \"traceId\" : \"26190377ba9612e4\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"total\" : 1,\n    \"list\" : [ {\n      \"id\" : \"1f8e392309fc414c9d77d45d0315fedc\",\n      \"createdAt\" : \"2024-05-28 22:05:41\",\n      \"updatedAt\" : \"2024-06-04 03:05:39\",\n      \"mainAccountId\" : \"SYSTEM\",\n      \"tenantId\" : \"42ffdba38c58484f9be2bc1adf1672e6\",\n      \"policyName\" : \"普通用户\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"ORGANIZATION\",\n      \"description\" : \"普通用户\",\n      \"attachmentCount\" : 10,\n      \"released\" : true,\n      \"deleted\" : false,\n      \"originalPolicyName\" : null\n    } ],\n    \"pageNum\" : 1,\n    \"pageSize\" : 1,\n    \"size\" : 1,\n    \"startRow\" : 0,\n    \"endRow\" : 0,\n    \"pages\" : 1,\n    \"prePage\" : 0,\n    \"nextPage\" : 0,\n    \"isFirstPage\" : true,\n    \"isLastPage\" : true,\n    \"hasPreviousPage\" : false,\n    \"hasNextPage\" : false,\n    \"navigatePages\" : 8,\n    \"navigatepageNums\" : [ 1 ],\n    \"navigateFirstPage\" : 1,\n    \"navigateLastPage\" : 1\n  }\n}"
+        },
+        "extracted_fields": [
+          {
+            "name": "traceId",
+            "path": "traceId",
+            "type": "str"
+          },
+          {
+            "name": "success",
+            "path": "success",
+            "type": "bool"
+          },
+          {
+            "name": "entity_total",
+            "path": "entity.total",
+            "type": "int"
+          },
+          {
+            "name": "entity_list_0_id",
+            "path": "entity.list[0].id",
+            "type": "str"
+          },
+          {
+            "name": "entity_list_0_createdAt",
+            "path": "entity.list[0].createdAt",
+            "type": "str"
+          },
+          {
+            "name": "entity_list_0_updatedAt",
+            "path": "entity.list[0].updatedAt",
+            "type": "str"
+          },
+          {
+            "name": "entity_list_0_mainAccountId",
+            "path": "entity.list[0].mainAccountId",
+            "type": "str"
+          },
+          {
+            "name": "entity_list_0_tenantId",
+            "path": "entity.list[0].tenantId",
+            "type": "str"
+          },
+          {
+            "name": "entity_list_0_policyName",
+            "path": "entity.list[0].policyName",
+            "type": "str"
+          },
+          {
+            "name": "entity_list_0_policyType",
+            "path": "entity.list[0].policyType",
+            "type": "str"
+          },
+          {
+            "name": "entity_list_0_policyCategory",
+            "path": "entity.list[0].policyCategory",
+            "type": "str"
+          },
+          {
+            "name": "entity_list_0_description",
+            "path": "entity.list[0].description",
+            "type": "str"
+          },
+          {
+            "name": "entity_list_0_attachmentCount",
+            "path": "entity.list[0].attachmentCount",
+            "type": "int"
+          },
+          {
+            "name": "entity_list_0_released",
+            "path": "entity.list[0].released",
+            "type": "bool"
+          },
+          {
+            "name": "entity_list_0_deleted",
+            "path": "entity.list[0].deleted",
+            "type": "bool"
+          },
+          {
+            "name": "entity_pageNum",
+            "path": "entity.pageNum",
+            "type": "int"
+          },
+          {
+            "name": "entity_pageSize",
+            "path": "entity.pageSize",
+            "type": "int"
+          },
+          {
+            "name": "entity_size",
+            "path": "entity.size",
+            "type": "int"
+          },
+          {
+            "name": "entity_startRow",
+            "path": "entity.startRow",
+            "type": "int"
+          },
+          {
+            "name": "entity_endRow",
+            "path": "entity.endRow",
+            "type": "int"
+          },
+          {
+            "name": "entity_pages",
+            "path": "entity.pages",
+            "type": "int"
+          },
+          {
+            "name": "entity_prePage",
+            "path": "entity.prePage",
+            "type": "int"
+          },
+          {
+            "name": "entity_nextPage",
+            "path": "entity.nextPage",
+            "type": "int"
+          },
+          {
+            "name": "entity_isFirstPage",
+            "path": "entity.isFirstPage",
+            "type": "bool"
+          },
+          {
+            "name": "entity_isLastPage",
+            "path": "entity.isLastPage",
+            "type": "bool"
+          },
+          {
+            "name": "entity_hasPreviousPage",
+            "path": "entity.hasPreviousPage",
+            "type": "bool"
+          },
+          {
+            "name": "entity_hasNextPage",
+            "path": "entity.hasNextPage",
+            "type": "bool"
+          },
+          {
+            "name": "entity_navigatePages",
+            "path": "entity.navigatePages",
+            "type": "int"
+          },
+          {
+            "name": "entity_navigateFirstPage",
+            "path": "entity.navigateFirstPage",
+            "type": "int"
+          },
+          {
+            "name": "entity_navigateLastPage",
+            "path": "entity.navigateLastPage",
+            "type": "int"
+          }
+        ],
+        "depends_on": []
+      },
+      {
+        "name": "获取当前用户信息",
+        "id": "current_user",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/users/current-user",
+        "response_sample": {
+          "response_body": "{\n  \"traceId\" : \"e2ff9355e69f2b39\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"id\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"tenantId\" : \"cec63451f8bf4ceebb9ada0b87d829bf\",\n    \"tenantName\" : \"Super Management Department\",\n    \"adminId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n    \"ramId\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"name\" : \"estack-yy\",\n    \"userName\" : \"estack-yy\",\n    \"email\" : \"l*****u@163.com\",\n    \"phone\" : \"188***1683\",\n    \"encryptedEmail\" : \"d5DMRsWzfs9NOAiRMBvZMNq7TvsxOeiZ\",\n    \"encryptedPhone\" : \"3hmpCM+112+O+OaTCsGN9A==\",\n    \"countryCode\" : \"+86\",\n    \"description\" : \"\",\n    \"createdAt\" : \"2025-01-24 12:19:29\",\n    \"updatedAt\" : \"2025-03-11 17:24:50\",\n    \"deleted\" : false,\n    \"state\" : \"ENABLE\",\n    \"isAdmin\" : false,\n    \"isProjectManager\" : false,\n    \"isAuthentication\" : false,\n    \"roleId\" : null,\n    \"roleName\" : null,\n    \"ancestorList\" : [ \"Super Management Department\" ],\n    \"isPassword\" : true,\n    \"isEmail\" : true,\n    \"isPhone\" : true,\n    \"poolNameList\" : null,\n    \"isRootTenantUser\" : true,\n    \"isApproval\" : false,\n    \"tenantLevel\" : 0,\n    \"locked\" : false,\n    \"policyIdList\" : [ \"OPERATION\" ],\n    \"policyList\" : [ {\n      \"id\" : \"OPERATION\",\n      \"tenantId\" : null,\n      \"policyName\" : \"运营管理员\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"ORGANIZATION\",\n      \"description\" : null,\n      \"released\" : false,\n      \"deleted\" : null,\n      \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.OPERATIONS_ADMIN\"\n    } ],\n    \"countryCodePhone\" : \"+86 188***1683\",\n    \"password\" : \"6974d2bb056747082f6b7fcd01d61d0c9fcbc34f189a6c12d9a295891454d8e2\",\n    \"projectIdList\" : null,\n    \"needRamIdentity\" : null,\n    \"isInnerUser\" : null,\n    \"userType\" : null,\n    \"isForceChange\" : false,\n    \"isTempPassword\" : false,\n    \"mfLoginPolicy\" : null,\n    \"enableMultiFactLoginPolicy\" : null,\n    \"maintainAt\" : null\n  }\n}"
+        },
+        "extracted_fields": [
+          {
+            "name": "traceId",
+            "path": "traceId",
+            "type": "str"
+          },
+          {
+            "name": "success",
+            "path": "success",
+            "type": "bool"
+          },
+          {
+            "name": "entity_id",
+            "path": "entity.id",
+            "type": "str"
+          },
+          {
+            "name": "entity_tenantId",
+            "path": "entity.tenantId",
+            "type": "str"
+          },
+          {
+            "name": "entity_tenantName",
+            "path": "entity.tenantName",
+            "type": "str"
+          },
+          {
+            "name": "entity_adminId",
+            "path": "entity.adminId",
+            "type": "str"
+          },
+          {
+            "name": "entity_ramId",
+            "path": "entity.ramId",
+            "type": "str"
+          },
+          {
+            "name": "entity_name",
+            "path": "entity.name",
+            "type": "str"
+          },
+          {
+            "name": "entity_userName",
+            "path": "entity.userName",
+            "type": "str"
+          },
+          {
+            "name": "entity_email",
+            "path": "entity.email",
+            "type": "str"
+          },
+          {
+            "name": "entity_phone",
+            "path": "entity.phone",
+            "type": "str"
+          },
+          {
+            "name": "entity_encryptedEmail",
+            "path": "entity.encryptedEmail",
+            "type": "str"
+          },
+          {
+            "name": "entity_encryptedPhone",
+            "path": "entity.encryptedPhone",
+            "type": "str"
+          },
+          {
+            "name": "entity_countryCode",
+            "path": "entity.countryCode",
+            "type": "str"
+          },
+          {
+            "name": "entity_description",
+            "path": "entity.description",
+            "type": "str"
+          },
+          {
+            "name": "entity_createdAt",
+            "path": "entity.createdAt",
+            "type": "str"
+          },
+          {
+            "name": "entity_updatedAt",
+            "path": "entity.updatedAt",
+            "type": "str"
+          },
+          {
+            "name": "entity_deleted",
+            "path": "entity.deleted",
+            "type": "bool"
+          },
+          {
+            "name": "entity_state",
+            "path": "entity.state",
+            "type": "str"
+          },
+          {
+            "name": "entity_isAdmin",
+            "path": "entity.isAdmin",
+            "type": "bool"
+          },
+          {
+            "name": "entity_isProjectManager",
+            "path": "entity.isProjectManager",
+            "type": "bool"
+          },
+          {
+            "name": "entity_isAuthentication",
+            "path": "entity.isAuthentication",
+            "type": "bool"
+          },
+          {
+            "name": "entity_isPassword",
+            "path": "entity.isPassword",
+            "type": "bool"
+          },
+          {
+            "name": "entity_isEmail",
+            "path": "entity.isEmail",
+            "type": "bool"
+          },
+          {
+            "name": "entity_isPhone",
+            "path": "entity.isPhone",
+            "type": "bool"
+          },
+          {
+            "name": "entity_isRootTenantUser",
+            "path": "entity.isRootTenantUser",
+            "type": "bool"
+          },
+          {
+            "name": "entity_isApproval",
+            "path": "entity.isApproval",
+            "type": "bool"
+          },
+          {
+            "name": "entity_tenantLevel",
+            "path": "entity.tenantLevel",
+            "type": "int"
+          },
+          {
+            "name": "entity_locked",
+            "path": "entity.locked",
+            "type": "bool"
+          },
+          {
+            "name": "entity_policyList_0_id",
+            "path": "entity.policyList[0].id",
+            "type": "str"
+          },
+          {
+            "name": "entity_policyList_0_policyName",
+            "path": "entity.policyList[0].policyName",
+            "type": "str"
+          },
+          {
+            "name": "entity_policyList_0_policyType",
+            "path": "entity.policyList[0].policyType",
+            "type": "str"
+          },
+          {
+            "name": "entity_policyList_0_policyCategory",
+            "path": "entity.policyList[0].policyCategory",
+            "type": "str"
+          },
+          {
+            "name": "entity_policyList_0_released",
+            "path": "entity.policyList[0].released",
+            "type": "bool"
+          },
+          {
+            "name": "entity_policyList_0_originalPolicyName",
+            "path": "entity.policyList[0].originalPolicyName",
+            "type": "str"
+          },
+          {
+            "name": "entity_countryCodePhone",
+            "path": "entity.countryCodePhone",
+            "type": "str"
+          },
+          {
+            "name": "entity_password",
+            "path": "entity.password",
+            "type": "str"
+          },
+          {
+            "name": "entity_isForceChange",
+            "path": "entity.isForceChange",
+            "type": "bool"
+          },
+          {
+            "name": "entity_isTempPassword",
+            "path": "entity.isTempPassword",
+            "type": "bool"
+          }
+        ],
+        "depends_on": []
+      }
+    ],
+    "field_resolutions": {
+      "创建用户.userName": {
+        "source": "",
+        "strategy": "value_pattern_analysis",
+        "value_pattern": "text"
+      },
+      "创建用户.name": {
+        "source": "",
+        "strategy": "value_pattern_analysis",
+        "value_pattern": "text"
+      },
+      "创建用户.description": {
+        "source": "",
+        "strategy": "value_pattern_analysis",
+        "value_pattern": "text"
+      },
+      "创建用户.policyIds": {
+        "source": "list.entity_list_0_id",
+        "api": {
+          "name": "前置 API: list",
+          "id": "list",
+          "method": "POST",
+          "pathname": "/estack/api/estack/draco/v1/policies/list",
+          "response_sample": {
+            "response_body": "{\n  \"traceId\" : \"26190377ba9612e4\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"total\" : 1,\n    \"list\" : [ {\n      \"id\" : \"1f8e392309fc414c9d77d45d0315fedc\",\n      \"createdAt\" : \"2024-05-28 22:05:41\",\n      \"updatedAt\" : \"2024-06-04 03:05:39\",\n      \"mainAccountId\" : \"SYSTEM\",\n      \"tenantId\" : \"42ffdba38c58484f9be2bc1adf1672e6\",\n      \"policyName\" : \"普通用户\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"ORGANIZATION\",\n      \"description\" : \"普通用户\",\n      \"attachmentCount\" : 10,\n      \"released\" : true,\n      \"deleted\" : false,\n      \"originalPolicyName\" : null\n    } ],\n    \"pageNum\" : 1,\n    \"pageSize\" : 1,\n    \"size\" : 1,\n    \"startRow\" : 0,\n    \"endRow\" : 0,\n    \"pages\" : 1,\n    \"prePage\" : 0,\n    \"nextPage\" : 0,\n    \"isFirstPage\" : true,\n    \"isLastPage\" : true,\n    \"hasPreviousPage\" : false,\n    \"hasNextPage\" : false,\n    \"navigatePages\" : 8,\n    \"navigatepageNums\" : [ 1 ],\n    \"navigateFirstPage\" : 1,\n    \"navigateLastPage\" : 1\n  }\n}"
+          },
+          "extracted_fields": [
+            {
+              "name": "traceId",
+              "path": "traceId",
+              "type": "str"
+            },
+            {
+              "name": "success",
+              "path": "success",
+              "type": "bool"
+            },
+            {
+              "name": "entity_total",
+              "path": "entity.total",
+              "type": "int"
+            },
+            {
+              "name": "entity_list_0_id",
+              "path": "entity.list[0].id",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_createdAt",
+              "path": "entity.list[0].createdAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_updatedAt",
+              "path": "entity.list[0].updatedAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_mainAccountId",
+              "path": "entity.list[0].mainAccountId",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_tenantId",
+              "path": "entity.list[0].tenantId",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_policyName",
+              "path": "entity.list[0].policyName",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_policyType",
+              "path": "entity.list[0].policyType",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_policyCategory",
+              "path": "entity.list[0].policyCategory",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_description",
+              "path": "entity.list[0].description",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_attachmentCount",
+              "path": "entity.list[0].attachmentCount",
+              "type": "int"
+            },
+            {
+              "name": "entity_list_0_released",
+              "path": "entity.list[0].released",
+              "type": "bool"
+            },
+            {
+              "name": "entity_list_0_deleted",
+              "path": "entity.list[0].deleted",
+              "type": "bool"
+            },
+            {
+              "name": "entity_pageNum",
+              "path": "entity.pageNum",
+              "type": "int"
+            },
+            {
+              "name": "entity_pageSize",
+              "path": "entity.pageSize",
+              "type": "int"
+            },
+            {
+              "name": "entity_size",
+              "path": "entity.size",
+              "type": "int"
+            },
+            {
+              "name": "entity_startRow",
+              "path": "entity.startRow",
+              "type": "int"
+            },
+            {
+              "name": "entity_endRow",
+              "path": "entity.endRow",
+              "type": "int"
+            },
+            {
+              "name": "entity_pages",
+              "path": "entity.pages",
+              "type": "int"
+            },
+            {
+              "name": "entity_prePage",
+              "path": "entity.prePage",
+              "type": "int"
+            },
+            {
+              "name": "entity_nextPage",
+              "path": "entity.nextPage",
+              "type": "int"
+            },
+            {
+              "name": "entity_isFirstPage",
+              "path": "entity.isFirstPage",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isLastPage",
+              "path": "entity.isLastPage",
+              "type": "bool"
+            },
+            {
+              "name": "entity_hasPreviousPage",
+              "path": "entity.hasPreviousPage",
+              "type": "bool"
+            },
+            {
+              "name": "entity_hasNextPage",
+              "path": "entity.hasNextPage",
+              "type": "bool"
+            },
+            {
+              "name": "entity_navigatePages",
+              "path": "entity.navigatePages",
+              "type": "int"
+            },
+            {
+              "name": "entity_navigateFirstPage",
+              "path": "entity.navigateFirstPage",
+              "type": "int"
+            },
+            {
+              "name": "entity_navigateLastPage",
+              "path": "entity.navigateLastPage",
+              "type": "int"
+            }
+          ],
+          "depends_on": []
+        },
+        "strategy": "exact_value_match",
+        "is_array": true
+      },
+      "创建用户.adminId": {
+        "source": "current_user.entity_adminId",
+        "api": {
+          "name": "获取当前用户信息",
+          "id": "current_user",
+          "method": "GET",
+          "pathname": "/estack/api/estack/draco/v1/users/current-user",
+          "response_sample": {
+            "response_body": "{\n  \"traceId\" : \"e2ff9355e69f2b39\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"id\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"tenantId\" : \"cec63451f8bf4ceebb9ada0b87d829bf\",\n    \"tenantName\" : \"Super Management Department\",\n    \"adminId\" : \"644e7d7b19c744d6a1d3194b8d819fd3\",\n    \"ramId\" : \"93552edc908e4dadae761fff1fd0f24c\",\n    \"name\" : \"estack-yy\",\n    \"userName\" : \"estack-yy\",\n    \"email\" : \"l*****u@163.com\",\n    \"phone\" : \"188***1683\",\n    \"encryptedEmail\" : \"d5DMRsWzfs9NOAiRMBvZMNq7TvsxOeiZ\",\n    \"encryptedPhone\" : \"3hmpCM+112+O+OaTCsGN9A==\",\n    \"countryCode\" : \"+86\",\n    \"description\" : \"\",\n    \"createdAt\" : \"2025-01-24 12:19:29\",\n    \"updatedAt\" : \"2025-03-11 17:24:50\",\n    \"deleted\" : false,\n    \"state\" : \"ENABLE\",\n    \"isAdmin\" : false,\n    \"isProjectManager\" : false,\n    \"isAuthentication\" : false,\n    \"roleId\" : null,\n    \"roleName\" : null,\n    \"ancestorList\" : [ \"Super Management Department\" ],\n    \"isPassword\" : true,\n    \"isEmail\" : true,\n    \"isPhone\" : true,\n    \"poolNameList\" : null,\n    \"isRootTenantUser\" : true,\n    \"isApproval\" : false,\n    \"tenantLevel\" : 0,\n    \"locked\" : false,\n    \"policyIdList\" : [ \"OPERATION\" ],\n    \"policyList\" : [ {\n      \"id\" : \"OPERATION\",\n      \"tenantId\" : null,\n      \"policyName\" : \"运营管理员\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"ORGANIZATION\",\n      \"description\" : null,\n      \"released\" : false,\n      \"deleted\" : null,\n      \"originalPolicyName\" : \"RAM.POLICES.POLICY_NAME.OPERATIONS_ADMIN\"\n    } ],\n    \"countryCodePhone\" : \"+86 188***1683\",\n    \"password\" : \"6974d2bb056747082f6b7fcd01d61d0c9fcbc34f189a6c12d9a295891454d8e2\",\n    \"projectIdList\" : null,\n    \"needRamIdentity\" : null,\n    \"isInnerUser\" : null,\n    \"userType\" : null,\n    \"isForceChange\" : false,\n    \"isTempPassword\" : false,\n    \"mfLoginPolicy\" : null,\n    \"enableMultiFactLoginPolicy\" : null,\n    \"maintainAt\" : null\n  }\n}"
+          },
+          "extracted_fields": [
+            {
+              "name": "traceId",
+              "path": "traceId",
+              "type": "str"
+            },
+            {
+              "name": "success",
+              "path": "success",
+              "type": "bool"
+            },
+            {
+              "name": "entity_id",
+              "path": "entity.id",
+              "type": "str"
+            },
+            {
+              "name": "entity_tenantId",
+              "path": "entity.tenantId",
+              "type": "str"
+            },
+            {
+              "name": "entity_tenantName",
+              "path": "entity.tenantName",
+              "type": "str"
+            },
+            {
+              "name": "entity_adminId",
+              "path": "entity.adminId",
+              "type": "str"
+            },
+            {
+              "name": "entity_ramId",
+              "path": "entity.ramId",
+              "type": "str"
+            },
+            {
+              "name": "entity_name",
+              "path": "entity.name",
+              "type": "str"
+            },
+            {
+              "name": "entity_userName",
+              "path": "entity.userName",
+              "type": "str"
+            },
+            {
+              "name": "entity_email",
+              "path": "entity.email",
+              "type": "str"
+            },
+            {
+              "name": "entity_phone",
+              "path": "entity.phone",
+              "type": "str"
+            },
+            {
+              "name": "entity_encryptedEmail",
+              "path": "entity.encryptedEmail",
+              "type": "str"
+            },
+            {
+              "name": "entity_encryptedPhone",
+              "path": "entity.encryptedPhone",
+              "type": "str"
+            },
+            {
+              "name": "entity_countryCode",
+              "path": "entity.countryCode",
+              "type": "str"
+            },
+            {
+              "name": "entity_description",
+              "path": "entity.description",
+              "type": "str"
+            },
+            {
+              "name": "entity_createdAt",
+              "path": "entity.createdAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_updatedAt",
+              "path": "entity.updatedAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_deleted",
+              "path": "entity.deleted",
+              "type": "bool"
+            },
+            {
+              "name": "entity_state",
+              "path": "entity.state",
+              "type": "str"
+            },
+            {
+              "name": "entity_isAdmin",
+              "path": "entity.isAdmin",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isProjectManager",
+              "path": "entity.isProjectManager",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isAuthentication",
+              "path": "entity.isAuthentication",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isPassword",
+              "path": "entity.isPassword",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isEmail",
+              "path": "entity.isEmail",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isPhone",
+              "path": "entity.isPhone",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isRootTenantUser",
+              "path": "entity.isRootTenantUser",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isApproval",
+              "path": "entity.isApproval",
+              "type": "bool"
+            },
+            {
+              "name": "entity_tenantLevel",
+              "path": "entity.tenantLevel",
+              "type": "int"
+            },
+            {
+              "name": "entity_locked",
+              "path": "entity.locked",
+              "type": "bool"
+            },
+            {
+              "name": "entity_policyList_0_id",
+              "path": "entity.policyList[0].id",
+              "type": "str"
+            },
+            {
+              "name": "entity_policyList_0_policyName",
+              "path": "entity.policyList[0].policyName",
+              "type": "str"
+            },
+            {
+              "name": "entity_policyList_0_policyType",
+              "path": "entity.policyList[0].policyType",
+              "type": "str"
+            },
+            {
+              "name": "entity_policyList_0_policyCategory",
+              "path": "entity.policyList[0].policyCategory",
+              "type": "str"
+            },
+            {
+              "name": "entity_policyList_0_released",
+              "path": "entity.policyList[0].released",
+              "type": "bool"
+            },
+            {
+              "name": "entity_policyList_0_originalPolicyName",
+              "path": "entity.policyList[0].originalPolicyName",
+              "type": "str"
+            },
+            {
+              "name": "entity_countryCodePhone",
+              "path": "entity.countryCodePhone",
+              "type": "str"
+            },
+            {
+              "name": "entity_password",
+              "path": "entity.password",
+              "type": "str"
+            },
+            {
+              "name": "entity_isForceChange",
+              "path": "entity.isForceChange",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isTempPassword",
+              "path": "entity.isTempPassword",
+              "type": "bool"
+            }
+          ],
+          "depends_on": []
+        },
+        "strategy": "exact_value_match",
+        "is_array": false
+      },
+      "创建用户.tenantId": {
+        "source": "list.entity_list_0_tenantId",
+        "api": {
+          "name": "前置 API: list",
+          "id": "list",
+          "method": "POST",
+          "pathname": "/estack/api/estack/draco/v1/policies/list",
+          "response_sample": {
+            "response_body": "{\n  \"traceId\" : \"26190377ba9612e4\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"total\" : 1,\n    \"list\" : [ {\n      \"id\" : \"1f8e392309fc414c9d77d45d0315fedc\",\n      \"createdAt\" : \"2024-05-28 22:05:41\",\n      \"updatedAt\" : \"2024-06-04 03:05:39\",\n      \"mainAccountId\" : \"SYSTEM\",\n      \"tenantId\" : \"42ffdba38c58484f9be2bc1adf1672e6\",\n      \"policyName\" : \"普通用户\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"ORGANIZATION\",\n      \"description\" : \"普通用户\",\n      \"attachmentCount\" : 10,\n      \"released\" : true,\n      \"deleted\" : false,\n      \"originalPolicyName\" : null\n    } ],\n    \"pageNum\" : 1,\n    \"pageSize\" : 1,\n    \"size\" : 1,\n    \"startRow\" : 0,\n    \"endRow\" : 0,\n    \"pages\" : 1,\n    \"prePage\" : 0,\n    \"nextPage\" : 0,\n    \"isFirstPage\" : true,\n    \"isLastPage\" : true,\n    \"hasPreviousPage\" : false,\n    \"hasNextPage\" : false,\n    \"navigatePages\" : 8,\n    \"navigatepageNums\" : [ 1 ],\n    \"navigateFirstPage\" : 1,\n    \"navigateLastPage\" : 1\n  }\n}"
+          },
+          "extracted_fields": [
+            {
+              "name": "traceId",
+              "path": "traceId",
+              "type": "str"
+            },
+            {
+              "name": "success",
+              "path": "success",
+              "type": "bool"
+            },
+            {
+              "name": "entity_total",
+              "path": "entity.total",
+              "type": "int"
+            },
+            {
+              "name": "entity_list_0_id",
+              "path": "entity.list[0].id",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_createdAt",
+              "path": "entity.list[0].createdAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_updatedAt",
+              "path": "entity.list[0].updatedAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_mainAccountId",
+              "path": "entity.list[0].mainAccountId",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_tenantId",
+              "path": "entity.list[0].tenantId",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_policyName",
+              "path": "entity.list[0].policyName",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_policyType",
+              "path": "entity.list[0].policyType",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_policyCategory",
+              "path": "entity.list[0].policyCategory",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_description",
+              "path": "entity.list[0].description",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_attachmentCount",
+              "path": "entity.list[0].attachmentCount",
+              "type": "int"
+            },
+            {
+              "name": "entity_list_0_released",
+              "path": "entity.list[0].released",
+              "type": "bool"
+            },
+            {
+              "name": "entity_list_0_deleted",
+              "path": "entity.list[0].deleted",
+              "type": "bool"
+            },
+            {
+              "name": "entity_pageNum",
+              "path": "entity.pageNum",
+              "type": "int"
+            },
+            {
+              "name": "entity_pageSize",
+              "path": "entity.pageSize",
+              "type": "int"
+            },
+            {
+              "name": "entity_size",
+              "path": "entity.size",
+              "type": "int"
+            },
+            {
+              "name": "entity_startRow",
+              "path": "entity.startRow",
+              "type": "int"
+            },
+            {
+              "name": "entity_endRow",
+              "path": "entity.endRow",
+              "type": "int"
+            },
+            {
+              "name": "entity_pages",
+              "path": "entity.pages",
+              "type": "int"
+            },
+            {
+              "name": "entity_prePage",
+              "path": "entity.prePage",
+              "type": "int"
+            },
+            {
+              "name": "entity_nextPage",
+              "path": "entity.nextPage",
+              "type": "int"
+            },
+            {
+              "name": "entity_isFirstPage",
+              "path": "entity.isFirstPage",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isLastPage",
+              "path": "entity.isLastPage",
+              "type": "bool"
+            },
+            {
+              "name": "entity_hasPreviousPage",
+              "path": "entity.hasPreviousPage",
+              "type": "bool"
+            },
+            {
+              "name": "entity_hasNextPage",
+              "path": "entity.hasNextPage",
+              "type": "bool"
+            },
+            {
+              "name": "entity_navigatePages",
+              "path": "entity.navigatePages",
+              "type": "int"
+            },
+            {
+              "name": "entity_navigateFirstPage",
+              "path": "entity.navigateFirstPage",
+              "type": "int"
+            },
+            {
+              "name": "entity_navigateLastPage",
+              "path": "entity.navigateLastPage",
+              "type": "int"
+            }
+          ],
+          "depends_on": []
+        },
+        "strategy": "exact_value_match",
+        "is_array": false
+      },
+      "编辑.userId": {
+        "source": "",
+        "strategy": "generate_random",
+        "value_type": "hex_id"
+      },
+      "编辑.tenantId": {
+        "source": "list.entity_list_0_tenantId",
+        "api": {
+          "name": "前置 API: list",
+          "id": "list",
+          "method": "POST",
+          "pathname": "/estack/api/estack/draco/v1/policies/list",
+          "response_sample": {
+            "response_body": "{\n  \"traceId\" : \"26190377ba9612e4\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"total\" : 1,\n    \"list\" : [ {\n      \"id\" : \"1f8e392309fc414c9d77d45d0315fedc\",\n      \"createdAt\" : \"2024-05-28 22:05:41\",\n      \"updatedAt\" : \"2024-06-04 03:05:39\",\n      \"mainAccountId\" : \"SYSTEM\",\n      \"tenantId\" : \"42ffdba38c58484f9be2bc1adf1672e6\",\n      \"policyName\" : \"普通用户\",\n      \"policyType\" : \"SYSTEM\",\n      \"policyCategory\" : \"ORGANIZATION\",\n      \"description\" : \"普通用户\",\n      \"attachmentCount\" : 10,\n      \"released\" : true,\n      \"deleted\" : false,\n      \"originalPolicyName\" : null\n    } ],\n    \"pageNum\" : 1,\n    \"pageSize\" : 1,\n    \"size\" : 1,\n    \"startRow\" : 0,\n    \"endRow\" : 0,\n    \"pages\" : 1,\n    \"prePage\" : 0,\n    \"nextPage\" : 0,\n    \"isFirstPage\" : true,\n    \"isLastPage\" : true,\n    \"hasPreviousPage\" : false,\n    \"hasNextPage\" : false,\n    \"navigatePages\" : 8,\n    \"navigatepageNums\" : [ 1 ],\n    \"navigateFirstPage\" : 1,\n    \"navigateLastPage\" : 1\n  }\n}"
+          },
+          "extracted_fields": [
+            {
+              "name": "traceId",
+              "path": "traceId",
+              "type": "str"
+            },
+            {
+              "name": "success",
+              "path": "success",
+              "type": "bool"
+            },
+            {
+              "name": "entity_total",
+              "path": "entity.total",
+              "type": "int"
+            },
+            {
+              "name": "entity_list_0_id",
+              "path": "entity.list[0].id",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_createdAt",
+              "path": "entity.list[0].createdAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_updatedAt",
+              "path": "entity.list[0].updatedAt",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_mainAccountId",
+              "path": "entity.list[0].mainAccountId",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_tenantId",
+              "path": "entity.list[0].tenantId",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_policyName",
+              "path": "entity.list[0].policyName",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_policyType",
+              "path": "entity.list[0].policyType",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_policyCategory",
+              "path": "entity.list[0].policyCategory",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_description",
+              "path": "entity.list[0].description",
+              "type": "str"
+            },
+            {
+              "name": "entity_list_0_attachmentCount",
+              "path": "entity.list[0].attachmentCount",
+              "type": "int"
+            },
+            {
+              "name": "entity_list_0_released",
+              "path": "entity.list[0].released",
+              "type": "bool"
+            },
+            {
+              "name": "entity_list_0_deleted",
+              "path": "entity.list[0].deleted",
+              "type": "bool"
+            },
+            {
+              "name": "entity_pageNum",
+              "path": "entity.pageNum",
+              "type": "int"
+            },
+            {
+              "name": "entity_pageSize",
+              "path": "entity.pageSize",
+              "type": "int"
+            },
+            {
+              "name": "entity_size",
+              "path": "entity.size",
+              "type": "int"
+            },
+            {
+              "name": "entity_startRow",
+              "path": "entity.startRow",
+              "type": "int"
+            },
+            {
+              "name": "entity_endRow",
+              "path": "entity.endRow",
+              "type": "int"
+            },
+            {
+              "name": "entity_pages",
+              "path": "entity.pages",
+              "type": "int"
+            },
+            {
+              "name": "entity_prePage",
+              "path": "entity.prePage",
+              "type": "int"
+            },
+            {
+              "name": "entity_nextPage",
+              "path": "entity.nextPage",
+              "type": "int"
+            },
+            {
+              "name": "entity_isFirstPage",
+              "path": "entity.isFirstPage",
+              "type": "bool"
+            },
+            {
+              "name": "entity_isLastPage",
+              "path": "entity.isLastPage",
+              "type": "bool"
+            },
+            {
+              "name": "entity_hasPreviousPage",
+              "path": "entity.hasPreviousPage",
+              "type": "bool"
+            },
+            {
+              "name": "entity_hasNextPage",
+              "path": "entity.hasNextPage",
+              "type": "bool"
+            },
+            {
+              "name": "entity_navigatePages",
+              "path": "entity.navigatePages",
+              "type": "int"
+            },
+            {
+              "name": "entity_navigateFirstPage",
+              "path": "entity.navigateFirstPage",
+              "type": "int"
+            },
+            {
+              "name": "entity_navigateLastPage",
+              "path": "entity.navigateLastPage",
+              "type": "int"
+            }
+          ],
+          "depends_on": []
+        },
+        "strategy": "exact_value_match",
+        "is_array": false
+      },
+      "冻结.userId": {
+        "source": "",
+        "strategy": "generate_random",
+        "value_type": "hex_id"
+      },
+      "锁定.userId": {
+        "source": "",
+        "strategy": "generate_random",
+        "value_type": "hex_id"
+      },
+      "重置密码.userId": {
+        "source": "",
+        "strategy": "generate_random",
+        "value_type": "hex_id"
+      }
+    }
+  },
+  "core_api_map": {
+    "init": [
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/authority/national",
+        "body_field_count": 0,
+        "response_has_id": true,
+        "contexts": [
+          "init"
+        ],
+        "bodies": [],
+        "request_body_sample": null,
+        "query_params": {},
+        "query_params_samples": []
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/authority/national",
+        "body_field_count": 0,
+        "response_has_id": true,
+        "contexts": [
+          "init"
+        ],
+        "bodies": [],
+        "request_body_sample": null,
+        "query_params": {},
+        "query_params_samples": []
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/display-by-role",
+        "body_field_count": 0,
+        "response_has_id": true,
+        "contexts": [
+          "init",
+          "replay:创建用户"
+        ],
+        "bodies": [],
+        "request_body_sample": null,
+        "query_params": {},
+        "query_params_samples": []
+      }
+    ],
+    "创建用户": [
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/users",
+        "body_field_count": 10,
+        "response_has_id": true,
+        "contexts": [
+          "replay:创建用户"
+        ],
+        "bodies": [
+          "{\"userName\":\"AT_test_612336\",\"password\":\"Qo6E+yUJpiME0nXG9jQa7VTX1SKCBGFBVBsSo5wajcPVhUAmuQij23Lxze8SPj2tNKBx+tk1T4Fk+lr1Le+AYyiMsas1Wf1Kg2TgCcjkKoadjIobiCWHOFfDGOPgUMvDCD9pJVUNS1IkEcCCbOZMWgxtQ9AaDZEgu4pg5p05aH0=\",\"name\":\"AT_test_612336\",\"email\":\"hetrYUxjvozfsDhjkPwHRGvAV2cBIeQI17uIGXdNi8FZg4tJiN9LFmZDtt4Ktqg0YtD4MF9Tp266KYSFvQgiS0HS89W2ZIzFH6L2OLREDkshjKx3ZwJjCtRUoer2jFrzPnVtgFqPXYR1rwQJO/Zy+i+TSE2UfdXRh6rCMcfGafI=\",\"phone\":\"Vznvh5G4j9mNPkxCURnRcO7Rk0TEWC3MvkgGA0pddxvkPmQyfB7HLawfQkt0qwY3JcqGUZ4VirQyTq2dCEXh6MLrEvo39cZrHhkvinwKUYSSrVEEQ86bzAsOZxJ6TOaQQ3bCO37blvr4MIujfPHguYkpPBgtd1M4pcqbi/xHd3o=\",\"description\":\"auto_desc_612336\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\",\"e95978ecbbe1475aa5fa062fa3b4c163\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"42ffdba38c58484f9be2bc1adf1672e6\",\"countryCode\":\"+86\"}"
+        ],
+        "request_body_sample": "{\"userName\":\"AT_test_612336\",\"password\":\"Qo6E+yUJpiME0nXG9jQa7VTX1SKCBGFBVBsSo5wajcPVhUAmuQij23Lxze8SPj2tNKBx+tk1T4Fk+lr1Le+AYyiMsas1Wf1Kg2TgCcjkKoadjIobiCWHOFfDGOPgUMvDCD9pJVUNS1IkEcCCbOZMWgxtQ9AaDZEgu4pg5p05aH0=\",\"name\":\"AT_test_612336\",\"email\":\"hetrYUxjvozfsDhjkPwHRGvAV2cBIeQI17uIGXdNi8FZg4tJiN9LFmZDtt4Ktqg0YtD4MF9Tp266KYSFvQgiS0HS89W2ZIzFH6L2OLREDkshjKx3ZwJjCtRUoer2jFrzPnVtgFqPXYR1rwQJO/Zy+i+TSE2UfdXRh6rCMcfGafI=\",\"phone\":\"Vznvh5G4j9mNPkxCURnRcO7Rk0TEWC3MvkgGA0pddxvkPmQyfB7HLawfQkt0qwY3JcqGUZ4VirQyTq2dCEXh6MLrEvo39cZrHhkvinwKUYSSrVEEQ86bzAsOZxJ6TOaQQ3bCO37blvr4MIujfPHguYkpPBgtd1M4pcqbi/xHd3o=\",\"description\":\"auto_desc_612336\",\"policyIds\":[\"1f8e392309fc414c9d77d45d0315fedc\",\"e95978ecbbe1475aa5fa062fa3b4c163\"],\"adminId\":\"644e7d7b19c744d6a1d3194b8d819fd3\",\"tenantId\":\"42ffdba38c58484f9be2bc1adf1672e6\",\"countryCode\":\"+86\"}",
+        "query_params": {},
+        "query_params_samples": []
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/password-policy",
+        "body_field_count": 0,
+        "response_has_id": true,
+        "contexts": [
+          "replay:创建用户",
+          "replay:重置密码"
+        ],
+        "bodies": [],
+        "request_body_sample": null,
+        "query_params": {},
+        "query_params_samples": []
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/display-by-role",
+        "body_field_count": 0,
+        "response_has_id": true,
+        "contexts": [
+          "init",
+          "replay:创建用户"
+        ],
+        "bodies": [],
+        "request_body_sample": null,
+        "query_params": {},
+        "query_params_samples": []
+      }
+    ],
+    "query": [
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "body_field_count": 0,
+        "response_has_id": true,
+        "contexts": [
+          "init",
+          "replay:query",
+          "replay:冻结",
+          "replay:创建用户",
+          "replay:删除",
+          "replay:启用",
+          "replay:编辑",
+          "replay:锁定"
+        ],
+        "bodies": [],
+        "request_body_sample": null,
+        "query_params": {},
+        "query_params_samples": [
+          {
+            "tenantId": "42ffdba38c58484f9be2bc1adf1672e6",
+            "pageNum": "1",
+            "pageSize": "10"
+          },
+          {
+            "tenantId": "42ffdba38c58484f9be2bc1adf1672e6",
+            "pageNum": "1",
+            "pageSize": "10",
+            "name": "AT_test_612336"
+          }
+        ],
+        "search_param": "name"
+      }
+    ],
+    "编辑": [
+      {
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/users/ecd57be47cbc4a0780bb355e6ff4d7a7",
+        "body_field_count": 5,
+        "response_has_id": true,
+        "contexts": [
+          "replay:编辑"
+        ],
+        "bodies": [
+          "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\",\"name\":\"AT_test_612336\",\"description\":\"auto_desc_612336\",\"tenantId\":\"42ffdba38c58484f9be2bc1adf1672e6\",\"countryCode\":\"+86\"}"
+        ],
+        "request_body_sample": "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\",\"name\":\"AT_test_612336\",\"description\":\"auto_desc_612336\",\"tenantId\":\"42ffdba38c58484f9be2bc1adf1672e6\",\"countryCode\":\"+86\"}",
+        "query_params": {},
+        "query_params_samples": []
+      }
+    ],
+    "冻结": [
+      {
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/users/ecd57be47cbc4a0780bb355e6ff4d7a7/suspend",
+        "body_field_count": 1,
+        "response_has_id": true,
+        "contexts": [
+          "replay:冻结"
+        ],
+        "bodies": [
+          "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\"}"
+        ],
+        "request_body_sample": "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\"}",
+        "query_params": {},
+        "query_params_samples": []
+      }
+    ],
+    "启用": [
+      {
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/users/ecd57be47cbc4a0780bb355e6ff4d7a7/enable",
+        "body_field_count": 0,
+        "response_has_id": true,
+        "contexts": [
+          "replay:启用"
+        ],
+        "bodies": [
+          "{}"
+        ],
+        "request_body_sample": "{}",
+        "query_params": {},
+        "query_params_samples": []
+      }
+    ],
+    "锁定": [
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/users/lock/ecd57be47cbc4a0780bb355e6ff4d7a7",
+        "body_field_count": 1,
+        "response_has_id": true,
+        "contexts": [
+          "replay:锁定"
+        ],
+        "bodies": [
+          "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\"}"
+        ],
+        "request_body_sample": "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\"}",
+        "query_params": {},
+        "query_params_samples": []
+      }
+    ],
+    "重置密码": [
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/password-reset/reset",
+        "body_field_count": 6,
+        "response_has_id": true,
+        "contexts": [
+          "replay:重置密码"
+        ],
+        "bodies": [
+          "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"M5Gj2Vp2XLcdrlrjfd8HpaVZ988ssycFd1JKlvXZUXFiveODO+TGBtW/peWw2tLySLxlYyJ5HJV+3N8dKA9vdepSx2YCLjR0kINpbUFJdoqLwFnfATaKf1AoFzZlFxAAegEwBL0dfQBG1fggk1uV8mXB7XxIEqELPxEn9rd/Ryg=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\",\"noticeType\":[]}"
+        ],
+        "request_body_sample": "{\"forceChangePassword\":1,\"isRandomPassword\":1,\"newPassword\":\"M5Gj2Vp2XLcdrlrjfd8HpaVZ988ssycFd1JKlvXZUXFiveODO+TGBtW/peWw2tLySLxlYyJ5HJV+3N8dKA9vdepSx2YCLjR0kINpbUFJdoqLwFnfATaKf1AoFzZlFxAAegEwBL0dfQBG1fggk1uV8mXB7XxIEqELPxEn9rd/Ryg=\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\",\"noticeType\":[]}",
+        "query_params": {},
+        "query_params_samples": []
+      },
+      {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/password-reset/generate",
+        "body_field_count": 3,
+        "response_has_id": true,
+        "contexts": [
+          "replay:重置密码"
+        ],
+        "bodies": [
+          "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}"
+        ],
+        "request_body_sample": "{\"userId\":\"ecd57be47cbc4a0780bb355e6ff4d7a7\",\"passwordPolicy\":{\"id\":\"90542be67d584ab09daa12e697fb041a\",\"tenantId\":\"cec63451f8bf4ceebb9ada0b87d829bf\",\"minPasswordLength\":8,\"requireLowercaseCharacters\":false,\"requireUppercaseCharacters\":true,\"requireNumbers\":true,\"requireSymbols\":true,\"minPasswordDifferentCharacter\":0,\"createdAt\":\"2023-08-30 10:07:14\",\"updatedAt\":\"2025-03-08 18:39:42\",\"deleted\":false,\"userName\":null},\"isRandomPassword\":false}",
+        "query_params": {},
+        "query_params_samples": []
+      },
+      {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/password-policy",
+        "body_field_count": 0,
+        "response_has_id": true,
+        "contexts": [
+          "replay:创建用户",
+          "replay:重置密码"
+        ],
+        "bodies": [],
+        "request_body_sample": null,
+        "query_params": {},
+        "query_params_samples": []
+      }
+    ],
+    "删除": [
+      {
+        "method": "DELETE",
+        "pathname": "/estack/api/estack/draco/v1/users/ecd57be47cbc4a0780bb355e6ff4d7a7",
+        "body_field_count": 0,
+        "response_has_id": true,
+        "contexts": [
+          "replay:删除"
+        ],
+        "bodies": [
+          "{}"
+        ],
+        "request_body_sample": "{}",
+        "query_params": {},
+        "query_params_samples": []
+      }
+    ]
+  }
+}

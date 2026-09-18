@@ -2207,7 +2207,7 @@ TERMINAL_ERRORS = {
     "env_dependency",           # 需要上传文件（import）
     "permission_denied",        # 权限不足
     "resource_not_found",       # 资源不存在
-    # "required_field_empty",  # 已移除：让重试循环有机会自愈（重新填充 select）
+    "required_field_empty",     # 必填字段为空（无选项数据，重试无法自愈）
     "confirm_button_disabled",  # 确认按钮被禁用
 }
 
@@ -3138,6 +3138,9 @@ async def _do_generic_operation(page, context: dict) -> dict:
     # 提前归一化，确保所有 return 路径都携带 trigger_text
     trigger_text_normalized = " ".join(btn_text.split())
 
+    # 收集弹窗中填充的 select 字段详情（用于 playbook 序列化）
+    dialog_fill_details = []
+
     # 记录点击前的 URL（用于导航保护）
     url_before = page.url
 
@@ -3335,7 +3338,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
         empty_sels = pre_fill_diag.get("empty_selects", [])
         if empty_sels:
             LOG.info(f"    确认前有 {len(empty_sels)} 个空 select 字段，先填充: {empty_sels}")
-            await _try_fill_empty_selects(page, empty_sels)
+            _, dialog_fill_details = await _try_fill_empty_selects(page, empty_sels)
             # _try_fill_empty_selects 内部每个字段填充后点击 label 关闭下拉面板（不按 Escape）
             await page.wait_for_timeout(500)
 
@@ -3446,10 +3449,11 @@ async def _do_generic_operation(page, context: dict) -> dict:
             # 如果有空 select 字段，尝试自动填充而不是直接放弃
             if empty_fields:
                 LOG.info(f"    检测到 {len(empty_fields)} 个空 select 字段，尝试自动填充: {empty_fields}")
-                fill_success = await _try_fill_empty_selects(page, empty_fields)
+                fill_success, fill_details_2 = await _try_fill_empty_selects(page, empty_fields)
 
                 if fill_success:
                     LOG.info("    空 select 字段填充成功，直接点击确认按钮")
+                    dialog_fill_details.extend(fill_details_2)
                     await page.wait_for_timeout(1000)
 
                     # 弹窗已知存在（刚在里面填充了字段），直接点击确认按钮
@@ -3526,6 +3530,10 @@ async def _do_generic_operation(page, context: dict) -> dict:
     # Playbook 增强字段
     result = {"success": True, "selectors": selectors, "confirmed": confirmed, "trigger_text": trigger_text_normalized}
 
+    # 记录弹窗中填充的 select 字段详情（供 playbook 生成 fill_form 步骤）
+    if dialog_fill_details:
+        result["dialog_fills"] = dialog_fill_details
+
     # 记录确认后的对话框状态（供 playbook 生成 close_dialog 步骤）
     result["post_confirm_state"] = {
         "dialog_remains": post_state["dialog_remains"],
@@ -3573,7 +3581,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
 # 辅助函数
 # ============================================================
 
-async def _try_fill_empty_selects(page, empty_field_labels: list) -> bool:
+async def _try_fill_empty_selects(page, empty_field_labels: list):
     """尝试填充弹窗中的空 select 字段。
 
     使用 FormFiller 扫描表单 → 过滤出空 select → 调用 MultiStepExecutor 填充。
@@ -3584,7 +3592,8 @@ async def _try_fill_empty_selects(page, empty_field_labels: list) -> bool:
         empty_field_labels: 空字段 label 列表（来自诊断 JS）
 
     Returns:
-        True 表示至少成功填充了一个字段
+        (是否至少成功填充了一个, 填充详情列表)
+        详情包含: label, kb_category, selector, is_editable, option_text
     """
     from .replay.form_filler import FormFiller
 
@@ -3615,7 +3624,7 @@ async def _try_fill_empty_selects(page, empty_field_labels: list) -> bool:
 
         if not target_fields:
             LOG.debug(f"    未找到匹配的空 select 字段（扫描到 {len(fields)} 个字段）")
-            return False
+            return False, []
 
         LOG.info(f"    找到 {len(target_fields)} 个空 select 字段，开始填充...")
 
@@ -3655,11 +3664,11 @@ async def _try_fill_empty_selects(page, empty_field_labels: list) -> bool:
             else:
                 LOG.warning(f"    ✗ 填充 {d['label']} 失败")
 
-        return filled_count > 0
+        return filled_count > 0, details
 
     except Exception as e:
         LOG.warning(f"    尝试填充 select 时出错: {e}")
-        return False
+        return False, []
 
 
 async def _click_button_escalating(page, btn_text: str) -> dict:
@@ -4914,12 +4923,6 @@ def _apply_fix(error_result: dict, context: dict) -> dict:
         # 弹窗未出现：可能需要先执行前置操作
         pass
 
-    elif error_type == "required_field_empty":
-        # 必填字段为空：标记需要重新填充空的 select 字段
-        # 这个标记会在 _do_generic_operation 的重试循环中被检查
-        context["retry_fill_empty_selects"] = True
-        LOG.debug(f"    [_apply_fix] 标记需要重新填充空的 select 字段")
-
     return context
 
 
@@ -5755,6 +5758,28 @@ def _build_generic_steps(op_data: dict) -> list:
             "description": f"点击下拉菜单项: {dropdown_item_text}"
         })
 
+    # 如果 Stage 1 在弹窗中填充了 select 字段，生成 fill_form 步骤（在 confirm 之前执行）
+    dialog_fills = op_data.get("dialog_fills", [])
+    if dialog_fills:
+        fill_fields = []
+        for d in dialog_fills:
+            if d.get("option_text") and d.get("selector"):
+                fill_fields.append({
+                    "label": d.get("label", ""),
+                    "playwright_locator": d["selector"],
+                    "type": "select",
+                    "kb_category": d.get("kb_category", "el-select"),
+                    "fill_rule": {},
+                    "is_editable": d.get("is_editable", False),
+                    "option_text": d["option_text"],
+                })
+        if fill_fields:
+            steps.append({
+                "action": "fill_form",
+                "fields": fill_fields,
+                "description": "填充弹窗中的下拉选择字段"
+            })
+
     # 处理确认对话框（仅当 Stage 1 记录 confirmed=True 时生成）
     confirmed = op_data.get("confirmed") or op_data.get("selectors", {}).get("confirm")
     if confirmed:
@@ -5780,12 +5805,20 @@ def _build_generic_steps(op_data: dict) -> list:
             "description": "导航回原页面"
         })
 
-    # 验证成功
-    success_locator = op_data.get("success_locator", ".el-message--success")
-    steps.append({
-        "action": "assert_success",
-        "playwright_locator": success_locator,
-        "description": "验证操作成功"
-    })
+    # 验证成功 — 仅在有实际 UI 操作时生成（导航操作不弹成功消息）
+    has_ui_action = bool(trigger_locator or dropdown_item_text or confirmed
+                         or needs_checkbox or selectors.get("row_selector") or dialog_fills)
+    if has_ui_action:
+        # 使用多选择器兼容不同 UI 框架的成功提示：
+        # - .el-message--success: Element UI 标准成功消息
+        # - .el-notification__content:has-text('成功'): Element UI 通知组件
+        # - [role='alert']:has-text('成功'): ARIA 标准通知
+        success_locator = op_data.get("success_locator",
+            ".el-message--success, .el-notification__content:has-text('成功'), [role='alert']:has-text('成功')")
+        steps.append({
+            "action": "assert_success",
+            "playwright_locator": success_locator,
+            "description": "验证操作成功"
+        })
 
     return steps
