@@ -36,7 +36,7 @@ def generate_ui_script(playbook: dict, module_name: str, project_dir: Path, vers
     ui_dir.mkdir(parents=True, exist_ok=True)
 
     # 2. 同步运行时 lib/
-    _sync_ui_runtime_lib(ui_dir)
+    _sync_ui_runtime_lib(ui_dir, project_dir)
 
     # 3. 生成数据文件
     data = _extract_test_data(playbook)
@@ -106,7 +106,8 @@ def _verify_sync(dst_lib: Path, synced: list):
          f"from lib import replay_engine; from lib import button_driver; "
          f"from lib import form_filler; from lib import wait_helpers; "
          f"from lib import locator_helpers; from lib import const; "
-         f"from lib import kb_loader"],
+         f"from lib import kb_loader; from lib import ui_report; "
+         f"from lib import cookie_client"],
         capture_output=True, text=True, timeout=15,
         cwd=str(ui_dir),
     )
@@ -119,7 +120,7 @@ def _verify_sync(dst_lib: Path, synced: list):
     LOG.info("  ✅ 同步验证通过（导入检查 OK）")
 
 
-def _sync_ui_runtime_lib(ui_dir: Path):
+def _sync_ui_runtime_lib(ui_dir: Path, project_dir: Path):
     """从 Stage 2 运行时同步所有文件到 ui/lib/。
 
     同步源:
@@ -133,9 +134,9 @@ def _sync_ui_runtime_lib(ui_dir: Path):
 
     同步后执行导入验证，确保生成的 ui/lib/ 能正确工作。
     """
-    src_dir = Path(__file__).resolve().parent       # module_discovery/
-    project_root = src_dir.parent                    # 项目根目录
-    replay_dir = src_dir / "replay"                  # module_discovery/replay/
+    src_dir = Path(__file__).resolve().parent       # core/discovery/
+    project_root = src_dir.parent.parent             # 项目根目录 (API_AI_test/)
+    replay_dir = src_dir / "replay"                  # core/discovery/replay/
     lib_dir = project_root / "lib"                   # lib/
     dst_lib = ui_dir / "lib"
     dst_lib.mkdir(parents=True, exist_ok=True)
@@ -173,7 +174,7 @@ def _sync_ui_runtime_lib(ui_dir: Path):
             LOG.info("  UI runtime sync: ui_report.py")
         synced.append("ui_report.py")
     else:
-        LOG.warning(f"  ui_report.py 未找到: {ui_report_src}")
+        raise RuntimeError(f"关键依赖 ui_report.py 未找到: {ui_report_src}")
 
     # ---- 4. lib/auth/cookie_client.py → ui/lib/ ----
     cookie_src = lib_dir / "auth" / "cookie_client.py"
@@ -183,7 +184,7 @@ def _sync_ui_runtime_lib(ui_dir: Path):
             LOG.info("  UI runtime sync: cookie_client.py")
         synced.append("cookie_client.py")
     else:
-        LOG.warning(f"  cookie_client.py 未找到: {cookie_src}")
+        raise RuntimeError(f"关键依赖 cookie_client.py 未找到: {cookie_src}")
 
     # ---- 5. kb/probe_knowledge.json → ui/lib/kb/ ----
     kb_src = src_dir / "kb" / "probe_knowledge.json"
@@ -207,13 +208,29 @@ def _sync_ui_runtime_lib(ui_dir: Path):
     # ---- 7. cookies.json → ui/config/（每次覆盖）----
     config_dst = ui_dir / "config"
     config_dst.mkdir(parents=True, exist_ok=True)
-    cookies_src = project_root / "cookies.json"
-    if cookies_src.exists():
+
+    # 优先从 workspace/<project>/output/config/cookies.json 复制
+    # 回退到项目根目录的 cookies.json
+    workspace_cookies = project_root / "workspace" / project_dir.name / "output" / "config" / "cookies.json"
+    root_cookies = project_root / "cookies.json"
+
+    cookies_src = None
+    if workspace_cookies.exists():
+        cookies_src = workspace_cookies
+        LOG.info(f"  UI runtime sync: 使用 workspace cookies: {workspace_cookies.relative_to(project_root)}")
+    elif root_cookies.exists():
+        cookies_src = root_cookies
+        LOG.info(f"  UI runtime sync: 使用根目录 cookies: {root_cookies.relative_to(project_root)}")
+
+    if cookies_src:
         dst_cookies = config_dst / "cookies.json"
         dst_cookies.write_text(
             cookies_src.read_text(encoding="utf-8"), encoding="utf-8"
         )
         LOG.info("  UI runtime sync: config/cookies.json")
+    else:
+        LOG.warning("  UI runtime sync: cookies.json 未找到，UI 脚本将无法自动运行")
+        LOG.warning(f"    尝试过: {workspace_cookies.relative_to(project_root)}, {root_cookies.relative_to(project_root)}")
 
     # ---- 8. 生成 __init__.py ----
     init_file = dst_lib / "__init__.py"

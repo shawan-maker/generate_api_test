@@ -18,7 +18,7 @@
 
 1. **Stage 1-5 全流程** — 从 UI 探测到测试脚本生成的完整流水线
 2. **5 角色分类系统** — name/mutable/context/generate/static 智能分类
-3. **值匹配驱动** — 基于值的精确匹配 + 字段名回退匹配
+3. **值匹配驱动** — 基于值的精确匹配，context 靠值识别
 4. **前置 API 追踪** — 自动识别和排序依赖的前置 API
 5. **多格式导出** — Postman Collection / helpers.py / Excel 参数文件
 6. **增量发现** — 7 天内已发现的模块自动跳过
@@ -106,10 +106,9 @@ python -m pytest projects/ecm-compute/v1.0.0/api/用户管理_API测试.py -v
 
 1. **Pass 1: name** — 字段名含 name/title/label + 值是短可读字符串
 2. **Pass 2: mutable** — 字段名含 description/memo/remark/note/content
-3. **Pass 3a: context** — 精确值匹配（在 value_index 中找到）
-4. **Pass 3b: context** — 字段名回退（系统 ID 类型 + 字段名匹配）
-5. **Pass 4: generate** — 值模式分析（uuid、hex_id、phone、email）
-6. **Pass 5: static** — 兜底
+3. **Pass 3: context** — 精确值匹配（在 value_index 中找到相同值）
+4. **Pass 4: generate** — 值模式分析（uuid、hex_id、phone、email）
+5. **Pass 5: static** — 兜底
 
 ---
 
@@ -147,10 +146,55 @@ API_AI_test/
 ### 1. 值匹配驱动
 
 - **精确值匹配**：在前置 API 响应中查找相同的值
-- **字段名回退**：对系统 ID 类型（hex_id、uuid、alphanumeric ID），按字段名在前置 API 中查找
-- **归一化匹配**：`tenant_id` 和 `tenantId` 可以正确匹配
+- **纯值匹配**：context 完全靠值相等识别，不依赖字段名匹配
+- **URL 路径参数**：pathname 中的动态参数同样通过值匹配确定来源（`_analyze_path_params`），运行时只执行映射
 
-### 2. 前置 API 自动追踪
+### 2. URL 路径参数分析
+
+**Stage 3 分析，运行时执行**：pathname 中的动态参数（如 `/users/{id}`）在 Stage 3 通过值匹配确定完整映射关系，运行时只负责执行映射。
+
+**分析流程**（`_analyze_path_params` 函数）：
+1. **Step 1 - Body 关联**：检查 URL 中的值是否在当前请求 body 中出现，如果是 context 字段则复用其 source
+2. **Step 1.5 - 已有 source 优先**：如果 body 中已有 context source 指向某个 pre-API，且 value_index 中该 pre-API 也能匹配当前 path 段值，优先复用该 source（确保 pre-API 被收集）
+3. **Step 2 - Value_index 关联**：在前置 API 响应中查找相同值
+4. **Step 3 - 值模式兜底**：对于长 hex_id/uuid 等，如果 body 和 value_index 都未匹配，默认为 `create.id`（适用于编辑/删除场景）
+5. **Step 0 - 特异性判定**：纯数字需 ≥2 字符，含字母需 ≥16 字符，防止 `v1`、`active` 等静态路径段被误匹配
+
+**Manifest 输出**：
+```json
+{
+  "action": "迁移",
+  "api": {
+    "method": "PUT",
+    "pathname": "/users/migrate/{path_0}",
+    "path_params": {
+      "path_0": {
+        "original_value": "5bcbffa7...",
+        "source": "display_by_role.entity_0_children_0_id",
+        "match_from": "body_context"
+      }
+    }
+  },
+  "body_field_roles": {
+    "tenantId": {
+      "role": "context",
+      "source": "display_by_role.entity_0_children_0_id"
+    }
+  }
+}
+```
+
+**运行时执行**（`_build_url` 方法）：
+- 读取 manifest 中的 `path_params` 映射
+- 根据 source 从 state 中取值并替换占位符
+- 不做任何分析推断，只执行已确定的映射
+
+**设计原则**：
+- Stage 3 拥有最完整的原始数据，是确定关联关系的最佳时机
+- 运行时信息更少，不可能做得更好
+- path_params 和 body_field_roles 共享同一个 value_index，保持一致性
+
+### 3. 前置 API 自动追踪
 
 - 自动识别业务操作依赖的前置 API
 - 拓扑排序确保执行顺序正确
@@ -242,10 +286,8 @@ A: `projects/<project_id>/v1.0.0/api/<模块名>_API测试.py`
 ### v2.0.0 (2026-09-18)
 
 - ✅ 9 角色简化为 5 角色（name/mutable/context/generate/static）
-- ✅ 值匹配驱动的分类系统
-- ✅ 字段名回退匹配（支持系统 ID 类型）
+- ✅ 纯值匹配驱动的分类系统（无字段名回退）
 - ✅ 通配符路径支持（`[*]`）
-- ✅ 归一化字段名匹配（tenant_id == tenantId）
 
 ### v1.0.0 (2026-09-01)
 

@@ -88,13 +88,6 @@ try:
 except ImportError:
     _AUTH_MODE = "cookie"
 
-# 统一输出目录：基于 lib/ 的父目录（即 api/ 目录或项目根）
-# test_runtime.py 位于 api/lib/runtime/test_runtime.py（生成脚本）
-# 或 lib/runtime/test_runtime.py（框架内），需要向上 3 级
-_self = Path(__file__).resolve()
-_BASE_DIR = _self.parent.parent.parent  # api/ 或项目根
-_LOG_DIR = _BASE_DIR / "report"
-
 
 class ResponseParser:
     """根据 response_contract 解析 API 响应。"""
@@ -486,9 +479,51 @@ class StepExecutor:
         except Exception:
             pass
 
+    def _resolve_path_param(self, source: str) -> str:
+        """解析 path_param 的来源，从 state 中取值。
+
+        Stage 3 已完成关联分析，此处只做纯粹的 source → state 取值。
+
+        Args:
+            source: Stage 3 分析确定的来源路径，格式如：
+                - "create.id" → self.state["id"]
+                - "display_by_role.entity_0_children_0_id" → self.state["entity_0_children_0_id"]
+                - "auth.xxx" → self.state["xxx"]
+
+        Returns:
+            解析后的值，找不到则返回空字符串
+        """
+        if not source or "." not in source:
+            return ""
+
+        parts = source.split(".", 1)
+        prefix = parts[0]
+        field = parts[1]
+
+        if prefix == "create":
+            # create.id → 创建的资源 ID
+            return self.state.get(field, "")
+        elif prefix == "auth":
+            # auth.tenantId → 登录上下文
+            return self.state.get(field, "")
+        else:
+            # pre-API: "display_by_role.entity_0_children_0_id"
+            # state 中 key 不含 api_id 前缀，直接用 field 查找
+            return self.state.get(field, "")
+
     def _build_url(self, api: dict) -> str:
         pathname = api["pathname"]
-        # 替换任意 {paramName} 占位符（不仅限于 {id}）
+
+        # ★ 优先处理 path_params（Stage 3 分析的值匹配关联）
+        path_params = api.get("path_params", {})
+        if path_params:
+            for placeholder, mapping in path_params.items():
+                source = mapping.get("source", "")
+                val = self._resolve_path_param(source)
+                if val:
+                    pathname = pathname.replace(f"{{{placeholder}}}", str(val))
+
+        # 替换任意 {paramName} 占位符（不仅限于 {id}）— 向后兼容
         placeholders = re.findall(r'\{(\w+)\}', pathname)
         for key in placeholders:
             val = self.state.get(key, "")
@@ -599,6 +634,9 @@ class StepExecutor:
                 # context 角色：从 state 中解析值
                 source = role_config.get("source", f"context.{key}")
                 is_array = role_config.get("is_array", False)
+                # 模板值是数组时自动保持数组类型
+                if isinstance(value, list):
+                    is_array = True
                 resolved = self._resolve_context_value(source, key, value, is_array)
                 body[key] = resolved
 
@@ -952,6 +990,20 @@ class TestRunner:
         self.shared_context = shared_context or {}
         self.ts = format(int(time.time() * 1000), "x")[-6:]
 
+        # 动态计算输出目录（避免框架内 import 时在根目录创建 report/）
+        # 生成脚本场景：api/lib/runtime/test_runtime.py → parent.parent.parent = api/
+        # 框架内场景：lib/runtime/test_runtime.py → 使用 workspace/ 避免污染项目根
+        _self = Path(__file__).resolve()
+        _base = _self.parent.parent.parent
+        if _self.parent.parent.name == "lib" and _base.name != "api":
+            # 框架内 import：使用 workspace/<project>/output/report/
+            self._base_dir = _base / "workspace" / "ecm-compute" / "output"
+            self._base_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            # 生成脚本：使用 api/ 目录
+            self._base_dir = _base
+        self._log_dir = self._base_dir / "report"
+
         # 测试配置（名称前缀、可变前缀等）
         self.config = manifest.get("config", {
             "test_data": {
@@ -961,8 +1013,8 @@ class TestRunner:
         })
 
         # 设置日志文件
-        _LOG_DIR.mkdir(parents=True, exist_ok=True)
-        self.log_file = str(_LOG_DIR / f"{self.module_name}_API测试.jsonl")
+        self._log_dir.mkdir(parents=True, exist_ok=True)
+        self.log_file = str(self._log_dir / f"{self.module_name}_API测试.jsonl")
         # 清空旧日志
         try:
             open(self.log_file, "w", encoding="utf-8").close()
@@ -981,7 +1033,7 @@ class TestRunner:
         # Cookie-only 模式（生成脚本）
         if _AUTH_MODE == "cookie":
             from lib.cookie_client import require_auth
-            config_dir = _BASE_DIR / "config"
+            config_dir = self._base_dir / "config"
             config_dir.mkdir(parents=True, exist_ok=True)
 
             auth_config = {
@@ -1021,7 +1073,7 @@ class TestRunner:
 
         sess = AuthSession(profile, username, password)
 
-        ctx_dir = _BASE_DIR / "config"
+        ctx_dir = self._base_dir / "config"
         ctx_dir.mkdir(parents=True, exist_ok=True)
         sess.set_context_path(str(ctx_dir / "context.json"))
 

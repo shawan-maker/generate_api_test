@@ -1,0 +1,132 @@
+{
+  "_meta": {
+    "framework": "element-ui",
+    "description": "Element UI (Vue 2/3) 组件选择器配置"
+  },
+  "button": {
+    "base": ".el-button",
+    "text": ".el-button--text",
+    "primary": ".el-button--primary",
+    "generic_selectors": [
+      "button",
+      "a[href]",
+      "[role='button']",
+      "[role='menuitem']",
+      "[role='link']",
+      "[class*='btn']",
+      "[class*='Btn']",
+      "[class*='action']",
+      "[class*='Action']",
+      "span[onclick]"
+    ]
+  },
+  "table": {
+    "container": ".el-table",
+    "body_wrapper": ".el-table__body-wrapper",
+    "body_row": ".el-table__body-wrapper tbody tr",
+    "body_tr": ".el-table__body-wrapper tr",
+    "fixed_row": ".el-table__fixed .el-table__fixed-body-wrapper tbody tr",
+    "fixed_right_row": ".el-table__fixed-right .el-table__fixed-body-wrapper tbody tr",
+    "header_cell": ".el-table__header-wrapper th",
+    "body_link": ".el-table__body-wrapper a",
+    "body_button": ".el-table__body-wrapper .el-button",
+    "body_action_span": ".el-table__body-wrapper span[class*='action']",
+    "generic_table": "table",
+    "generic_tbody_tr": "tbody tr"
+  },
+  "dialog": {
+    "wrapper": ".el-dialog__wrapper",
+    "close_button": ".el-dialog__close",
+    "visible_dialog": ".el-dialog:visible",
+    "overlay_xpath": "//div[contains(@class,'el-dialog') and not(contains(@style,'display: none'))]"
+  },
+  "message_box": {
+    "wrapper": ".el-message-box__wrapper",
+    "close_button": ".el-message-box__close",
+    "btns_container": ".el-message-box__btns",
+    "confirm_button": ".el-message-box__btns button.el-button--primary",
+    "visible_selector": ".el-message-box:visible",
+    "overlay_xpath": "//div[contains(@class,'el-message-box') and not(contains(@style,'display: none'))]"
+  },
+  "popconfirm": {
+    "container": ".el-popconfirm",
+    "action_container": ".el-popconfirm__action",
+    "confirm_button": ".el-popconfirm__action button.el-button--primary"
+  },
+  "drawer": {
+    "close_button": ".el-drawer__close-btn",
+    "overlay_xpath": "//div[contains(@class,'el-drawer') and not(contains(@style,'display: none'))]"
+  },
+  "dropdown": {
+    "trigger": ".el-dropdown",
+    "caret_button": ".el-dropdown__caret-button",
+    "menu_item": ".el-dropdown-menu__item",
+    "menu_visible": ".el-dropdown-menu:not([style*='display: none'])",
+    "generic_pattern": "[class*='dropdown']"
+  },
+  "select": {
+    "container": ".el-select",
+    "dropdown": ".el-select-dropdown",
+    "dropdown_item": ".el-select-dropdown__item",
+    "dropdown_visible": ".el-select-dropdown:not([style*='display: none'])",
+    "inner_input": "input.el-input__inner",
+    "enabled_item": ".el-select-dropdown .el-select-dropdown__item:not(.is-disabled)",
+    "visible_items": ".el-select-dropdown:visible .el-select-dropdown__item:not(.is-disabled):visible"
+  },
+  "form": {
+    "item": ".el-form-item",
+    "label": ".el-form-item__label",
+    "error": ".el-form-item__error",
+    "inline": ".el-form--inline"
+  },
+  "radio": {
+    "group": ".el-radio-group",
+    "button_inner": ".el-radio-button__inner",
+    "label": ".el-radio__label"
+  },
+  "checkbox": {
+    "container": ".el-checkbox",
+    "input": ".el-checkbox__input"
+  },
+  "tree": {
+    "container": ".el-tree",
+    "node": ".el-tree-node",
+    "expand_icon": ".el-tree-node__expand-icon",
+    "checkbox": ".el-checkbox",
+    "checkbox_input": ".el-checkbox__input"
+  },
+  "cascader": {
+    "container": ".el-cascader",
+    "menu": ".el-cascader-menu",
+    "menu_item": "li[role='menuitem']",
+    "expand_icon": ".el-icon-arrow-right"
+  },
+  "date_picker": {
+    "editor": ".el-date-editor"
+  },
+  "pagination": {
+    "container": ".el-pagination",
+    "next_button": ".el-pagination .btn-next:not(.disabled)",
+    "active_number": ".el-pagination .number.active",
+    "quicknext_number": ".el-pagination .btn-quicknext + .number"
+  },
+  "menu": {
+    "container": ".el-menu",
+    "item": ".el-menu-item",
+    "submenu_title": ".el-submenu__title"
+  },
+  "loading": {
+    "mask": ".el-loading-mask",
+    "text_xpath": "//p[@class='el-loading-text']",
+    "spinner_text_xpath": "//div[@class='el-loading-spinner']/p[@class='el-loading-text']"
+  },
+  "message": {
+    "error": ".el-message--error",
+    "notification_content": ".el-notification__content"
+  },
+  "cleanup": {
+    "dialog_close_js": "document.querySelectorAll('.el-dialog__wrapper:not([style*=\"display: none\"]) .el-dialog__close').forEach(btn => btn.click())",
+    "messagebox_cancel_js": "document.querySelectorAll('.el-message-box__wrapper:not([style*=\"display: none\"]) .el-message-box__btns button:not(.el-button--primary)').forEach(btn => btn.click())",
+    "drawer_close_js": "document.querySelectorAll('.el-drawer__close-btn').forEach(btn => btn.click())"
+  }
+}

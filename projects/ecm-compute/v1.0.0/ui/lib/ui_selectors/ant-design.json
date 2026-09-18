@@ -1,0 +1,132 @@
+{
+  "_meta": {
+    "framework": "ant-design",
+    "description": "Ant Design (React/Vue) 组件选择器配置"
+  },
+  "button": {
+    "base": ".ant-btn",
+    "text": ".ant-btn-link",
+    "primary": ".ant-btn-primary",
+    "generic_selectors": [
+      "button",
+      "a[href]",
+      "[role='button']",
+      "[role='menuitem']",
+      "[role='link']",
+      "[class*='btn']",
+      "[class*='Btn']",
+      "[class*='action']",
+      "[class*='Action']",
+      "span[onclick]"
+    ]
+  },
+  "table": {
+    "container": ".ant-table",
+    "body_wrapper": ".ant-table-tbody",
+    "body_row": ".ant-table-tbody tr",
+    "body_tr": ".ant-table-tbody tr",
+    "fixed_row": ".ant-table-tbody tr",
+    "fixed_right_row": ".ant-table-tbody tr",
+    "header_cell": ".ant-table-thead th",
+    "body_link": ".ant-table-tbody a",
+    "body_button": ".ant-table-tbody .ant-btn",
+    "body_action_span": ".ant-table-tbody span[class*='action']",
+    "generic_table": "table",
+    "generic_tbody_tr": "tbody tr"
+  },
+  "dialog": {
+    "wrapper": ".ant-modal-wrap",
+    "close_button": ".ant-modal-close",
+    "visible_dialog": ".ant-modal-wrap:not([style*='display: none'])",
+    "overlay_xpath": "//div[contains(@class,'ant-modal') and not(contains(@style,'display: none'))]"
+  },
+  "message_box": {
+    "wrapper": ".ant-modal-wrap",
+    "close_button": ".ant-modal-close",
+    "btns_container": ".ant-modal-footer",
+    "confirm_button": ".ant-modal-footer .ant-btn-primary",
+    "visible_selector": ".ant-modal-wrap:not([style*='display: none'])",
+    "overlay_xpath": "//div[contains(@class,'ant-modal') and not(contains(@style,'display: none'))]"
+  },
+  "popconfirm": {
+    "container": ".ant-popover",
+    "action_container": ".ant-popover-buttons",
+    "confirm_button": ".ant-popover-buttons .ant-btn-primary"
+  },
+  "drawer": {
+    "close_button": ".ant-drawer-close",
+    "overlay_xpath": "//div[contains(@class,'ant-drawer') and not(contains(@style,'display: none'))]"
+  },
+  "dropdown": {
+    "trigger": ".ant-dropdown-trigger",
+    "caret_button": ".ant-dropdown-trigger",
+    "menu_item": ".ant-dropdown-menu-item",
+    "menu_visible": ".ant-dropdown:not([style*='display: none'])",
+    "generic_pattern": "[class*='dropdown']"
+  },
+  "select": {
+    "container": ".ant-select",
+    "dropdown": ".ant-select-dropdown",
+    "dropdown_item": ".ant-select-item-option",
+    "dropdown_visible": ".ant-select-dropdown:not(.ant-select-dropdown-hidden)",
+    "inner_input": ".ant-select-selection-search-input",
+    "enabled_item": ".ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option:not(.ant-select-item-option-disabled)",
+    "visible_items": ".ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option:not(.ant-select-item-option-disabled)"
+  },
+  "form": {
+    "item": ".ant-form-item",
+    "label": ".ant-form-item-label label",
+    "error": ".ant-form-item-explain",
+    "inline": ".ant-form-inline"
+  },
+  "radio": {
+    "group": ".ant-radio-group",
+    "button_inner": ".ant-radio-button-wrapper",
+    "label": ".ant-radio-wrapper"
+  },
+  "checkbox": {
+    "container": ".ant-checkbox-wrapper",
+    "input": ".ant-checkbox-input"
+  },
+  "tree": {
+    "container": ".ant-tree",
+    "node": ".ant-tree-treenode",
+    "expand_icon": ".ant-tree-switcher",
+    "checkbox": ".ant-tree-checkbox",
+    "checkbox_input": ".ant-tree-checkbox-input"
+  },
+  "cascader": {
+    "container": ".ant-cascader",
+    "menu": ".ant-cascader-menu",
+    "menu_item": ".ant-cascader-menu-item",
+    "expand_icon": ".ant-cascader-menu-item-expand-icon"
+  },
+  "date_picker": {
+    "editor": ".ant-picker"
+  },
+  "pagination": {
+    "container": ".ant-pagination",
+    "next_button": ".ant-pagination-next:not(.ant-pagination-disabled) button",
+    "active_number": ".ant-pagination-item-active",
+    "quicknext_number": ".ant-pagination-item"
+  },
+  "menu": {
+    "container": ".ant-menu",
+    "item": ".ant-menu-item",
+    "submenu_title": ".ant-menu-submenu-title"
+  },
+  "loading": {
+    "mask": ".ant-spin-spinning",
+    "text_xpath": "//div[contains(@class,'ant-spin-spinning')]",
+    "spinner_text_xpath": "//div[contains(@class,'ant-spin-spinning')]"
+  },
+  "message": {
+    "error": ".ant-message-error",
+    "notification_content": ".ant-notification-notice"
+  },
+  "cleanup": {
+    "dialog_close_js": "document.querySelectorAll('.ant-modal-wrap:not([style*=\"display: none\"]) .ant-modal-close').forEach(btn => btn.click())",
+    "messagebox_cancel_js": "document.querySelectorAll('.ant-modal-wrap:not([style*=\"display: none\"]) .ant-modal-footer button:not(.ant-btn-primary)').forEach(btn => btn.click())",
+    "drawer_close_js": "document.querySelectorAll('.ant-drawer-close').forEach(btn => btn.click())"
+  }
+}

@@ -326,11 +326,33 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
 
     LOG.info(f"[Stage 2] Playbook 回放完成: {result.get('stats', {})}")
 
-    # ★ 识别前置 API 候选（简化版：所有 GET - core_api_map 中的 GET → pre-API 候选）
+    # ★ 识别前置 API 候选：
+    # - 核心写操作（POST/PUT/PATCH/DELETE）→ 排除（它们是业务 API）
+    # - 纯 GET 操作（从未与写操作共存）→ GET 本身就是核心操作 → 排除
+    # - 辅助 GET（在任意操作中与写操作共存）→ 保留为 pre-API 候选
+    #
+    # 先收集：哪些 GET pathname 曾在某个 action 中与写操作共存
+    gets_with_writes = set()
+    all_gets = set()
     core_api_pathnames = set()
+
     for action, candidates in core_api_map.items():
-        for c in candidates:
+        writes = [c for c in candidates
+                   if c.get("method", "").upper() in ("POST", "PUT", "PATCH", "DELETE")]
+        gets = [c for c in candidates if c.get("method", "").upper() == "GET"]
+
+        for c in writes:
             core_api_pathnames.add(c.get("pathname", ""))
+
+        for c in gets:
+            p = c.get("pathname", "")
+            all_gets.add(p)
+            if writes:
+                gets_with_writes.add(p)
+
+    # 从未与写操作共存的 GET → 核心业务 API（如 query）→ 排除
+    for p in all_gets - gets_with_writes:
+        core_api_pathnames.add(p)
 
     pre_api_candidates = _identify_pre_api_candidates(calls, samples, core_api_pathnames)
     result["pre_api_candidates"] = pre_api_candidates

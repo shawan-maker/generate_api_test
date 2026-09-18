@@ -11,10 +11,21 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-# 基于 lib/ 的父目录（即 api/ 目录）
-_BASE_DIR = Path(__file__).resolve().parent.parent
-LOG_DIR = _BASE_DIR / "report"
-REPORT_ROOT = _BASE_DIR / "report"
+
+def _get_report_root():
+    """动态计算报告输出目录。
+
+    生成脚本场景：api/lib/report/test_report.py → parent.parent = api/
+    框架内场景：lib/report/test_report.py → 使用 workspace/ecm-compute/output
+    """
+    _self = Path(__file__).resolve()
+    _base = _self.parent.parent
+    if _base.name == "lib" and _self.parent.parent.parent.name != "api":
+        # 框架内 import：使用 workspace/ecm-compute/output/report/
+        return _self.parent.parent.parent / "workspace" / "ecm-compute" / "output" / "report"
+    else:
+        # 生成脚本：使用 api/report/
+        return _base / "report"
 
 
 def parse_jsonl_log(log_file: str) -> list:
@@ -69,8 +80,9 @@ def run_script_and_capture(script_path: str) -> tuple:
         encoding="utf-8"
     )
 
-    # 日志文件路径
-    log_file = LOG_DIR / f"{module_name}_API测试.jsonl"
+    # 日志文件路径（与脚本同级）
+    log_dir = script_path.parent / "report"
+    log_file = log_dir / f"{module_name}_API测试.jsonl"
 
     return str(log_file), module_name
 
@@ -86,8 +98,9 @@ def generate_postman_report(api_calls: list, events: list, module_name: str) -> 
     Returns:
         报告文件路径
     """
-    REPORT_ROOT.mkdir(parents=True, exist_ok=True)
-    report_dir = REPORT_ROOT / module_name
+    report_root = _get_report_root()
+    report_root.mkdir(parents=True, exist_ok=True)
+    report_dir = report_root / module_name
     report_dir.mkdir(parents=True, exist_ok=True)
 
     # 统计

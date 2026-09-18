@@ -456,6 +456,14 @@ async def _run_stage4_verify(script_path: str, project_dir: Path, profile: dict,
     framework_config = get_workspace_dir(project_dir) / "output" / "config"
     framework_config.mkdir(parents=True, exist_ok=True)
 
+    # 预复制: 框架 cookies → 脚本 config（首次运行前确保 cookie 可用）
+    fw_cookie = framework_config / "cookies.json"
+    sc_cookie = script_config / "cookies.json"
+    if fw_cookie.exists() and not sc_cookie.exists():
+        import shutil
+        shutil.copy2(str(fw_cookie), str(sc_cookie))
+        LOG.info(f"  Cookie 预复制: {fw_cookie.name} → {script_config}")
+
     def _run_script() -> subprocess.CompletedProcess:
         """运行脚本并返回结果。"""
         LOG.info(f"  运行脚本: {script.name}")
