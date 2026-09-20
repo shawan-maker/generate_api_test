@@ -5191,6 +5191,14 @@ def _classify_op_steps_type(op_data: dict) -> str:
     if op_data.get("edit_fill_data") or (op_data.get("is_row_action") and op_data.get("form_fields")):
         return "update"
 
+    # 行级编辑操作：is_row_action + 其他编辑特征（submit locator/dialog 模式）
+    # 覆盖场景：编辑操作有 submit_locator_verified 但 form_fields/edit_fill_data 为空
+    if op_data.get("is_row_action"):
+        has_submit = bool(op_data.get("submit_locator_verified") or op_data.get("submit_locator"))
+        has_dialog = op_data.get("interaction_mode") == "dialog"
+        if has_submit and has_dialog:
+            return "update"
+
     # 检查是否是删除确认
     if op_data.get("is_delete") or op_data.get("confirm_dialog", {}).get("is_delete"):
         return "delete"

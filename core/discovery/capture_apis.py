@@ -245,6 +245,24 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
             # 检查 assert_success 标记（软断言，不影响 marker 提取和 replay_windows）
             if result.get("assertion_failed"):
                 LOG.warning(f"  ⚠️ {action} 未检测到成功消息（assertion_failed），API 仍会被捕获")
+                # 输出诊断信息（如果有）
+                assert_methods = result.get("assert_methods", {})
+                for key, value in assert_methods.items():
+                    if key.endswith("_diagnostic"):
+                        LOG.warning(f"  🔍 DOM 诊断结果:")
+                        for diag in value:
+                            LOG.warning(f"     {diag}")
+
+            # 记录成功使用的断言方式
+            assert_methods = result.get("assert_methods", {})
+            if assert_methods:
+                LOG.info(f"  ✓ 断言方式: {assert_methods}")
+                # 更新 playbook 中的 assert_success 步骤，记录实际使用的断言方式
+                for step in steps:
+                    if step.get("action") == "assert_success":
+                        desc = step.get("description", "")
+                        if desc in assert_methods:
+                            step["matched_method"] = assert_methods[desc]
 
             # 如果是 create 类操作且成功，记录 marker
             op_role = op.get("role", "")

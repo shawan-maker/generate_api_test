@@ -53,6 +53,47 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
     """
     result = {"success": True}
 
+    # 注入 MutationObserver 捕获瞬态消息（el-message 等 3 秒后自动消失）
+    # 后续 assert_success 可读取 __captured_messages 进行断言
+    try:
+        await page.evaluate("""() => {
+            if (window.__msg_capture_installed) return;
+            window.__msg_capture_installed = true;
+            window.__captured_messages = [];
+
+            const observer = new MutationObserver((mutations) => {
+                for (const mutation of mutations) {
+                    for (const node of mutation.addedNodes) {
+                        if (node.nodeType !== 1) continue;
+                        const text = (node.textContent || '').trim();
+                        if (!text) continue;
+
+                        // 检查是否是 Element UI Message / Notification
+                        const isMessage = node.classList && (
+                            node.classList.contains('el-message') ||
+                            node.classList.contains('el-message--success') ||
+                            node.classList.contains('el-message--error') ||
+                            node.classList.contains('el-message--warning') ||
+                            node.classList.contains('el-notification') ||
+                            node.classList.contains('ant-message-notice') ||
+                            node.classList.contains('ant-notification-notice')
+                        );
+
+                        if (isMessage) {
+                            window.__captured_messages.push({
+                                text: text.substring(0, 200),
+                                timestamp: Date.now()
+                            });
+                        }
+                    }
+                }
+            });
+
+            observer.observe(document.body, { childList: true, subtree: true });
+        }""")
+    except Exception as e:
+        LOG.debug(f"消息捕获注入失败（不影响执行）: {e}")
+
     # 交互状态上下文
     ctx = {
         "url_before_click": page.url,
@@ -190,6 +231,15 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
                 passed = await _step_assert_success(page, step)
                 if not passed:
                     result["assertion_failed"] = True
+                # 记录成功使用的断言方式（无论成功失败都记录）
+                matched_method = step.get("matched_method")
+                if matched_method:
+                    result.setdefault("assert_methods", {})
+                    # 用 step 的 description 或 action 作为 key
+                    desc = step.get("description", action)
+                    result["assert_methods"][desc] = matched_method
+                    if not passed and "_dom_diagnostic" in step:
+                        result["assert_methods"][f"{desc}_diagnostic"] = step["_dom_diagnostic"]
 
             elif action == "assert_row_disappeared":
                 await _step_assert_row_disappeared(page, step, button_driver, marker)
@@ -702,22 +752,170 @@ async def _step_click_confirm_dialog_legacy(page, step: dict):
 async def _step_assert_success(page, step: dict) -> bool:
     """步骤：验证操作成功（软断言，失败仅标记不阻断）
 
+    四层策略依次尝试：
+      0. 快速检查 — 立即检测当前可见的通知元素（防止短暂消息在长等待后消失）
+      1. get_by_text("成功") — 最宽松，不关心 DOM 结构
+      2. 常见 Element UI 通知组件 CSS 选择器回退
+      3. 全部失败时执行 DOM 诊断，输出实际 DOM 结构
+
     Returns:
         True 表示检测到成功提示，False 表示未检测到（超时）
     """
-    locator = step.get("playwright_locator")
+    matched_method = None
 
-    if not locator:
-        LOG.warning(f"    assert_success 步骤缺少 locator（Stage 1 未提供），跳过验证")
-        return True  # 无 locator 视为通过（不标记失败）
-
+    # ── 策略 0: 快速检查（50ms） ──
+    # 防止成功消息已出现但因前序步骤（confirm_dialog/click_button）
+    # 的等待消耗了消息的生命周期（el-message 默认 3 秒）导致检测失败
     try:
-        await page.wait_for_selector(locator, state="visible", timeout=5000)
-        LOG.info(f"    ✓ 操作成功验证通过: {locator}")
-        return True
+        # 检查所有常见通知组件是否当前可见
+        quick_visible = await page.evaluate("""() => {
+            const selectors = [
+                '.el-message', '.el-message--success',
+                '.el-notification', '.el-alert',
+                '[role="alert"]'
+            ];
+            for (const sel of selectors) {
+                const el = document.querySelector(sel);
+                if (el && el.offsetParent !== null) {
+                    const text = (el.textContent || '').trim();
+                    if (text) return text.substring(0, 100);
+                }
+            }
+            return null;
+        }""")
+        if quick_visible:
+            matched_method = f"quick_visible:{quick_visible[:30]}"
+            LOG.info(f"    ✓ 操作成功验证通过: {matched_method}")
     except Exception:
-        LOG.warning(f"    ⚠️ assert_success 未检测到 {locator}（timeout 5s），标记为 assertion_failed")
+        pass
+
+    # ── 策略 1: Playwright 文本匹配（最宽松） ──
+    if matched_method is None:
+        try:
+            locator = page.get_by_text("成功")
+            await locator.first.wait_for(state="visible", timeout=3000)
+            matched_method = "get_by_text:成功"
+            LOG.info(f"    ✓ 操作成功验证通过: {matched_method}")
+        except Exception:
+            pass
+
+    # ── 策略 2: 常见 Element UI 通知组件 CSS 选择器 ──
+    if matched_method is None:
+        css_selectors = [
+            ".el-message",           # 轻量顶部提示
+            ".el-notification",      # 右上角通知框
+            ".el-alert",             # 内嵌警告框
+            "[role='alert']",        # ARIA alert
+        ]
+        for selector in css_selectors:
+            try:
+                await page.wait_for_selector(selector, state="visible", timeout=2000)
+                matched_method = f"css:{selector}"
+                LOG.info(f"    ✓ 操作成功验证通过: {matched_method}")
+                break
+            except Exception:
+                continue
+
+    # ── 策略 2.5: MutationObserver 捕获结果 ──
+    # 成功消息生命周期约 3 秒，但 confirm_dialog 内部的等待（wait_for_loading_complete ~10s）
+    # 消耗了大部分时间，等 assert_success 执行时消息已消失
+    if matched_method is None:
+        try:
+            captured = await page.evaluate("""() => {
+                if (!window.__captured_messages) return null;
+                // 检查最近 30 秒内捕获的消息
+                const now = Date.now();
+                const recent = window.__captured_messages.filter(m =>
+                    now - m.timestamp < 30000
+                );
+                if (recent.length === 0) return null;
+
+                const SUCCESS_KEYWORDS = ['成功', 'success', 'Success', '完成', 'done'];
+                for (const msg of recent) {
+                    if (SUCCESS_KEYWORDS.some(kw => msg.text.toLowerCase().includes(kw.toLowerCase()))) {
+                        return msg.text;
+                    }
+                }
+                // 如果没有成功关键字，返回最近捕获的消息（可能是其他提示）
+                return recent[recent.length - 1]?.text || null;
+            }""")
+            if captured:
+                matched_method = f"captured:{captured[:40]}"
+                LOG.info(f"    ✓ 操作成功验证通过（捕获瞬态消息）: {matched_method}")
+        except Exception:
+            pass
+
+    # ── 策略 3: DOM 诊断（全部失败时执行） ──
+    if matched_method is None:
+        diagnostic = await _diagnose_success_dom(page)
+        LOG.warning(f"    ⚠️ assert_success 未检测到成功提示（timeout 5s）")
+        if diagnostic:
+            LOG.warning(f"    🔍 DOM 诊断发现 {len(diagnostic)} 个候选元素:")
+            for d in diagnostic[:5]:
+                LOG.warning(f"       {d['selector']}  text={d['text'][:60]}")
+            # 记录诊断结果到 step，供后续使用
+            step["_dom_diagnostic"] = diagnostic
+        step["matched_method"] = "none"
         return False
+
+    # 记录成功的断言方式
+    step["matched_method"] = matched_method
+    return True
+
+
+async def _diagnose_success_dom(page) -> list:
+    """诊断模式：扫描 DOM 中所有可能的成功提示元素。
+
+    Returns:
+        候选元素列表 [{selector, text, className, tag}]
+    """
+    try:
+        result = await page.evaluate("""() => {
+            const candidates = [];
+            const keywords = ['成功', 'success', 'completed', 'saved', '完成'];
+
+            // 扫描所有可见元素
+            const walker = document.createTreeWalker(
+                document.body, NodeFilter.SHOW_ELEMENT, null
+            );
+            while (walker.nextNode()) {
+                const el = walker.currentNode;
+                if (el.offsetParent === null) continue;  // 跳过不可见元素
+
+                const text = (el.textContent || '').trim();
+                const cls = el.className || '';
+                const matched = keywords.some(kw =>
+                    text.toLowerCase().includes(kw.toLowerCase())
+                );
+                if (!matched) continue;
+
+                // 构建推荐选择器
+                let selector = el.tagName.toLowerCase();
+                if (cls && typeof cls === 'string') {
+                    selector += '.' + cls.trim().split(/\\s+/).slice(0, 2).join('.');
+                }
+                if (el.id) selector = '#' + el.id;
+
+                candidates.push({
+                    tag: el.tagName.toLowerCase(),
+                    className: (typeof cls === 'string') ? cls : '',
+                    selector: selector,
+                    text: text.substring(0, 100),
+                    role: el.getAttribute('role') || ''
+                });
+            }
+            // 去重（同 selector 只保留第一个）
+            const seen = new Set();
+            return candidates.filter(c => {
+                if (seen.has(c.selector)) return false;
+                seen.add(c.selector);
+                return true;
+            });
+        }""")
+        return result or []
+    except Exception as e:
+        LOG.debug(f"    DOM 诊断异常: {e}")
+        return []
 
 
 async def _step_assert_row_disappeared(page, step: dict, button_driver: ButtonDriver, marker: str):

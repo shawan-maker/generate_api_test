@@ -5,7 +5,7 @@
     "base_url": "https://10.151.61.248",
     "login_url": "https://10.151.61.248/estack/web/estack/login",
     "framework": "element-ui",
-    "generated_at": "2026-09-18 12:52:36",
+    "generated_at": "2026-09-20 11:37:37",
     "version": "1.0",
     "auth_config": {
       "token_key": "estackToken",
@@ -19,9 +19,9 @@
     "mainBodyRows": 4,
     "fixedRightRows": 4,
     "fixedLeftRows": 4,
-    "columnCount": 9,
+    "columnCount": 10,
     "operationColumnIndex": 8,
-    "operationColumnLocation": "last",
+    "operationColumnLocation": "middle",
     "tableWrappers": [
       {
         "cls": "el-table__header-wrapper",
@@ -254,16 +254,16 @@
       "error_type": "required_field_empty",
       "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
       "nav_info": {
-        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=5b88abbedb494ab09faec554b05501c6",
+        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=f7ae8b3ac24747bc90a372f7a0dcc753",
         "depth": 0,
         "page_title": "eStack Enterprise",
         "has_form": false,
         "form_fields": [],
         "fill_data": {
-          "授权用户": "AT_AT_test_auto_707067",
-          "授权用户组": "AT_AT_test_auto_707067",
-          "授权角色": "AT_AT_test_auto_707067",
-          "授权范围": "AT_AT_test_auto_707067"
+          "授权用户": "AT_AT_test_auto_875368",
+          "授权用户组": "AT_AT_test_auto_875368",
+          "授权角色": "AT_AT_test_auto_875368",
+          "授权范围": "AT_AT_test_auto_875368"
         },
         "submit_result": {},
         "error_type": "required_field_empty",
