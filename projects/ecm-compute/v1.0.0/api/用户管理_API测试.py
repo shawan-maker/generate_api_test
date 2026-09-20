@@ -1,6 +1,6 @@
 """
 用户管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-18 19:03:50
+生成时间: 2026-09-20 10:02:27
 目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/user
 
 执行流程:
@@ -408,7 +408,7 @@ MANIFEST = {
         "isRandomPassword": 1,
         "newPassword": "KFEHujvijlBnPH19k20VzQwPkXoNG31udBzKym6F+KitfFhXHcPBAWUjiuMFf4MwLLUEbV1HyCg3qwvODpI3v3iD/dGUHcNrpfHXBD1g6V3amU2FWPRBviMn3nWk2aOfWKVW0A1M6q4SmCluKN0STKkPPPfspMBYEmtS/SnQMVI=",
         "passwordPolicy": {
-          "id": "90542be67d584ab09daa12e697fb041a",
+          "id": None,
           "tenantId": None,
           "minPasswordLength": 8,
           "requireLowercaseCharacters": False,
@@ -416,8 +416,8 @@ MANIFEST = {
           "requireNumbers": True,
           "requireSymbols": True,
           "minPasswordDifferentCharacter": 0,
-          "createdAt": "2023-08-30 10:07:14",
-          "updatedAt": "2025-03-08 18:39:42",
+          "createdAt": None,
+          "updatedAt": None,
           "deleted": False,
           "userName": None
         },
@@ -446,9 +446,45 @@ MANIFEST = {
         "noticeType": {
           "role": "static"
         },
+        "passwordPolicy.id": {
+          "role": "context",
+          "source": "password_policy.entity_id"
+        },
         "passwordPolicy.tenantId": {
           "role": "context",
           "source": "current_user.entity_tenantId"
+        },
+        "passwordPolicy.minPasswordLength": {
+          "role": "static"
+        },
+        "passwordPolicy.requireLowercaseCharacters": {
+          "role": "static"
+        },
+        "passwordPolicy.requireUppercaseCharacters": {
+          "role": "static"
+        },
+        "passwordPolicy.requireNumbers": {
+          "role": "static"
+        },
+        "passwordPolicy.requireSymbols": {
+          "role": "static"
+        },
+        "passwordPolicy.minPasswordDifferentCharacter": {
+          "role": "static"
+        },
+        "passwordPolicy.createdAt": {
+          "role": "context",
+          "source": "password_policy.entity_createdAt"
+        },
+        "passwordPolicy.updatedAt": {
+          "role": "context",
+          "source": "password_policy.entity_updatedAt"
+        },
+        "passwordPolicy.deleted": {
+          "role": "static"
+        },
+        "passwordPolicy.userName": {
+          "role": "static"
         }
       },
       "requires": [
@@ -605,8 +641,8 @@ MANIFEST = {
           "name": "entity_list_0_tenantId",
           "path": "entity.list[0].tenantId",
           "used_by": [
-            "编辑",
-            "创建用户"
+            "创建用户",
+            "编辑"
           ]
         }
       ],
@@ -631,8 +667,8 @@ MANIFEST = {
           "name": "entity_countryCode",
           "path": "entity.countryCode",
           "used_by": [
-            "编辑",
-            "创建用户"
+            "创建用户",
+            "编辑"
           ]
         },
         {
@@ -661,6 +697,38 @@ MANIFEST = {
       "query_params": {}
     },
     {
+      "name": "前置 API: password-policy",
+      "id": "password_policy",
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/password-policy",
+      "depends_on": [],
+      "extracts": [
+        {
+          "name": "entity_id",
+          "path": "entity.id",
+          "used_by": [
+            "重置密码"
+          ]
+        },
+        {
+          "name": "entity_createdAt",
+          "path": "entity.createdAt",
+          "used_by": [
+            "重置密码"
+          ]
+        },
+        {
+          "name": "entity_updatedAt",
+          "path": "entity.updatedAt",
+          "used_by": [
+            "重置密码"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {}
+    },
+    {
       "name": "前置 API: display-by-role",
       "id": "display_by_role",
       "method": "GET",
@@ -682,6 +750,7 @@ MANIFEST = {
   "pre_api_refs": [
     "users",
     "current_user",
+    "password_policy",
     "display_by_role"
   ]
 }

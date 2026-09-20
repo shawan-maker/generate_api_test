@@ -1262,16 +1262,16 @@ def build_manifest(analysis: dict, capture_result: dict,
 
             # ── Step 1: body 关联 ──
             if isinstance(body_sample, dict):
-                for field_name, field_value in body_sample.items():
-                    if isinstance(field_value, (str, int, float, bool)) and str(field_value) == segment_value:
-                        role_info = field_roles.get(field_name, {})
+                for flat_key, flat_value in _flatten_body_for_match(body_sample, field_roles):
+                    if isinstance(flat_value, (str, int, float, bool)) and str(flat_value) == segment_value:
+                        role_info = field_roles.get(flat_key, {})
                         if role_info.get("role") == "context":
                             source = role_info.get("source", "")
                             match_from = "body_context"
                         # 如果字段角色不是 context，说明是固定值，不关联
                         break
-                    elif isinstance(field_value, list) and segment_value in [str(v) for v in field_value]:
-                        role_info = field_roles.get(field_name, {})
+                    elif isinstance(flat_value, list) and segment_value in [str(v) for v in flat_value]:
+                        role_info = field_roles.get(flat_key, {})
                         if role_info.get("role") == "context":
                             source = role_info.get("source", "")
                             match_from = "body_context"
@@ -1394,72 +1394,11 @@ def build_manifest(analysis: dict, capture_result: dict,
                 }
                 if nested_roles:
                     cleaned[key] = _clean_body_template(value, nested_roles, value_index, current_action, collected_pre_api_ids)
-                elif role_info.get("role") == "static" and value_index is not None:
-                    # ★ 嵌套 static dict：扫描内部字段，提升匹配到的为 context
-                    promoted, promoted_roles = _promote_nested_static_fields(
-                        value, key, value_index, current_action, collected_pre_api_ids
-                    )
-                    cleaned[key] = promoted
-                    # 将提升的字段角色写回 field_roles
-                    for nk, nv in promoted_roles.items():
-                        field_roles[f"{key}.{nk}"] = nv
                 else:
                     cleaned[key] = value
             else:
                 cleaned[key] = value
         return cleaned
-
-    def _promote_nested_static_fields(nested_dict, parent_key, value_index,
-                                       current_action, collected_pre_api_ids=None):
-        """扫描嵌套 static dict 中的字段，将匹配 value_index 的提升为 context。
-
-        对于 role=static 的嵌套对象（如 passwordPolicy），内部可能包含
-        tenantId、id 等字段，它们的值与前置 API 响应匹配。
-        将这些字段提升为 context 角色，运行时从 state 解析。
-
-        仅提升来源为已收集前置 API 的字段，避免运行时解析失败。
-
-        Args:
-            nested_dict: 嵌套字典
-            parent_key: 父字段名（用于日志）
-            value_index: 值索引
-            current_action: 当前操作名
-            collected_pre_api_ids: 实际收集的前置 API ID 集合
-
-        Returns:
-            (cleaned_dict, promoted_roles): 清理后的字典和提升的角色映射
-        """
-        cleaned = {}
-        promoted_roles = {}
-
-        for nk, nv in nested_dict.items():
-            # 跳过非原始值和非字符串
-            if isinstance(nv, (dict, list)):
-                cleaned[nk] = nv
-                continue
-
-            # 尝试在 value_index 中查找匹配
-            match = value_index.lookup(nv, current_action=current_action)
-            if match:
-                source_path = match.get("source_path", "")
-                # 检查来源 API 是否在已收集的前置 API 列表中
-                if collected_pre_api_ids:
-                    source_api_id = source_path.split(".", 1)[0] if "." in source_path else ""
-                    if source_api_id not in collected_pre_api_ids:
-                        # 来源 API 未收集，保持原值
-                        cleaned[nk] = nv
-                        continue
-                cleaned[nk] = None  # 标记为运行时解析
-                promoted_roles[nk] = {
-                    "role": "context",
-                    "source": source_path,
-                }
-                LOG.info(f"    嵌套 static 提升: {parent_key}.{nk} → context "
-                         f"(source={source_path})")
-            else:
-                cleaned[nk] = nv
-
-        return cleaned, promoted_roles
 
     def _make_step(action, ep, body_sample, assertion=None):
         """构建单个步骤 dict。"""
@@ -1471,7 +1410,7 @@ def build_manifest(analysis: dict, capture_result: dict,
         else:
             # For create step, exclude create_body sources to prevent self-reference
             exclude = {"create_body"} if action == id_producer else None
-            field_roles = classify_fields(
+            field_roles = classify_fields_recursive(
                 body_sample, value_index, create_body_sample, current_action=action,
                 exclude_sources=exclude
             )
@@ -1482,7 +1421,7 @@ def build_manifest(analysis: dict, capture_result: dict,
             id_field = response_contract["id_field"]
             extract = {
                 "id": f"{envelope_keys[0]}.{id_field}" if envelope_keys else id_field,
-                "names": [k for k, v in field_roles.items() if v.get("role") == "name"],
+                "names": [k for k, v in field_roles.items() if v.get("role") == "name" and "." not in k],
             }
 
         # 分析 pathname 中的动态关联参数（值匹配驱动）
@@ -1529,7 +1468,7 @@ def build_manifest(analysis: dict, capture_result: dict,
         # 核心 API（最后执行）
         core_ep = eps[0]
         core_body = _parse_body(core_ep)
-        core_roles = classify_fields(
+        core_roles = classify_fields_recursive(
             core_body, value_index, create_body_sample, current_action=action
         )
 
@@ -1541,7 +1480,7 @@ def build_manifest(analysis: dict, capture_result: dict,
         for pep in prepare_eps:
             phase_id = pep["pathname"].split("/")[-1]  # 如 "generate"
             pbody = _parse_body(pep)
-            proles = classify_fields(
+            proles = classify_fields_recursive(
                 pbody, value_index, create_body_sample, current_action=action
             )
 
@@ -1611,7 +1550,7 @@ def build_manifest(analysis: dict, capture_result: dict,
             id_field = response_contract["id_field"]
             extract = {
                 "id": f"{envelope_keys[0]}.{id_field}" if envelope_keys else id_field,
-                "names": [k for k, v in core_roles.items() if v.get("role") == "name"],
+                "names": [k for k, v in core_roles.items() if v.get("role") == "name" and "." not in k],
             }
 
         step = {
@@ -1701,7 +1640,7 @@ def build_manifest(analysis: dict, capture_result: dict,
         ep = verify_endpoints[verify_action]["ep"]
         body_sample = verify_endpoints[verify_action]["body_sample"]
 
-        field_roles = classify_fields(
+        field_roles = classify_fields_recursive(
             body_sample, value_index, create_body_sample, current_action=verify_action
         )
 
@@ -2081,8 +2020,8 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
         if not body_sample or not isinstance(body_sample, dict):
             continue
 
-        # 使用新的 5 角色分类
-        field_roles = classify_fields(
+        # 使用新的 5 角色分类（递归，含嵌套 dict 字段）
+        field_roles = classify_fields_recursive(
             body_sample, value_index, create_body_sample, current_action=action
         )
 
@@ -2095,7 +2034,8 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
                     # 跳过 create_body 和 create（不是真正的前置 API）
                     if api_id not in ("create_body", "create"):
                         # 优先从 value_index 获取 api_info
-                        entry = value_index.lookup(body_sample.get(field_name, ""))
+                        nested_val = _get_nested_value(body_sample, field_name)
+                        entry = value_index.lookup(nested_val if nested_val is not None else "")
                         if entry and entry.get("source_api") == api_id:
                             api_info = entry.get("api_info")
                             if api_info:
@@ -2641,6 +2581,94 @@ def classify_fields(body_sample: dict, value_index: ValueIndex,
     return roles
 
 
+def _get_nested_value(d, key):
+    """用 dot-separated 路径从嵌套 dict 中取值。
+
+    _get_nested_value({"a": {"b": 1}}, "a.b") → 1
+    _get_nested_value({"x": 2}, "x") → 2
+    _get_nested_value({"a": {"b": 1}}, "a.c") → None
+    """
+    if "." not in key:
+        if isinstance(d, dict):
+            return d.get(key)
+        return None
+    parts = key.split(".")
+    current = d
+    for part in parts:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+        if current is None:
+            return None
+    return current
+
+
+def classify_fields_recursive(body_sample, value_index, create_body_sample=None,
+                               current_action="", exclude_sources=None):
+    """递归版本的 classify_fields：先分类顶层，再递归进入嵌套 dict。
+
+    对请求体中每个字段（包括嵌套 dict 内的子字段）标注角色。
+    嵌套字段使用 dot-prefixed key，如 "passwordPolicy.tenantId"。
+
+    Args:
+        body_sample: 请求体样本 dict
+        value_index: 全局值索引
+        create_body_sample: create 步骤的请求体
+        current_action: 当前操作名
+        exclude_sources: 要排除的来源前缀集合
+
+    Returns:
+        {field_name: {"role": ..., "source": ...}} 字典
+        嵌套字段使用 dot-prefixed key
+    """
+    # Step 1: 顶层分类
+    roles = classify_fields(body_sample, value_index, create_body_sample,
+                            current_action, exclude_sources)
+
+    # Step 2: 递归进入值为 dict 的字段
+    if isinstance(body_sample, dict):
+        for key, value in body_sample.items():
+            if isinstance(value, dict):
+                prefix = f"{key}."
+                nested_roles = classify_fields_recursive(
+                    value, value_index, create_body_sample,
+                    current_action, exclude_sources
+                )
+                for nk, nv in nested_roles.items():
+                    roles[f"{prefix}{nk}"] = nv
+
+    return roles
+
+
+def _flatten_body_for_match(body_sample, field_roles):
+    """扁平化 body_sample，产出 (flat_key, primitive_value) 列表。
+
+    只展开 field_roles 中有 dot-prefixed key 记录的嵌套 dict。
+
+    输入: {"passwordPolicy": {"id": "abc"}, "userId": "def"}
+          field_roles 有 "passwordPolicy.id" 的 key
+    输出: [("userId", "def"), ("passwordPolicy.id", "abc")]
+    """
+    result = []
+    if not isinstance(body_sample, dict):
+        return result
+    for key, value in body_sample.items():
+        if isinstance(value, (str, int, float, bool)):
+            result.append((key, value))
+        elif isinstance(value, list):
+            result.append((key, value))
+        elif isinstance(value, dict):
+            prefix = f"{key}."
+            has_nested_roles = any(rk.startswith(prefix) for rk in field_roles)
+            if has_nested_roles:
+                for nk, nv in value.items():
+                    if isinstance(nv, (str, int, float, bool)):
+                        result.append((f"{prefix}{nk}", nv))
+                    elif isinstance(nv, list):
+                        result.append((f"{prefix}{nk}", nv))
+    return result
+
+
 def resolve_chain(body_sample: dict, field_roles: dict,
                   value_index: ValueIndex, used_apis: dict,
                   current_action: str = "",
@@ -2681,8 +2709,9 @@ def resolve_chain(body_sample: dict, field_roles: dict,
             continue
 
         # 找到来源 API 的信息
+        nested_val = _get_nested_value(body_sample, key)
         entry = value_index.lookup(
-            body_sample.get(key, ""),
+            nested_val if nested_val is not None else "",
             request_field_name=key,
             current_action=current_action,
         )

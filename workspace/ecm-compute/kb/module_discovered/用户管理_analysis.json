@@ -845,6 +845,83 @@
         "depends_on": []
       },
       {
+        "name": "前置 API: password-policy",
+        "id": "password_policy",
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/password-policy",
+        "response_sample": {
+          "response_body": "{\n  \"traceId\" : \"a5d7c67018bb6159\",\n  \"success\" : true,\n  \"errorMessage\" : null,\n  \"message\" : null,\n  \"errorCode\" : null,\n  \"entity\" : {\n    \"id\" : \"90542be67d584ab09daa12e697fb041a\",\n    \"tenantId\" : \"cec63451f8bf4ceebb9ada0b87d829bf\",\n    \"minPasswordLength\" : 8,\n    \"requireLowercaseCharacters\" : false,\n    \"requireUppercaseCharacters\" : true,\n    \"requireNumbers\" : true,\n    \"requireSymbols\" : true,\n    \"minPasswordDifferentCharacter\" : 0,\n    \"createdAt\" : \"2023-08-30 10:07:14\",\n    \"updatedAt\" : \"2025-03-08 18:39:42\",\n    \"deleted\" : false,\n    \"userName\" : null\n  }\n}"
+        },
+        "extracted_fields": [
+          {
+            "name": "traceId",
+            "path": "traceId",
+            "type": "str"
+          },
+          {
+            "name": "success",
+            "path": "success",
+            "type": "bool"
+          },
+          {
+            "name": "entity_id",
+            "path": "entity.id",
+            "type": "str"
+          },
+          {
+            "name": "entity_tenantId",
+            "path": "entity.tenantId",
+            "type": "str"
+          },
+          {
+            "name": "entity_minPasswordLength",
+            "path": "entity.minPasswordLength",
+            "type": "int"
+          },
+          {
+            "name": "entity_requireLowercaseCharacters",
+            "path": "entity.requireLowercaseCharacters",
+            "type": "bool"
+          },
+          {
+            "name": "entity_requireUppercaseCharacters",
+            "path": "entity.requireUppercaseCharacters",
+            "type": "bool"
+          },
+          {
+            "name": "entity_requireNumbers",
+            "path": "entity.requireNumbers",
+            "type": "bool"
+          },
+          {
+            "name": "entity_requireSymbols",
+            "path": "entity.requireSymbols",
+            "type": "bool"
+          },
+          {
+            "name": "entity_minPasswordDifferentCharacter",
+            "path": "entity.minPasswordDifferentCharacter",
+            "type": "int"
+          },
+          {
+            "name": "entity_createdAt",
+            "path": "entity.createdAt",
+            "type": "str"
+          },
+          {
+            "name": "entity_updatedAt",
+            "path": "entity.updatedAt",
+            "type": "str"
+          },
+          {
+            "name": "entity_deleted",
+            "path": "entity.deleted",
+            "type": "bool"
+          }
+        ],
+        "depends_on": []
+      },
+      {
         "name": "前置 API: display-by-role",
         "id": "display_by_role",
         "method": "GET",
@@ -1095,6 +1172,22 @@
       },
       "编辑.countryCode": {
         "source": "current_user.entity_countryCode",
+        "strategy": "exact_value_match"
+      },
+      "重置密码.passwordPolicy.id": {
+        "source": "password_policy.entity_id",
+        "strategy": "exact_value_match"
+      },
+      "重置密码.passwordPolicy.tenantId": {
+        "source": "current_user.entity_tenantId",
+        "strategy": "exact_value_match"
+      },
+      "重置密码.passwordPolicy.createdAt": {
+        "source": "password_policy.entity_createdAt",
+        "strategy": "exact_value_match"
+      },
+      "重置密码.passwordPolicy.updatedAt": {
+        "source": "password_policy.entity_updatedAt",
         "strategy": "exact_value_match"
       },
       "迁移.tenantId": {
