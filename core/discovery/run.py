@@ -423,7 +423,7 @@ def run_stage34(project_dir: Path, module_name: str,
         LOG.warning("生成的脚本可能不完整或存在质量问题")
 
     script_path = save_script_to_file(
-        script, str(project_dir), module_name, version=version,
+        script, str(project_dir), module_name, version=version, manifest=manifest
     )
 
     return flow, script_path, manifest

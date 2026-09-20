@@ -1362,12 +1362,16 @@ def build_manifest(analysis: dict, capture_result: dict,
 
     def _clean_body_template(body_template, field_roles, value_index=None,
                               current_action="", collected_pre_api_ids=None):
-        """清理 body_template 中 context 字段的值，并提升嵌套 static 对象中的 context 字段。
+        """清理 body_template，将动态角色字段替换为 ${function()} 占位符。
 
-        两级清理：
-        1. 顶层 context 字段：替换为 None/[]（运行时从 state 解析）
-        2. 嵌套 static dict：递归检查内部字段是否匹配 value_index，
-           匹配到的提升为 context 角色，更新 field_roles
+        按角色清理：
+        - context  → None / []（运行时从 state 解析）
+        - name     → ${gen_test_name("字段名")}（纯函数生成，不依赖捕获值）
+        - mutable  → ${gen_mutable_value()}（纯函数生成）
+        - generate → ${gen_模式名()}（如 ${gen_email()}、${gen_phone()}）
+        - static   → 保留原始捕获值
+
+        嵌套 dict 递归处理，field_roles 中的 dot-prefixed key 会被 strip 后传入。
 
         Args:
             body_template: 请求体模板（dict 或 list）
@@ -1387,12 +1391,24 @@ def build_manifest(analysis: dict, capture_result: dict,
         cleaned = {}
         for key, value in body_template.items():
             role_info = field_roles.get(key, {})
-            if role_info.get("role") == "context":
+            role = role_info.get("role", "static")
+
+            if role == "context":
                 # 数组类型保留空列表，确保运行时 is_array 检测正确
                 if isinstance(value, list) or role_info.get("is_array"):
                     cleaned[key] = []
                 else:
                     cleaned[key] = None  # 标记为运行时解析
+            elif role == "name":
+                # name 角色：替换为生成器占位符，不依赖原始捕获值
+                cleaned[key] = '${gen_test_name("' + key + '")}'
+            elif role == "mutable":
+                # mutable 角色：替换为生成器占位符
+                cleaned[key] = "${gen_mutable_value()}"
+            elif role == "generate":
+                # generate 角色：按 pattern 生成对应函数调用
+                pattern = role_info.get("pattern", "text")
+                cleaned[key] = "${gen_" + pattern + "()}"
             elif isinstance(value, dict):
                 # 递归清理嵌套对象
                 prefix = f"{key}."
@@ -1406,6 +1422,7 @@ def build_manifest(analysis: dict, capture_result: dict,
                 else:
                     cleaned[key] = value
             else:
+                # static：保留原始值
                 cleaned[key] = value
         return cleaned
 

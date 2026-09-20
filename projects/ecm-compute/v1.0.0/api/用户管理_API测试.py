@@ -1,6 +1,6 @@
 """
 用户管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-20 15:17:33
+生成时间: 2026-09-20 17:30:04
 目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/user
 
 执行流程:
@@ -92,12 +92,12 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": {
-        "userName": "AT_test_884378",
+        "userName": "${gen_test_name(\"userName\")}",
         "password": "Ikuz24nUT35vqqOpT9KffGwZkXAOPWCF8mHop3jA+n4Qe8ssUBV7fB8cJe73qz5rekzKc7EL2MSRwR1IpVRgiqcZ807uMDcmYgHfJXW/n5x0TNk+3oLnNLre68ybFrXH1X33O1pkcdSxCrAfJb+dCdBUIl9UJU3UDvQ3Ee+ijk4=",
-        "name": "AT_test_884378",
+        "name": "${gen_test_name(\"name\")}",
         "email": "a8soIiYNJmjzhxwmBbwvu8e1EoFTLNSO3pzYqCICBbdjbE3MjmJdPGjA8ljrCmmFjA3oLUjNbuEStfTMlp5ZLFBhiwAj1yYWBOtsg2JMrZ//WUZ+NdgrDNF2v0AHaicq4cCPR+AcORjMjPWC1FXVK3rCc4N22FPQjdsx5R7FqOk=",
         "phone": "MTZlcYhzEvNuWQcchgGuXO4O15NdFIxfCj6Lx75Ixq8jm5SYtAev4k78i0qcLvsRpUeH/Gcmbg89PpP2oNf0VGADr6g66klJCHCG9vsPYZcl/FzlQwyii7y5aDY8B1Lg4wQQoIRyiHItns5JpmaPKGnX9teXu2SElhwcXlWgRUA=",
-        "description": "auto_desc_884378",
+        "description": "${gen_mutable_value()}",
         "policyIds": [],
         "adminId": None,
         "tenantId": None,
@@ -201,8 +201,8 @@ MANIFEST = {
       },
       "body_template": {
         "userId": None,
-        "name": "AT_test_884378",
-        "description": "auto_desc_884378",
+        "name": "${gen_test_name(\"name\")}",
+        "description": "${gen_mutable_value()}",
         "tenantId": None,
         "countryCode": None
       },
@@ -615,8 +615,8 @@ MANIFEST = {
           "name": "entity_countryCode",
           "path": "entity.countryCode",
           "used_by": [
-            "编辑",
-            "创建用户"
+            "创建用户",
+            "编辑"
           ]
         },
         {

@@ -19,8 +19,59 @@ from typing import Optional
 LOG = logging.getLogger("export_artifacts")
 
 
+# ── Postman Pre-request Script: JS 版 helpers 函数 ─────────────────────────
+
+_POSTMAN_HELPERS_JS = [
+    "// helpers.js — 由 module_discovery Stage 5 自动导出",
+    "// Postman Pre-request Script 版本的测试数据生成函数",
+    "",
+    "function _ts6() {",
+    "    return Date.now().toString(16).slice(-6);",
+    "}",
+    "",
+    "function gen_test_name() {",
+    "    return 'AT_' + _ts6();",
+    "}",
+    "",
+    "function gen_mutable_value() {",
+    "    return 'auto_modified_' + _ts6();",
+    "}",
+    "",
+    "function gen_email() {",
+    "    return 'at_' + _ts6() + '@test.com';",
+    "}",
+    "",
+    "function gen_phone() {",
+    "    return '138' + Math.floor(Math.random() * 100000000);",
+    "}",
+    "",
+    "function gen_text() {",
+    "    return 'auto_' + _ts6();",
+    "}",
+    "",
+    "// 表达式解析: ${function(args)} → 调用对应函数",
+    "var _fnMap = {",
+    "    gen_test_name: gen_test_name,",
+    "    gen_mutable_value: gen_mutable_value,",
+    "    gen_email: gen_email,",
+    "    gen_phone: gen_phone,",
+    "    gen_text: gen_text",
+    "};",
+    "",
+    "function resolveExpr(expr) {",
+    "    var m = expr.match(/^\\$\\{(\\w+)\\([^)]*\\)\\}$/);",
+    "    if (!m) return expr;",
+    "    var fn = _fnMap[m[1]];",
+    "    return fn ? fn() : expr;",
+    "}",
+]
+
+
 def export_postman_collection(manifest: dict, output_path: Path):
     """导出 Postman Collection v2.1.0 JSON。
+
+    动态字段（name/mutable/generate）通过 Pre-request Script 自动赋值，
+    无需手动设置环境变量。
 
     Args:
         manifest: 完整 manifest 字典
@@ -83,6 +134,15 @@ def export_postman_collection(manifest: dict, output_path: Path):
                 item = _build_postman_request_item(step, base_url, step_index=i)
                 biz_folder["item"].append(item)
         collection["item"].append(biz_folder)
+
+    # Collection-level Pre-request Script: 定义 JS 版的 helpers 函数
+    collection["event"] = [{
+        "listen": "prerequest",
+        "script": {
+            "type": "text/javascript",
+            "exec": _POSTMAN_HELPERS_JS
+        }
+    }]
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
@@ -157,18 +217,32 @@ def _build_postman_request_item(step_def: dict, base_url: str,
     for hk, hv in auth_profile_extra.items():
         headers.append({"key": hk, "value": hv})
 
+    # Test script and pre-request script containers
+    events = []
+
     # Body
     body = None
     if body_template:
-        body_raw = _resolve_postman_body(body_template, field_roles)
+        body_raw, pre_vars = _resolve_postman_body(body_template, field_roles)
         body = {
             "mode": "raw",
             "raw": json.dumps(body_raw, ensure_ascii=False, indent=2),
             "options": {"raw": {"language": "json"}}
         }
+        # Pre-request Script: 为动态字段设置环境变量
+        if pre_vars:
+            pre_lines = []
+            for var_name, expr in pre_vars:
+                pre_lines.append(f"pm.variables.set('{var_name}', resolveExpr('{expr}'));")
+            events.append({
+                "listen": "prerequest",
+                "script": {
+                    "type": "text/javascript",
+                    "exec": pre_lines
+                }
+            })
 
     # Test script: 提取响应值到环境变量
-    events = []
     extracts = step_def.get("extract", {}) or step_def.get("extracts", [])
     if isinstance(extracts, dict) and extracts:
         test_lines = _build_postman_test_script(extracts, step_def.get("action", ""))
@@ -211,26 +285,44 @@ def _build_postman_request_item(step_def: dict, base_url: str,
 def _resolve_postman_body(body_template, field_roles: dict):
     """将 body_template 中的动态字段替换为 Postman {{variable}} 引用。
 
+    对于 name/mutable/generate 角色，返回 (body, pre_vars) 元组：
+    - body: 包含 {{variable}} 占位符的 body
+    - pre_vars: [(var_name, expression), ...] 用于 pre-request script
+
     支持 5 角色体系（name/mutable/context/generate/static）。
     """
     if isinstance(body_template, list):
         arr_role = field_roles.get("__array_items__", {})
         if arr_role.get("role") == "context":
-            return ["{{id}}"]
-        return body_template
+            return ["{{id}}"], []
+        return body_template, []
 
     result = {}
+    pre_vars = []  # [(var_name, expression), ...]
+
     for key, value in body_template.items():
         role_config = field_roles.get(key, {"role": "static"})
         role = role_config.get("role", "static")
 
         # name 角色
         if role == "name":
-            result[key] = "{{name_" + key + "}}"
+            var_name = f"name_{key}"
+            # 检查 value 是否是 ${...} 表达式
+            if isinstance(value, str) and value.startswith("${"):
+                result[key] = "{{" + var_name + "}}"
+                pre_vars.append((var_name, value))
+            else:
+                result[key] = "{{" + var_name + "}}"
 
         # mutable 角色
         elif role == "mutable":
-            result[key] = "{{mutable_" + key + "}}"
+            var_name = f"mutable_{key}"
+            # 检查 value 是否是 ${...} 表达式
+            if isinstance(value, str) and value.startswith("${"):
+                result[key] = "{{" + var_name + "}}"
+                pre_vars.append((var_name, value))
+            else:
+                result[key] = "{{" + var_name + "}}"
 
         # context 角色
         elif role == "context":
@@ -248,7 +340,13 @@ def _resolve_postman_body(body_template, field_roles: dict):
         # generate 角色
         elif role == "generate":
             pattern = role_config.get("pattern", "text")
-            result[key] = "{{gen_" + key + "_" + pattern + "}}"
+            var_name = f"gen_{key}_{pattern}"
+            # 检查 value 是否是 ${...} 表达式
+            if isinstance(value, str) and value.startswith("${"):
+                result[key] = "{{" + var_name + "}}"
+                pre_vars.append((var_name, value))
+            else:
+                result[key] = "{{" + var_name + "}}"
 
         # static 角色（默认）
         else:
@@ -261,13 +359,15 @@ def _resolve_postman_body(body_template, field_roles: dict):
                     if rk.startswith(prefix)
                 }
                 if nested_roles:
-                    result[key] = _resolve_postman_body(value, nested_roles)
+                    nested_result, nested_pre_vars = _resolve_postman_body(value, nested_roles)
+                    result[key] = nested_result
+                    pre_vars.extend(nested_pre_vars)
                 else:
                     result[key] = value
             else:
                 result[key] = value
 
-    return result
+    return result, pre_vars
 
 
 def _build_postman_test_script(extracts: dict, action: str) -> list:
@@ -343,31 +443,43 @@ def _json_path_to_js(path: str) -> str:
 
 
 def export_helpers(manifest: dict, output_path: Path):
-    """导出 helpers.py 高层辅助函数。
+    """导出 helpers.py 数据生成函数集。
 
-    仅导出外部测试平台需要的公共函数，不导出内部实现。
+    这是唯一的测试数据生成函数源，被以下组件共享：
+      - Stage 4 生成的 Python 测试脚本（test_runtime.py 导入调用）
+      - Stage 5 导出的 Postman Collection（Pre-request Script）
+      - Stage 5 导出的 Excel 参数表
+
+    函数列表：
+      get_token_by_cookie  — Cookie Token 提取
+      gen_timestamp        — 毫秒时间戳
+      gen_test_name        — 唯一测试名称（name 角色）
+      gen_mutable_value    — 可变字段值（mutable 角色）
+      gen_email            — 测试邮箱（generate/email 模式）
+      gen_phone            — 测试手机号（generate/phone 模式）
+      gen_uuid             — UUID 字符串（generate/uuid 模式）
+      gen_hex_id           — 32 位十六进制 ID（generate/hex_id 模式）
+      gen_random_int       — 8 位随机整数（generate/random_int 模式）
+      gen_text             — 通用文本（generate/text 模式）
     """
     auth_profile = manifest.get("auth_profile", {})
     cookie_token_key = auth_profile.get("cookie_token_key", "accessToken")
-    header_name = auth_profile.get("header_name", "Authorization")
-    header_prefix = auth_profile.get("header_prefix", "Bearer ")
 
-    # 读取测试数据配置
-    test_data = manifest.get("test_data", {})
-    mutable_prefix = test_data.get("mutable_prefix", "自动修改_")
-
-    helpers_code = f'''"""
+    helpers_code = '''"""
 helpers.py — 由 module_discovery Stage 5 自动导出
 
-高层辅助函数，供外部测试平台调用。
-内部实现（extract_by_path、build_auth_header 等）不导出。
+测试数据生成函数集，供 API 测试脚本、Postman Pre-request Script 共享。
+所有生成函数以当前时间戳为种子，保证每次运行数据唯一。
 """
 
 import json
 import time
 import random
+import uuid as _uuid_mod
 from pathlib import Path
 
+
+# ────────────────── 认证 ──────────────────
 
 def get_token_by_cookie(cookie_path: str, token_key: str = "{cookie_token_key}") -> str:
     """
@@ -400,43 +512,102 @@ def get_token_by_cookie(cookie_path: str, token_key: str = "{cookie_token_key}")
     raise ValueError(f"Cookie 中未找到 token_key={{token_key}}")
 
 
-def gen_timestamp() -> str:
-    """
-    生成当前时间戳（毫秒级）。
+# ────────────────── 基础工具 ──────────────────
 
-    Returns:
-        时间戳字符串，例如 "1725780000123"
-    """
+def gen_timestamp() -> str:
+    """生成当前时间戳（毫秒级），例如 '1725780000123'。"""
     return str(int(time.time() * 1000))
 
 
-def gen_unique_name(prefix: str, ts: str, original: str) -> str:
+def _ts6() -> str:
+    """生成 6 位十六进制时间戳后缀（用于构造唯一值）。"""
+    return format(int(time.time() * 1000), "x")[-6:]
+
+
+# ────────────────── 数据生成函数 ──────────────────
+
+def gen_test_name(field_name: str = "") -> str:
     """
-    生成唯一名称（用于 create 步骤的 name 字段）。
+    生成唯一测试名称（用于 name 角色字段，如 userName、name）。
 
     Args:
-        prefix: 前缀，例如 "AT"
-        ts: 时间戳字符串
-        original: 原始名称
+        field_name: 字段名（仅用于可读性，不影响生成值）
 
     Returns:
-        格式化名称，例如 "AT_1725780000123_test_user"
+        例如 'AT_a3f2c1'
     """
-    return f"{{prefix}}_{{ts}}_{{original}}"
+    return f"AT_{{_ts6()}}"
 
 
-def gen_mutable_value(ts: str) -> str:
+def gen_mutable_value() -> str:
     """
-    生成可变字段值（用于 update 步骤的 description 等字段）。
-
-    Args:
-        ts: 时间戳字符串
+    生成可变字段值（用于 mutable 角色字段，如 description）。
 
     Returns:
-        格式化值，例如 "{mutable_prefix}1725780000123"
+        例如 'auto_modified_a3f2c1'
     """
-    return f"{mutable_prefix}{{ts}}"
-'''
+    return f"auto_modified_{{_ts6()}}"
+
+
+def gen_email() -> str:
+    """
+    生成测试邮箱地址。
+
+    Returns:
+        例如 'at_a3f2c1@test.com'
+    """
+    return f"at_{{_ts6()}}@test.com"
+
+
+def gen_phone() -> str:
+    """
+    生成测试手机号（11 位中国大陆号码）。
+
+    Returns:
+        例如 '1380a3f2c1' → 注意：ts6 含字母，此处用随机数字替代
+    """
+    return f"138{{random.randint(10000000, 99999999)}}"
+
+
+def gen_uuid() -> str:
+    """
+    生成 UUID v4 字符串。
+
+    Returns:
+        例如 '550e8400-e29b-41d4-a716-446655440000'
+    """
+    return str(_uuid_mod.uuid4())
+
+
+def gen_hex_id() -> str:
+    """
+    生成 32 位十六进制 ID（无连字符的 UUID）。
+
+    Returns:
+        例如 '550e8400e29b41d4a716446655440000'
+    """
+    return _uuid_mod.uuid4().hex
+
+
+def gen_random_int() -> str:
+    """
+    生成 8 位随机整数。
+
+    Returns:
+        例如 '47291830'
+    """
+    return str(random.randint(10000000, 99999999))
+
+
+def gen_text() -> str:
+    """
+    生成通用文本值。
+
+    Returns:
+        例如 'auto_a3f2c1'
+    """
+    return f"auto_{{_ts6()}}"
+'''.format(cookie_token_key=cookie_token_key)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(helpers_code, encoding="utf-8")
@@ -566,7 +737,7 @@ def _collect_excel_params(manifest: dict) -> list:
                     seen_names.add(field_name)
                     params.append({
                         "name": f"e_name_{field_name}",
-                        "value": "${gen_unique_name('AT', gen_timestamp(), '...')}",
+                        "value": "${gen_test_name('" + field_name + "')}",
                         "sensitive": False,
                         "note": f"步骤 {step.get('label', step.get('action', ''))} 的名称字段"
                     })
@@ -574,7 +745,7 @@ def _collect_excel_params(manifest: dict) -> list:
                     seen_names.add(field_name)
                     params.append({
                         "name": f"e_mutable_{field_name}",
-                        "value": "${gen_mutable_value(gen_timestamp())}",
+                        "value": "${gen_mutable_value()}",
                         "sensitive": False,
                         "note": f"步骤 {step.get('label', step.get('action', ''))} 的可变字段"
                     })

@@ -110,8 +110,16 @@ def generate_manifest_script(manifest: dict, module_name: str) -> str:
     return '\n'.join(L)
 
 
-def save_script_to_file(script: str, project_dir: str, module_name: str, version: str = ""):
-    """将生成的脚本保存到文件。version 非空时写入 <version>/api/。"""
+def save_script_to_file(script: str, project_dir: str, module_name: str, version: str = "", manifest: dict = None):
+    """将生成的脚本保存到文件。version 非空时写入 <version>/api/。
+
+    Args:
+        script: 生成的脚本字符串
+        project_dir: 项目目录
+        module_name: 模块名称
+        version: 版本号（可选）
+        manifest: 完整的 manifest dict（用于生成 helpers.py）
+    """
     from . import version as _ver
     if version:
         scripts_dir = _ver.scripts_dir_for(project_dir, version) / "api"
@@ -125,7 +133,27 @@ def save_script_to_file(script: str, project_dir: str, module_name: str, version
     output_path = scripts_dir / f"{module_name}_API测试.py"
     output_path.write_text(script, encoding="utf-8")
     LOG.info(f"  脚本已生成: {output_path}")
+
+    # 生成 helpers.py（测试数据生成函数集）
+    if manifest:
+        _generate_helpers(manifest, scripts_dir, module_name)
+
     return str(output_path)
+
+
+def _generate_helpers(manifest: dict, api_dir: Path, module_name: str):
+    """生成 helpers.py（测试数据生成函数集）。
+
+    Args:
+        manifest: 完整的 manifest dict
+        api_dir: 脚本输出目录
+        module_name: 模块名称（用于日志）
+    """
+    from .export_artifacts import export_helpers
+
+    helpers_path = api_dir / "helpers.py"
+    export_helpers(manifest, helpers_path)
+    LOG.info(f"  helpers.py 已生成: {helpers_path}")
 
 
 def _sync_runtime_lib(api_dir: Path):

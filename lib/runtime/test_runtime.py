@@ -17,6 +17,7 @@ import time
 import os
 import uuid
 import random
+import importlib.util
 from pathlib import Path
 from typing import Optional, Any
 
@@ -49,35 +50,92 @@ except ImportError:
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-def _generate_test_value(pattern: str, ts: str) -> str:
-    """根据值模式生成测试值（方案 B + A 降级：值模式分析）。
+# ── 表达式解析 ──────────────────────────────────────────────────────────────
 
-    完全数据驱动，不依赖字段名关键词列表。
-    根据 Stage 3 分析出的 value_pattern 生成对应的测试值。
+_EXPR_RE = re.compile(r'^\$\{(\w+)\(([^)]*)\)\}$')
+
+
+def _resolve_expression(value, helpers_ns: dict):
+    """解析 ${function(args)} 表达式，返回生成值。
+
+    支持的表达式格式:
+      ${gen_test_name("userName")}  → 调用 helpers_ns["gen_test_name"]("userName")
+      ${gen_mutable_value()}        → 调用 helpers_ns["gen_mutable_value"]()
+      ${gen_email()}                → 调用 helpers_ns["gen_email"]()
+
+    如果 value 不是表达式(不以 ${ 开头)，原样返回。
+    如果 helpers_ns 中没有对应函数，打印警告并原样返回。
 
     Args:
-        pattern: 值模式类型（email/phone/hex_hash/base64_encrypted/text/uuid/hex_id/random_int）
-        ts: 时间戳后缀，确保唯一性
+        value: 原始值(可能是字符串表达式或普通值)
+        helpers_ns: helpers 模块的函数命名空间(dict)
 
     Returns:
-        生成的测试值
+        生成的值或原始值
     """
-    if pattern == "email":
-        return f"at_{ts}@test.com"
-    elif pattern == "phone":
-        return f"138{ts.zfill(8)}"
-    elif pattern in ("hex_hash", "base64_encrypted"):
-        # 加密/hash 值：使用固定测试密码（明文，由服务端加密）
-        return const.DEFAULT_TEST_PASSWORD
-    elif pattern == "uuid":
-        return str(uuid.uuid4())
-    elif pattern == "hex_id":
-        return uuid.uuid4().hex
-    elif pattern == "random_int":
-        return str(random.randint(10000000, 99999999))
-    else:
-        # 通用文本
-        return f"auto_{ts}"
+    if not isinstance(value, str):
+        return value
+
+    m = _EXPR_RE.match(value)
+    if not m:
+        return value
+
+    func_name = m.group(1)
+    args_str = m.group(2).strip()
+
+    func = helpers_ns.get(func_name)
+    if not func:
+        print(f"  ⚠️  helpers 中未找到函数: {func_name}，使用原值")
+        return value
+
+    # 解析参数
+    if not args_str:
+        # 无参数:gen_mutable_value()
+        return func()
+
+    # 解析字符串参数(支持带引号的字符串)
+    args = []
+    for arg in args_str.split(","):
+        arg = arg.strip()
+        if (arg.startswith('"') and arg.endswith('"')) or \
+           (arg.startswith("'") and arg.endswith("'")):
+            args.append(arg[1:-1])
+        else:
+            args.append(arg)
+
+    return func(*args)
+
+
+def _load_helpers() -> dict:
+    """加载同目录的 helpers.py 作为函数命名空间。
+
+    搜索路径:
+      1. Path(__file__).parent.parent.parent / "helpers.py"  (api/helpers.py)
+      2. Path(__file__).parent.parent / "helpers.py"         (lib/helpers.py)
+
+    Returns:
+        {function_name: function_object} 字典,或空字典(无 helpers.py 时)
+    """
+    # 尝试 api/helpers.py(脚本包根目录)
+    # test_runtime.py 在 api/lib/runtime/, helpers.py 在 api/
+    helpers_path = Path(__file__).resolve().parent.parent.parent / "helpers.py"
+    if not helpers_path.exists():
+        # 尝试 lib/helpers.py (框架内部场景)
+        helpers_path = Path(__file__).resolve().parent.parent / "helpers.py"
+
+    if not helpers_path.exists():
+        return {}
+
+    try:
+        spec = importlib.util.spec_from_file_location("helpers", helpers_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        # 提取所有可调用的公共函数(不以 _ 开头)
+        return {k: v for k, v in vars(mod).items()
+                if callable(v) and not k.startswith("_")}
+    except Exception as e:
+        print(f"  ⚠️  加载 helpers.py 失败: {e}")
+        return {}
 
 # 导入鉴权模块 — 支持两种运行环境：
 #   框架内（lib/auth.py 存在）→ 完整 AuthSession（含滑块登录）
@@ -172,7 +230,7 @@ class StepExecutor:
 
     def __init__(self, session: requests.Session, parser: ResponseParser,
                  state: dict, ts: str, base_url: str, log_file: str = None,
-                 config: dict = None):
+                 config: dict = None, helpers: dict = None):
         self.session = session
         self.parser = parser
         self.state = state
@@ -185,6 +243,7 @@ class StepExecutor:
                 "mutable_prefix": "Updated_",
             }
         }
+        self._helpers = helpers or {}
         self._api_call_count = 0
         self._last_request = {}
 
@@ -618,17 +677,13 @@ class StepExecutor:
             role = role_config.get("role", "static")
 
             if role == "name":
-                # name 角色：复用创建时的唯一名称
-                if isinstance(value, str):
-                    create_body = self.state.get("create_body", {})
-                    body[key] = create_body.get(key, value)
-                else:
-                    body[key] = value
+                # name 角色：复用 create 步骤生成的名称（保证编辑等步骤使用同一名称）
+                create_body = self.state.get("create_body", {})
+                body[key] = create_body.get(key, value) if isinstance(create_body, dict) else value
 
             elif role == "mutable":
-                # mutable 角色：生成 "Updated_{ts}"
-                mutable_prefix = self.config.get("test_data", {}).get("mutable_prefix", "Updated_")
-                body[key] = f"{mutable_prefix}{self.ts}"
+                # mutable 角色：解析 ${...} 表达式
+                body[key] = _resolve_expression(value, self._helpers)
 
             elif role == "context":
                 # context 角色：从 state 中解析值
@@ -641,14 +696,8 @@ class StepExecutor:
                 body[key] = resolved
 
             elif role == "generate":
-                # generate 角色：按 pattern 生成值
-                pattern = role_config.get("pattern", "uuid")
-                generated = _generate_test_value(pattern, self.ts)
-                # 保持原始值的类型：如果模板值是数组，将生成值包裹为数组
-                if isinstance(value, list):
-                    body[key] = [generated]
-                else:
-                    body[key] = generated
+                # generate 角色：解析 ${...} 表达式
+                body[key] = _resolve_expression(value, self._helpers)
 
             else:
                 # static 角色：原样保留，嵌套 dict 递归处理
@@ -745,13 +794,11 @@ class StepExecutor:
 
             # name 角色
             if role == "name":
-                create_body = self.state.get("create_body", {})
-                result[key] = create_body.get(key, value) if isinstance(create_body, dict) else value
+                result[key] = _resolve_expression(value, self._helpers)
 
             # mutable 角色
             elif role == "mutable":
-                mutable_prefix = self.config.get("test_data", {}).get("mutable_prefix", "Updated_")
-                result[key] = f"{mutable_prefix}{self.ts}"
+                result[key] = _resolve_expression(value, self._helpers)
 
             # context 角色
             elif role == "context":
@@ -762,12 +809,8 @@ class StepExecutor:
 
             # generate 角色
             elif role == "generate":
-                pattern = role_config.get("pattern", "text")
-                generated = _generate_test_value(pattern, self.ts)
-                if isinstance(value, list):
-                    result[key] = [generated]
-                else:
-                    result[key] = generated
+                # generate 角色：解析 ${...} 表达式
+                result[key] = _resolve_expression(value, self._helpers)
 
             # static 角色（默认）
             else:
@@ -1002,6 +1045,9 @@ class TestRunner:
         self.state = {}
         self.shared_context = shared_context or {}
         self.ts = format(int(time.time() * 1000), "x")[-6:]
+
+        # 加载 helpers.py 数据生成函数（与 Stage 5 导出的 helpers.py 共享）
+        self._helpers = _load_helpers()
 
         # 动态计算输出目录（避免框架内 import 时在根目录创建 report/）
         # 生成脚本场景：api/lib/runtime/test_runtime.py → parent.parent.parent = api/
@@ -1388,16 +1434,12 @@ class TestRunner:
             # 保存原始值
             create_body_raw[key] = value
 
-            if role == "name" and isinstance(value, str):
-                name_prefix = self.config.get("test_data", {}).get("name_prefix", "AT_")
-                if not value.startswith(name_prefix):
-                    create_body[key] = f"{name_prefix}{self.ts}_{value}"
-                else:
-                    prefix_len = len(name_prefix)
-                    create_body[key] = f"{name_prefix}{self.ts}_{value[prefix_len:]}"
+            if role == "name":
+                # name 角色：解析 ${...} 表达式
+                create_body[key] = _resolve_expression(value, self._helpers)
             elif role == "generate":
-                pattern = role_config.get("pattern", "text")
-                create_body[key] = _generate_test_value(pattern, self.ts)
+                # generate 角色：解析 ${...} 表达式
+                create_body[key] = _resolve_expression(value, self._helpers)
             else:
                 create_body[key] = value
 
@@ -1441,7 +1483,7 @@ class TestRunner:
 
         executor = StepExecutor(session, self.parser, self.state, self.ts,
                                 self.base_url, log_file=self.log_file,
-                                config=self.config)
+                                config=self.config, helpers=self._helpers)
 
         # 写入测试开始事件
         executor._log_event("test_start", {
