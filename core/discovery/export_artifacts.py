@@ -132,7 +132,20 @@ def _build_postman_request_item(step_def: dict, base_url: str,
     # 名称
     name = f"{step_index:02d}_{label}" if step_index else label
 
-    # URL: {{base_url}} + pathname，路径参数用 {{id}}
+    # URL: {{base_url}} + pathname，path_params 用 {{variable}} 替换
+    path_params = api.get("path_params", {})
+    if path_params:
+        for placeholder, mapping in path_params.items():
+            source = mapping.get("source", "")
+            if "." in source:
+                var_name = source.split(".", 1)[1]
+            else:
+                var_name = source if source else placeholder
+            # create.id → id
+            if var_name == "create.id":
+                var_name = "id"
+            pathname = pathname.replace(f"{{{placeholder}}}", "{{" + var_name + "}}")
+
     raw_url = "{{base_url}}" + pathname
 
     # Headers
@@ -239,7 +252,20 @@ def _resolve_postman_body(body_template, field_roles: dict):
 
         # static 角色（默认）
         else:
-            result[key] = value
+            # 嵌套 dict：递归检查是否有提升的 context 字段
+            if isinstance(value, dict):
+                prefix = f"{key}."
+                nested_roles = {
+                    rk[len(prefix):]: rv
+                    for rk, rv in field_roles.items()
+                    if rk.startswith(prefix)
+                }
+                if nested_roles:
+                    result[key] = _resolve_postman_body(value, nested_roles)
+                else:
+                    result[key] = value
+            else:
+                result[key] = value
 
     return result
 

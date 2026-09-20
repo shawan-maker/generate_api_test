@@ -637,7 +637,7 @@ class StepExecutor:
                 # 模板值是数组时自动保持数组类型
                 if isinstance(value, list):
                     is_array = True
-                resolved = self._resolve_context_value(source, key, value, is_array)
+                resolved = self._resolve_context_value(source, key, value, is_array, role_config)
                 body[key] = resolved
 
             elif role == "generate":
@@ -668,7 +668,8 @@ class StepExecutor:
 
         return body
 
-    def _resolve_context_value(self, source: str, field_name: str, default_value, is_array: bool):
+    def _resolve_context_value(self, source: str, field_name: str, default_value, is_array: bool,
+                                role_config: dict = None):
         """解析 context 角色的值。
 
         Args:
@@ -676,11 +677,22 @@ class StepExecutor:
             field_name: 字段名（用于兜底查找）
             default_value: 默认值
             is_array: 是否数组类型
+            role_config: 完整的角色配置（可能包含 state_key）
 
         Returns:
             解析后的值
         """
         resolved = None
+
+        # ★ 如果有 state_key，优先使用（嵌套 static 提升场景）
+        if role_config and role_config.get("state_key"):
+            state_key = role_config["state_key"]
+            resolved = self.state.get(state_key)
+            if resolved is not None:
+                # is_array 时确保值是数组
+                if is_array and not isinstance(resolved, list):
+                    resolved = [resolved] if resolved else default_value
+                return resolved
 
         if source.startswith("auth."):
             # auth.xxx → 从 state 直接查找
@@ -706,13 +718,14 @@ class StepExecutor:
             # 无点号，直接用 source 查找
             resolved = self.state.get(source)
 
-        # UUID 兜底：解析失败时根据字段名生成
+        # UUID 兜底：解析失败时使用默认值（而非生成随机 UUID）
+        # body_template 中 context 字段值已被 Stage 3 清理为 None，
+        # 所以 default_value 通常是 None。这确保运行时不会使用错误的过期数据。
         if resolved is None:
             if field_name.lower().endswith("id"):
-                resolved = uuid.uuid4().hex
-                print(f"  ⚠️ {field_name}: context 提取失败，生成 hex_id: {str(resolved)[:20]}")
-            else:
-                resolved = default_value
+                print(f"  ⚠️ {field_name}: context 解析失败 (source={source}), "
+                      f"请检查前置 API 是否成功执行")
+            resolved = default_value
 
         # is_array 时确保值是数组
         if is_array and not isinstance(resolved, list):
@@ -744,7 +757,7 @@ class StepExecutor:
             elif role == "context":
                 source = role_config.get("source", f"context.{key}")
                 is_array = role_config.get("is_array", False)
-                resolved = self._resolve_context_value(source, key, value, is_array)
+                resolved = self._resolve_context_value(source, key, value, is_array, role_config)
                 result[key] = resolved
 
             # generate 角色

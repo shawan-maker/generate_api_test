@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "89593a39-8e3c-4f6d-95c4-bbac080d8e28",
+    "_postman_id": "ba301941-5130-44c2-bed2-c4f81c445edf",
     "name": "用户管理 API 测试",
     "description": "由 module_discovery Stage 5 自动导出",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -36,6 +36,12 @@
     },
     {
       "key": "entity_countryCode",
+      "value": "",
+      "type": "string",
+      "description": "由 获取当前用户信息 提取"
+    },
+    {
+      "key": "entity_tenantId",
       "value": "",
       "type": "string",
       "description": "由 获取当前用户信息 提取"
@@ -136,6 +142,8 @@
                   "if (entity_adminId !== undefined) pm.environment.set('entity_adminId', entity_adminId);",
                   "var entity_countryCode = jsonData.entity.countryCode;",
                   "if (entity_countryCode !== undefined) pm.environment.set('entity_countryCode', entity_countryCode);",
+                  "var entity_tenantId = jsonData.entity.tenantId;",
+                  "if (entity_tenantId !== undefined) pm.environment.set('entity_tenantId', entity_tenantId);",
                   "var tenantId = jsonData.entity.tenantId;",
                   "if (tenantId !== undefined) pm.environment.set('tenantId', tenantId);",
                   "var adminId = jsonData.entity.id;",
@@ -293,7 +301,7 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/{path_0}"
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/{{id}}"
             },
             "body": {
               "mode": "raw",
@@ -342,7 +350,7 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/{path_0}/suspend"
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/{{id}}/suspend"
             },
             "body": {
               "mode": "raw",
@@ -391,7 +399,7 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/{path_0}/enable"
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/{{id}}/enable"
             }
           },
           "response": []
@@ -431,7 +439,7 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/lock/{path_0}"
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/lock/{{id}}"
             },
             "body": {
               "mode": "raw",
@@ -484,7 +492,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"forceChangePassword\": 1,\n  \"isRandomPassword\": 1,\n  \"newPassword\": \"KFEHujvijlBnPH19k20VzQwPkXoNG31udBzKym6F+KitfFhXHcPBAWUjiuMFf4MwLLUEbV1HyCg3qwvODpI3v3iD/dGUHcNrpfHXBD1g6V3amU2FWPRBviMn3nWk2aOfWKVW0A1M6q4SmCluKN0STKkPPPfspMBYEmtS/SnQMVI=\",\n  \"passwordPolicy\": {\n    \"id\": \"90542be67d584ab09daa12e697fb041a\",\n    \"tenantId\": \"cec63451f8bf4ceebb9ada0b87d829bf\",\n    \"minPasswordLength\": 8,\n    \"requireLowercaseCharacters\": false,\n    \"requireUppercaseCharacters\": true,\n    \"requireNumbers\": true,\n    \"requireSymbols\": true,\n    \"minPasswordDifferentCharacter\": 0,\n    \"createdAt\": \"2023-08-30 10:07:14\",\n    \"updatedAt\": \"2025-03-08 18:39:42\",\n    \"deleted\": false,\n    \"userName\": null\n  },\n  \"userId\": \"{{id}}\",\n  \"noticeType\": [\n    \"email\"\n  ]\n}",
+              "raw": "{\n  \"forceChangePassword\": 1,\n  \"isRandomPassword\": 1,\n  \"newPassword\": \"KFEHujvijlBnPH19k20VzQwPkXoNG31udBzKym6F+KitfFhXHcPBAWUjiuMFf4MwLLUEbV1HyCg3qwvODpI3v3iD/dGUHcNrpfHXBD1g6V3amU2FWPRBviMn3nWk2aOfWKVW0A1M6q4SmCluKN0STKkPPPfspMBYEmtS/SnQMVI=\",\n  \"passwordPolicy\": {\n    \"id\": \"90542be67d584ab09daa12e697fb041a\",\n    \"tenantId\": \"{{entity_tenantId}}\",\n    \"minPasswordLength\": 8,\n    \"requireLowercaseCharacters\": false,\n    \"requireUppercaseCharacters\": true,\n    \"requireNumbers\": true,\n    \"requireSymbols\": true,\n    \"minPasswordDifferentCharacter\": 0,\n    \"createdAt\": \"2023-08-30 10:07:14\",\n    \"updatedAt\": \"2025-03-08 18:39:42\",\n    \"deleted\": false,\n    \"userName\": null\n  },\n  \"userId\": \"{{id}}\",\n  \"noticeType\": [\n    \"email\"\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -529,7 +537,7 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/migrate/{path_0}"
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/migrate/{{entity_0_children_0_id}}"
             },
             "body": {
               "mode": "raw",
@@ -578,7 +586,7 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/{path_0}"
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/{{id}}"
             }
           },
           "response": []

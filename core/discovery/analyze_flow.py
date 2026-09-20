@@ -1177,8 +1177,11 @@ def build_manifest(analysis: dict, capture_result: dict,
     # 提前获取 field_resolutions（用于 verify 步骤 query_params 生成）
     pre_api_chain = analysis.get("pre_api_chain")
     field_resolutions = {}
+    collected_pre_api_ids = set()
     if pre_api_chain and pre_api_chain.get("pre_apis"):
         field_resolutions = pre_api_chain.get("field_resolutions", {})
+        # 收集实际被收集的前置 API ID（用于限制嵌套 static 提升范围）
+        collected_pre_api_ids = {api["id"] for api in pre_api_chain["pre_apis"] if "id" in api}
 
     def _get_create_pre_api_ref_source(field_name):
         """检查 create 步骤中指定字段的 context 来源，返回其 source 或 None。
@@ -1343,6 +1346,121 @@ def build_manifest(analysis: dict, capture_result: dict,
             "has_create_id_ref": has_create_id_ref,
         }
 
+    def _strip_path_params_original(path_params):
+        """移除 path_params 中的 original_value（诊断信息，运行时不用）。"""
+        return {k: {kk: vv for kk, vv in v.items() if kk != "original_value"}
+                for k, v in path_params.items()}
+
+    def _clean_body_template(body_template, field_roles, value_index=None,
+                              current_action="", collected_pre_api_ids=None):
+        """清理 body_template 中 context 字段的值，并提升嵌套 static 对象中的 context 字段。
+
+        两级清理：
+        1. 顶层 context 字段：替换为 None/[]（运行时从 state 解析）
+        2. 嵌套 static dict：递归检查内部字段是否匹配 value_index，
+           匹配到的提升为 context 角色，更新 field_roles
+
+        Args:
+            body_template: 请求体模板（dict 或 list）
+            field_roles: 字段角色映射（会被就地修改以添加提升的字段）
+            value_index: 值索引（用于嵌套对象内部字段的值匹配）
+            current_action: 当前操作名
+            collected_pre_api_ids: 实际收集的前置 API ID 集合（限制提升范围）
+
+        Returns:
+            清理后的 body_template（深拷贝，不修改原对象）
+        """
+        if isinstance(body_template, list):
+            return list(body_template)
+        if not isinstance(body_template, dict):
+            return body_template
+
+        cleaned = {}
+        for key, value in body_template.items():
+            role_info = field_roles.get(key, {})
+            if role_info.get("role") == "context":
+                # 数组类型保留空列表，确保运行时 is_array 检测正确
+                if isinstance(value, list) or role_info.get("is_array"):
+                    cleaned[key] = []
+                else:
+                    cleaned[key] = None  # 标记为运行时解析
+            elif isinstance(value, dict):
+                # 递归清理嵌套对象
+                prefix = f"{key}."
+                nested_roles = {
+                    rk[len(prefix):]: rv
+                    for rk, rv in field_roles.items()
+                    if rk.startswith(prefix)
+                }
+                if nested_roles:
+                    cleaned[key] = _clean_body_template(value, nested_roles, value_index, current_action, collected_pre_api_ids)
+                elif role_info.get("role") == "static" and value_index is not None:
+                    # ★ 嵌套 static dict：扫描内部字段，提升匹配到的为 context
+                    promoted, promoted_roles = _promote_nested_static_fields(
+                        value, key, value_index, current_action, collected_pre_api_ids
+                    )
+                    cleaned[key] = promoted
+                    # 将提升的字段角色写回 field_roles
+                    for nk, nv in promoted_roles.items():
+                        field_roles[f"{key}.{nk}"] = nv
+                else:
+                    cleaned[key] = value
+            else:
+                cleaned[key] = value
+        return cleaned
+
+    def _promote_nested_static_fields(nested_dict, parent_key, value_index,
+                                       current_action, collected_pre_api_ids=None):
+        """扫描嵌套 static dict 中的字段，将匹配 value_index 的提升为 context。
+
+        对于 role=static 的嵌套对象（如 passwordPolicy），内部可能包含
+        tenantId、id 等字段，它们的值与前置 API 响应匹配。
+        将这些字段提升为 context 角色，运行时从 state 解析。
+
+        仅提升来源为已收集前置 API 的字段，避免运行时解析失败。
+
+        Args:
+            nested_dict: 嵌套字典
+            parent_key: 父字段名（用于日志）
+            value_index: 值索引
+            current_action: 当前操作名
+            collected_pre_api_ids: 实际收集的前置 API ID 集合
+
+        Returns:
+            (cleaned_dict, promoted_roles): 清理后的字典和提升的角色映射
+        """
+        cleaned = {}
+        promoted_roles = {}
+
+        for nk, nv in nested_dict.items():
+            # 跳过非原始值和非字符串
+            if isinstance(nv, (dict, list)):
+                cleaned[nk] = nv
+                continue
+
+            # 尝试在 value_index 中查找匹配
+            match = value_index.lookup(nv, current_action=current_action)
+            if match:
+                source_path = match.get("source_path", "")
+                # 检查来源 API 是否在已收集的前置 API 列表中
+                if collected_pre_api_ids:
+                    source_api_id = source_path.split(".", 1)[0] if "." in source_path else ""
+                    if source_api_id not in collected_pre_api_ids:
+                        # 来源 API 未收集，保持原值
+                        cleaned[nk] = nv
+                        continue
+                cleaned[nk] = None  # 标记为运行时解析
+                promoted_roles[nk] = {
+                    "role": "context",
+                    "source": source_path,
+                }
+                LOG.info(f"    嵌套 static 提升: {parent_key}.{nk} → context "
+                         f"(source={source_path})")
+            else:
+                cleaned[nk] = nv
+
+        return cleaned, promoted_roles
+
     def _make_step(action, ep, body_sample, assertion=None):
         """构建单个步骤 dict。"""
         # 处理数组格式请求体（如 batch delete ["id1", "id2"]）
@@ -1386,10 +1504,10 @@ def build_manifest(analysis: dict, capture_result: dict,
             "api": {
                 "method": ep["method"],
                 "pathname": pathname,
-                "path_params": path_params,
+                "path_params": _strip_path_params_original(path_params),
                 "query_params": ep.get("query_params", {}),
             },
-            "body_template": body_sample if isinstance(body_sample, list) else (body_sample or {}),
+            "body_template": body_sample if isinstance(body_sample, list) else _clean_body_template(body_sample or {}, field_roles, value_index, action, collected_pre_api_ids),
             "body_field_roles": field_roles,
             "requires": requires,
         }
@@ -1442,7 +1560,7 @@ def build_manifest(analysis: dict, capture_result: dict,
                 "api": {
                     "method": pep["method"],
                     "pathname": path_result["pathname"],
-                    "path_params": path_result["path_params"],
+                    "path_params": _strip_path_params_original(path_result["path_params"]),
                     "query_params": pep.get("query_params", {}),
                 },
                 "body_template": pbody or {},
@@ -1461,7 +1579,7 @@ def build_manifest(analysis: dict, capture_result: dict,
             "api": {
                 "method": core_ep["method"],
                 "pathname": core_path_result["pathname"],
-                "path_params": core_path_result["path_params"],
+                "path_params": _strip_path_params_original(core_path_result["path_params"]),
                 "query_params": core_ep.get("query_params", {}),
             },
             "body_template": core_body if isinstance(core_body, list) else (core_body or {}),
@@ -1479,6 +1597,12 @@ def build_manifest(analysis: dict, capture_result: dict,
                     # 恢复为 static，使用原始 RSA 模板值
                     core_roles["newPassword"] = {"role": "static"}
                     LOG.info("  操作链: newPassword 恢复为 static（isRandomPassword=1 时服务端验证格式但忽略值）")
+
+        # 清理所有 phase 的 body_template 中的 context 字段值
+        for phase in phases:
+            phase["body_template"] = _clean_body_template(
+                phase["body_template"], phase["body_field_roles"], value_index, action, collected_pre_api_ids
+            )
 
         # extract（如果 action == id_producer）
         extract = None
@@ -1615,10 +1739,10 @@ def build_manifest(analysis: dict, capture_result: dict,
             "api": {
                 "method": ep["method"],
                 "pathname": path_result["pathname"],
-                "path_params": path_result["path_params"],
+                "path_params": _strip_path_params_original(path_result["path_params"]),
                 "query_params": query_params if query_params else ep.get("query_params", {}),
             },
-            "body_template": body_sample or {},
+            "body_template": _clean_body_template(body_sample or {}, field_roles, value_index, verify_action, collected_pre_api_ids),
             "body_field_roles": field_roles,
             "requires": ["id"],
             "assertion": assertion,
