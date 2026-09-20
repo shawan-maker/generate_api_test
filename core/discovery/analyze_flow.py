@@ -173,16 +173,41 @@ def analyze(core_api_map, all_endpoints, response_samples, ui_result,
     state_rules = _derive_state_rules(core_apis, response_samples, id_producer)
     LOG.info(f"  Step 5: 状态断言字段: {state_rules.get('state_field') or 'success_only'}")
 
-    # Step 6: 前置 API 依赖链追踪（Phase B）
+    # Step 6: 构建统一 value_index（Phase B 和 build_manifest 共享）
     pre_api_candidates = pre_api_candidates or []
+    context_fields = profile.get("context_fields", {}) if profile else {}
+
+    create_body_sample = None
+    create_response_sample = None
+    if id_producer and id_producer in core_apis:
+        create_ep = core_apis[id_producer][0]
+        create_body_sample = _parse_body(create_ep)
+        create_resp_samples = response_samples.get(create_ep.get("pathname", ""), [])
+        if create_resp_samples:
+            try:
+                body_text = create_resp_samples[0].get("body", "{}")
+                create_response_sample = json.loads(body_text) if isinstance(body_text, str) else body_text
+            except Exception:
+                pass
+
+    value_index = build_value_index(
+        pre_api_candidates=pre_api_candidates,
+        create_body_sample=create_body_sample,
+        create_response_sample=create_response_sample,
+        context_fields=context_fields,
+    )
+
+    # Step 7: 前置 API 依赖链追踪（Phase B，使用共享 value_index）
     pre_api_result = None
     if pre_api_candidates:
         pre_api_result = trace_pre_api_dependencies(
             core_apis, response_samples, pre_api_candidates,
-            context_fields={}, id_field_details=dep_chain.get("id_field_details", {}),
-            id_producer=id_producer
+            context_fields=context_fields,
+            id_field_details=dep_chain.get("id_field_details", {}),
+            id_producer=id_producer,
+            value_index=value_index
         )
-        LOG.info(f"  Step 6: 前置 API 追踪: {len(pre_api_result.get('pre_apis', []))} 个前置 API")
+        LOG.info(f"  Step 7: 前置 API 追踪: {len(pre_api_result.get('pre_apis', []))} 个前置 API")
 
     return {
         "crud_order": execution_order,
@@ -190,6 +215,7 @@ def analyze(core_api_map, all_endpoints, response_samples, ui_result,
         "api_by_button": api_by_button,
         "dependencies": dep_chain,
         "state_assertions": state_rules,
+        "value_index": value_index.to_dict() if value_index else None,
         "pre_api_chain": pre_api_result,
         "core_api_map": core_api_map or {},
     }
@@ -992,46 +1018,29 @@ def build_manifest(analysis: dict, capture_result: dict,
     context_fields = auth_profile.get("context_fields", {})
     context_field_names = set(context_fields.keys())
 
-    # 6. 构建值索引（v2.0：5 角色分类的核心数据源）
-    create_response_sample = None
-    if id_producer and id_producer in core_apis:
-        create_eps = core_apis[id_producer]
-        create_resp_samples = response_samples.get(create_eps[0].get("pathname", ""), [])
-        if create_resp_samples:
-            try:
-                body_text = create_resp_samples[0].get("body", "{}")
-                create_response_sample = json.loads(body_text) if isinstance(body_text, str) else body_text
-            except Exception:
-                pass
+    # 6. 复用 analyze() 构建的 value_index（与 Phase B 共享同一份）
+    value_index_dict = analysis.get("value_index")
+    if value_index_dict is not None:
+        value_index = ValueIndex.from_dict(value_index_dict)
+    else:
+        # 向后兼容：如果 analysis 中没有 value_index（旧数据），内部构建
+        create_response_sample = None
+        if id_producer and id_producer in core_apis:
+            create_eps = core_apis[id_producer]
+            create_resp_samples = response_samples.get(create_eps[0].get("pathname", ""), [])
+            if create_resp_samples:
+                try:
+                    body_text = create_resp_samples[0].get("body", "{}")
+                    create_response_sample = json.loads(body_text) if isinstance(body_text, str) else body_text
+                except Exception:
+                    pass
 
-    # 收集操作链候选（来自 core_api_map 中的非主 API）
-    chain_candidates = []
-    for action, eps in core_apis.items():
-        if len(eps) > 1:
-            # 操作链：除了第一个主 API 外的其他 API
-            for ep in eps[1:]:
-                if ep.get("method") == "GET":
-                    # 构建 chain candidate 格式
-                    api_id = ep.get("pathname", "").split("/")[-1].replace("-", "_")
-                    chain_candidates.append({
-                        "id": api_id,
-                        "method": "GET",
-                        "pathname": ep.get("pathname", ""),
-                        "context": action,
-                        "timestamp": 0.0,
-                        "response_sample": {
-                            "response_body": response_samples.get(ep.get("pathname", ""), [{}])[0].get("body", "")
-                        },
-                        "extracted_fields": [],  # 将在 build_value_index 中动态提取
-                    })
-
-    value_index = build_value_index(
-        pre_api_candidates=pre_api_candidates,
-        create_body_sample=create_body_sample,
-        create_response_sample=create_response_sample,
-        context_fields=context_fields,
-        chain_candidates=chain_candidates,
-    )
+        value_index = build_value_index(
+            pre_api_candidates=pre_api_candidates,
+            create_body_sample=create_body_sample,
+            create_response_sample=create_response_sample,
+            context_fields=context_fields,
+        )
 
     # 获取可用的验证端点（query / detail）
     # 优先从 core_apis 获取；如果 query/detail 被同现过滤器误杀，
@@ -1964,7 +1973,8 @@ def build_manifest(analysis: dict, capture_result: dict,
 def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
                                pre_api_candidates: list, context_fields: dict,
                                id_field_details: dict,
-                               id_producer: str = None) -> dict:
+                               id_producer: str = None,
+                               value_index: 'ValueIndex' = None) -> dict:
     """
     前置 API 依赖链追踪（v2.0 使用 5 角色分类引擎）。
 
@@ -1977,6 +1987,7 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
         context_fields: 上下文字段配置
         id_field_details: ID 字段详情
         id_producer: ID 生产者操作名
+        value_index: 外部传入的值索引（与 build_manifest 共享同一份）
 
     Returns:
         {
@@ -2001,13 +2012,14 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
             except Exception:
                 pass
 
-    # 2. 构建值索引
-    value_index = build_value_index(
-        pre_api_candidates=pre_api_candidates,
-        create_body_sample=create_body_sample,
-        create_response_sample=create_response_sample,
-        context_fields=context_fields,
-    )
+    # 2. 使用外部传入的 value_index（与 build_manifest 共享），或内部构建（向后兼容）
+    if value_index is None:
+        value_index = build_value_index(
+            pre_api_candidates=pre_api_candidates,
+            create_body_sample=create_body_sample,
+            create_response_sample=create_response_sample,
+            context_fields=context_fields,
+        )
 
     # 3. 对每个操作进行分类，收集 used_apis
     used_apis = {}
@@ -2021,8 +2033,11 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
             continue
 
         # 使用新的 5 角色分类（递归，含嵌套 dict 字段）
+        # 对 id_producer 操作排除 create_body（与 build_manifest 一致）
+        exclude = {"create_body"} if action == id_producer else None
         field_roles = classify_fields_recursive(
-            body_sample, value_index, create_body_sample, current_action=action
+            body_sample, value_index, create_body_sample, current_action=action,
+            exclude_sources=exclude
         )
 
         # 收集 context 来源的前置 API
@@ -2262,6 +2277,17 @@ class ValueIndex:
     def __init__(self):
         self.index: dict[str, list[dict]] = {}  # {value_str: [entry, ...]}
 
+    def to_dict(self) -> dict:
+        """序列化为可 JSON 存储的 dict。"""
+        return {"index": self.index}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'ValueIndex':
+        """从 dict 反序列化。"""
+        vi = cls()
+        vi.index = data.get("index", {})
+        return vi
+
     def add(self, value_str: str, source_api: str, source_path: str,
             field_leaf: str, path_depth: int,
             timestamp: float = 0.0, context: str = "",
@@ -2375,17 +2401,15 @@ class ValueIndex:
 def build_value_index(pre_api_candidates: list, create_body_sample: dict,
                       create_response_sample: dict = None,
                       context_fields: dict = None,
-                      replay_windows: dict = None,
-                      chain_candidates: list = None) -> ValueIndex:
+                      replay_windows: dict = None) -> ValueIndex:
     """构建值 → 来源路径的索引。
 
     扫描所有可用数据源，将响应中的值扁平化为 value_str → source_path 映射。
 
     数据源（按添加顺序）：
     1. pre_api_candidates 响应（前置 GET API）
-    2. chain_candidates 响应（操作链中的 GET API，如迁移时的部门树）
-    3. create 请求体本身
-    4. create 响应体（entity 字段）
+    2. create 请求体本身
+    3. create 响应体（entity 字段）
 
     Args:
         pre_api_candidates: 前置 API 候选列表
@@ -2393,7 +2417,6 @@ def build_value_index(pre_api_candidates: list, create_body_sample: dict,
         create_response_sample: 创建步骤的响应体 dict（已解析）
         context_fields: auth_profile 中声明的上下文字段
         replay_windows: 操作时间窗口（用于时序）
-        chain_candidates: 操作链候选列表（来自 core_api_map 中的非主 API）
 
     Returns:
         ValueIndex 实例
@@ -2438,42 +2461,7 @@ def build_value_index(pre_api_candidates: list, create_body_sample: dict,
                 api_info=api,
             )
 
-    # ── 来源 2: 操作链候选响应（如迁移时的部门树 API）──
-    for api in (chain_candidates or []):
-        api_id = api.get("id", "")
-        api_context = api.get("context", "init")
-        api_timestamp = api.get("timestamp", 0.0)
-        body_text = api.get("response_sample", {}).get("response_body", "")
-        if not body_text:
-            continue
-        try:
-            body = json.loads(body_text) if isinstance(body_text, str) else body_text
-        except Exception:
-            continue
-
-        for field_info in api.get("extracted_fields", []):
-            path = field_info.get("path", "")
-            field_name = field_info.get("name", "")
-            if not path or not field_name:
-                continue
-            value = _extract_by_path_generic(body, path)
-            if value is None:
-                continue
-            source_path = f"{api_id}.{field_name}"
-            field_leaf = field_name.rsplit("_", 1)[-1] if "_" in field_name else field_name
-            path_depth = path.count(".") + path.count("[")
-            vi.add(
-                value_str=str(value),
-                source_api=api_id,
-                source_path=source_path,
-                field_leaf=field_leaf,
-                path_depth=path_depth,
-                timestamp=api_timestamp,
-                context=api_context,
-                api_info=api,
-            )
-
-    # ── 来源 3: create 请求体 ──
+    # ── 来源 2: create 请求体 ──
     if create_body_sample and isinstance(create_body_sample, dict):
         for field_name, value in create_body_sample.items():
             if isinstance(value, (str, int, float, bool)):

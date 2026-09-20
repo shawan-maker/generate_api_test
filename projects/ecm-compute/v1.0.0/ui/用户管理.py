@@ -2,7 +2,7 @@
 """
 用户管理 - UI 自动化测试脚本
 
-生成时间: 2026-09-20 11:55:18
+生成时间: 2026-09-20 14:09:20
 生成工具: API AI Test Framework - Stage 2
 版本: v1.0.0
 
@@ -52,7 +52,7 @@ CONFIG = {
     },
 }
 
-AVAILABLE_OPERATIONS = ['创建用户', 'query', '批量导入', '编辑', '授权', '冻结', '启用', '锁定', '重置密码', '迁移', '删除']
+AVAILABLE_OPERATIONS = ['创建用户', 'query', '批量导入', '编辑', '授权', '冻结', '启用', '解锁', '重置密码', '迁移', '删除']
 
 # ==================== Cookie 鉴权 ====================
 
@@ -114,6 +114,11 @@ _OPERATION_STATUS = {
         "status": "failed",
         "error_type": "required_field_empty",
         "error_text": "必填字段无法填写: 授权用户组（select，值为空）"
+    },
+    "解锁": {
+        "status": "failed",
+        "error_type": "click_failed",
+        "error_text": "无法点击 解锁 按钮: 解锁"
     }
 }
 

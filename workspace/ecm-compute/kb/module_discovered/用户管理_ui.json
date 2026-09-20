@@ -222,11 +222,11 @@
       "action": "启用"
     },
     {
-      "text": "锁定",
+      "text": "解锁",
       "parent": "更多",
       "tag": "DROPDOWN_ITEM",
       "location": "dropdown",
-      "action": "锁定"
+      "action": "解锁"
     },
     {
       "text": "重置密码",
@@ -262,7 +262,7 @@
       "授权": 1,
       "冻结": 1,
       "启用": 1,
-      "锁定": 1,
+      "解锁": 1,
       "重置密码": 1,
       "迁移": 1
     }
@@ -296,16 +296,16 @@
     "授权": "授权",
     "冻结": "冻结",
     "启用": "启用",
-    "锁定": "锁定",
+    "解锁": "解锁",
     "重置密码": "重置密码",
     "迁移": "迁移"
   },
   "page_structure": {
     "hasFixedLeft": true,
     "hasFixedRight": true,
-    "mainBodyRows": 4,
-    "fixedRightRows": 4,
-    "fixedLeftRows": 4,
+    "mainBodyRows": 5,
+    "fixedRightRows": 5,
+    "fixedLeftRows": 5,
     "columnCount": 10,
     "operationColumnIndex": 8,
     "operationColumnLocation": "middle",
@@ -316,7 +316,7 @@
       },
       {
         "cls": "el-table__body-wrapper is-scrolling-left",
-        "rowCount": 4
+        "rowCount": 5
       },
       {
         "cls": "el-table__fixed-header-wrapper",
@@ -324,7 +324,7 @@
       },
       {
         "cls": "el-table__fixed-body-wrapper",
-        "rowCount": 4
+        "rowCount": 5
       },
       {
         "cls": "el-table__fixed-header-wrapper",
@@ -332,7 +332,7 @@
       },
       {
         "cls": "el-table__fixed-body-wrapper",
-        "rowCount": 4
+        "rowCount": 5
       }
     ]
   },
@@ -341,15 +341,15 @@
     "创建用户": {
       "success": true,
       "fill_data": {
-        "账号": "AT_test_875323",
-        "姓名": "AT_test_875323",
+        "账号": "AT_test_884186",
+        "姓名": "AT_test_884186",
         "密码": "Test@123456",
         "确认密码": "Test@123456",
-        "手机号": "13876805141",
-        "邮箱": "at_875320@test.com",
-        "描述": "auto_test_875323",
-        "系统角色": "AT_test_875323",
-        "部门角色": "AT_test_875323"
+        "手机号": "13845269501",
+        "邮箱": "at_884183@test.com",
+        "描述": "auto_test_884186",
+        "系统角色": "AT_test_884186",
+        "部门角色": "AT_test_884186"
       },
       "fill_rules": {
         "账号": {
@@ -584,16 +584,16 @@
       "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
       "trigger_text": "授权",
       "nav_info": {
-        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=f7ae8b3ac24747bc90a372f7a0dcc753",
+        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=c62c3aebaf034f788fbc13e4ee6532f0",
         "depth": 0,
         "page_title": "eStack Enterprise",
         "has_form": false,
         "form_fields": [],
         "fill_data": {
-          "授权用户": "AT_AT_test_auto_875368",
-          "授权用户组": "AT_AT_test_auto_875368",
-          "授权角色": "AT_AT_test_auto_875368",
-          "授权范围": "AT_AT_test_auto_875368"
+          "授权用户": "AT_AT_test_auto_884230",
+          "授权用户组": "AT_AT_test_auto_884230",
+          "授权角色": "AT_AT_test_auto_884230",
+          "授权范围": "AT_AT_test_auto_884230"
         },
         "submit_result": {},
         "error_type": "required_field_empty",
@@ -673,28 +673,10 @@
       "dropdown_item_text_verified": "启用",
       "confirm_button_text_verified": "确定"
     },
-    "锁定": {
-      "success": true,
-      "selectors": {
-        "trigger": "锁定",
-        "row_selector": "更多 > 锁定",
-        "confirm": "确定"
-      },
-      "confirmed": "确定",
-      "trigger_text": "锁定",
-      "post_confirm_state": {
-        "dialog_remains": false,
-        "has_form_in_dialog": false
-      },
-      "is_dropdown_operation": true,
-      "dropdown_parent_selector": ".el-dropdown",
-      "dropdown_item_locator": ".el-dropdown-menu__item:has-text('锁定')",
-      "dropdown_item_text": "锁定",
-      "dropdown_trigger_method": "hover",
-      "checkbox_locator": ".el-checkbox__input",
-      "expand_strategy_verified": "click",
-      "dropdown_item_text_verified": "锁定",
-      "confirm_button_text_verified": "确定"
+    "解锁": {
+      "success": false,
+      "error_type": "click_failed",
+      "error_text": "无法点击 解锁 按钮: 解锁"
     },
     "重置密码": {
       "success": true,
@@ -724,7 +706,7 @@
       "dropdown_item_text": "重置密码",
       "dropdown_trigger_method": "hover",
       "checkbox_locator": ".el-checkbox__input",
-      "expand_strategy_verified": "click",
+      "expand_strategy_verified": "hover",
       "dropdown_item_text_verified": "重置密码",
       "confirm_button_text_verified": "确认"
     },
