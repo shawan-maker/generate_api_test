@@ -58,7 +58,7 @@ class ButtonDriver:
         return await self._find_row_with_pagination(marker)
 
     async def _find_row_on_current_page(self, marker: str) -> Optional[Locator]:
-        """在当前页面查找行（不含分页）"""
+        """在当前页面查找行（含加载等待 + 扩展重试）"""
         try:
             MAIN_SEL = self.selectors["table"]["body_row"]
             FIXED_SELS = [
@@ -66,7 +66,15 @@ class ButtonDriver:
                 self.selectors["table"]["fixed_right_row"],
             ]
 
-            for attempt in range(3):
+            # 先等待 loading mask 消失（最多 5s，不阻断）
+            try:
+                await self.page.wait_for_selector(
+                    '.el-loading-mask', state='hidden', timeout=5000
+                )
+            except Exception:
+                pass  # 可能没有 loading mask
+
+            for attempt in range(5):  # 3 → 5
                 # 1. 优先在主体 wrapper 中查找
                 main_rows = await self.page.query_selector_all(MAIN_SEL)
                 for row in main_rows:
@@ -87,11 +95,16 @@ class ButtonDriver:
                             else:
                                 LOG.warning(f"行索引{idx}超出主体行数{len(main_rows)}")
 
-                # 未找到，等待后重试
-                if attempt < 2:
-                    LOG.debug(f"未找到包含 '{marker}' 的行，等待 1 秒后重试...")
-                    await self.page.wait_for_timeout(1000)
+                # 未找到，渐进式等待后重试
+                if attempt < 4:
+                    wait_ms = 1500 if attempt < 2 else 2000
+                    LOG.debug(
+                        f"未找到包含 '{marker}' 的行，"
+                        f"等待 {wait_ms}ms 后重试 (attempt {attempt+1}/5)..."
+                    )
+                    await self.page.wait_for_timeout(wait_ms)
 
+            LOG.debug(f"当前页 5 次尝试后仍未找到 '{marker}'")
             return None
 
         except Exception as e:

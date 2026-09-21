@@ -1,15 +1,18 @@
 """
 helpers.py — 由 module_discovery Stage 5 自动导出
 
-高层辅助函数，供外部测试平台调用。
-内部实现（extract_by_path、build_auth_header 等）不导出。
+测试数据生成函数集，供 API 测试脚本、Postman Pre-request Script 共享。
+所有生成函数以当前时间戳为种子，保证每次运行数据唯一。
 """
 
 import json
 import time
 import random
+import uuid as _uuid_mod
 from pathlib import Path
 
+
+# ────────────────── 认证 ──────────────────
 
 def get_token_by_cookie(cookie_path: str, token_key: str = "accessToken") -> str:
     """
@@ -42,39 +45,98 @@ def get_token_by_cookie(cookie_path: str, token_key: str = "accessToken") -> str
     raise ValueError(f"Cookie 中未找到 token_key={token_key}")
 
 
-def gen_timestamp() -> str:
-    """
-    生成当前时间戳（毫秒级）。
+# ────────────────── 基础工具 ──────────────────
 
-    Returns:
-        时间戳字符串，例如 "1725780000123"
-    """
+def gen_timestamp() -> str:
+    """生成当前时间戳（毫秒级），例如 '1725780000123'。"""
     return str(int(time.time() * 1000))
 
 
-def gen_unique_name(prefix: str, ts: str, original: str) -> str:
+def _ts6() -> str:
+    """生成 6 位十六进制时间戳后缀（用于构造唯一值）。"""
+    return format(int(time.time() * 1000), "x")[-6:]
+
+
+# ────────────────── 数据生成函数 ──────────────────
+
+def gen_test_name(field_name: str = "") -> str:
     """
-    生成唯一名称（用于 create 步骤的 name 字段）。
+    生成唯一测试名称（用于 name 角色字段，如 userName、name）。
 
     Args:
-        prefix: 前缀，例如 "AT"
-        ts: 时间戳字符串
-        original: 原始名称
+        field_name: 字段名（仅用于可读性，不影响生成值）
 
     Returns:
-        格式化名称，例如 "AT_1725780000123_test_user"
+        例如 'AT_a3f2c1'
     """
-    return f"{prefix}_{ts}_{original}"
+    return f"AT_{_ts6()}"
 
 
-def gen_mutable_value(ts: str) -> str:
+def gen_mutable_value() -> str:
     """
-    生成可变字段值（用于 update 步骤的 description 等字段）。
-
-    Args:
-        ts: 时间戳字符串
+    生成可变字段值（用于 mutable 角色字段，如 description）。
 
     Returns:
-        格式化值，例如 "自动修改_1725780000123"
+        例如 'auto_modified_a3f2c1'
     """
-    return f"自动修改_{ts}"
+    return f"auto_modified_{_ts6()}"
+
+
+def gen_email() -> str:
+    """
+    生成测试邮箱地址。
+
+    Returns:
+        例如 'at_a3f2c1@test.com'
+    """
+    return f"at_{_ts6()}@test.com"
+
+
+def gen_phone() -> str:
+    """
+    生成测试手机号（11 位中国大陆号码）。
+
+    Returns:
+        例如 '1380a3f2c1' → 注意：ts6 含字母，此处用随机数字替代
+    """
+    return f"138{random.randint(10000000, 99999999)}"
+
+
+def gen_uuid() -> str:
+    """
+    生成 UUID v4 字符串。
+
+    Returns:
+        例如 '550e8400-e29b-41d4-a716-446655440000'
+    """
+    return str(_uuid_mod.uuid4())
+
+
+def gen_hex_id() -> str:
+    """
+    生成 32 位十六进制 ID（无连字符的 UUID）。
+
+    Returns:
+        例如 '550e8400e29b41d4a716446655440000'
+    """
+    return _uuid_mod.uuid4().hex
+
+
+def gen_random_int() -> str:
+    """
+    生成 8 位随机整数。
+
+    Returns:
+        例如 '47291830'
+    """
+    return str(random.randint(10000000, 99999999))
+
+
+def gen_text() -> str:
+    """
+    生成通用文本值。
+
+    Returns:
+        例如 'auto_a3f2c1'
+    """
+    return f"auto_{_ts6()}"

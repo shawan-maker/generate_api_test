@@ -1010,7 +1010,7 @@ async def _step_fill_input(page, step: dict, marker: str):
     try:
         from .locator_helpers import safe_css
         enhanced = safe_css(locator)
-        await page.fill(enhanced, value, timeout=3000)
+        await page.fill(enhanced, value, timeout=5000)
         LOG.info(f"    搜索框已填充: {value}")
     except Exception as e:
         LOG.warning(f"    fill_input 失败: {e}")

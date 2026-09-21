@@ -1,6 +1,6 @@
 """
 用户管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-20 17:30:04
+生成时间: 2026-09-20 17:58:36
 目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/user
 
 执行流程:
@@ -13,12 +13,14 @@
   7. 搜索验证（冻结后）
   8. 启用
   9. 搜索验证（启用后）
-  10. 重置密码
-  11. 搜索验证（重置密码后）
-  12. 迁移
-  13. 搜索验证（迁移后）
-  14. 删除
-  15. 搜索验证（删除后）
+  10. 锁定
+  11. 搜索验证（锁定后）
+  12. 重置密码
+  13. 搜索验证（重置密码后）
+  14. 迁移
+  15. 搜索验证（迁移后）
+  16. 删除
+  17. 搜索验证（删除后）
 
 状态断言:
   - 删除后数据不应出现
@@ -93,10 +95,10 @@ MANIFEST = {
       },
       "body_template": {
         "userName": "${gen_test_name(\"userName\")}",
-        "password": "Ikuz24nUT35vqqOpT9KffGwZkXAOPWCF8mHop3jA+n4Qe8ssUBV7fB8cJe73qz5rekzKc7EL2MSRwR1IpVRgiqcZ807uMDcmYgHfJXW/n5x0TNk+3oLnNLre68ybFrXH1X33O1pkcdSxCrAfJb+dCdBUIl9UJU3UDvQ3Ee+ijk4=",
+        "password": "D0iazaL/NYnNm5T+auY/u2pVTLeF+0S1wJAFQN0bt2rmLj8MlmUU7GMiYaqrnf6rZOAgQZZls6MIDAuDO/PaxvJ4FKoTFA8z5uexZjRu0l7xWIEjAU2/hnBku2Y+weazCg+Q6C2jyt7elZMglDTGCxhsMg9fpOB3fg7AdzH+ppk=",
         "name": "${gen_test_name(\"name\")}",
-        "email": "a8soIiYNJmjzhxwmBbwvu8e1EoFTLNSO3pzYqCICBbdjbE3MjmJdPGjA8ljrCmmFjA3oLUjNbuEStfTMlp5ZLFBhiwAj1yYWBOtsg2JMrZ//WUZ+NdgrDNF2v0AHaicq4cCPR+AcORjMjPWC1FXVK3rCc4N22FPQjdsx5R7FqOk=",
-        "phone": "MTZlcYhzEvNuWQcchgGuXO4O15NdFIxfCj6Lx75Ixq8jm5SYtAev4k78i0qcLvsRpUeH/Gcmbg89PpP2oNf0VGADr6g66klJCHCG9vsPYZcl/FzlQwyii7y5aDY8B1Lg4wQQoIRyiHItns5JpmaPKGnX9teXu2SElhwcXlWgRUA=",
+        "email": "bFiBaETvVvBosHRYeILFMHDA3Ij62HrIHf2h/djBkxTtfIKeSRo22T4lhLkMjLjqNJ9RxyvBcSSCNVaipUntXj4BsW+AmrK8hkTbP7Es3bcfGEu0wzJXQVaUvRsnw+4k9MojD7N9AxOYkPNazCH9bjFReWj8LMMqGKVpfvGyqJw=",
+        "phone": "QNgprNzv7O5bn7YQWcYegUjcZ3lSjKQEdeRUO0qrqGDz6SWFVvxc4YbE4RSA5nU63XtXIVAyaAsypjqSpIPq6xNhuUFWEM6LC2EgjdMFSf9gnflAelXbGvWAJisCP+bOQGRy+6sNGYBQG5NzgG2qZz3p61rbxIg4v/XOe/ChZ2s=",
         "description": "${gen_mutable_value()}",
         "policyIds": [],
         "adminId": None,
@@ -344,6 +346,55 @@ MANIFEST = {
       "search_param_source": "userName"
     },
     {
+      "action": "锁定",
+      "label": "锁定",
+      "api": {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/users/lock/{path_0}",
+        "path_params": {
+          "path_0": {
+            "source": "create.id",
+            "match_from": "body_context"
+          }
+        },
+        "query_params": {}
+      },
+      "body_template": {
+        "userId": None
+      },
+      "body_field_roles": {
+        "userId": {
+          "role": "context",
+          "source": "create.id"
+        }
+      },
+      "requires": [
+        "id"
+      ]
+    },
+    {
+      "action": "get",
+      "label": "搜索验证（锁定后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/tenants/users",
+        "path_params": {},
+        "query_params": {
+          "tenantId": "$display_by_role.entity_0_id",
+          "pageNum": "1",
+          "pageSize": "10"
+        }
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_verify",
+      "search_param": "name",
+      "search_param_source": "userName"
+    },
+    {
       "action": "重置密码",
       "label": "重置密码",
       "api": {
@@ -355,7 +406,7 @@ MANIFEST = {
       "body_template": {
         "forceChangePassword": 1,
         "isRandomPassword": 1,
-        "newPassword": "X9eyayte1EPqTTgCesQ2JUmxDZ1DezCqS+/GCZX53XHQg1ejtopgdbAkGFLtdBY4IpHt8FnVp9B0f0CuWvkz+rv7tv1SekcyebS4aEVVsvKKewjj3RuFkWnIdWmiAUd/CB5SB0F5Lo9D2Bz2Q4gBOWlJF2u8MO4CyFqWiO+JnWE=",
+        "newPassword": "bs8fLdDDZTlUAR8/+NRaW2vj3IDXaE0k76qJlpTvYwG8IIG6Dv273nqk16vwoL0sfVpbZmxcOh4BMWCPn4/d6zozHLRNemKRN+xYOnJ2Usl6DzDXrx7el7FCn7NpNGYPvX6V64GvSgUtXXoRT2/G2EiFJceP/KP7LgdZaW5inGg=",
         "passwordPolicy": {
           "id": None,
           "tenantId": None,
@@ -615,8 +666,8 @@ MANIFEST = {
           "name": "entity_countryCode",
           "path": "entity.countryCode",
           "used_by": [
-            "创建用户",
-            "编辑"
+            "编辑",
+            "创建用户"
           ]
         },
         {

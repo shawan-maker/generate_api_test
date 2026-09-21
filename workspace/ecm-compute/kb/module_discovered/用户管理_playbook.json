@@ -5,7 +5,7 @@
     "base_url": "https://10.151.61.248",
     "login_url": "https://10.151.61.248/estack/web/estack/login",
     "framework": "element-ui",
-    "generated_at": "2026-09-20 14:05:38",
+    "generated_at": "2026-09-20 17:55:07",
     "version": "1.0",
     "auth_config": {
       "token_key": "estackToken",
@@ -16,9 +16,9 @@
   "page_structure": {
     "hasFixedLeft": true,
     "hasFixedRight": true,
-    "mainBodyRows": 5,
-    "fixedRightRows": 5,
-    "fixedLeftRows": 5,
+    "mainBodyRows": 4,
+    "fixedRightRows": 4,
+    "fixedLeftRows": 4,
     "columnCount": 10,
     "operationColumnIndex": 8,
     "operationColumnLocation": "middle",
@@ -29,7 +29,7 @@
       },
       {
         "cls": "el-table__body-wrapper is-scrolling-left",
-        "rowCount": 5
+        "rowCount": 4
       },
       {
         "cls": "el-table__fixed-header-wrapper",
@@ -37,7 +37,7 @@
       },
       {
         "cls": "el-table__fixed-body-wrapper",
-        "rowCount": 5
+        "rowCount": 4
       },
       {
         "cls": "el-table__fixed-header-wrapper",
@@ -45,7 +45,7 @@
       },
       {
         "cls": "el-table__fixed-body-wrapper",
-        "rowCount": 5
+        "rowCount": 4
       }
     ]
   },
@@ -254,16 +254,16 @@
       "error_type": "required_field_empty",
       "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
       "nav_info": {
-        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=c62c3aebaf034f788fbc13e4ee6532f0",
+        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=d5bea519c2284bb484dc506fe52131f2",
         "depth": 0,
         "page_title": "eStack Enterprise",
         "has_form": false,
         "form_fields": [],
         "fill_data": {
-          "授权用户": "AT_AT_test_auto_884230",
-          "授权用户组": "AT_AT_test_auto_884230",
-          "授权角色": "AT_AT_test_auto_884230",
-          "授权范围": "AT_AT_test_auto_884230"
+          "授权用户": "AT_AT_test_auto_898018",
+          "授权用户组": "AT_AT_test_auto_898018",
+          "授权角色": "AT_AT_test_auto_898018",
+          "授权范围": "AT_AT_test_auto_898018"
         },
         "submit_result": {},
         "error_type": "required_field_empty",
@@ -349,15 +349,33 @@
       "marker": null,
       "status": "success"
     },
-    "解锁": {
-      "display_name": "解锁",
-      "description": "解锁",
-      "role": "unknown",
-      "steps": [],
+    "锁定": {
+      "display_name": "锁定",
+      "description": "锁定",
+      "role": "generic",
+      "steps": [
+        {
+          "action": "find_row",
+          "description": "定位目标数据行"
+        },
+        {
+          "action": "click_row_more",
+          "item_text": "锁定",
+          "expand_strategy": "click",
+          "description": "点击下拉菜单项: 锁定"
+        },
+        {
+          "action": "confirm_dialog",
+          "description": "点击确认对话框"
+        },
+        {
+          "action": "assert_success",
+          "playwright_locator": ".el-message--success, .el-notification__content:has-text('成功'), [role='alert']:has-text('成功')",
+          "description": "验证操作成功"
+        }
+      ],
       "marker": null,
-      "status": "failed",
-      "error_type": "click_failed",
-      "error_text": "无法点击 解锁 按钮: 解锁"
+      "status": "success"
     },
     "重置密码": {
       "display_name": "重置密码",
@@ -371,7 +389,7 @@
         {
           "action": "click_row_more",
           "item_text": "重置密码",
-          "expand_strategy": "hover",
+          "expand_strategy": "click",
           "description": "点击下拉菜单项: 重置密码"
         },
         {

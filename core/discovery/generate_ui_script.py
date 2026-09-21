@@ -389,7 +389,8 @@ async def require_cookie_auth(context, page):
 # ==================== 操作执行 ====================
 
 async def _cleanup_dialogs(page):
-    """关闭操作间可能残留的对话框/弹窗，防止阻塞后续操作。"""
+    """关闭操作间可能残留的对话框/弹窗，并等待表格恢复就绪。"""
+    # --- Phase 1: 关闭残留弹窗 ---
     try:
         await page.keyboard.press("Escape")
         await page.wait_for_timeout(300)
@@ -418,6 +419,17 @@ async def _cleanup_dialogs(page):
         await page.wait_for_timeout(200)
     except Exception:
         pass
+
+    # --- Phase 2: 等待表格恢复就绪 ---
+    try:
+        from lib.wait_helpers import wait_for_table_ready
+        await wait_for_table_ready(page, timeout=8000)
+    except Exception:
+        try:
+            await page.wait_for_load_state("networkidle", timeout=5000)
+        except Exception:
+            pass
+        await page.wait_for_timeout(1000)
 
 # 操作失败原因（由 Stage 1 标记）
 _OPERATION_STATUS = {operation_status_json}

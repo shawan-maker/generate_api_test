@@ -2,7 +2,7 @@
 """
 用户管理 - UI 自动化测试脚本
 
-生成时间: 2026-09-20 14:09:20
+生成时间: 2026-09-21 09:02:09
 生成工具: API AI Test Framework - Stage 2
 版本: v1.0.0
 
@@ -52,7 +52,7 @@ CONFIG = {
     },
 }
 
-AVAILABLE_OPERATIONS = ['创建用户', 'query', '批量导入', '编辑', '授权', '冻结', '启用', '解锁', '重置密码', '迁移', '删除']
+AVAILABLE_OPERATIONS = ['创建用户', 'query', '批量导入', '编辑', '授权', '冻结', '启用', '锁定', '重置密码', '迁移', '删除']
 
 # ==================== Cookie 鉴权 ====================
 
@@ -73,7 +73,8 @@ async def require_cookie_auth(context, page):
 # ==================== 操作执行 ====================
 
 async def _cleanup_dialogs(page):
-    """关闭操作间可能残留的对话框/弹窗，防止阻塞后续操作。"""
+    """关闭操作间可能残留的对话框/弹窗，并等待表格恢复就绪。"""
+    # --- Phase 1: 关闭残留弹窗 ---
     try:
         await page.keyboard.press("Escape")
         await page.wait_for_timeout(300)
@@ -103,6 +104,17 @@ async def _cleanup_dialogs(page):
     except Exception:
         pass
 
+    # --- Phase 2: 等待表格恢复就绪 ---
+    try:
+        from lib.wait_helpers import wait_for_table_ready
+        await wait_for_table_ready(page, timeout=8000)
+    except Exception:
+        try:
+            await page.wait_for_load_state("networkidle", timeout=5000)
+        except Exception:
+            pass
+        await page.wait_for_timeout(1000)
+
 # 操作失败原因（由 Stage 1 标记）
 _OPERATION_STATUS = {
     "批量导入": {
@@ -114,11 +126,6 @@ _OPERATION_STATUS = {
         "status": "failed",
         "error_type": "required_field_empty",
         "error_text": "必填字段无法填写: 授权用户组（select，值为空）"
-    },
-    "解锁": {
-        "status": "failed",
-        "error_type": "click_failed",
-        "error_text": "无法点击 解锁 按钮: 解锁"
     }
 }
 
