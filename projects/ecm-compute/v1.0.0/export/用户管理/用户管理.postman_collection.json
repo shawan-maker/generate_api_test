@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "30a6a715-1dd2-42c9-993d-5f723a3ec596",
+    "_postman_id": "b513d682-d573-441e-acaa-ab08eca9b87f",
     "name": "用户管理 API 测试",
     "description": "由 module_discovery Stage 5 自动导出",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -273,7 +273,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userName\": \"{{name_userName}}\",\n  \"password\": \"D0iazaL/NYnNm5T+auY/u2pVTLeF+0S1wJAFQN0bt2rmLj8MlmUU7GMiYaqrnf6rZOAgQZZls6MIDAuDO/PaxvJ4FKoTFA8z5uexZjRu0l7xWIEjAU2/hnBku2Y+weazCg+Q6C2jyt7elZMglDTGCxhsMg9fpOB3fg7AdzH+ppk=\",\n  \"name\": \"{{name_name}}\",\n  \"email\": \"bFiBaETvVvBosHRYeILFMHDA3Ij62HrIHf2h/djBkxTtfIKeSRo22T4lhLkMjLjqNJ9RxyvBcSSCNVaipUntXj4BsW+AmrK8hkTbP7Es3bcfGEu0wzJXQVaUvRsnw+4k9MojD7N9AxOYkPNazCH9bjFReWj8LMMqGKVpfvGyqJw=\",\n  \"phone\": \"QNgprNzv7O5bn7YQWcYegUjcZ3lSjKQEdeRUO0qrqGDz6SWFVvxc4YbE4RSA5nU63XtXIVAyaAsypjqSpIPq6xNhuUFWEM6LC2EgjdMFSf9gnflAelXbGvWAJisCP+bOQGRy+6sNGYBQG5NzgG2qZz3p61rbxIg4v/XOe/ChZ2s=\",\n  \"description\": \"{{mutable_description}}\",\n  \"policyIds\": \"{{entity_list_0_policyList_0_id}}\",\n  \"adminId\": \"{{entity_adminId}}\",\n  \"tenantId\": \"{{entity_0_id}}\",\n  \"countryCode\": \"{{entity_countryCode}}\"\n}",
+              "raw": "{\n  \"userName\": \"{{name_userName}}\",\n  \"password\": \"dnA4VbMpAdF2e5dSCEQ/T3f2wddcElbgrYuJ/ycD5cGjvcz7+I67zoAV/FOcI5W7g10Z1uAvJGLf2bdseO9eTzVVDl3j6cHMOqrN/EOyHNgsZGE9yikqEJwpFQ9Rb3/fTJ9GHotANIiAkvHJ0gll5BETF3XOtuuD6xwx/EjdExU=\",\n  \"name\": \"{{name_name}}\",\n  \"email\": \"Hj0ePDr224E1obGUfthLP8ap7UmPqKpq3WH1galCeUgq5tR6bcPQQnwGCkQjXSBAaoaPAUna+SEFpGdelVHwvb+1a9GCAbgcoZhBpNO0Ya6BGjH64FyIfIo/jJcaEji8gK7l9QsN3GH/sxrvSJi4xHik7t1LGt9ibGJPdIbhy58=\",\n  \"phone\": \"eo5Cj6kjx6XQbG/1yiApimz/ZwDgGAwre27f4zETBWSltBJMgshFdJDHa93Ks2n0d3mzafqesdZlEsUeHhD2bDj9x6DqTFAzERIc3ejgHqkdH9sdvbN4Ad5V3izWKOp/3EWD9mpBtZVk25clshSCfa4e5UqDJekVdogJEOhHmpw=\",\n  \"description\": \"{{mutable_description}}\",\n  \"policyIds\": \"{{entity_list_0_policyList_0_id}}\",\n  \"adminId\": \"{{entity_adminId}}\",\n  \"tenantId\": \"{{entity_0_id}}\",\n  \"countryCode\": \"{{entity_countryCode}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -574,7 +574,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"forceChangePassword\": 1,\n  \"isRandomPassword\": 1,\n  \"newPassword\": \"bs8fLdDDZTlUAR8/+NRaW2vj3IDXaE0k76qJlpTvYwG8IIG6Dv273nqk16vwoL0sfVpbZmxcOh4BMWCPn4/d6zozHLRNemKRN+xYOnJ2Usl6DzDXrx7el7FCn7NpNGYPvX6V64GvSgUtXXoRT2/G2EiFJceP/KP7LgdZaW5inGg=\",\n  \"passwordPolicy\": {\n    \"id\": \"{{entity_id}}\",\n    \"tenantId\": \"{{entity_tenantId}}\",\n    \"minPasswordLength\": 8,\n    \"requireLowercaseCharacters\": false,\n    \"requireUppercaseCharacters\": true,\n    \"requireNumbers\": true,\n    \"requireSymbols\": true,\n    \"minPasswordDifferentCharacter\": 0,\n    \"createdAt\": \"{{entity_createdAt}}\",\n    \"updatedAt\": \"{{entity_updatedAt}}\",\n    \"deleted\": false,\n    \"userName\": null\n  },\n  \"userId\": \"{{id}}\",\n  \"noticeType\": [\n    \"email\"\n  ]\n}",
+              "raw": "{\n  \"forceChangePassword\": 1,\n  \"isRandomPassword\": 1,\n  \"newPassword\": \"UhdqKOToG24Q79IAcuRwSQ9Vt/8txsIV7YHTBb/aWj1NON+zYRI4gcgi1sNMxVYRIG+5hAVSeSuoBzZvsi6jYICXHq8RqNNfIaZG6u2iRWT8q9P/5DimOuWszOskTrqKommPZG1t7ipJdf4z2L6MObnTe+08TEbVH848TYDlkIA=\",\n  \"passwordPolicy\": {\n    \"id\": \"{{entity_id}}\",\n    \"tenantId\": \"{{entity_tenantId}}\",\n    \"minPasswordLength\": 8,\n    \"requireLowercaseCharacters\": false,\n    \"requireUppercaseCharacters\": true,\n    \"requireNumbers\": true,\n    \"requireSymbols\": true,\n    \"minPasswordDifferentCharacter\": 0,\n    \"createdAt\": \"{{entity_createdAt}}\",\n    \"updatedAt\": \"{{entity_updatedAt}}\",\n    \"deleted\": false,\n    \"userName\": null\n  },\n  \"userId\": \"{{id}}\",\n  \"noticeType\": [\n    \"email\"\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"

@@ -3072,8 +3072,13 @@ async def _do_delete(page, context: dict) -> dict:
     if errors:
         global_errors = [e for e in errors if e.get("severity") == "global"]
         if global_errors:
-            return {"success": False, "error_type": "api_error",
-                    "error_text": global_errors[0].get("error_text", "")}
+            err_text = global_errors[0].get("error_text", "")
+            # 过滤掉成功消息（"成功" 不应被视为错误）
+            if "成功" in err_text:
+                LOG.info(f"    检测到成功消息: {err_text}，忽略")
+            else:
+                return {"success": False, "error_type": "api_error",
+                        "error_text": err_text}
 
     # 读取捕获的消息
     captured_msgs = await _get_captured_messages(page)
@@ -3505,10 +3510,19 @@ async def _do_generic_operation(page, context: dict) -> dict:
     # 检查错误
     errors = await read_form_errors(page)
     if errors:
-        first = errors[0]
-        return {"success": False, "error_type": first.get("severity", "unknown"),
-                "trigger_text": trigger_text_normalized,
-                "error_text": first.get("error_text", "")}
+        # 过滤掉 global 类型的成功消息
+        filtered_errors = []
+        for e in errors:
+            if e.get("severity") == "global" and "成功" in e.get("error_text", ""):
+                LOG.info(f"    检测到成功消息: {e.get('error_text')}，忽略")
+                continue
+            filtered_errors.append(e)
+
+        if filtered_errors:
+            first = filtered_errors[0]
+            return {"success": False, "error_type": first.get("severity", "unknown"),
+                    "trigger_text": trigger_text_normalized,
+                    "error_text": first.get("error_text", "")}
 
     # 读取捕获的消息（操作后可能已消失）
     captured_msgs = await _get_captured_messages(page)

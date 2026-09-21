@@ -214,7 +214,7 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str)
     }
 
     # 生成并保存 playbook
-    from .discover_ui import build_playbook
+    from core.discovery.discover_ui import build_playbook
     playbook = build_playbook(ui_result)
     playbook_path = ws_dir / "kb" / "module_discovered" / f"{module_name}_playbook.json"
     _save_json(playbook, playbook_path)

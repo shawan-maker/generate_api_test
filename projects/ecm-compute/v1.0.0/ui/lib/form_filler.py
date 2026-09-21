@@ -1043,8 +1043,8 @@ async def read_form_errors(page: Page) -> List[Dict]:
 
         // 全局错误消息（El-Message / El-Notification / Ant-Message）
         const globalSelectors = [
-            '.el-message--error', '.el-notification__content',
-            '.ant-message-error', '.ant-notification-notice'
+            '.el-message--error', '.el-notification--error .el-notification__content',
+            '.ant-message-error', '.ant-notification-notice-error'
         ];
         document.querySelectorAll(globalSelectors.join(',')).forEach(el => {
             const text = el.textContent.trim();

@@ -67,10 +67,10 @@
       },
       "body_template": {
         "userName": "${gen_test_name(\"userName\")}",
-        "password": "D0iazaL/NYnNm5T+auY/u2pVTLeF+0S1wJAFQN0bt2rmLj8MlmUU7GMiYaqrnf6rZOAgQZZls6MIDAuDO/PaxvJ4FKoTFA8z5uexZjRu0l7xWIEjAU2/hnBku2Y+weazCg+Q6C2jyt7elZMglDTGCxhsMg9fpOB3fg7AdzH+ppk=",
+        "password": "dnA4VbMpAdF2e5dSCEQ/T3f2wddcElbgrYuJ/ycD5cGjvcz7+I67zoAV/FOcI5W7g10Z1uAvJGLf2bdseO9eTzVVDl3j6cHMOqrN/EOyHNgsZGE9yikqEJwpFQ9Rb3/fTJ9GHotANIiAkvHJ0gll5BETF3XOtuuD6xwx/EjdExU=",
         "name": "${gen_test_name(\"name\")}",
-        "email": "bFiBaETvVvBosHRYeILFMHDA3Ij62HrIHf2h/djBkxTtfIKeSRo22T4lhLkMjLjqNJ9RxyvBcSSCNVaipUntXj4BsW+AmrK8hkTbP7Es3bcfGEu0wzJXQVaUvRsnw+4k9MojD7N9AxOYkPNazCH9bjFReWj8LMMqGKVpfvGyqJw=",
-        "phone": "QNgprNzv7O5bn7YQWcYegUjcZ3lSjKQEdeRUO0qrqGDz6SWFVvxc4YbE4RSA5nU63XtXIVAyaAsypjqSpIPq6xNhuUFWEM6LC2EgjdMFSf9gnflAelXbGvWAJisCP+bOQGRy+6sNGYBQG5NzgG2qZz3p61rbxIg4v/XOe/ChZ2s=",
+        "email": "Hj0ePDr224E1obGUfthLP8ap7UmPqKpq3WH1galCeUgq5tR6bcPQQnwGCkQjXSBAaoaPAUna+SEFpGdelVHwvb+1a9GCAbgcoZhBpNO0Ya6BGjH64FyIfIo/jJcaEji8gK7l9QsN3GH/sxrvSJi4xHik7t1LGt9ibGJPdIbhy58=",
+        "phone": "eo5Cj6kjx6XQbG/1yiApimz/ZwDgGAwre27f4zETBWSltBJMgshFdJDHa93Ks2n0d3mzafqesdZlEsUeHhD2bDj9x6DqTFAzERIc3ejgHqkdH9sdvbN4Ad5V3izWKOp/3EWD9mpBtZVk25clshSCfa4e5UqDJekVdogJEOhHmpw=",
         "description": "${gen_mutable_value()}",
         "policyIds": [],
         "adminId": null,
@@ -378,7 +378,7 @@
       "body_template": {
         "forceChangePassword": 1,
         "isRandomPassword": 1,
-        "newPassword": "bs8fLdDDZTlUAR8/+NRaW2vj3IDXaE0k76qJlpTvYwG8IIG6Dv273nqk16vwoL0sfVpbZmxcOh4BMWCPn4/d6zozHLRNemKRN+xYOnJ2Usl6DzDXrx7el7FCn7NpNGYPvX6V64GvSgUtXXoRT2/G2EiFJceP/KP7LgdZaW5inGg=",
+        "newPassword": "UhdqKOToG24Q79IAcuRwSQ9Vt/8txsIV7YHTBb/aWj1NON+zYRI4gcgi1sNMxVYRIG+5hAVSeSuoBzZvsi6jYICXHq8RqNNfIaZG6u2iRWT8q9P/5DimOuWszOskTrqKommPZG1t7ipJdf4z2L6MObnTe+08TEbVH848TYDlkIA=",
         "passwordPolicy": {
           "id": null,
           "tenantId": null,
@@ -638,8 +638,8 @@
           "name": "entity_countryCode",
           "path": "entity.countryCode",
           "used_by": [
-            "编辑",
-            "创建用户"
+            "创建用户",
+            "编辑"
           ]
         },
         {

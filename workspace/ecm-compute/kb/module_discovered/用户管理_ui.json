@@ -341,15 +341,15 @@
     "创建用户": {
       "success": true,
       "fill_data": {
-        "账号": "AT_test_897973",
-        "姓名": "AT_test_897973",
+        "账号": "AT_test_956682",
+        "姓名": "AT_test_956682",
         "密码": "Test@123456",
         "确认密码": "Test@123456",
-        "手机号": "13893775172",
-        "邮箱": "at_897970@test.com",
-        "描述": "auto_test_897973",
-        "系统角色": "AT_test_897973",
-        "部门角色": "AT_test_897973"
+        "手机号": "13897557372",
+        "邮箱": "at_956679@test.com",
+        "描述": "auto_test_956682",
+        "系统角色": "AT_test_956682",
+        "部门角色": "AT_test_956682"
       },
       "fill_rules": {
         "账号": {
@@ -584,16 +584,16 @@
       "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
       "trigger_text": "授权",
       "nav_info": {
-        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=d5bea519c2284bb484dc506fe52131f2",
+        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=aaf7952ae8bf4d53b222bcdccf1c4927",
         "depth": 0,
         "page_title": "eStack Enterprise",
         "has_form": false,
         "form_fields": [],
         "fill_data": {
-          "授权用户": "AT_AT_test_auto_898018",
-          "授权用户组": "AT_AT_test_auto_898018",
-          "授权角色": "AT_AT_test_auto_898018",
-          "授权范围": "AT_AT_test_auto_898018"
+          "授权用户": "AT_AT_test_auto_956726",
+          "授权用户组": "AT_AT_test_auto_956726",
+          "授权角色": "AT_AT_test_auto_956726",
+          "授权范围": "AT_AT_test_auto_956726"
         },
         "submit_result": {},
         "error_type": "required_field_empty",
