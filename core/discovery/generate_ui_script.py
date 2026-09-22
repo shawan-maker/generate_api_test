@@ -626,7 +626,10 @@ async def main():
         print(f"  📊 报告: {{report_path}}")
 
         if not (args.headless or CONFIG["headless"]):
-            input("\\n按 Enter 关闭浏览器...")
+            try:
+                input("\\n按 Enter 关闭浏览器...")
+            except (EOFError, KeyboardInterrupt):
+                pass  # 非交互模式自动跳过
         await browser.close()
 
 

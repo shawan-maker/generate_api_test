@@ -207,14 +207,30 @@ def _build_candidate(call: dict, uniq_ep: dict, samples: dict) -> dict:
     Returns:
         候选 API 完整数据字典
     """
+    # 优选字段最多的 body 作为代表样本（搜索请求通常比普通列表请求多 searchValue 等字段）
+    def _body_field_count(b):
+        """计算 body 的字段数（支持 dict 和 JSON 字符串）"""
+        if isinstance(b, dict):
+            return len(b)
+        if isinstance(b, str):
+            try:
+                parsed = json.loads(b)
+                return len(parsed) if isinstance(parsed, dict) else 0
+            except (json.JSONDecodeError, ValueError):
+                return 0
+        return 0
+
+    all_bodies = uniq_ep.get("bodies", [])
+    best_body = max(all_bodies, key=_body_field_count) if all_bodies else None
+
     candidate = {
         "method": call["method"],
         "pathname": call["pathname"],
         "body_field_count": _request_body_field_count(call),
         "response_has_id": _call_has_business_data(call, samples),
         "contexts": sorted(uniq_ep.get("contexts", set())),
-        "bodies": uniq_ep.get("bodies", []),
-        "request_body_sample": uniq_ep["bodies"][0] if uniq_ep.get("bodies") else None,
+        "bodies": all_bodies,
+        "request_body_sample": best_body,
         "query_params": uniq_ep["query_params_list"][0] if len(uniq_ep.get("query_params_list", [])) == 1 else {},
         "query_params_samples": uniq_ep.get("query_params_list", []),
     }
@@ -586,17 +602,29 @@ def _extract_search_param(ep_data: dict) -> str:
         return 1
 
     def _pick_from_params(params_list):
+        # 解析字符串 body 为 dict
+        parsed_list = []
+        for params in params_list:
+            if isinstance(params, str):
+                try:
+                    parsed = json.loads(params)
+                    if isinstance(parsed, dict):
+                        parsed_list.append(parsed)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+            elif isinstance(params, dict):
+                parsed_list.append(params)
+
+        if not parsed_list:
+            return ""
+
         # 按非分页参数数量降序排序，优先检查参数最多的样本（通常是搜索请求）
         def count_non_pagination(params):
-            if not isinstance(params, dict):
-                return 0
             return sum(1 for k in params.keys() if k not in pagination_params)
 
-        sorted_params = sorted(params_list, key=count_non_pagination, reverse=True)
+        parsed_list.sort(key=count_non_pagination, reverse=True)
 
-        for params in sorted_params:
-            if not isinstance(params, dict):
-                continue
+        for params in parsed_list:
             candidates = []
             for k, v in params.items():
                 if k in pagination_params:

@@ -1052,26 +1052,33 @@ def build_manifest(analysis: dict, capture_result: dict,
         # 从 create 响应样本中提取 ID（用于验证 verify endpoint 是否返回同类数据）
         create_eps = core_apis.get(id_producer, [])
         if create_eps:
-            create_resp_samples = response_samples.get(create_eps[0]["pathname"], [])
-            for s in create_resp_samples:
-                try:
-                    body = json.loads(s["body"]) if isinstance(s["body"], str) else s["body"]
-                    # 使用 response_contract 发现的信封键和 ID 字段，而非硬编码
-                    envelope_keys = response_contract.get("envelope_keys", const.ENVELOPE_KEY_CANDIDATES)
-                    id_field = response_contract.get("id_field", const.DEFAULT_ID_FIELD)
-                    entity = body
-                    for ek in envelope_keys:
-                        if ek in body and isinstance(body[ek], dict):
-                            entity = body[ek]
+            # 遍历操作链所有端点，找到第一个有 ID 的响应
+            envelope_keys = response_contract.get("envelope_keys", const.ENVELOPE_KEY_CANDIDATES)
+            id_field = response_contract.get("id_field", const.DEFAULT_ID_FIELD)
+            for ep in create_eps:
+                if create_id_sample:
+                    break
+                ep_resp_samples = response_samples.get(ep.get("pathname", ""), [])
+                for s in ep_resp_samples:
+                    try:
+                        body = json.loads(s["body"]) if isinstance(s["body"], str) else s["body"]
+                        entity = body
+                        for ek in envelope_keys:
+                            if ek in body and isinstance(body[ek], dict):
+                                entity = body[ek]
+                                break
+                        if isinstance(entity, dict) and id_field in entity:
+                            create_id_sample = entity[id_field]
                             break
-                    if isinstance(entity, dict) and id_field in entity:
-                        create_id_sample = entity[id_field]
-                        break
-                except Exception:
-                    pass
+                    except Exception:
+                        pass
 
     def _endpoint_returns_entity_id(ep) -> bool:
-        """检查端点的响应样本是否包含 create 提取的 entity ID。"""
+        """检查端点的响应样本是否包含 create 提取的 entity ID。
+
+        值匹配原则：Stage 2 搜索时用的是本轮 marker，所以搜索响应中应包含本轮创建的 ID。
+        如果 create ID 不在响应中，说明该端点与 create 不是同类资源。
+        """
         if not create_id_sample:
             return True  # 无法校验时默认通过
         samples = response_samples.get(ep["pathname"], [])
@@ -1129,6 +1136,28 @@ def build_manifest(analysis: dict, capture_result: dict,
                 if verify_ep:
                     break
 
+    # 优先级 4：POST 列表查询兜底
+    # 某些模块的列表查询是 POST（如 POST /policies/list），上面只搜 GET 会漏掉
+    if verify_ep is None:
+        for ep in capture_result.get("all_endpoints", []):
+            if ep.get("method") == "POST":
+                pn = ep.get("pathname", "")
+                if not _is_list_query(pn, response_samples):
+                    continue
+                # Try to find in core_api_map candidates
+                for action, candidates in core_api_map.items():
+                    for c in candidates:
+                        if c.get("method") == ep.get("method") and c.get("pathname") == pn:
+                            full_ep = c
+                            if full_ep and _endpoint_returns_entity_id(full_ep):
+                                verify_ep = full_ep
+                                verify_source = f"POST 列表查询兜底 ({pn[:50]})"
+                                break
+                    if verify_ep:
+                        break
+                if verify_ep:
+                    break
+
     if verify_ep:
         verify_endpoints["query"] = {
             "ep": verify_ep,
@@ -1159,12 +1188,29 @@ def build_manifest(analysis: dict, capture_result: dict,
             return ""
 
         # 从捕获的搜索流量中获取 search_param 的实际值
+        # 优先检查 URL query params（GET 列表查询）
         query_params_samples = query_ep.get("query_params_samples", [])
         search_value = None
         for sample in query_params_samples:
             if isinstance(sample, dict) and search_param in sample:
                 search_value = sample[search_param]
                 break
+
+        # 再检查 POST body（POST 列表查询）
+        if not search_value:
+            bodies = query_ep.get("bodies", [])
+            for b in bodies:
+                parsed = None
+                if isinstance(b, str):
+                    try:
+                        parsed = json.loads(b)
+                    except (json.JSONDecodeError, ValueError):
+                        continue
+                elif isinstance(b, dict):
+                    parsed = b
+                if isinstance(parsed, dict) and search_param in parsed:
+                    search_value = parsed[search_param]
+                    break
 
         if not search_value:
             return ""
@@ -1781,6 +1827,17 @@ def build_manifest(analysis: dict, capture_result: dict,
     for action in crud_order:
         eps = core_apis.get(action, [])
         if not eps:
+            continue
+
+        # 跳过只读操作：它们应作为验证端点（verify_endpoints），不作为 CRUD 步骤
+        # 判断：所有端点都是 GET，或所有端点都是列表查询（POST 列表查询）
+        all_read_only = all(
+            ep.get("method") == "GET"
+            or _is_list_query(ep.get("pathname", ""), response_samples)
+            for ep in eps
+        )
+        if all_read_only:
+            LOG.info(f"  跳过只读操作 '{action}'（将作为验证端点使用）")
             continue
 
         # 分支：单 API vs 多 API 操作链

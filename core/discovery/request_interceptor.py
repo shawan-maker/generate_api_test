@@ -373,20 +373,14 @@ class RequestInterceptor:
                     })
                     LOG.info(f"  ⚠️ 命中权限门禁: {resp.request.method} {pn} "
                              f"(HTTP {status}, 检测来源: {detection_source})")
-                # 响应样本收集（每个路径最多保留 2 个样本）
-                # 修复: 前置 API 候选路径（/current-user, /policies 等）响应常超 3000 字符，
-                #       截断后 JSON 解析失败导致前置 API 无法识别。
-                #       对 GET 请求保留完整响应体（通常 <20KB），POST/PUT 仍截断。
+                # 响应样本收集（保留所有样本，不做数量限制）
+                # Stage 3 的值匹配需要完整样本集（CRUD 模块可能调用同一端点 5+ 次）
                 if pn not in self.samples:
                     self.samples[pn] = []
-                if len(self.samples[pn]) < 2:
-                    body_for_sample = b  # GET 请求保留完整，便于前置 API 字段提取
-                    if resp.request.method != "GET" and len(b) > 3000:
-                        body_for_sample = b[:3000]
-                    self.samples[pn].append({
-                        "status": resp.status,
-                        "body": body_for_sample
-                    })
+                self.samples[pn].append({
+                    "status": resp.status,
+                    "body": b
+                })
         except Exception as e:
             LOG.debug(f"处理响应样本失败: {e}")
 

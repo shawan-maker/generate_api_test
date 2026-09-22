@@ -16,15 +16,10 @@
       "error_field": "errorCode"
     },
     "list_keys": [
-      "list",
-      "records",
-      "rows",
-      "items"
+      "list"
     ],
     "total_keys": [
-      "total",
-      "totalCount",
-      "count"
+      "total"
     ],
     "id_field": "id"
   },
@@ -177,8 +172,8 @@
       }
     },
     {
-      "action": "query",
-      "label": "query",
+      "action": "post",
+      "label": "搜索验证（创建角色后）",
       "api": {
         "method": "POST",
         "pathname": "/estack/api/estack/draco/v1/policies/list",
@@ -189,6 +184,7 @@
         "pageNum": 1,
         "pageSize": 10,
         "tenantId": null,
+        "searchValue": null,
         "isIncludeDefaultPolicy": true
       },
       "body_field_roles": {
@@ -202,13 +198,20 @@
           "role": "context",
           "source": "create_body.tenantId"
         },
+        "searchValue": {
+          "role": "context",
+          "source": "create_body.policyName"
+        },
         "isIncludeDefaultPolicy": {
           "role": "static"
         }
       },
       "requires": [
         "id"
-      ]
+      ],
+      "assertion": "search_verify",
+      "search_param": "searchValue",
+      "search_param_source": "policyName"
     },
     {
       "action": "编辑",
@@ -251,6 +254,48 @@
       ]
     },
     {
+      "action": "post",
+      "label": "搜索验证（编辑后）",
+      "api": {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/policies/list",
+        "path_params": {},
+        "query_params": {}
+      },
+      "body_template": {
+        "pageNum": 1,
+        "pageSize": 10,
+        "tenantId": null,
+        "searchValue": null,
+        "isIncludeDefaultPolicy": true
+      },
+      "body_field_roles": {
+        "pageNum": {
+          "role": "static"
+        },
+        "pageSize": {
+          "role": "static"
+        },
+        "tenantId": {
+          "role": "context",
+          "source": "create_body.tenantId"
+        },
+        "searchValue": {
+          "role": "context",
+          "source": "create_body.policyName"
+        },
+        "isIncludeDefaultPolicy": {
+          "role": "static"
+        }
+      },
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_verify",
+      "search_param": "searchValue",
+      "search_param_source": "policyName"
+    },
+    {
       "action": "删除",
       "label": "删除",
       "api": {
@@ -283,6 +328,48 @@
       "requires": [
         "id"
       ]
+    },
+    {
+      "action": "post",
+      "label": "搜索验证（删除后）",
+      "api": {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/policies/list",
+        "path_params": {},
+        "query_params": {}
+      },
+      "body_template": {
+        "pageNum": 1,
+        "pageSize": 10,
+        "tenantId": null,
+        "searchValue": null,
+        "isIncludeDefaultPolicy": true
+      },
+      "body_field_roles": {
+        "pageNum": {
+          "role": "static"
+        },
+        "pageSize": {
+          "role": "static"
+        },
+        "tenantId": {
+          "role": "context",
+          "source": "create_body.tenantId"
+        },
+        "searchValue": {
+          "role": "context",
+          "source": "create_body.policyName"
+        },
+        "isIncludeDefaultPolicy": {
+          "role": "static"
+        }
+      },
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_not_found",
+      "search_param": "searchValue",
+      "search_param_source": "policyName"
     }
   ],
   "state_assertions": {

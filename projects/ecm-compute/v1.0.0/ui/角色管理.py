@@ -2,7 +2,7 @@
 """
 角色管理 - UI 自动化测试脚本
 
-生成时间: 2026-09-22 15:36:31
+生成时间: 2026-09-22 18:07:11
 生成工具: API AI Test Framework - Stage 2
 版本: v1.0.0
 
@@ -310,7 +310,10 @@ async def main():
         print(f"  📊 报告: {report_path}")
 
         if not (args.headless or CONFIG["headless"]):
-            input("\n按 Enter 关闭浏览器...")
+            try:
+                input("\n按 Enter 关闭浏览器...")
+            except (EOFError, KeyboardInterrupt):
+                pass  # 非交互模式自动跳过
         await browser.close()
 
 

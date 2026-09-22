@@ -302,7 +302,11 @@ class StepExecutor:
                     # 优先用 create_body（加了时间戳前缀的实际值），fallback 到 raw
                     search_value = create_body.get(search_source) or create_body_raw.get(search_source, "")
                     if search_value:
-                        url += f"&{search_source}={search_value}" if "?" in url else f"?{search_source}={search_value}"
+                        # POST 列表查询：搜索参数注入到 body（而非 URL）
+                        if method == "POST" and isinstance(body, dict):
+                            body[search_source] = search_value
+                        else:
+                            url += f"&{search_source}={search_value}" if "?" in url else f"?{search_source}={search_value}"
 
             resp = self._send_request(method, url, body)
 
