@@ -99,3 +99,7 @@ projects/*/scripts/*/debug_*.py
 # ============ HTML 报告（防止 stray） ============
 **/*_report_*.html
 **/*_ui_report_*.html
+
+# ============ 临时截图目录 ============
+tests/temp_screenshots*/
+**/debug_screenshots*/
