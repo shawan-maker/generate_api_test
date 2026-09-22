@@ -741,8 +741,6 @@ async def main():
                 run_stage5=run_stage5
             )
 
-            if not args.headless:
-                LOG.info("\n⚠️ 浏览器保持打开，手动关闭后按 Ctrl+C 退出。")
         return
 
     # Stage 5 独立运行（无需 --url，仅需 --module）
@@ -917,8 +915,6 @@ async def main():
             capture_result = _load_capture_result(project_dir, args.module)
             stage2_valid = bool(capture_result and capture_result.get("core_api_map"))
 
-        LOG.info("\n⚠️ 浏览器保持打开供检查确认。")
-
         # Stage 3+4（可以离线执行）
         manifest = None
         script_path = None
@@ -970,9 +966,6 @@ async def main():
                     module_name=args.module,
                     version=args.version or ver_mod.resolve_version(project_dir)
                 )
-
-        if not args.headless:
-            LOG.info("\n⚠️ 浏览器保持打开，手动关闭后按 Ctrl+C 退出。")
 
 
 if __name__ == "__main__":

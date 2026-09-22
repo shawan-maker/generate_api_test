@@ -1,4 +1,27 @@
-{
+"""
+角色管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
+生成时间: 2026-09-22 15:38:23
+目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/role
+
+执行流程:
+  1. 创建角色
+  2. query
+  3. 编辑
+  4. 删除
+
+状态断言:
+  - 删除后数据不应出现
+"""
+
+import sys, json
+from pathlib import Path
+
+# 找到同目录的 lib/（脚本独立运行时使用）
+_lib = Path(__file__).resolve().parent / "lib"
+sys.path.insert(0, str(_lib.parent))
+from lib.runtime.test_runtime import TestRunner
+
+MANIFEST = {
   "manifest_version": "1.2",
   "module": {
     "name": "角色管理",
@@ -47,17 +70,9 @@
     "token_key": "estackToken",
     "token_storage": "localStorage",
     "cookie_token_key": "accessToken",
-    "captcha": {
-      "auth_button_text": "点击完成认证",
-      "login_button_text": "登录"
-    },
     "credentials_env": {
       "username": "APP_USER",
       "password": "APP_PASS"
-    },
-    "credentials_default": {
-      "username": "estack-yy",
-      "password": "R@9eDuck$!mpleM00n"
     }
   },
   "steps": [
@@ -71,10 +86,10 @@
         "query_params": {}
       },
       "body_template": {
-        "tenantId": null,
+        "tenantId": None,
         "policyName": "${gen_test_name(\"policyName\")}",
         "description": "${gen_mutable_value()}",
-        "policyCategory": null,
+        "policyCategory": None,
         "menuIdList": [
           "all-resource",
           "a92d9efd05da4b1db5e3ee2f630e82d7",
@@ -188,8 +203,8 @@
       "body_template": {
         "pageNum": 1,
         "pageSize": 10,
-        "tenantId": null,
-        "isIncludeDefaultPolicy": true
+        "tenantId": None,
+        "isIncludeDefaultPolicy": True
       },
       "body_field_roles": {
         "pageNum": {
@@ -225,10 +240,10 @@
         "query_params": {}
       },
       "body_template": {
-        "id": null,
+        "id": None,
         "policyName": "${gen_test_name(\"policyName\")}",
         "description": "${gen_mutable_value()}",
-        "tenantId": null
+        "tenantId": None
       },
       "body_field_roles": {
         "id": {
@@ -267,8 +282,8 @@
         }
       },
       "body_template": {
-        "roleId": null,
-        "tenantId": null
+        "roleId": None,
+        "tenantId": None
       },
       "body_field_roles": {
         "roleId": {
@@ -286,7 +301,7 @@
     }
   ],
   "state_assertions": {
-    "state_field": null,
+    "state_field": None,
     "values_by_crud": {},
     "after_delete": "NOT_EXIST"
   },
@@ -347,3 +362,23 @@
     "current_user"
   ]
 }
+
+# --- 全局前置 API 支持 ---
+_shared_ctx_file = Path(__file__).resolve().parent / ".shared_context.json"
+SHARED_CONTEXT = {}
+if _shared_ctx_file.exists():
+    try:
+        from lib.runtime.global_pre_apis import GlobalPreApiExecutor
+        SHARED_CONTEXT = GlobalPreApiExecutor.load_context(_shared_ctx_file)
+        if SHARED_CONTEXT:
+            print("  ✅ 检测到共享上下文")
+    except ImportError:
+        pass
+
+if __name__ == "__main__":
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    runner = TestRunner(MANIFEST, shared_context=SHARED_CONTEXT)
+    steps = sys.argv[1:] if len(sys.argv) > 1 else None
+    runner.run(steps_filter=steps)

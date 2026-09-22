@@ -394,7 +394,7 @@ async def _cleanup_dialogs(page):
     # confirm_dialog 会钉住通知元素以保持截图时可见，
     # 清理前需要先释放，让通知可以正常消失
     try:
-        await page.evaluate("() => { if (window.__unpin_notifications) window.__unpin_notifications(); }")
+        await page.evaluate("() => {{ if (window.__unpin_notifications) window.__unpin_notifications(); }}")
     except Exception:
         pass
 

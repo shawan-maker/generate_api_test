@@ -1,38 +1,51 @@
 {
   "toolbar_buttons": [
     {
+      "text": "角色管理",
+      "tag": "SPAN",
+      "className": "el-breadcrumb__inner",
+      "rect": "90x20",
+      "location": "toolbar",
+      "source": "main",
+      "action": "角色管理"
+    },
+    {
       "text": "创建角色",
       "tag": "BUTTON",
       "className": "el-button el-button--primary el-button--small",
-      "rect": "87x31",
+      "rect": "86x31",
       "location": "toolbar",
-      "source": "main"
+      "source": "main",
+      "action": "创建角色"
     },
     {
       "text": "GO",
       "tag": "BUTTON",
       "className": "el-button pagination-jumper el-button--default el-button--mi",
-      "rect": "51x28",
+      "rect": "50x27",
       "location": "toolbar",
-      "source": "main"
+      "source": "main",
+      "action": "GO"
     }
   ],
   "row_actions": [
     {
       "text": "编辑",
       "tag": "BUTTON",
-      "className": "el-button el-tooltip item el-button--text el-button--small c",
-      "rect": "26x14",
+      "className": "el-button el-tooltip item el-button--text el-button--small",
+      "rect": "25x13",
       "location": "row_action",
-      "source": "main"
+      "source": "main",
+      "action": "编辑"
     },
     {
       "text": "删除",
       "tag": "BUTTON",
-      "className": "el-button el-tooltip item el-button--text el-button--small c",
-      "rect": "26x14",
+      "className": "el-button el-tooltip item el-button--text el-button--small",
+      "rect": "25x13",
       "location": "row_action",
-      "source": "main"
+      "source": "main",
+      "action": "删除"
     }
   ],
   "dialog_buttons": [],
@@ -41,6 +54,22 @@
       "text": "账户管理  账户信息  修改密码  AccessKey设置",
       "tag": "LI",
       "className": "el-submenu",
+      "rect": "179x40",
+      "location": "menu",
+      "source": "main"
+    },
+    {
+      "text": "账户管理",
+      "tag": "DIV",
+      "className": "el-submenu__title",
+      "rect": "179x40",
+      "location": "menu",
+      "source": "main"
+    },
+    {
+      "text": "访问控制",
+      "tag": "DIV",
+      "className": "el-submenu__title",
       "rect": "179x40",
       "location": "menu",
       "source": "main"
@@ -110,374 +139,77 @@
       "source": "main"
     },
     {
+      "text": "项目管理",
+      "tag": "DIV",
+      "className": "el-submenu__title",
+      "rect": "179x40",
+      "location": "menu",
+      "source": "main"
+    },
+    {
       "text": "日志管理  日志查询  日志设置",
       "tag": "LI",
       "className": "el-submenu",
       "rect": "179x40",
       "location": "menu",
       "source": "main"
+    },
+    {
+      "text": "日志管理",
+      "tag": "DIV",
+      "className": "el-submenu__title",
+      "rect": "179x40",
+      "location": "menu",
+      "source": "main"
     }
   ],
   "dropdowns": [],
-  "form_fields": [
-    {
-      "label": "角色名称",
-      "placeholder": "请输入角色名称",
-      "type": "text",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "角色范畴",
-      "placeholder": "",
-      "type": "radio",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "角色范畴",
-      "placeholder": "",
-      "type": "radio",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "描述",
-      "placeholder": "请输入描述",
-      "type": "textarea",
-      "required": false,
-      "tag": "TEXTAREA"
-    },
-    {
-      "label": "配置模式",
-      "placeholder": "",
-      "type": "radio",
-      "required": false,
-      "tag": "INPUT"
-    },
-    {
-      "label": "配置模式",
-      "placeholder": "",
-      "type": "radio",
-      "required": false,
-      "tag": "INPUT"
-    },
-    {
-      "label": "效果",
-      "placeholder": "",
-      "type": "radio",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "产品/服务",
-      "placeholder": "请选择",
-      "type": "text",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "操作",
-      "placeholder": "",
-      "type": "radio",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "操作",
-      "placeholder": "",
-      "type": "radio",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "操作",
-      "placeholder": "请输入操作名称进行模糊搜索",
-      "type": "text",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "请输入菜单名称进行模糊搜索",
-      "type": "text",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    },
-    {
-      "label": "关联菜单",
-      "placeholder": "",
-      "type": "checkbox",
-      "required": true,
-      "tag": "INPUT"
-    }
-  ],
+  "form_fields": [],
   "summary": {
-    "total_buttons": 14,
+    "total_buttons": 19,
     "has_create": true,
     "has_delete": true,
-    "has_form": true,
+    "has_form": false,
     "categories": {
-      "create": 1,
-      "unknown": 1,
-      "update": 1,
-      "delete": 1
+      "角色管理": 1,
+      "创建角色": 1,
+      "GO": 1,
+      "编辑": 1,
+      "删除": 1
     }
+  },
+  "search_inputs": [
+    {
+      "locator": "input[placeholder=\"按角色名称搜索\"]",
+      "placeholder": "按角色名称搜索",
+      "has_adjacent_btn": true,
+      "score": 22,
+      "source": "css"
+    },
+    {
+      "locator": "input[placeholder=\"请输入部门名称\"]",
+      "placeholder": "请输入部门名称",
+      "has_adjacent_btn": false,
+      "score": 12,
+      "source": "css"
+    }
+  ],
+  "button_labels": {
+    "角色管理": "角色管理",
+    "创建角色": "创建角色",
+    "GO": "GO",
+    "编辑": "编辑",
+    "删除": "删除"
   },
   "page_structure": {
     "hasFixedLeft": true,
     "hasFixedRight": true,
-    "mainBodyRows": 9,
-    "fixedRightRows": 9,
-    "fixedLeftRows": 9,
-    "columnCount": 7,
+    "mainBodyRows": 10,
+    "fixedRightRows": 10,
+    "fixedLeftRows": 10,
+    "columnCount": 8,
     "operationColumnIndex": 6,
-    "operationColumnLocation": "last",
+    "operationColumnLocation": "middle",
     "tableWrappers": [
       {
         "cls": "el-table__header-wrapper",
@@ -493,7 +225,7 @@
       },
       {
         "cls": "el-table__body-wrapper is-scrolling-none",
-        "rowCount": 9
+        "rowCount": 10
       },
       {
         "cls": "el-table__fixed-header-wrapper",
@@ -509,7 +241,7 @@
       },
       {
         "cls": "el-table__fixed-body-wrapper",
-        "rowCount": 9
+        "rowCount": 10
       },
       {
         "cls": "el-table__fixed-header-wrapper",
@@ -520,5 +252,304 @@
         "rowCount": 0
       }
     ]
+  },
+  "framework": "element-ui",
+  "validated_operations": {
+    "创建角色": {
+      "success": true,
+      "fill_data": {
+        "角色名称": "AT_test_062427",
+        "角色范畴": "AT_test_062427",
+        "描述": "auto_test_062427",
+        "配置模式": "AT_test_062427",
+        "策略内容": "AT_test_062427",
+        "效果": "AT_test_062427",
+        "产品/服务": "AT_test_062427",
+        "操作": "AT_test_062427",
+        "关联菜单": "AT_test_062427"
+      },
+      "fill_rules": {
+        "角色名称": {
+          "rule": "name_pattern",
+          "params": {
+            "prefix": "test"
+          }
+        },
+        "角色范畴": {
+          "rule": "name_pattern",
+          "params": {
+            "prefix": "test"
+          }
+        },
+        "描述": {
+          "rule": "description_pattern",
+          "params": {
+            "prefix": "auto"
+          }
+        },
+        "配置模式": {
+          "rule": "name_pattern",
+          "params": {
+            "prefix": "test"
+          }
+        },
+        "策略内容": {
+          "rule": "name_pattern",
+          "params": {
+            "prefix": "test"
+          }
+        },
+        "效果": {
+          "rule": "name_pattern",
+          "params": {
+            "prefix": "test"
+          }
+        },
+        "产品/服务": {
+          "rule": "name_pattern",
+          "params": {
+            "prefix": "test"
+          }
+        },
+        "操作": {
+          "rule": "name_pattern",
+          "params": {
+            "prefix": "test"
+          }
+        },
+        "关联菜单": {
+          "rule": "name_pattern",
+          "params": {
+            "prefix": "test"
+          }
+        }
+      },
+      "form_fields": [
+        {
+          "label": "角色名称",
+          "type": "input",
+          "kb_category": "input-generic",
+          "selector": "#app > div > section > section > main > div > div > div:nth-of-type(2) > div > form > div:nth-of-type(2) > div > div:nth-of-type(1) > input",
+          "inputType": "text",
+          "required": true
+        },
+        {
+          "label": "角色范畴",
+          "type": "radio",
+          "kb_category": "radio",
+          "selector": ".el-form-item:nth-child(4) .el-radio-group",
+          "inputType": "text",
+          "required": true,
+          "firstOptionText": "组织架构"
+        },
+        {
+          "label": "描述",
+          "type": "textarea",
+          "kb_category": "textarea-generic",
+          "selector": "#app > div > section > section > main > div > div > div:nth-of-type(2) > div > form > div:nth-of-type(4) > div > div > textarea:nth-of-type(1)",
+          "inputType": "text",
+          "required": false
+        },
+        {
+          "label": "配置模式",
+          "type": "radio",
+          "kb_category": "radio",
+          "selector": ".el-form-item:nth-child(7) .el-radio-group",
+          "inputType": "text",
+          "required": false,
+          "firstOptionText": "可视化配置"
+        },
+        {
+          "label": "策略内容",
+          "type": "select",
+          "kb_category": "el-select",
+          "selector": ".el-form-item:nth-child(8) .el-select",
+          "inputType": "text",
+          "required": true
+        },
+        {
+          "label": "效果",
+          "type": "radio",
+          "kb_category": "radio",
+          "selector": ".el-form-item:nth-child(1) .el-radio-group",
+          "inputType": "text",
+          "required": true,
+          "firstOptionText": "允许"
+        },
+        {
+          "label": "产品/服务",
+          "type": "select",
+          "kb_category": "el-select",
+          "selector": ".el-form-item:nth-child(2) .el-select",
+          "inputType": "text",
+          "required": true
+        },
+        {
+          "label": "操作",
+          "type": "radio",
+          "kb_category": "radio",
+          "selector": ".el-form-item:nth-child(3) .el-radio-group",
+          "inputType": "text",
+          "required": true,
+          "firstOptionText": "全读取"
+        },
+        {
+          "label": "关联菜单",
+          "type": "checkbox",
+          "kb_category": "form-checkbox",
+          "selector": ".el-form-item:nth-child(10) .el-checkbox",
+          "inputType": "text",
+          "required": true
+        }
+      ],
+      "marker": "test",
+      "selectors": {
+        "trigger": "创建角色",
+        "submit": "确定"
+      },
+      "trigger_locator": "button:has-text(\"创建角色\")",
+      "trigger_locator_verified": "button:has-text(\"创建角色\")",
+      "trigger_text": "创建角色",
+      "submit_locator": "button:has-text(\"确定\")",
+      "submit_locator_verified": "button:has-text(\"确定\")",
+      "submit_text": "确定",
+      "submit_click_strategy": "js",
+      "dialog_detected": false,
+      "interaction_mode": "page-nav",
+      "dialog_locator": ".el-dialog__wrapper",
+      "success_detected": true,
+      "success_locator": ".el-message--success",
+      "multi_step_field_details": [
+        {
+          "label": "策略内容",
+          "kb_category": "el-select",
+          "selector": ".el-form-item:nth-child(8) .el-select",
+          "fill_rule": {},
+          "is_editable": true,
+          "option_text": "WORKFLOW(工作流)"
+        },
+        {
+          "label": "产品/服务",
+          "kb_category": "el-select",
+          "selector": ".el-form-item:nth-child(2) .el-select",
+          "fill_rule": {},
+          "is_editable": false,
+          "option_text": "WORKFLOW(工作流)"
+        },
+        {
+          "label": "关联菜单",
+          "kb_category": "form-checkbox",
+          "selector": ".el-form-item:nth-child(10) .el-checkbox",
+          "fill_rule": {},
+          "is_editable": false,
+          "option_text": ""
+        }
+      ],
+      "radio_field_details": [
+        {
+          "label": "角色范畴",
+          "kb_category": "radio",
+          "option_locator": ".el-form-item:nth-child(4) .el-radio-group",
+          "option_text": "",
+          "fill_rule": {}
+        },
+        {
+          "label": "配置模式",
+          "kb_category": "radio",
+          "option_locator": ".el-form-item:nth-child(7) .el-radio-group",
+          "option_text": "",
+          "fill_rule": {}
+        },
+        {
+          "label": "效果",
+          "kb_category": "radio",
+          "option_locator": ".el-form-item:nth-child(1) .el-radio-group",
+          "option_text": "",
+          "fill_rule": {}
+        },
+        {
+          "label": "操作",
+          "kb_category": "radio",
+          "option_locator": ".el-form-item:nth-child(3) .el-radio-group",
+          "option_text": "",
+          "fill_rule": {}
+        }
+      ]
+    },
+    "query": {
+      "success": true,
+      "selectors": {
+        "trigger": "搜索输入:按角色名称搜索"
+      },
+      "trigger_locator_verified": "input[placeholder=\"按角色名称搜索\"]",
+      "search_input": {
+        "locator": "input[placeholder=\"按角色名称搜索\"]",
+        "placeholder": "按角色名称搜索"
+      },
+      "trigger_mode": "button",
+      "has_table": true
+    },
+    "角色管理": {
+      "success": true,
+      "nav_info": {
+        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/role",
+        "depth": 0,
+        "page_title": "eStack Enterprise",
+        "has_form": false,
+        "form_fields": [],
+        "fill_data": {},
+        "submit_result": {
+          "success": true,
+          "button_text": "",
+          "action": "browse",
+          "note": "页面跳转成功，无可填写字段（展示页面）"
+        },
+        "error_type": "",
+        "error_text": ""
+      },
+      "trigger_text": "角色管理",
+      "selectors": {
+        "trigger": "角色管理"
+      },
+      "fill_data": {},
+      "submit_result": {
+        "success": true,
+        "button_text": "",
+        "action": "browse",
+        "note": "页面跳转成功，无可填写字段（展示页面）"
+      }
+    },
+    "编辑": {
+      "success": true,
+      "selectors": {
+        "trigger": "编辑",
+        "row_selector": "编辑",
+        "confirm": "确 定"
+      },
+      "confirmed": "确 定",
+      "trigger_text": "编辑",
+      "post_confirm_state": {
+        "dialog_remains": false,
+        "has_form_in_dialog": false
+      },
+      "trigger_locator_verified": "button:has-text('编辑')",
+      "confirm_button_text_verified": "确 定"
+    },
+    "删除": {
+      "success": true,
+      "selectors": {
+        "trigger": "删除",
+        "row_selector": "删除",
+        "confirm": "确定"
+      },
+      "confirmed": "确定",
+      "trigger_text": "删除",
+      "post_confirm_state": {
+        "dialog_remains": false,
+        "has_form_in_dialog": false
+      },
+      "trigger_locator_verified": "button:has-text('删除')",
+      "confirm_button_text_verified": "确定"
+    }
   }
 }

@@ -5363,8 +5363,9 @@ def _build_create_steps(op_data: dict) -> list:
                 "fill_rule": rule
             }
 
-            # 标记 marker 字段
-            if label in ("名称", "账号", "name", "username", "userName"):
+            # 标记 marker 字段：label 包含关键字 + 仅限文本输入类型（排除 select/checkbox/radio）
+            _marker_kw = ("名称", "账号", "name", "username")
+            if field_type in ("input", "textarea") and any(kw in label.lower() for kw in _marker_kw):
                 field_info["is_marker"] = True
 
             fields_info.append(field_info)
@@ -5609,8 +5610,9 @@ def _build_update_steps(op_data: dict) -> list:
                 "fill_rule": rule
             }
 
-            # 标记 marker 字段
-            if label in ("名称", "账号", "name", "username", "userName"):
+            # 标记 marker 字段：label 包含关键字 + 仅限文本输入类型（排除 select/checkbox/radio）
+            _marker_kw = ("名称", "账号", "name", "username")
+            if field_type in ("input", "textarea") and any(kw in label.lower() for kw in _marker_kw):
                 field_info["is_marker"] = True
 
             fields_info.append(field_info)

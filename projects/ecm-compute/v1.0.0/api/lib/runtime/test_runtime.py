@@ -1440,6 +1440,16 @@ class TestRunner:
             elif role == "generate":
                 # generate 角色：解析 ${...} 表达式
                 create_body[key] = _resolve_expression(value, self._helpers)
+            elif role == "context":
+                # context 角色：从 state 中解析实际值（前置 API 已执行完毕）
+                # 这样后续步骤通过 create_body.xxx 引用时能拿到正确的值
+                source = role_config.get("source", f"context.{key}")
+                if "." in source:
+                    parts = source.split(".", 1)
+                    resolved = self.state.get(parts[1], value)
+                else:
+                    resolved = self.state.get(source, value)
+                create_body[key] = resolved
             else:
                 create_body[key] = value
 

@@ -1,8 +1,3 @@
----
-name: api-ai-test
-description: "运行 API 自动化发现主管线（Stage 1-5）：UI 探测、API 捕获、逻辑分析、脚本生成、导出"
----
-
 # 主管线操作指南
 
 ## 用途

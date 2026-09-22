@@ -1,0 +1,344 @@
+{
+  "info": {
+    "_postman_id": "ff39a56d-0fd4-4391-a0a7-a26d18620441",
+    "name": "角色管理 API 测试",
+    "description": "由 module_discovery Stage 5 自动导出",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://10.151.61.248",
+      "type": "string"
+    },
+    {
+      "key": "Estack-Language",
+      "value": "zh-CN",
+      "type": "string"
+    },
+    {
+      "key": "entity_0_id",
+      "value": "",
+      "type": "string",
+      "description": "由 前置 API: display-by-role 提取"
+    },
+    {
+      "key": "entity_policyList_0_policyCategory",
+      "value": "",
+      "type": "string",
+      "description": "由 获取当前用户信息 提取"
+    },
+    {
+      "key": "tenantId",
+      "value": "",
+      "type": "string",
+      "description": "由 获取当前用户信息 提取"
+    },
+    {
+      "key": "adminId",
+      "value": "",
+      "type": "string",
+      "description": "由 获取当前用户信息 提取"
+    }
+  ],
+  "item": [
+    {
+      "name": "00_前置操作",
+      "item": [
+        {
+          "name": "unknown",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Status OK', function() {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "var entity_0_id = jsonData.entity[0].id;",
+                  "if (entity_0_id !== undefined) pm.environment.set('entity_0_id', entity_0_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "unknown",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Status OK', function() {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "var entity_policyList_0_policyCategory = jsonData.entity.policyList[0].policyCategory;",
+                  "if (entity_policyList_0_policyCategory !== undefined) pm.environment.set('entity_policyList_0_policyCategory', entity_policyList_0_policyCategory);",
+                  "var tenantId = jsonData.entity.tenantId;",
+                  "if (tenantId !== undefined) pm.environment.set('tenantId', tenantId);",
+                  "var adminId = jsonData.entity.id;",
+                  "if (adminId !== undefined) pm.environment.set('adminId', adminId);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01_业务操作",
+      "item": [
+        {
+          "name": "01_创建角色",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/policies"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"{{entity_0_id}}\",\n  \"policyName\": \"{{name_policyName}}\",\n  \"description\": \"{{mutable_description}}\",\n  \"policyCategory\": \"{{entity_policyList_0_policyCategory}}\",\n  \"menuIdList\": [\n    \"all-resource\",\n    \"a92d9efd05da4b1db5e3ee2f630e82d7\",\n    \"2dbfe534b60d46189c727ab9a1613c31\",\n    \"ccc0450fd0174f66b55f49c3632a4992\",\n    \"fae3d97810c94a1482b227ecd26c3245\",\n    \"ed76f32fd324468ea41b3648a8820df7\",\n    \"b89a5e55185c4221948f400650c0c295\",\n    \"573d7fa496684d4a9f5971dbe2caad5d\",\n    \"b2dc70c7f80849d89c7826345977a4a6\",\n    \"6e293f4a1f664208ab4b301c58b9fb44\",\n    \"8363eea87dd34a7ab05835d787dc466d\",\n    \"d9c6fabfa3dd42e794c79b660634c90b\",\n    \"83cb6834fa444d738e03a26ff1122119\",\n    \"2c72d9a9f5c4446c8a006d0e722d1f58\",\n    \"36c325679bdf4997a10d728f76388a30\",\n    \"b15cfad201554aabadbd250e364b9721\",\n    \"ac7d649c721a4314a67bad03848a42ca\",\n    \"3312b058fa894996960ef3ad951dd1da\",\n    \"f6dad81fdd9a4cb28be4fcac4285d656\",\n    \"a1ef3ab0e0704367aa8548ae1dbaa2e7\",\n    \"ce71e113b1ae484dae21f93d35c0fc96\",\n    \"00fd4034e21f4c9fb68e42932d169a65\",\n    \"62a4d9110008467180f9bb61eb8d5b3a\",\n    \"647d881e603341d0b03783551a25a675\",\n    \"d58a037291c14257a4d9a8cb97b70df0\",\n    \"5188297991d946f78bba1df27f509c8e\",\n    \"6191622cfa2241d0aaea991be304d321\",\n    \"b921a6c5018146f180bb6ad63425aa5f\",\n    \"43c6f09a2750447cb23f4c57e02f8ab5\",\n    \"d3d84a0fb13f4ef8b6018958f17d9038\",\n    \"775d69a08f60425a9c9162f5b279fb65\",\n    \"7817d9ba9a594601937f44486fa1638b\",\n    \"87b95f407d8d40a9b0f8f77a259f07a9\",\n    \"657309ff5fc8481d8d31fb5ad6ae4aa0\",\n    \"d5d72305d6f745abab87484896522756\",\n    \"91c45f372ae34f36905a26706c1adea6\",\n    \"aa7fbebe5512478189ca65ddc0e52188\",\n    \"da036e06d69a435e8a40191af84f6682\",\n    \"4fd4b119c6bf46afa2994b879218270b\",\n    \"3f921bc4b84f4774a76475e7432890db\",\n    \"3375fec9a10643769b9e830df79a4874\",\n    \"8d46f545e5e145a38ffcdda832bb69aa\",\n    \"4ad620b66f6d498ead44b40c3ee98b1f\",\n    \"365acbab232e44e1a88f3df622f0427f\",\n    \"8a60979c2a1d4390ab0d017ecb6b4334\",\n    \"60597817b8e34d4595a940e19a632220\",\n    \"c07b73c8f2f24ec783c64a6ed5395fde\",\n    \"c7ef52f7cedf4fa4b6ab837377ca4fec\",\n    \"178e64c3c36d4470bf76c8c82d40a40e\",\n    \"3b8d12c96b0d4b4daf1bab3a8371bc48\",\n    \"07845ff1e0454cfa91c232778172ee50\",\n    \"b9ba6e31bfc8499d8376d8e3d89e5d1d\",\n    \"c5f728a9616d4dcdaac9845e00e4da7a\",\n    \"e367f36085d34d29bd040c552cb6a5b6\",\n    \"257c5dc4bc824e1c9183887485ab4b0a\",\n    \"e3c54fc65514497784a6f7352f5f46f0\",\n    \"b3f4f356da4e45cbb00817e996d47779\",\n    \"fd74c14f8c924fc39f52f4df376f71ec\",\n    \"dee3f9266a264706b232ab4c321bf695\",\n    \"91cc9b68c0394312903a269f99a19019\",\n    \"4e15bf6d440b4462b1dd3ef801d371dc\",\n    \"d4d3df4c79664188a35640efa408e986\",\n    \"60670423261744f9a68009944fa26861\",\n    \"9f1b1143d6d240fd8dcde58f3b72e6ce\",\n    \"e9be7a734de6453dac935fce138bb971\",\n    \"a72e01f8b8c4419495fca22be3fb25ae\",\n    \"76cd8d79ff2f4e9db550c2cc544e30c0\"\n  ],\n  \"policyDocument\": \"{\\\"version\\\":\\\"v1\\\",\\\"statement\\\":[{\\\"effect\\\":\\\"allow\\\",\\\"action\\\":[\\\"WORKFLOW:*\\\"],\\\"resource\\\":[\\\"*\\\"]}]}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('name_policyName', resolveExpr('${gen_test_name(\"policyName\")}'));",
+                  "pm.variables.set('mutable_description', resolveExpr('${gen_mutable_value()}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Status OK', function() {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "var createdId = jsonData.entity.id;",
+                  "if (createdId) pm.environment.set('id', createdId);",
+                  "",
+                  "var nameVal = jsonData.entity && jsonData.entity.policyName;",
+                  "if (nameVal) pm.environment.set('name_policyName', nameVal);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02_query",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/policies/list"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pageNum\": 1,\n  \"pageSize\": 10,\n  \"tenantId\": \"{{tenantId}}\",\n  \"isIncludeDefaultPolicy\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "03_编辑",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/policies/{{id}}"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{id}}\",\n  \"policyName\": \"{{name_policyName}}\",\n  \"description\": \"{{mutable_description}}\",\n  \"tenantId\": \"{{tenantId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('name_policyName', resolveExpr('${gen_test_name(\"policyName\")}'));",
+                  "pm.variables.set('mutable_description', resolveExpr('${gen_mutable_value()}'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04_删除",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/policies/{{id}}"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roleId\": \"{{id}}\",\n  \"tenantId\": \"{{tenantId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// helpers.js — 由 module_discovery Stage 5 自动导出",
+          "// Postman Pre-request Script 版本的测试数据生成函数",
+          "",
+          "function _ts6() {",
+          "    return Date.now().toString(16).slice(-6);",
+          "}",
+          "",
+          "function gen_test_name() {",
+          "    return 'AT_' + _ts6();",
+          "}",
+          "",
+          "function gen_mutable_value() {",
+          "    return 'auto_modified_' + _ts6();",
+          "}",
+          "",
+          "function gen_email() {",
+          "    return 'at_' + _ts6() + '@test.com';",
+          "}",
+          "",
+          "function gen_phone() {",
+          "    return '138' + Math.floor(Math.random() * 100000000);",
+          "}",
+          "",
+          "function gen_text() {",
+          "    return 'auto_' + _ts6();",
+          "}",
+          "",
+          "// 表达式解析: ${function(args)} → 调用对应函数",
+          "var _fnMap = {",
+          "    gen_test_name: gen_test_name,",
+          "    gen_mutable_value: gen_mutable_value,",
+          "    gen_email: gen_email,",
+          "    gen_phone: gen_phone,",
+          "    gen_text: gen_text",
+          "};",
+          "",
+          "function resolveExpr(expr) {",
+          "    var m = expr.match(/^\\$\\{(\\w+)\\([^)]*\\)\\}$/);",
+          "    if (!m) return expr;",
+          "    var fn = _fnMap[m[1]];",
+          "    return fn ? fn() : expr;",
+          "}"
+        ]
+      }
+    }
+  ]
+}
