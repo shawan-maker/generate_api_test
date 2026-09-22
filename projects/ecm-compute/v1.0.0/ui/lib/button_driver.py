@@ -841,7 +841,8 @@ async def click_dropdown_option(page: Page, option_text: str, ui_framework: str 
         return {"clicked": False, "actual_text": ""}
 
 
-async def confirm_dialog(page: Page, confirm: bool = True, ui_framework: str = "element-ui") -> str:
+async def confirm_dialog(page: Page, confirm: bool = True, ui_framework: str = "element-ui",
+                         screenshot_holder: dict = None) -> str:
     """处理确认弹窗（Element UI MessageBox / Popconfirm / 通用模态框）。
 
     支持三种确认 UI：
@@ -1013,8 +1014,29 @@ async def confirm_dialog(page: Page, confirm: bool = True, ui_framework: str = "
                     await button.evaluate("el => el.click()")
                 else:
                     raise
+
             await wait_for_loading_complete(page)
-            # 返回原始按钮文本（保留空格），供 build_playbook 生成精确 locator
+            # 截图放在 wait 后面：此时通知已被 Observer 钉住，仍然可见
+            if screenshot_holder is not None:
+                try:
+                    # 等待通知出现（最多 2s）
+                    await page.wait_for_timeout(500)  # 给 API 响应时间
+                    try:
+                        await page.wait_for_selector('.el-notification, .el-message', state='visible', timeout=1500)
+                    except:
+                        pass  # 某些操作不弹通知
+
+                    # 诊断：检查钉住的通知状态
+                    pinned_count = await page.evaluate("() => (window.__pinned_notifications || []).length")
+                    LOG.warning(f"[诊断] 截图前钉住的通知数: {pinned_count}")
+
+                    import base64
+                    raw = await page.screenshot(type="png")
+                    screenshot_holder["success_screenshot"] = base64.b64encode(raw).decode("ascii")
+                    LOG.warning(f"[诊断] 截图已保存，大小: {len(raw)} bytes")
+                except Exception as e:
+                    LOG.warning(f"confirm_dialog 截图失败: {e}")
+
             return button_text
 
         # 兜底：尝试常见确认按钮文本

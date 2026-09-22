@@ -62,7 +62,7 @@ def _transform_imports(content: str) -> str:
     """将 replay/ 子包的父级导入转换为 flat 包导入。
 
     转换规则:
-      from .. import const       → from . import const
+      from . import const       → from . import const
       from ..kb_loader import X  → from .kb_loader import X
       from . import X            → 不变（兄弟引用）
       from .button_driver import → 不变（兄弟引用）
@@ -71,7 +71,7 @@ def _transform_imports(content: str) -> str:
     result = []
     for line in lines:
         stripped = line.lstrip()
-        # from .. import const → from . import const
+        # from . import const → from . import const
         if stripped.startswith("from .. import "):
             line = line.replace("from .. import ", "from . import ", 1)
         # from ..kb_loader import → from .kb_loader import

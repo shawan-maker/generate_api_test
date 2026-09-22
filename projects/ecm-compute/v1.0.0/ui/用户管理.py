@@ -74,6 +74,12 @@ async def require_cookie_auth(context, page):
 
 async def _cleanup_dialogs(page):
     """关闭操作间可能残留的对话框/弹窗，并等待表格恢复就绪。"""
+    # --- Phase 0: 释放钉住的通知 ---
+    try:
+        await page.evaluate("() => { if (window.__unpin_notifications) window.__unpin_notifications(); }")
+    except Exception:
+        pass
+
     # --- Phase 1: 关闭残留弹窗 ---
     try:
         await page.keyboard.press("Escape")

@@ -53,41 +53,126 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
     """
     result = {"success": True}
 
-    # 注入 MutationObserver 捕获瞬态消息（el-message 等 3 秒后自动消失）
-    # 后续 assert_success 可读取 __captured_messages 进行断言
+    # 注入 MutationObserver 捕获并钉住瞬态消息（el-message 等 3 秒后自动消失）
+    # 检测到通知时：强制可见 + 拦截 remove + 监听属性变更
+    # 截图后通过 window.__unpin_notifications() 释放，让通知正常消失
     try:
         await page.evaluate("""() => {
             if (window.__msg_capture_installed) return;
             window.__msg_capture_installed = true;
             window.__captured_messages = [];
+            window.__pinned_notifications = [];
 
             const observer = new MutationObserver((mutations) => {
                 for (const mutation of mutations) {
                     for (const node of mutation.addedNodes) {
                         if (node.nodeType !== 1) continue;
-                        const text = (node.textContent || '').trim();
-                        if (!text) continue;
+                        if (!node.classList) continue;
 
-                        // 检查是否是 Element UI Message / Notification
-                        const isMessage = node.classList && (
+                        const isMessage = (
                             node.classList.contains('el-message') ||
-                            node.classList.contains('el-message--success') ||
-                            node.classList.contains('el-message--error') ||
-                            node.classList.contains('el-message--warning') ||
                             node.classList.contains('el-notification') ||
                             node.classList.contains('ant-message-notice') ||
                             node.classList.contains('ant-notification-notice')
                         );
+                        if (!isMessage) continue;
 
-                        if (isMessage) {
-                            window.__captured_messages.push({
-                                text: text.substring(0, 200),
-                                timestamp: Date.now()
-                            });
+                        const text = (node.textContent || '').trim().substring(0, 200);
+                        if (!text) continue;
+
+                        window.__captured_messages.push({
+                            text: text,
+                            timestamp: Date.now(),
+                            className: node.className
+                        });
+
+                        // 钉住通知：强制可见 + 阻止自动移除
+                        node.__pinned = true;
+
+                        // 强制可见样式
+                        node.style.setProperty('display', 'block', 'important');
+                        node.style.setProperty('visibility', 'visible', 'important');
+                        node.style.setProperty('opacity', '1', 'important');
+                        node.style.setProperty('transform', 'none', 'important');
+                        node.style.setProperty('transition', 'none', 'important');
+                        node.style.setProperty('animation', 'none', 'important');
+
+                        // 拦截 remove() 调用
+                        const originalRemove = node.remove.bind(node);
+                        node.remove = function() { /* 阻止移除 */ };
+                        node.__originalRemove = originalRemove;
+
+                        // 也拦截 parentNode.removeChild（Vue transition 可能用这个）
+                        const parentNode = node.parentNode;
+                        if (parentNode) {
+                            const origRemoveChild = parentNode.removeChild.bind(parentNode);
+                            parentNode.removeChild = function(child) {
+                                if (child === node && node.__pinned) return child;
+                                return origRemoveChild(child);
+                            };
+                            node.__origRemoveChild = origRemoveChild;
+                            node.__pinnedParent = parentNode;
                         }
+
+                        // 监听属性变更，覆盖任何隐藏尝试
+                        const pinObserver = new MutationObserver(() => {
+                            if (!node.__pinned) return;
+                            node.style.setProperty('display', 'block', 'important');
+                            node.style.setProperty('visibility', 'visible', 'important');
+                            node.style.setProperty('opacity', '1', 'important');
+                            node.style.setProperty('transform', 'none', 'important');
+                            node.style.setProperty('transition', 'none', 'important');
+                        });
+                        pinObserver.observe(node, {
+                            attributes: true,
+                            attributeFilter: ['style', 'class']
+                        });
+                        node.__pinObserver = pinObserver;
+
+                        // 子元素也强制可见
+                        node.querySelectorAll('*').forEach(el => {
+                            el.style.setProperty('visibility', 'visible', 'important');
+                            el.style.setProperty('opacity', '1', 'important');
+                        });
+
+                        window.__pinned_notifications.push(node);
                     }
                 }
             });
+
+            // 释放所有钉住的通知（截图后调用）
+            window.__unpin_notifications = function() {
+                const pinned = window.__pinned_notifications || [];
+                for (const node of pinned) {
+                    node.__pinned = false;
+                    // 恢复 remove 方法
+                    if (node.__originalRemove) {
+                        node.remove = node.__originalRemove;
+                        delete node.__originalRemove;
+                    }
+                    // 恢复 parentNode.removeChild
+                    if (node.__pinnedParent && node.__origRemoveChild) {
+                        node.__pinnedParent.removeChild = node.__origRemoveChild;
+                        delete node.__origRemoveChild;
+                        delete node.__pinnedParent;
+                    }
+                    // 断开属性监听
+                    if (node.__pinObserver) {
+                        node.__pinObserver.disconnect();
+                        delete node.__pinObserver;
+                    }
+                    // 移除钉住样式，让通知自然消失
+                    node.style.removeProperty('display');
+                    node.style.removeProperty('visibility');
+                    node.style.removeProperty('opacity');
+                    node.style.removeProperty('transform');
+                    node.style.removeProperty('transition');
+                    node.style.removeProperty('animation');
+                    // 主动移除（通知已过期，让它消失）
+                    try { node.remove(); } catch(e) {}
+                }
+                window.__pinned_notifications = [];
+            };
 
             observer.observe(document.body, { childList: true, subtree: true });
         }""")
@@ -219,7 +304,7 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
                 if interceptor:
                     await interceptor.wait_for_quiesce()
                     interceptor.mark_submit()
-                await _step_confirm_dialog(page, step)
+                await _step_confirm_dialog(page, step, result)
 
             elif action == "close_dialog":
                 await _step_close_dialog(page, step)
@@ -643,7 +728,7 @@ async def _step_click_row_button(page, step: dict, button_driver: ButtonDriver, 
     await wait_for_loading_complete(page, timeout=10000)
 
 
-async def _step_confirm_dialog(page, step: dict):
+async def _step_confirm_dialog(page, step: dict, result: dict = None):
     """步骤：确认对话框（纯执行，不做探测）
 
     调用 button_driver.confirm_dialog 点击确认按钮。
@@ -654,15 +739,22 @@ async def _step_confirm_dialog(page, step: dict):
 
     LOG.debug(f"    [confirm_dialog] 点击确认按钮")
 
-    confirmed = await confirm_dialog(page)
+    confirmed = await confirm_dialog(page, screenshot_holder=result)
 
     if not confirmed:
         raise Exception("确认按钮未找到或点击失败")
 
     LOG.debug(f"    [confirm_dialog] 成功: confirmed='{confirmed}'")
 
-    # 等待确认操作触发的 API 请求完成（如删除、创建等）
-    await wait_for_loading_complete(page, timeout=10000)
+    # 兜底截图：如果 confirm_dialog 内部没有截图，这里补一张
+    if result is not None and "success_screenshot" not in result:
+        try:
+            import base64
+            raw = await page.screenshot(type="png")
+            result["success_screenshot"] = base64.b64encode(raw).decode("ascii")
+            LOG.debug(f"    [confirm_dialog] 兜底截图已保存")
+        except Exception as e:
+            LOG.debug(f"    [confirm_dialog] 兜底截图失败: {e}")
 
     # 验证 dialog 消失
     await page.wait_for_timeout(1000)
