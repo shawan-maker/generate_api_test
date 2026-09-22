@@ -523,9 +523,6 @@ python -m core.discovery.run --project ecm-compute --module "用户管理" --sta
 
 | 文档 | 路径 | 说明 |
 |------|------|------|
-| 四阶段发现引擎改进 | `docs/design/four-stage-improvement.md` | Manifest + Runtime Library 架构设计 |
-| 固定枚举泛化机制 | `docs/design/hardcoded-enums-generalization.md` | 硬编码审计与数据驱动泛化方案 |
-| 多阶段操作架构 | `docs/debug/multi-phase-operation-implementation-plan.md` | phases 字段支持多 API 链/跨页面流程 |
-| 角色分类简化方案 | `docs/debug/角色分类简化与值匹配驱动重构方案.md` | body_field_roles 分类体系设计 |
+| 五阶段引擎改进 | `docs/design/stage-improvement.md` | 五阶段实现思路 + 流程图 |
 | AI Skill 描述 | `skill.md` | AI 客户端集成的 Skill 配置 |
 | 主管线操作指南 | `.claude/skills/pipeline.md` | Claude Code 内部操作指南 |
