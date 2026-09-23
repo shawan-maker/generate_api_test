@@ -1,6 +1,6 @@
 """
 角色管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-22 18:08:11
+生成时间: 2026-09-23 12:27:27
 目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/role
 
 执行流程:
@@ -51,20 +51,11 @@ MANIFEST = {
   "auth_profile": {
     "header_name": "Authorization",
     "header_prefix": "Bearer ",
-    "freshness_ttl_seconds": 1800,
-    "fixed_headers": {
-      "Estack-Language": "zh-CN"
-    },
-    "probe_url": "/estack/api/estack/draco/v1/users/current-user",
-    "context_fields": {
-      "tenantId": {
-        "path": "entity.tenantId"
-      },
-      "adminId": {
-        "path": "entity.id"
-      }
-    },
-    "token_key": "estackToken",
+    "freshness_ttl_seconds": 300,
+    "fixed_headers": {},
+    "probe_url": "",
+    "context_fields": {},
+    "token_key": "accessToken",
     "token_storage": "localStorage",
     "cookie_token_key": "accessToken",
     "credentials_env": {
@@ -425,20 +416,6 @@ MANIFEST = {
           "path": "entity.policyList[0].policyCategory",
           "used_by": [
             "创建角色"
-          ]
-        },
-        {
-          "name": "tenantId",
-          "path": "entity.tenantId",
-          "used_by": [
-            "query"
-          ]
-        },
-        {
-          "name": "adminId",
-          "path": "entity.id",
-          "used_by": [
-            "query"
           ]
         }
       ],

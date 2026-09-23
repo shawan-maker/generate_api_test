@@ -26,25 +26,16 @@
   "auth_profile": {
     "header_name": "Authorization",
     "header_prefix": "Bearer ",
-    "freshness_ttl_seconds": 1800,
-    "fixed_headers": {
-      "Estack-Language": "zh-CN"
-    },
-    "probe_url": "/estack/api/estack/draco/v1/users/current-user",
-    "context_fields": {
-      "tenantId": {
-        "path": "entity.tenantId"
-      },
-      "adminId": {
-        "path": "entity.id"
-      }
-    },
-    "token_key": "estackToken",
+    "freshness_ttl_seconds": 300,
+    "fixed_headers": {},
+    "probe_url": "",
+    "context_fields": {},
+    "token_key": "accessToken",
     "token_storage": "localStorage",
     "cookie_token_key": "accessToken",
     "captcha": {
-      "auth_button_text": "点击完成认证",
-      "login_button_text": "登录"
+      "auth_button_text": "",
+      "login_button_text": ""
     },
     "credentials_env": {
       "username": "APP_USER",
@@ -408,20 +399,6 @@
           "path": "entity.policyList[0].policyCategory",
           "used_by": [
             "创建角色"
-          ]
-        },
-        {
-          "name": "tenantId",
-          "path": "entity.tenantId",
-          "used_by": [
-            "query"
-          ]
-        },
-        {
-          "name": "adminId",
-          "path": "entity.id",
-          "used_by": [
-            "query"
           ]
         }
       ],

@@ -146,8 +146,20 @@ class AuthSession:
                 self.set_context_path(self.context_path)
         if not self._cookie_file:
             return
-        Path(self._cookie_file).parent.mkdir(parents=True, exist_ok=True)
-        Path(self._cookie_file).write_text(
+
+        # 防御：禁止写入框架根目录（避免 auth_runner.py 的 COOKIE_DIR="" 问题）
+        cookie_path = Path(self._cookie_file)
+        try:
+            # 检查是否在框架根目录（包含 .git、core、lib、projects 等标志目录）
+            root_dir = cookie_path.parent
+            if any((root_dir / marker).exists() for marker in ['.git', 'core', 'lib', 'projects']):
+                LOG.warning(f"⚠️ 拒绝写入框架根目录: {cookie_path}")
+                return
+        except Exception:
+            pass
+
+        cookie_path.parent.mkdir(parents=True, exist_ok=True)
+        cookie_path.write_text(
             json.dumps(cookies, ensure_ascii=False, indent=2), encoding="utf-8")
         self._write_meta({"savedAt": time.time(), "count": len(cookies) if isinstance(cookies, list) else 0})
         self._cookies = cookies

@@ -17,6 +17,8 @@ async def login_with_playwright(page, context, login_url, username, password,
     """登录：cookie 优先 → 失效后走滑块自动登录（复用 lib/auth.py）。
 
     从 project_profile 读取 auth/captcha 配置，不硬编码。
+
+    注意：cookie 保存由调用方（run.py）负责，保存到 workspace/<project>/output/config/
     """
     from lib import auth
 
@@ -30,16 +32,8 @@ async def login_with_playwright(page, context, login_url, username, password,
     sess = auth.AuthSession(profile, username, password)
     LOG.info("  执行滑块登录（复用 login_with_browser）...")
     ok = await sess.login_with_browser(page, context)
-    if not ok:
-        return False
 
-    # 保存上下文
-    cookie_dir = Path(os.environ.get("COOKIE_DIR", ""))
-    if cookie_dir.exists():
-        sess.context_path = str(cookie_dir / "context.json")
-        sess.save_context(cookies=await context.cookies())
-
-    return True
+    return ok
 
 
 async def ensure_browser_login(page, context, profile: dict, base_url: str,

@@ -6,8 +6,8 @@ generate_ui_script.py — UI 自动化脚本生成器
 生成的脚本包特点：
 - 包含完整回放引擎 (lib/)，从 module_discovery/ 复制
 - 纯 Playwright，不依赖项目内部库
-- 支持命令行参数（--headless, --data, --operation）
-- 分离数据文件（{module_name}_data.json）和 playbook（{module_name}_playbook.json）
+- 支持命令行参数（--headless, --operation）
+- playbook（{module_name}_playbook.json）作为唯一数据源
 """
 
 import base64
@@ -19,8 +19,8 @@ from datetime import datetime
 LOG = logging.getLogger("generate_ui_script")
 
 
-def generate_ui_script(playbook: dict, module_name: str, project_dir: Path, version: str = "v1.0.0") -> tuple[Path, Path]:
-    """生成 UI 自动化脚本包和数据文件
+def generate_ui_script(playbook: dict, module_name: str, project_dir: Path, version: str = "v1.0.0") -> Path:
+    """生成 UI 自动化脚本包
 
     Args:
         playbook: Stage 1 生成的 playbook 数据
@@ -29,7 +29,7 @@ def generate_ui_script(playbook: dict, module_name: str, project_dir: Path, vers
         version: 版本号
 
     Returns:
-        (script_path, data_path)
+        script_path
     """
     # 1. 确定输出目录
     ui_dir = project_dir / version / "ui"
@@ -38,24 +38,18 @@ def generate_ui_script(playbook: dict, module_name: str, project_dir: Path, vers
     # 2. 同步运行时 lib/
     _sync_ui_runtime_lib(ui_dir, project_dir)
 
-    # 3. 生成数据文件
-    data = _extract_test_data(playbook)
-    data_path = ui_dir / f"{module_name}_data.json"
-    data_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    LOG.info(f"数据文件已生成: {data_path}")
-
-    # 4. 输出 playbook 为独立 JSON 文件
+    # 3. 输出 playbook 为独立 JSON 文件
     playbook_path = ui_dir / f"{module_name}_playbook.json"
     playbook_path.write_text(json.dumps(playbook, ensure_ascii=False, indent=2), encoding="utf-8")
     LOG.info(f"Playbook 已生成: {playbook_path}")
 
-    # 5. 生成薄主脚本
-    script_content = _render_script(playbook, module_name, data_path.name, playbook_path.name, version)
+    # 4. 生成薄主脚本
+    script_content = _render_script(playbook, module_name, playbook_path.name, version)
     script_path = ui_dir / f"{module_name}.py"
     script_path.write_text(script_content, encoding="utf-8")
     LOG.info(f"UI 脚本已生成: {script_path}")
 
-    return script_path, data_path
+    return script_path
 
 
 def _transform_imports(content: str) -> str:
@@ -209,77 +203,39 @@ def _sync_ui_runtime_lib(ui_dir: Path, project_dir: Path):
     config_dst = ui_dir / "config"
     config_dst.mkdir(parents=True, exist_ok=True)
 
-    # 优先从 workspace/<project>/output/config/cookies.json 复制
-    # 回退到项目根目录的 cookies.json
+    # 从 workspace/<project>/output/config/cookies.json 复制
     workspace_cookies = project_root / "workspace" / project_dir.name / "output" / "config" / "cookies.json"
-    root_cookies = project_root / "cookies.json"
 
-    cookies_src = None
     if workspace_cookies.exists():
-        cookies_src = workspace_cookies
-        LOG.info(f"  UI runtime sync: 使用 workspace cookies: {workspace_cookies.relative_to(project_root)}")
-    elif root_cookies.exists():
-        cookies_src = root_cookies
-        LOG.info(f"  UI runtime sync: 使用根目录 cookies: {root_cookies.relative_to(project_root)}")
-
-    if cookies_src:
         dst_cookies = config_dst / "cookies.json"
         dst_cookies.write_text(
-            cookies_src.read_text(encoding="utf-8"), encoding="utf-8"
+            workspace_cookies.read_text(encoding="utf-8"), encoding="utf-8"
         )
-        LOG.info("  UI runtime sync: config/cookies.json")
+        LOG.info(f"  UI runtime sync: config/cookies.json (from {workspace_cookies.relative_to(project_root)})")
     else:
         LOG.warning("  UI runtime sync: cookies.json 未找到，UI 脚本将无法自动运行")
-        LOG.warning(f"    尝试过: {workspace_cookies.relative_to(project_root)}, {root_cookies.relative_to(project_root)}")
+        LOG.warning(f"    尝试过: {workspace_cookies.relative_to(project_root)}")
 
     # ---- 8. 生成 __init__.py ----
     init_file = dst_lib / "__init__.py"
     init_content = '"""UI automation runtime library — synced from core.discovery."""\n'
     _write_if_changed(init_file, init_content)
 
-    # ---- 9. 同步后验证 ----
+    # ---- 9. 清理不应存在于 ui/lib/ 的文件（历史遗留） ----
+    stale_files = ["generate_ui_script.py"]
+    for stale_name in stale_files:
+        stale_path = dst_lib / stale_name
+        if stale_path.exists():
+            stale_path.unlink()
+            LOG.info(f"  UI runtime cleanup: 已删除遗留文件 {stale_name}")
+
+    # ---- 10. 同步后验证 ----
     _verify_sync(dst_lib, synced)
 
     LOG.info(f"  UI 运行时同步完成: {len(synced)} 个文件")
 
 
-def _extract_test_data(playbook: dict) -> dict:
-    """从 playbook 中提取测试数据"""
-    data = {}
-
-    create_op = playbook.get("operations", {}).get("create", {})
-    if create_op:
-        create_data = {}
-        for step in create_op.get("steps", []):
-            if step.get("action") == "fill_form":
-                for field in step.get("fields", []):
-                    label = field.get("label")
-                    if not label:
-                        continue
-                    if "密码" in label or "password" in label.lower():
-                        create_data[label] = "Test@123456"
-                    elif "手机" in label or "phone" in label.lower():
-                        create_data[label] = "13800138000"
-                    elif "邮箱" in label or "email" in label.lower():
-                        create_data[label] = "test@example.com"
-                    elif "描述" in label or "备注" in label or "description" in label.lower():
-                        create_data[label] = "UI 自动化测试数据"
-                    elif "名称" in label or "name" in label.lower():
-                        create_data[label] = None  # 动态
-                    elif "编码" in label or "code" in label.lower():
-                        create_data[label] = None  # 动态
-                    else:
-                        create_data[label] = f"test_{label}"
-        data["create"] = create_data
-
-    update_op = playbook.get("operations", {}).get("update", {})
-    if update_op:
-        data["update"] = {"描述": "auto_edited", "备注": "UI 自动化更新测试"}
-
-    return data
-
-
-def _render_script(playbook: dict, module_name: str, data_filename: str, playbook_filename: str, version: str) -> str:
+def _render_script(playbook: dict, module_name: str, playbook_filename: str, version: str) -> str:
     """渲染薄主脚本"""
     meta = playbook.get("meta", {})
     target_url = meta.get("target_url", "")
@@ -326,7 +282,6 @@ def _render_script(playbook: dict, module_name: str, data_filename: str, playboo
     python {module_name}.py                    # 运行所有操作
     python {module_name}.py create update      # 只运行 create 和 update
     python {module_name}.py --headless         # 无头模式
-    python {module_name}.py --data custom.json # 使用自定义数据文件
 
 依赖:
     pip install playwright
@@ -570,7 +525,6 @@ async def main():
     parser = argparse.ArgumentParser(description="{module_name} UI 自动化测试脚本")
     parser.add_argument("operations", nargs="*", help="要执行的操作列表")
     parser.add_argument("--headless", action="store_true", help="无头模式")
-    parser.add_argument("--data", help="数据文件路径")
     args = parser.parse_args()
 
     # 加载 playbook

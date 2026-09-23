@@ -576,6 +576,25 @@ if __name__ == "__main__":
                         help="Project name (optional, runs all projects if not specified)")
     parser.add_argument("--modules", type=str, nargs="+",
                         help="Module names to run (optional, runs all modules if not specified)")
+    parser.add_argument("--type", type=str, choices=["api", "ui", "all"], default="api",
+                        help="Test type: api (default), ui, or all")
+    parser.add_argument("--version", type=str,
+                        help="Version (optional, for UI tests)")
 
     args = parser.parse_args()
-    run_suite(args.project, args.modules)
+
+    if args.type == "ui":
+        from run_ui_suite import run_suite as run_ui
+        run_ui(args.project, args.modules, args.version)
+    elif args.type == "all":
+        print("=" * 60)
+        print("  API Tests")
+        print("=" * 60)
+        run_suite(args.project, args.modules)
+        print("\n" + "=" * 60)
+        print("  UI Tests")
+        print("=" * 60)
+        from run_ui_suite import run_suite as run_ui
+        run_ui(args.project, args.modules, args.version)
+    else:
+        run_suite(args.project, args.modules)

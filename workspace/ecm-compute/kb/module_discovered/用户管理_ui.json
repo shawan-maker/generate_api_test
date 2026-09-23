@@ -22,7 +22,7 @@
       "text": "批量导入",
       "tag": "BUTTON",
       "className": "el-button el-button--default el-button--small",
-      "rect": "69x30",
+      "rect": "70x31",
       "location": "toolbar",
       "source": "main",
       "action": "批量导入"
@@ -31,7 +31,7 @@
       "text": "批量删除",
       "tag": "BUTTON",
       "className": "el-button el-tooltip el-button--default el-button--small is-",
-      "rect": "69x30",
+      "rect": "70x31",
       "location": "toolbar",
       "source": "main",
       "action": "批量删除"
@@ -40,7 +40,7 @@
       "text": "批量迁移",
       "tag": "BUTTON",
       "className": "el-button el-tooltip el-button--default el-button--small is-",
-      "rect": "69x30",
+      "rect": "70x31",
       "location": "toolbar",
       "source": "main",
       "action": "批量迁移"
@@ -49,7 +49,7 @@
       "text": "GO",
       "tag": "BUTTON",
       "className": "el-button pagination-jumper el-button--default el-button--mi",
-      "rect": "50x27",
+      "rect": "51x28",
       "location": "toolbar",
       "source": "main",
       "action": "GO"
@@ -60,7 +60,7 @@
       "text": "编辑",
       "tag": "BUTTON",
       "className": "el-button el-button--text el-button--small",
-      "rect": "25x13",
+      "rect": "26x14",
       "location": "row_action",
       "source": "main",
       "action": "编辑"
@@ -69,7 +69,7 @@
       "text": "删除",
       "tag": "BUTTON",
       "className": "el-button el-tooltip el-button--text el-button--small",
-      "rect": "25x13",
+      "rect": "26x14",
       "location": "row_action",
       "source": "main",
       "action": "删除"
@@ -78,7 +78,7 @@
       "text": "更多",
       "tag": "SPAN",
       "className": "el-dropdown-link el-dropdown-selfdefine",
-      "rect": "44x13",
+      "rect": "44x14",
       "location": "row_action",
       "source": "main",
       "action": "更多"
@@ -303,12 +303,12 @@
   "page_structure": {
     "hasFixedLeft": true,
     "hasFixedRight": true,
-    "mainBodyRows": 4,
-    "fixedRightRows": 4,
-    "fixedLeftRows": 4,
-    "columnCount": 10,
+    "mainBodyRows": 7,
+    "fixedRightRows": 7,
+    "fixedLeftRows": 7,
+    "columnCount": 9,
     "operationColumnIndex": 8,
-    "operationColumnLocation": "middle",
+    "operationColumnLocation": "last",
     "tableWrappers": [
       {
         "cls": "el-table__header-wrapper",
@@ -316,7 +316,7 @@
       },
       {
         "cls": "el-table__body-wrapper is-scrolling-left",
-        "rowCount": 4
+        "rowCount": 7
       },
       {
         "cls": "el-table__fixed-header-wrapper",
@@ -324,7 +324,7 @@
       },
       {
         "cls": "el-table__fixed-body-wrapper",
-        "rowCount": 4
+        "rowCount": 7
       },
       {
         "cls": "el-table__fixed-header-wrapper",
@@ -332,7 +332,7 @@
       },
       {
         "cls": "el-table__fixed-body-wrapper",
-        "rowCount": 4
+        "rowCount": 7
       }
     ]
   },
@@ -341,15 +341,15 @@
     "创建用户": {
       "success": true,
       "fill_data": {
-        "账号": "AT_test_956682",
-        "姓名": "AT_test_956682",
+        "账号": "AT_test_137768",
+        "姓名": "AT_test_137768",
         "密码": "Test@123456",
         "确认密码": "Test@123456",
-        "手机号": "13897557372",
-        "邮箱": "at_956679@test.com",
-        "描述": "auto_test_956682",
-        "系统角色": "AT_test_956682",
-        "部门角色": "AT_test_956682"
+        "手机号": "13862790525",
+        "邮箱": "at_137765@test.com",
+        "描述": "auto_test_137768",
+        "系统角色": "AT_test_137768",
+        "部门角色": "AT_test_137768"
       },
       "fill_rules": {
         "账号": {
@@ -506,6 +506,14 @@
           "fill_rule": {},
           "is_editable": false,
           "option_text": "普通用户"
+        },
+        {
+          "label": "部门角色",
+          "kb_category": "el-select",
+          "selector": ".el-form-item:nth-child(3) .el-select",
+          "fill_rule": {},
+          "is_editable": false,
+          "option_text": "AT_test_058767"
         }
       ],
       "radio_field_details": []
@@ -584,16 +592,16 @@
       "error_text": "必填字段无法填写: 授权用户组（select，值为空）",
       "trigger_text": "授权",
       "nav_info": {
-        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=aaf7952ae8bf4d53b222bcdccf1c4927",
+        "navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userList&rowId=2a22cbd7b0e74fec826333663c15a7b7",
         "depth": 0,
         "page_title": "eStack Enterprise",
         "has_form": false,
         "form_fields": [],
         "fill_data": {
-          "授权用户": "AT_AT_test_auto_956726",
-          "授权用户组": "AT_AT_test_auto_956726",
-          "授权角色": "AT_AT_test_auto_956726",
-          "授权范围": "AT_AT_test_auto_956726"
+          "授权用户": "AT_AT_test_auto_137803",
+          "授权用户组": "AT_AT_test_auto_137803",
+          "授权角色": "AT_AT_test_auto_137803",
+          "授权范围": "AT_AT_test_auto_137803"
         },
         "submit_result": {},
         "error_type": "required_field_empty",
@@ -729,36 +737,10 @@
       "confirm_button_text_verified": "确认"
     },
     "迁移": {
-      "success": true,
-      "selectors": {
-        "trigger": "迁移",
-        "row_selector": "更多 > 迁移",
-        "confirm": "确 定"
-      },
-      "confirmed": "确 定",
+      "success": false,
+      "error_type": "no_success_signal",
       "trigger_text": "迁移",
-      "dialog_fills": [
-        {
-          "label": "待迁移部门",
-          "kb_category": "el-select",
-          "selector": ".el-form-item:nth-child(2) .el-select",
-          "is_editable": false,
-          "option_text": "ssssss"
-        }
-      ],
-      "post_confirm_state": {
-        "dialog_remains": false,
-        "has_form_in_dialog": false
-      },
-      "is_dropdown_operation": true,
-      "dropdown_parent_selector": ".el-dropdown",
-      "dropdown_item_locator": ".el-dropdown-menu__item:has-text('迁移')",
-      "dropdown_item_text": "迁移",
-      "dropdown_trigger_method": "hover",
-      "checkbox_locator": ".el-checkbox__input",
-      "expand_strategy_verified": "click",
-      "dropdown_item_text_verified": "迁移",
-      "confirm_button_text_verified": "确 定"
+      "error_text": "迁移 操作后未检测到成功信号（成功提示/数据变化）"
     },
     "删除": {
       "success": true,

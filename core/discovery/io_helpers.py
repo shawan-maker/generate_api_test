@@ -15,15 +15,96 @@ LOG = logging.getLogger("io_helpers")
 
 
 def load_profile(project_dir: Path) -> dict:
-    """加载项目的 profile.yaml。"""
+    """加载项目的 profile.yaml，并合并全局凭据库。
+
+    优先级：全局凭据库 (config/credentials.yaml) > 项目 profile.yaml
+    """
     try:
         import yaml
     except ImportError:
         return {}
+
+    # 1. 加载项目级 profile.yaml
     p = project_dir / "profile.yaml"
+    profile = {}
     if p.exists():
-        return yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-    return {}
+        profile = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+
+    # 2. 加载全局凭据库并合并
+    try:
+        framework_root = Path(__file__).resolve().parents[2]  # core/discovery/ -> framework root
+        creds_file = framework_root / "config" / "credentials.yaml"
+
+        if creds_file.exists():
+            all_creds = yaml.safe_load(creds_file.read_text(encoding="utf-8")) or {}
+            project_id = project_dir.name  # e.g. "ecm-compute"
+
+            if project_id in all_creds:
+                proj_creds = all_creds[project_id]
+                LOG.debug(f"已加载全局凭据: {project_id}")
+
+                # 合并凭据（全局优先）
+                for key in ["base_url", "login_url", "username", "password", "auth"]:
+                    if key in proj_creds:
+                        if key == "auth" and "auth" in profile:
+                            # auth 字典深度合并
+                            profile["auth"].update(proj_creds["auth"])
+                        else:
+                            profile[key] = proj_creds[key]
+
+                # 确保 credentials 字段存在（兼容旧代码）
+                if "credentials" not in profile:
+                    profile["credentials"] = {}
+                if "username" in proj_creds:
+                    profile["credentials"]["username"] = proj_creds["username"]
+                if "password" in proj_creds:
+                    profile["credentials"]["password"] = proj_creds["password"]
+    except Exception as e:
+        LOG.warning(f"加载全局凭据库失败: {e}")
+
+    return profile
+
+
+def save_credentials(project_id: str, credentials: dict):
+    """将项目凭据保存到全局凭据库。
+
+    Args:
+        project_id: 项目 ID (如 "ecm-compute")
+        credentials: 凭据字典，包含 username, password, base_url, login_url, auth 等
+    """
+    try:
+        import yaml
+    except ImportError:
+        LOG.warning("PyYAML 未安装，无法保存凭据")
+        return
+
+    try:
+        framework_root = Path(__file__).resolve().parents[2]
+        creds_file = framework_root / "config" / "credentials.yaml"
+
+        # 加载现有凭据
+        all_creds = {}
+        if creds_file.exists():
+            all_creds = yaml.safe_load(creds_file.read_text(encoding="utf-8")) or {}
+
+        # 合并新项目凭据
+        if project_id not in all_creds:
+            all_creds[project_id] = {}
+
+        all_creds[project_id].update(credentials)
+
+        # 确保目录存在
+        creds_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # 写入文件
+        creds_file.write_text(
+            yaml.dump(all_creds, allow_unicode=True, default_flow_style=False, sort_keys=False),
+            encoding="utf-8"
+        )
+
+        LOG.info(f"✅ 凭据已保存到全局凭据库: {project_id}")
+    except Exception as e:
+        LOG.warning(f"保存凭据失败: {e}")
 
 
 def load_ui_result(project_dir: Path, module_name: str) -> dict:

@@ -1058,14 +1058,38 @@ class TestRunner:
         # 框架内场景：lib/runtime/test_runtime.py → 使用 workspace/ 避免污染项目根
         _self = Path(__file__).resolve()
         _base = _self.parent.parent.parent
-        if _self.parent.parent.name == "lib" and _base.name != "api":
-            # 框架内 import：使用 workspace/<project>/output/report/
-            self._base_dir = _base / "workspace" / "ecm-compute" / "output"
-            self._base_dir.mkdir(parents=True, exist_ok=True)
+        if _self.parent.parent.name == "lib" and _base.name == "api":
+            # 生成脚本：api/lib/runtime/test_runtime.py
+            self._base_dir = _base  # api/（config/ 在此目录下）
+            # JSONL 日志输出到 workspace/<project>/output/logs/（不污染 projects/）
+            # 向上找 projects/ 目录，其 parent 是框架根
+            project_name = _base.parent.parent.name  # api → version → project_name
+            framework_root = None
+            for p in _base.parents:
+                if p.name == "projects":
+                    framework_root = p.parent
+                    break
+            if framework_root is None:
+                framework_root = _self.parent.parent.parent.parent  # 兜底
+            self._log_dir = framework_root / "workspace" / project_name / "output" / "logs"
+            self._log_dir.mkdir(parents=True, exist_ok=True)
         else:
-            # 生成脚本：使用 api/ 目录
-            self._base_dir = _base
-        self._log_dir = self._base_dir / "report"
+            # 框架内 import：使用 workspace/<project>/output/
+            # 从环境变量或当前工作目录推断项目名
+            import os
+            project_name = os.environ.get("PROJECT_NAME")
+            if not project_name:
+                # 尝试从当前工作目录推断
+                cwd = Path.cwd()
+                if "projects" in cwd.parts:
+                    idx = cwd.parts.index("projects")
+                    if idx + 1 < len(cwd.parts):
+                        project_name = cwd.parts[idx + 1]
+            if not project_name:
+                project_name = "_default"
+            self._base_dir = _base.parent / "workspace" / project_name / "output"
+            self._base_dir.mkdir(parents=True, exist_ok=True)
+            self._log_dir = self._base_dir
 
         # 测试配置（名称前缀、可变前缀等）
         self.config = manifest.get("config", {

@@ -5,6 +5,7 @@
 **/auth.json
 **/profile.yaml
 **/context.json
+config/credentials.yaml
 
 # Cookie 文件（含会话 token）
 **/cookies.json

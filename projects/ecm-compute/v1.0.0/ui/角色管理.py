@@ -2,7 +2,7 @@
 """
 角色管理 - UI 自动化测试脚本
 
-生成时间: 2026-09-22 18:07:11
+生成时间: 2026-09-23 12:27:27
 生成工具: API AI Test Framework - Stage 2
 版本: v1.0.0
 
@@ -10,7 +10,6 @@
     python 角色管理.py                    # 运行所有操作
     python 角色管理.py create update      # 只运行 create 和 update
     python 角色管理.py --headless         # 无头模式
-    python 角色管理.py --data custom.json # 使用自定义数据文件
 
 依赖:
     pip install playwright
@@ -46,7 +45,7 @@ CONFIG = {
     "slow_mo": 100,
     # 鉴权配置（cookie_client 统一使用）
     "auth_config": {
-        "token_key": "estackToken",
+        "token_key": "accessToken",
         "token_storage": "localStorage",
         "cookie_token_key": "accessToken",
     },
@@ -254,7 +253,6 @@ async def main():
     parser = argparse.ArgumentParser(description="角色管理 UI 自动化测试脚本")
     parser.add_argument("operations", nargs="*", help="要执行的操作列表")
     parser.add_argument("--headless", action="store_true", help="无头模式")
-    parser.add_argument("--data", help="数据文件路径")
     args = parser.parse_args()
 
     # 加载 playbook

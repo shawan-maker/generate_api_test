@@ -20,6 +20,7 @@ import time
 import asyncio
 import logging
 import argparse
+from datetime import datetime
 from pathlib import Path
 
 # 确保能找到 lib
@@ -109,6 +110,8 @@ def parse_args():
                     help="捕获所有 XHR/fetch 请求（不限于 /estack/api）")
     ap.add_argument("--export", action="store_true", default=False,
                     help="Stage 5: 导出 Postman Collection / helpers.py / Excel 参数文件")
+    ap.add_argument("--no-run", action="store_true", default=False,
+                    help="跳过脚本生成后的自动运行验证（默认自动运行 API+UI 脚本并生成报告）")
     return ap.parse_args()
 
 
@@ -324,9 +327,8 @@ async def run_stage2(page, project_dir: Path, module_name: str,
                     with open(playbook_path, 'r', encoding='utf-8') as f:
                         playbook_data = json.load(f)
                     ver = version or ver_mod.resolve_version(project_dir)
-                    script_path, data_path = generate_ui_script(playbook_data, module_name, project_dir, version=ver)
+                    script_path = generate_ui_script(playbook_data, module_name, project_dir, version=ver)
                     LOG.info(f"  UI 脚本已生成: {script_path}")
-                    LOG.info(f"  UI 数据已生成: {data_path}")
                 except Exception as e:
                     LOG.warning(f"  UI 脚本生成失败: {e}")
             else:
@@ -578,6 +580,62 @@ async def _run_stage4_verify(script_path: str, project_dir: Path, profile: dict,
     return False
 
 
+async def _run_ui_script(ui_script_path: str, headless: bool = True) -> bool:
+    """运行 UI 测试脚本并生成报告。
+
+    Args:
+        ui_script_path: UI 脚本路径
+        headless: 是否使用无头模式
+
+    Returns:
+        True 如果脚本运行成功，False 如果失败
+    """
+    import subprocess
+
+    script = Path(ui_script_path)
+    if not script.exists():
+        LOG.warning(f"  ⚠️ UI 脚本不存在: {script.name}")
+        return False
+
+    script_dir = script.parent
+
+    LOG.info(f"  运行 UI 脚本: {script.name}")
+
+    # 构建命令
+    cmd = [sys.executable, str(script)]
+    if headless:
+        cmd.append("--headless")
+
+    result = subprocess.run(
+        cmd,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        cwd=str(script_dir), timeout=180,
+    )
+
+    # 打印脚本输出（关键行）
+    for line in result.stdout.splitlines():
+        if any(k in line for k in ("✅", "❌", "⚠️", "报告", "report", "通过", "失败", "完成")):
+            LOG.info(f"    {line.strip()}")
+
+    if result.returncode == 0:
+        output = result.stdout + result.stderr
+        # 检查是否有失败标记
+        fail_count = output.count("❌")
+        pass_count = output.count("✅")
+
+        if fail_count > 0 and pass_count == 0:
+            LOG.warning(f"  ⚠️ UI 脚本退出码为 0，但检测到 {fail_count} 个失败标记")
+            return False
+
+        LOG.info("  ✅ UI 脚本运行成功")
+        return True
+
+    LOG.warning(f"  ⚠️ UI 脚本运行失败（退出码={result.returncode}）")
+    if result.stderr.strip():
+        LOG.warning(f"    stderr: {result.stderr[:300]}")
+    return False
+
+
 def run_stage5(manifest: dict, project_dir: Path, module_name: str, version: str = ""):
     """Stage 5: 导出 Postman Collection / helpers.py / Excel 参数文件。
 
@@ -632,6 +690,230 @@ def run_stage5(manifest: dict, project_dir: Path, module_name: str, version: str
 
     LOG.info(f"Stage 5 导出完成: {export_dir}")
 
+    # 4. 自动生成 README.md（如果不存在）
+    version_dir = project_dir / version
+    readme_path = version_dir / "README.md"
+    if not readme_path.exists():
+        _generate_readme(version_dir, project_dir.name, version)
+
+
+def _generate_readme(version_dir: Path, project_name: str, version: str):
+    """在版本目录下生成 README.md 操作手册。
+
+    Args:
+        version_dir: 版本目录（如 projects/ecm-compute/v1.0.0）
+        project_name: 项目名称
+        version: 版本号
+    """
+    readme_path = version_dir / "README.md"
+
+    # 扫描实际存在的脚本文件
+    api_dir = version_dir / "api"
+    ui_dir = version_dir / "ui"
+    export_dir = version_dir / "export"
+
+    api_scripts = []
+    ui_scripts = []
+    if api_dir.exists():
+        api_scripts = [f.name for f in api_dir.glob("*_API测试.py")]
+    if ui_dir.exists():
+        ui_scripts = [f.name for f in ui_dir.glob("*.py") if not f.name.startswith("_")]
+
+    api_script_list = "\n".join(f"  - `{s}`" for s in api_scripts) if api_scripts else "  - (暂无)"
+    ui_script_list = "\n".join(f"  - `{s}`" for s in ui_scripts) if ui_scripts else "  - (暂无)"
+
+    readme_content = f"""# {project_name} - 自动化测试脚本包
+
+> 版本: {version}
+> 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+> 说明: 本目录包含完整的 API + UI 自动化测试脚本，可直接拷贝到其他机器运行。
+
+## 📦 目录结构
+
+```
+{version}/
+├── api/                    # API 自动化测试
+│   ├── config/            # 配置文件（cookie 等）
+│   ├── lib/               # 运行时库
+│   ├── helpers.py         # 辅助函数
+│   └── *_API测试.py       # API 测试脚本
+├── ui/                     # UI 自动化测试
+│   ├── config/            # 配置文件（cookie 等）
+│   ├── lib/               # 运行时库
+│   └── *.py               # UI 测试脚本
+├── export/                 # 导出的测试资产
+│   └── <模块>/
+│       ├── *.postman_collection.json
+│       ├── helpers.py
+│       └── *_params.xlsx
+└── README.md              # 本文件
+```
+
+## 🚀 快速开始
+
+### 1. 环境准备
+
+```bash
+# 安装 Python 3.8+
+python --version
+
+# 安装依赖
+pip install requests playwright openpyxl
+playwright install chromium
+```
+
+### 2. 配置认证
+
+**方式 A：使用现有 Cookie（推荐）**
+
+1. 将已登录的浏览器 cookie 导出为 JSON 格式
+2. 保存到以下位置：
+   - API 测试: `api/config/cookies.json`
+   - UI 测试: `ui/config/cookies.json`
+
+**方式 B：从原始目录同步**
+
+如果从生成脚本的原始目录拷贝，cookie 已自动同步到 `api/config/` 和 `ui/config/`。
+
+### 3. 运行测试
+
+#### API 测试
+
+```bash
+# 进入 API 目录
+cd api
+
+# 运行单个模块测试
+python 角色管理_API测试.py
+
+# 运行所有 API 测试
+for f in *_API测试.py; do python "$f"; done
+```
+
+**报告生成位置**: `api/reports/`
+
+#### UI 测试
+
+```bash
+# 进入 UI 目录
+cd ui
+
+# 运行单个模块测试（有界面）
+python 角色管理.py
+
+# 运行单个模块测试（无头模式）
+python 角色管理.py --headless
+
+# 运行所有 UI 测试
+for f in *.py; do [[ "$f" != "__"* ]] && python "$f" --headless; done
+```
+
+**报告生成位置**: `ui/reports/`
+
+#### 批量运行
+
+```bash
+# 返回上级目录（包含 run_suite.py 的目录）
+cd ..
+
+# 运行所有 API 测试
+python run_suite.py --project {project_name} --version {version} --type api
+
+# 运行所有 UI 测试
+python run_suite.py --project {project_name} --version {version} --type ui
+
+# 运行所有测试（API + UI）
+python run_suite.py --project {project_name} --version {version} --type all
+```
+
+## 📋 已生成的测试脚本
+
+### API 测试脚本
+{api_script_list}
+
+### UI 测试脚本
+{ui_script_list}
+
+## 🔧 常见问题
+
+### Q1: 运行时提示 "Cookie 过期" 或 "401 Unauthorized"
+
+**原因**: Cookie 已过期
+
+**解决方法**:
+1. 重新登录系统，获取新的 cookie
+2. 更新 `api/config/cookies.json` 和 `ui/config/cookies.json`
+3. 或者从原始目录重新拷贝整个 `{version}/` 目录
+
+### Q2: UI 测试找不到元素
+
+**原因**: 页面结构可能已变更
+
+**解决方法**:
+1. 检查目标系统是否更新过界面
+2. 联系开发人员确认元素定位器是否需要更新
+3. 重新运行发现流程生成新的脚本
+
+### Q3: 如何添加新模块的测试？
+
+**方法**: 在原始目录重新运行发现流程：
+
+```bash
+# 在原始目录（包含 core/discovery/run.py 的目录）
+python -m core.discovery.run --project {project_name} --module "新模块名称" --url "/path/to/module"
+
+# 然后将生成的脚本拷贝到本目录
+```
+
+### Q4: 如何修改测试数据？
+
+**方法**: 编辑脚本中的 `test_data` 部分：
+
+```python
+# 打开 *_API测试.py 或 *.py
+# 找到 test_data 字典
+test_data = {{
+    "角色名称": "AT_test_xxx",  # 修改这里
+    "描述": "测试角色",          # 修改这里
+}}
+```
+
+## 📊 测试报告
+
+- **API 报告**: `api/reports/<模块>/` - Postman 风格 HTML 报告
+- **UI 报告**: `ui/reports/` - 包含截图的 HTML 报告
+- **原始日志**: 生成在原始目录的 `projects/{project_name}/output/` 下
+
+## 🔗 相关资源
+
+- **Postman Collection**: `export/<模块>/*.postman_collection.json`
+  - 可导入 Postman 进行手动测试
+- **Excel 参数文件**: `export/<模块>/*_params.xlsx`
+  - 包含所有测试数据，可用于数据驱动测试
+- **Helpers 函数**: `api/helpers.py`
+  - 包含数据生成辅助函数，可在其他脚本中复用
+
+## 📝 注意事项
+
+1. **Cookie 有效期**: Cookie 通常有时效，过期后需要重新获取
+2. **环境一致性**: 确保测试环境的接口地址与生产环境一致
+3. **数据清理**: 测试产生的数据（如创建的角色）需要在测试后手动清理，或运行删除脚本
+4. **并发问题**: 避免多人同时运行相同模块的测试，可能产生数据冲突
+
+## 🆘 技术支持
+
+如遇到问题，请联系：
+- 开发人员: [填写开发人员联系方式]
+- 测试框架维护: [填写框架维护者联系方式]
+
+---
+
+*本文档由自动化测试框架自动生成*
+"""
+
+    readme_path.write_text(readme_content, encoding="utf-8")
+    LOG.info(f"✅ README.md 已生成: {readme_path}")
+
 
 async def main():
     # Windows GBK 编码兼容：日志中的 emoji/中文不崩溃
@@ -644,6 +926,20 @@ async def main():
     if not project_dir.exists():
         LOG.error(f"项目目录不存在: {project_dir}")
         sys.exit(1)
+
+    # 交互式版本提示（仅在未通过 --version 指定时）
+    if args.version is None:
+        default_ver = ver_mod.resolve_version(project_dir)
+        existing_versions = ver_mod.available_versions(project_dir)
+        if existing_versions:
+            LOG.info(f"已有版本: {', '.join(existing_versions)}")
+        try:
+            user_input = input(f"请输入版本号 [默认 {default_ver}]: ").strip()
+            args.version = user_input if user_input else default_ver
+        except (EOFError, KeyboardInterrupt):
+            # 非交互模式或用户中断，使用默认值
+            args.version = default_ver
+        LOG.info(f"使用版本: {args.version}")
 
     workspace_dir = get_workspace_dir(project_dir)
     workspace_dir.mkdir(parents=True, exist_ok=True)
@@ -726,6 +1022,20 @@ async def main():
                     await browser.close()
                     return
                 LOG.info("  ✅ 登录成功")
+
+                # 登录成功后自动保存凭据到全局凭据库
+                from core.discovery.io_helpers import save_credentials
+                credentials_to_save = {
+                    "username": username,
+                    "password": password,
+                    "base_url": profile.get("base_url", base_url),
+                    "login_url": login_url,
+                }
+                # 保存 auth 配置（如果存在）
+                if "auth" in profile:
+                    credentials_to_save["auth"] = profile["auth"]
+                save_credentials(args.project, credentials_to_save)
+
                 # 保存 cookie
                 cookies = await context.cookies()
                 cookie_file.parent.mkdir(parents=True, exist_ok=True)
@@ -856,6 +1166,20 @@ async def main():
                 await browser.close()
                 return
             LOG.info("  ✅ 登录成功")
+
+            # 登录成功后自动保存凭据到全局凭据库
+            from core.discovery.io_helpers import save_credentials
+            credentials_to_save = {
+                "username": username,
+                "password": password,
+                "base_url": profile.get("base_url", base_url),
+                "login_url": login_url,
+            }
+            # 保存 auth 配置（如果存在）
+            if "auth" in profile:
+                credentials_to_save["auth"] = profile["auth"]
+            save_credentials(args.project, credentials_to_save)
+
             # 保存 cookie
             cookies = await context.cookies()
             cookie_file.parent.mkdir(parents=True, exist_ok=True)
@@ -932,40 +1256,50 @@ async def main():
                     _, script_path, manifest = result
                     LOG.info(f"\n✅ Stage 3+4 完成! 测试脚本: {script_path}")
 
-        # Stage 4 验证：运行生成的脚本并检查结果
+        # Stage 4.5: 自动运行验证 + 生成报告（默认执行，--no-run 跳过）
         script_ok = False
-        if script_path and args.export:
+        ui_script_ok = False
+        if not args.no_run:
             LOG.info("\n" + "=" * 60)
-            LOG.info("Stage 4 验证: 运行生成的 API 测试脚本")
+            LOG.info("Stage 4.5: 自动运行验证 + 生成报告")
             LOG.info("=" * 60)
-            script_ok = await _run_stage4_verify(
-                str(script_path), project_dir, profile, login_url,
-                username=(args.user or ""), password=(args.password or ""),
-                headless=args.headless
-            )
-            if not script_ok:
-                LOG.warning("⚠️ 脚本运行失败，跳过 Stage 5 导出")
 
-        # Stage 5（导出 artifacts）- 仅在脚本运行成功时执行
-        if args.export and script_ok:
-            if manifest is None:
-                # 尝试从文件加载 manifest
-                version = args.version or ver_mod.resolve_version(project_dir)
-                manifest_path = workspace_dir / "kb" / "module_discovered" / f"{args.module}_manifest.json"
-                if manifest_path.exists():
-                    manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
-                    LOG.info(f"已从文件加载 manifest: {manifest_path}")
-                else:
-                    LOG.error(f"❌ 无法加载 manifest: {manifest_path}")
-                    LOG.error("   请先运行 Stage 3+4 生成 manifest")
-
-            if manifest:
-                run_stage5(
-                    manifest=manifest,
-                    project_dir=project_dir,
-                    module_name=args.module,
-                    version=args.version or ver_mod.resolve_version(project_dir)
+            # 4.5.1: 运行 API 脚本
+            if script_path:
+                script_ok = await _run_stage4_verify(
+                    str(script_path), project_dir, profile, login_url,
+                    username=(args.user or ""), password=(args.password or ""),
+                    headless=args.headless
                 )
+                if not script_ok:
+                    LOG.warning("⚠️ API 脚本运行失败，但仍继续后续阶段")
+
+            # 4.5.2: 运行 UI 脚本
+            version = args.version or ver_mod.resolve_version(project_dir)
+            ui_script_path = project_dir / version / "ui" / f"{args.module}.py"
+            if ui_script_path.exists():
+                ui_script_ok = await _run_ui_script(str(ui_script_path), headless=args.headless)
+                if not ui_script_ok:
+                    LOG.warning("⚠️ UI 脚本运行失败，但仍继续后续阶段")
+            else:
+                LOG.info(f"  ⏭️  UI 脚本不存在: {ui_script_path.name}")
+
+        # Stage 5（导出 artifacts）- 默认执行
+        if manifest is None:
+            # 尝试从文件加载 manifest
+            version = args.version or ver_mod.resolve_version(project_dir)
+            manifest_path = workspace_dir / "kb" / "module_discovered" / f"{args.module}_manifest.json"
+            if manifest_path.exists():
+                manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+                LOG.info(f"已从文件加载 manifest: {manifest_path}")
+
+        if manifest:
+            run_stage5(
+                manifest=manifest,
+                project_dir=project_dir,
+                module_name=args.module,
+                version=args.version or ver_mod.resolve_version(project_dir)
+            )
 
 
 if __name__ == "__main__":

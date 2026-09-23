@@ -15,17 +15,30 @@ from pathlib import Path
 def _get_report_root():
     """动态计算报告输出目录。
 
-    生成脚本场景：api/lib/report/test_report.py → parent.parent = api/
-    框架内场景：lib/report/test_report.py → 使用 workspace/ecm-compute/output
+    HTML 报告保留在脚本包内（便于拷贝后查看），JSONL 日志外移到项目 output/。
+    生成脚本场景：api/lib/test_report.py → api/reports/
+    框架内场景：lib/report/test_report.py → workspace/<project>/output/report/
     """
     _self = Path(__file__).resolve()
-    _base = _self.parent.parent
-    if _base.name == "lib" and _self.parent.parent.parent.name != "api":
-        # 框架内 import：使用 workspace/ecm-compute/output/report/
-        return _self.parent.parent.parent / "workspace" / "ecm-compute" / "output" / "report"
+    # 检测生成脚本场景：api/lib/test_report.py
+    # _self.parent = api/lib/, _self.parent.parent = api/
+    if _self.parent.name == "lib" and _self.parent.parent.name == "api":
+        # 生成脚本：api/lib/test_report.py → api/reports/
+        return _self.parent.parent / "reports"
     else:
-        # 生成脚本：使用 api/report/
-        return _base / "report"
+        # 框架内 import：lib/report/test_report.py → workspace/<project>/output/report/
+        import os
+        project_name = os.environ.get("PROJECT_NAME")
+        if not project_name:
+            cwd = Path.cwd()
+            if "projects" in cwd.parts:
+                idx = cwd.parts.index("projects")
+                if idx + 1 < len(cwd.parts):
+                    project_name = cwd.parts[idx + 1]
+        if not project_name:
+            project_name = "_default"
+        # lib/report/test_report.py → lib → framework_root
+        return _self.parent.parent.parent / "workspace" / project_name / "output" / "report"
 
 
 def parse_jsonl_log(log_file: str) -> list:
@@ -80,8 +93,20 @@ def run_script_and_capture(script_path: str) -> tuple:
         encoding="utf-8"
     )
 
-    # 日志文件路径（与脚本同级）
-    log_dir = script_path.parent / "report"
+    # 日志文件路径：workspace/<project>/output/logs/（与 test_runtime.py 的 _log_dir 对齐）
+    # script_path: projects/<project>/<version>/api/{module}_API测试.py
+    # log: workspace/<project>/output/logs/{module}_API测试.jsonl
+    api_dir = script_path.parent  # api/
+    project_name = api_dir.parent.parent.name  # ecm-compute/
+    # 向上找 projects/ 目录，其 parent 是框架根
+    framework_root = None
+    for p in api_dir.parents:
+        if p.name == "projects":
+            framework_root = p.parent
+            break
+    if framework_root is None:
+        framework_root = Path(__file__).resolve().parent.parent.parent.parent  # 兜底
+    log_dir = framework_root / "workspace" / project_name / "output" / "logs"
     log_file = log_dir / f"{module_name}_API测试.jsonl"
 
     return str(log_file), module_name

@@ -13,7 +13,7 @@
       "text": "创建角色",
       "tag": "BUTTON",
       "className": "el-button el-button--primary el-button--small",
-      "rect": "86x31",
+      "rect": "87x31",
       "location": "toolbar",
       "source": "main",
       "action": "创建角色"
@@ -22,7 +22,7 @@
       "text": "GO",
       "tag": "BUTTON",
       "className": "el-button pagination-jumper el-button--default el-button--mi",
-      "rect": "50x27",
+      "rect": "51x28",
       "location": "toolbar",
       "source": "main",
       "action": "GO"
@@ -33,7 +33,7 @@
       "text": "编辑",
       "tag": "BUTTON",
       "className": "el-button el-tooltip item el-button--text el-button--small",
-      "rect": "25x13",
+      "rect": "26x14",
       "location": "row_action",
       "source": "main",
       "action": "编辑"
@@ -42,7 +42,7 @@
       "text": "删除",
       "tag": "BUTTON",
       "className": "el-button el-tooltip item el-button--text el-button--small",
-      "rect": "25x13",
+      "rect": "26x14",
       "location": "row_action",
       "source": "main",
       "action": "删除"
@@ -207,9 +207,9 @@
     "mainBodyRows": 10,
     "fixedRightRows": 10,
     "fixedLeftRows": 10,
-    "columnCount": 8,
+    "columnCount": 7,
     "operationColumnIndex": 6,
-    "operationColumnLocation": "middle",
+    "operationColumnLocation": "last",
     "tableWrappers": [
       {
         "cls": "el-table__header-wrapper",
@@ -258,15 +258,15 @@
     "创建角色": {
       "success": true,
       "fill_data": {
-        "角色名称": "AT_test_062427",
-        "角色范畴": "AT_test_062427",
-        "描述": "auto_test_062427",
-        "配置模式": "AT_test_062427",
-        "策略内容": "AT_test_062427",
-        "效果": "AT_test_062427",
-        "产品/服务": "AT_test_062427",
-        "操作": "AT_test_062427",
-        "关联菜单": "AT_test_062427"
+        "角色名称": "AT_test_137528",
+        "角色范畴": "AT_test_137528",
+        "描述": "auto_test_137528",
+        "配置模式": "AT_test_137528",
+        "策略内容": "AT_test_137528",
+        "效果": "AT_test_137528",
+        "产品/服务": "AT_test_137528",
+        "操作": "AT_test_137528",
+        "关联菜单": "AT_test_137528"
       },
       "fill_rules": {
         "角色名称": {

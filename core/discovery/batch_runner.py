@@ -134,22 +134,27 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
                     _, script_path, manifest = result
                     LOG.info(f"  ✅ {name}: 脚本已生成 → {script_path}")
 
-            # Stage 4 验证：运行脚本并检查结果
+            # Stage 4.5: 自动运行验证 + 生成报告（默认执行，--no-run 跳过）
             script_ok = False
-            if script_path and (stage == "all" or args.export):
-                LOG.info(f"\n  Stage 4 验证: 运行 {name} 的 API 测试脚本")
+            if script_path and not args.no_run:
+                LOG.info(f"\n  Stage 4.5: 自动运行验证 + 生成报告 [{name}]")
                 script_ok = await _run_stage4_verify(
                     str(script_path), project_dir, profile, login_url,
                     username=(args.user or ""), password=(args.password or ""),
                     headless=args.headless
                 )
                 if not script_ok:
-                    LOG.warning(f"  ⚠️ {name}: 脚本运行失败，跳过 Stage 5 导出")
-                    results.append({"name": name, "status": "script_failed"})
-                    continue
+                    LOG.warning(f"  ⚠️ {name}: 脚本运行失败，但仍继续后续阶段")
 
-            # Stage 5：导出 artifacts（仅在脚本成功时）
-            if (stage == "all" or args.export) and manifest and (script_ok or not script_path):
+            # Stage 5：导出 artifacts（默认执行）
+            if manifest is None:
+                # 尝试从文件加载 manifest
+                version = args.version or ver_mod.resolve_version(project_dir)
+                manifest_path = workspace_dir / "kb" / "module_discovered" / f"{name}_manifest.json"
+                if manifest_path.exists():
+                    manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+
+            if manifest:
                 run_stage5(manifest, project_dir, name,
                            version=args.version or ver_mod.resolve_version(project_dir))
 

@@ -239,10 +239,32 @@ document.addEventListener('keydown', function(e) {{
 </body>
 </html>'''
 
+    import os
     from pathlib import Path
-    # ui_report.py 在 lib/ 目录下，报告应该输出到父目录的 output/reports/
-    script_dir = Path(__file__).parent.parent  # ui/ 目录
-    report_dir = script_dir / "output" / "reports"
+    # HTML 报告保留在脚本包内（便于拷贝后查看），日志外移到项目 output/
+    # 生成脚本场景：ui/lib/ui_report.py → ui/reports/
+    # 框架内场景：lib/report/ui_report.py → workspace/<project>/output/ui_report/
+    self_path = Path(__file__).resolve()
+    parent_dir = self_path.parent.parent  # ui/ 或 report/
+    if parent_dir.name == "ui":
+        # 生成脚本场景：ui/lib/ui_report.py → ui/reports/
+        report_dir = parent_dir / "reports"
+    else:
+        # 框架内场景：lib/report/ui_report.py
+        # 从环境变量获取项目名，避免硬编码
+        project_name = os.environ.get("PROJECT_NAME")
+        if not project_name:
+            # 尝试从当前工作目录推断
+            cwd = Path.cwd()
+            # 查找 projects/ 下的目录
+            if "projects" in cwd.parts:
+                idx = cwd.parts.index("projects")
+                if idx + 1 < len(cwd.parts):
+                    project_name = cwd.parts[idx + 1]
+            if not project_name:
+                # 默认使用 workspace 根目录
+                project_name = "_default"
+        report_dir = self_path.parent.parent.parent / "workspace" / project_name / "output" / "ui_report"
     report_dir.mkdir(parents=True, exist_ok=True)
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")

@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "b513d682-d573-441e-acaa-ab08eca9b87f",
+    "_postman_id": "d8ebc74d-2f88-40a5-b2d3-d4a80f1413a0",
     "name": "用户管理 API 测试",
     "description": "由 module_discovery Stage 5 自动导出",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -10,23 +10,6 @@
       "key": "base_url",
       "value": "https://10.151.61.248",
       "type": "string"
-    },
-    {
-      "key": "Estack-Language",
-      "value": "zh-CN",
-      "type": "string"
-    },
-    {
-      "key": "entity_list_0_policyList_0_id",
-      "value": "",
-      "type": "string",
-      "description": "由 获取用户列表 提取"
-    },
-    {
-      "key": "entity_list_0_tenantId",
-      "value": "",
-      "type": "string",
-      "description": "由 获取用户列表 提取"
     },
     {
       "key": "entity_adminId",
@@ -42,18 +25,6 @@
     },
     {
       "key": "entity_tenantId",
-      "value": "",
-      "type": "string",
-      "description": "由 获取当前用户信息 提取"
-    },
-    {
-      "key": "tenantId",
-      "value": "",
-      "type": "string",
-      "description": "由 获取当前用户信息 提取"
-    },
-    {
-      "key": "adminId",
       "value": "",
       "type": "string",
       "description": "由 获取当前用户信息 提取"
@@ -117,55 +88,12 @@
                   "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
                   "});",
                   "",
-                  "var entity_list_0_policyList_0_id = jsonData.entity.list[0].policyList[0].id;",
-                  "if (entity_list_0_policyList_0_id !== undefined) pm.environment.set('entity_list_0_policyList_0_id', entity_list_0_policyList_0_id);",
-                  "var entity_list_0_tenantId = jsonData.entity.list[0].tenantId;",
-                  "if (entity_list_0_tenantId !== undefined) pm.environment.set('entity_list_0_tenantId', entity_list_0_tenantId);"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "unknown",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}"
-            }
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "var jsonData = pm.response.json();",
-                  "pm.test('Status OK', function() {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
-                  "});",
-                  "",
                   "var entity_adminId = jsonData.entity.adminId;",
                   "if (entity_adminId !== undefined) pm.environment.set('entity_adminId', entity_adminId);",
                   "var entity_countryCode = jsonData.entity.countryCode;",
                   "if (entity_countryCode !== undefined) pm.environment.set('entity_countryCode', entity_countryCode);",
                   "var entity_tenantId = jsonData.entity.tenantId;",
-                  "if (entity_tenantId !== undefined) pm.environment.set('entity_tenantId', entity_tenantId);",
-                  "var tenantId = jsonData.entity.tenantId;",
-                  "if (tenantId !== undefined) pm.environment.set('tenantId', tenantId);",
-                  "var adminId = jsonData.entity.id;",
-                  "if (adminId !== undefined) pm.environment.set('adminId', adminId);"
+                  "if (entity_tenantId !== undefined) pm.environment.set('entity_tenantId', entity_tenantId);"
                 ]
               }
             }
@@ -273,7 +201,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userName\": \"{{name_userName}}\",\n  \"password\": \"dnA4VbMpAdF2e5dSCEQ/T3f2wddcElbgrYuJ/ycD5cGjvcz7+I67zoAV/FOcI5W7g10Z1uAvJGLf2bdseO9eTzVVDl3j6cHMOqrN/EOyHNgsZGE9yikqEJwpFQ9Rb3/fTJ9GHotANIiAkvHJ0gll5BETF3XOtuuD6xwx/EjdExU=\",\n  \"name\": \"{{name_name}}\",\n  \"email\": \"Hj0ePDr224E1obGUfthLP8ap7UmPqKpq3WH1galCeUgq5tR6bcPQQnwGCkQjXSBAaoaPAUna+SEFpGdelVHwvb+1a9GCAbgcoZhBpNO0Ya6BGjH64FyIfIo/jJcaEji8gK7l9QsN3GH/sxrvSJi4xHik7t1LGt9ibGJPdIbhy58=\",\n  \"phone\": \"eo5Cj6kjx6XQbG/1yiApimz/ZwDgGAwre27f4zETBWSltBJMgshFdJDHa93Ks2n0d3mzafqesdZlEsUeHhD2bDj9x6DqTFAzERIc3ejgHqkdH9sdvbN4Ad5V3izWKOp/3EWD9mpBtZVk25clshSCfa4e5UqDJekVdogJEOhHmpw=\",\n  \"description\": \"{{mutable_description}}\",\n  \"policyIds\": \"{{entity_list_0_policyList_0_id}}\",\n  \"adminId\": \"{{entity_adminId}}\",\n  \"tenantId\": \"{{entity_0_id}}\",\n  \"countryCode\": \"{{entity_countryCode}}\"\n}",
+              "raw": "{\n  \"userName\": \"{{name_userName}}\",\n  \"password\": \"fCRipPb+1Ee6VzFtCSEQi+M3ayRGFVJJF1TZRMLQM09RqmS0wLHEx/zePaHx45H6ebMQb9z3ovBBxVNGLzY6+SqeMHqYSfCikoiB8/Km0YExjqzvvam2yjsmokSkvHX/MvBQQ9WP1gZGeg+Dhhr4SO/rMbXqIb7HRNEuUl/ZhAY=\",\n  \"name\": \"{{name_name}}\",\n  \"email\": \"dTHJpnGIw9dc7kpoKOR4YfMF5OUt9F6bTXwCR3c4X7/oTh/sfVjCTBiCL5YG1rpzwMi9zpilTY1VnKsRuowrwQi3Djic6kegrRIBo4a/ZYULIk9t/HGTsj002uHFNLucX6FG58a1FYiPr+VEX4YKJCqemM11d9jHF8hgEaOx5us=\",\n  \"phone\": \"CYOzYeg8w4dVUvBshTlB6FdYQXj32S4G2W4Oy3wIxjDR0In7dNo8DBxKK+nH8Zo6Xzh93WBba9cpseEB/5k9yS7OV7HWwpVMhLR03TVi6CfLx9mr3Kh6yuvGSfz+PVtGoTDgwYLVbXTMa7WZOhjE2ex/026KuINnZNIdHhF5bpY=\",\n  \"description\": \"{{mutable_description}}\",\n  \"policyIds\": [\n    \"1f8e392309fc414c9d77d45d0315fedc\",\n    \"33f460698adb4f4e812a2b07e8439f81\"\n  ],\n  \"adminId\": \"{{entity_adminId}}\",\n  \"tenantId\": \"{{entity_0_id}}\",\n  \"countryCode\": \"{{entity_countryCode}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -337,27 +265,7 @@
           "response": []
         },
         {
-          "name": "03_query",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/estack/api/estack/draco/v1/tenants/users"
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "04_编辑",
+          "name": "03_编辑",
           "request": {
             "method": "PUT",
             "header": [
@@ -398,7 +306,7 @@
           ]
         },
         {
-          "name": "05_搜索验证（编辑后）",
+          "name": "04_搜索验证（编辑后）",
           "request": {
             "method": "GET",
             "header": [
@@ -418,7 +326,7 @@
           "response": []
         },
         {
-          "name": "06_冻结",
+          "name": "05_冻结",
           "request": {
             "method": "PUT",
             "header": [
@@ -447,7 +355,7 @@
           "response": []
         },
         {
-          "name": "07_搜索验证（冻结后）",
+          "name": "06_搜索验证（冻结后）",
           "request": {
             "method": "GET",
             "header": [
@@ -467,7 +375,7 @@
           "response": []
         },
         {
-          "name": "08_启用",
+          "name": "07_启用",
           "request": {
             "method": "PUT",
             "header": [
@@ -487,7 +395,7 @@
           "response": []
         },
         {
-          "name": "09_搜索验证（启用后）",
+          "name": "08_搜索验证（启用后）",
           "request": {
             "method": "GET",
             "header": [
@@ -507,7 +415,7 @@
           "response": []
         },
         {
-          "name": "10_锁定",
+          "name": "09_锁定",
           "request": {
             "method": "POST",
             "header": [
@@ -536,7 +444,7 @@
           "response": []
         },
         {
-          "name": "11_搜索验证（锁定后）",
+          "name": "10_搜索验证（锁定后）",
           "request": {
             "method": "GET",
             "header": [
@@ -556,7 +464,7 @@
           "response": []
         },
         {
-          "name": "12_重置密码",
+          "name": "11_重置密码",
           "request": {
             "method": "POST",
             "header": [
@@ -574,7 +482,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"forceChangePassword\": 1,\n  \"isRandomPassword\": 1,\n  \"newPassword\": \"UhdqKOToG24Q79IAcuRwSQ9Vt/8txsIV7YHTBb/aWj1NON+zYRI4gcgi1sNMxVYRIG+5hAVSeSuoBzZvsi6jYICXHq8RqNNfIaZG6u2iRWT8q9P/5DimOuWszOskTrqKommPZG1t7ipJdf4z2L6MObnTe+08TEbVH848TYDlkIA=\",\n  \"passwordPolicy\": {\n    \"id\": \"{{entity_id}}\",\n    \"tenantId\": \"{{entity_tenantId}}\",\n    \"minPasswordLength\": 8,\n    \"requireLowercaseCharacters\": false,\n    \"requireUppercaseCharacters\": true,\n    \"requireNumbers\": true,\n    \"requireSymbols\": true,\n    \"minPasswordDifferentCharacter\": 0,\n    \"createdAt\": \"{{entity_createdAt}}\",\n    \"updatedAt\": \"{{entity_updatedAt}}\",\n    \"deleted\": false,\n    \"userName\": null\n  },\n  \"userId\": \"{{id}}\",\n  \"noticeType\": [\n    \"email\"\n  ]\n}",
+              "raw": "{\n  \"forceChangePassword\": 1,\n  \"isRandomPassword\": 1,\n  \"newPassword\": \"LYMNZ6N9cREbt/LK2e/Jz0aLAZxnB8+EeXiKC3ij4GL3aBHS0q9zlhyfJY31Hl944XN3/Ft7ko3/uPTeMcE5JVQJtdpr9dCsHrxXfK1Pwz+Az2dW3I8rqNM3tjiOeavdqsYBs18PgVtDPP3/3laL883UJdvTU7xH+8bylKSLrc0=\",\n  \"passwordPolicy\": {\n    \"id\": \"{{entity_id}}\",\n    \"tenantId\": \"{{entity_tenantId}}\",\n    \"minPasswordLength\": 8,\n    \"requireLowercaseCharacters\": false,\n    \"requireUppercaseCharacters\": true,\n    \"requireNumbers\": true,\n    \"requireSymbols\": true,\n    \"minPasswordDifferentCharacter\": 0,\n    \"createdAt\": \"{{entity_createdAt}}\",\n    \"updatedAt\": \"{{entity_updatedAt}}\",\n    \"deleted\": false,\n    \"userName\": null\n  },\n  \"userId\": \"{{id}}\",\n  \"noticeType\": [\n    \"email\"\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -585,7 +493,7 @@
           "response": []
         },
         {
-          "name": "13_搜索验证（重置密码后）",
+          "name": "12_搜索验证（重置密码后）",
           "request": {
             "method": "GET",
             "header": [
@@ -605,56 +513,7 @@
           "response": []
         },
         {
-          "name": "14_迁移",
-          "request": {
-            "method": "PUT",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/migrate/{{entity_list_0_tenantId}}"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"tenantId\": \"{{entity_list_0_tenantId}}\",\n  \"userIds\": \"{{id}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "15_搜索验证（迁移后）",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/estack/api/estack/draco/v1/tenants/users"
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "16_删除",
+          "name": "13_删除",
           "request": {
             "method": "DELETE",
             "header": [
@@ -674,7 +533,7 @@
           "response": []
         },
         {
-          "name": "17_搜索验证（删除后）",
+          "name": "14_搜索验证（删除后）",
           "request": {
             "method": "GET",
             "header": [

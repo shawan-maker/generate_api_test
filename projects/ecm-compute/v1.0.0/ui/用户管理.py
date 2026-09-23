@@ -2,7 +2,7 @@
 """
 用户管理 - UI 自动化测试脚本
 
-生成时间: 2026-09-21 10:17:37
+生成时间: 2026-09-23 12:35:07
 生成工具: API AI Test Framework - Stage 2
 版本: v1.0.0
 
@@ -10,7 +10,6 @@
     python 用户管理.py                    # 运行所有操作
     python 用户管理.py create update      # 只运行 create 和 update
     python 用户管理.py --headless         # 无头模式
-    python 用户管理.py --data custom.json # 使用自定义数据文件
 
 依赖:
     pip install playwright
@@ -46,7 +45,7 @@ CONFIG = {
     "slow_mo": 100,
     # 鉴权配置（cookie_client 统一使用）
     "auth_config": {
-        "token_key": "estackToken",
+        "token_key": "accessToken",
         "token_storage": "localStorage",
         "cookie_token_key": "accessToken",
     },
@@ -75,6 +74,8 @@ async def require_cookie_auth(context, page):
 async def _cleanup_dialogs(page):
     """关闭操作间可能残留的对话框/弹窗，并等待表格恢复就绪。"""
     # --- Phase 0: 释放钉住的通知 ---
+    # confirm_dialog 会钉住通知元素以保持截图时可见，
+    # 清理前需要先释放，让通知可以正常消失
     try:
         await page.evaluate("() => { if (window.__unpin_notifications) window.__unpin_notifications(); }")
     except Exception:
@@ -132,6 +133,11 @@ _OPERATION_STATUS = {
         "status": "failed",
         "error_type": "required_field_empty",
         "error_text": "必填字段无法填写: 授权用户组（select，值为空）"
+    },
+    "迁移": {
+        "status": "failed",
+        "error_type": "no_success_signal",
+        "error_text": "迁移 操作后未检测到成功信号（成功提示/数据变化）"
     }
 }
 
@@ -263,7 +269,6 @@ async def main():
     parser = argparse.ArgumentParser(description="用户管理 UI 自动化测试脚本")
     parser.add_argument("operations", nargs="*", help="要执行的操作列表")
     parser.add_argument("--headless", action="store_true", help="无头模式")
-    parser.add_argument("--data", help="数据文件路径")
     args = parser.parse_args()
 
     # 加载 playbook
@@ -319,7 +324,10 @@ async def main():
         print(f"  📊 报告: {report_path}")
 
         if not (args.headless or CONFIG["headless"]):
-            input("\n按 Enter 关闭浏览器...")
+            try:
+                input("\n按 Enter 关闭浏览器...")
+            except (EOFError, KeyboardInterrupt):
+                pass  # 非交互模式自动跳过
         await browser.close()
 
 
