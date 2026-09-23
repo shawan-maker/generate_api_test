@@ -1,0 +1,55 @@
+{
+  "version": "1.0",
+  "pre_apis": [
+    {
+      "id": "pools",
+      "name": "前置 API: pools",
+      "method": "GET",
+      "pathname": "/estack/api/estack/pegasi/v1/service-menu/service-item/pools",
+      "extracts": [
+        {
+          "name": "entity_0_pools_0_poolId",
+          "path": "entity[0].pools[0].poolId",
+          "used_by": [
+            "query",
+            "资源池容量",
+            "修改容量"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {},
+      "depends_on": []
+    },
+    {
+      "id": "display_by_role",
+      "name": "前置 API: display-by-role",
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/tenants/display-by-role",
+      "extracts": [
+        {
+          "name": "entity_0_name",
+          "path": "entity[0].name",
+          "used_by": [
+            "创建用户组"
+          ]
+        },
+        {
+          "name": "entity_0_id",
+          "path": "entity[0].id",
+          "used_by": [
+            "创建用户组"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {},
+      "depends_on": []
+    }
+  ],
+  "global_context_fields": [
+    "entity_0_pools_0_poolId",
+    "entity_0_name",
+    "entity_0_id"
+  ]
+}

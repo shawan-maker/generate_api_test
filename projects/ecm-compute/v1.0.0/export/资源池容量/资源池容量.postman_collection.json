@@ -1,0 +1,117 @@
+{
+  "info": {
+    "_postman_id": "eba5c3e6-f2ba-486b-aa59-81782d2e1031",
+    "name": "资源池容量 API 测试",
+    "description": "由 module_discovery Stage 5 自动导出",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://10.151.61.248",
+      "type": "string"
+    },
+    {
+      "key": "entity_0_pools_0_poolId",
+      "value": "",
+      "type": "string",
+      "description": "由 前置 API: pools 提取"
+    }
+  ],
+  "item": [
+    {
+      "name": "00_前置操作",
+      "item": [
+        {
+          "name": "unknown",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Status OK', function() {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "var entity_0_pools_0_poolId = jsonData.entity[0].pools[0].poolId;",
+                  "if (entity_0_pools_0_poolId !== undefined) pm.environment.set('entity_0_pools_0_poolId', entity_0_pools_0_poolId);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// helpers.js — 由 module_discovery Stage 5 自动导出",
+          "// Postman Pre-request Script 版本的测试数据生成函数",
+          "",
+          "function _ts6() {",
+          "    return Date.now().toString(16).slice(-6);",
+          "}",
+          "",
+          "function gen_test_name() {",
+          "    return 'AT_' + _ts6();",
+          "}",
+          "",
+          "function gen_mutable_value() {",
+          "    return 'auto_modified_' + _ts6();",
+          "}",
+          "",
+          "function gen_email() {",
+          "    return 'at_' + _ts6() + '@test.com';",
+          "}",
+          "",
+          "function gen_phone() {",
+          "    return '138' + Math.floor(Math.random() * 100000000);",
+          "}",
+          "",
+          "function gen_text() {",
+          "    return 'auto_' + _ts6();",
+          "}",
+          "",
+          "// 表达式解析: ${function(args)} → 调用对应函数",
+          "var _fnMap = {",
+          "    gen_test_name: gen_test_name,",
+          "    gen_mutable_value: gen_mutable_value,",
+          "    gen_email: gen_email,",
+          "    gen_phone: gen_phone,",
+          "    gen_text: gen_text",
+          "};",
+          "",
+          "function resolveExpr(expr) {",
+          "    var m = expr.match(/^\\$\\{(\\w+)\\([^)]*\\)\\}$/);",
+          "    if (!m) return expr;",
+          "    var fn = _fnMap[m[1]];",
+          "    return fn ? fn() : expr;",
+          "}"
+        ]
+      }
+    }
+  ]
+}

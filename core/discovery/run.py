@@ -96,6 +96,17 @@ def parse_args():
     ap.add_argument("--version", type=str, default=None,
                     help="脚本版本号（如 v2.1.0）。默认读 .api_version / API_VERSION 环境变量 / v1.0.0")
     # ---- 批量发现 ----
+    ap.add_argument("--discover", action="store_true", default=False,
+                    help="自动发现模式：从主页面发现所有模块并批量处理")
+    ap.add_argument("--discover-only", action="store_true", default=False,
+                    help="仅执行导航发现，输出模块列表（JSON）后退出，不执行管线")
+    ap.add_argument("--discover-select", type=str, default=None,
+                    help="从缓存加载发现结果，按编号选择模块执行（如 '1,3,5' 或 'all'）")
+    ap.add_argument("--home-url", type=str, default=None,
+                    help="主页面 URL（discover 模式使用，避免交互式输入）")
+    ap.add_argument("--output-format", type=str, default="text",
+                    choices=["text", "json"],
+                    help="--discover-only 的输出格式（默认 text，AI 客户端用 json）")
     ap.add_argument("--all-modules", action="store_true", default=False,
                     help="批量发现: 读取 projects/<project>/modules.yaml 中的模块清单逐一发现")
     ap.add_argument("--force", action="store_true", default=False,
@@ -915,6 +926,525 @@ test_data = {{
     LOG.info(f"✅ README.md 已生成: {readme_path}")
 
 
+async def _ensure_login(page, context, profile, login_url, target_url, args, workspace_dir):
+    """公共登录逻辑：尝试 cookie 复用，失败则完整登录。
+
+    Args:
+        page: Playwright page
+        context: Playwright context
+        profile: 项目 profile
+        login_url: 登录页 URL
+        target_url: 验证 cookie 有效性用的目标 URL
+        args: argparse 参数
+        workspace_dir: workspace 目录
+
+    Returns:
+        bool: 是否登录成功
+    """
+    LOG.info("登录...")
+    creds = profile.get("credentials", {}) or {}
+    username = (args.user
+                or creds.get("username")
+                or os.environ.get(creds.get("username_env", ""), "")
+                or "")
+    password = (args.password
+                or creds.get("password")
+                or os.environ.get(creds.get("password_env", ""), "")
+                or "")
+
+    if not username or not password:
+        LOG.error("缺少登录凭据，请通过 --user/--pass 提供")
+        return False
+
+    # 尝试从 workspace 加载已有 cookie
+    cookie_file = workspace_dir / "output" / "config" / "cookies.json"
+    logged_in = False
+    if cookie_file.exists():
+        try:
+            cookies = json.loads(cookie_file.read_text(encoding="utf-8"))
+            if cookies:
+                await context.add_cookies(cookies)
+                # 注入 token 到 localStorage
+                token_key = profile.get("auth", {}).get("token_key", "accessToken")
+                token_cookie = next((c["value"] for c in cookies if c["name"] == token_key), None)
+                if token_cookie:
+                    await context.add_init_script(f"""
+                        localStorage.setItem('{token_key}', '{token_cookie}');
+                    """)
+                try:
+                    await page.goto(target_url, wait_until="load", timeout=30000)
+                except Exception:
+                    pass
+                await page.wait_for_timeout(5000)
+                if "/login" not in page.url:
+                    LOG.info("  ✅ Cookie 有效，直接进入目标页")
+                    logged_in = True
+                    # Cookie 路径：刷新页面确保 SPA 组件完整渲染（解决 DOM 未渲染问题）
+                    try:
+                        await page.reload(wait_until="networkidle", timeout=30000)
+                    except Exception:
+                        pass
+                    await page.wait_for_timeout(3000)
+                else:
+                    LOG.info("  ⚠️ Cookie 已过期，将执行完整登录")
+        except Exception:
+            pass
+
+    if not logged_in:
+        LOG.info("  执行滑块登录...")
+        ok = await _login_with_playwright(page, context, login_url, username, password,
+                                          project_profile=profile)
+        if not ok:
+            LOG.error("❌ 登录失败")
+            return False
+        LOG.info("  ✅ 登录成功")
+
+        # 保存凭据到全局凭据库
+        from core.discovery.io_helpers import save_credentials
+        credentials_to_save = {
+            "username": username,
+            "password": password,
+            "base_url": profile.get("base_url", ""),
+            "login_url": login_url,
+        }
+        if "auth" in profile:
+            credentials_to_save["auth"] = profile["auth"]
+        save_credentials(args.project, credentials_to_save)
+
+        # 保存 cookie
+        cookies = await context.cookies()
+        cookie_file.parent.mkdir(parents=True, exist_ok=True)
+        cookie_file.write_text(json.dumps(cookies, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        # 从 cookie 提取 token，用 addInitScript 注入到 localStorage（所有后续页面）
+        token_key = profile.get("auth", {}).get("token_key", "accessToken")
+        token_cookie = next((c["value"] for c in cookies if c["name"] == token_key), None)
+        if token_cookie:
+            await context.add_init_script(f"""
+                localStorage.setItem('{token_key}', '{token_cookie}');
+            """)
+            LOG.info("  ✅ 已通过 addInitScript 注入 token 到 localStorage")
+
+        # 跳转到目标 URL
+        try:
+            await page.goto(target_url, wait_until="load", timeout=45000)
+        except Exception:
+            pass
+        await page.wait_for_timeout(5000)
+
+    return True
+
+
+async def _run_discover_mode(project_dir: Path, profile: dict, base_url: str, login_url: str, args):
+    """自动发现模式：从主页面发现所有模块并批量处理。
+
+    流程：
+      1. 交互式收集参数（主页面 URL、版本号）
+      2. 登录系统
+      3. 导航自动发现（展开菜单 → 提取模块 URL）
+      4. 与已有脚本对比
+      5. 交互式选择要处理的模块
+      6. 批量执行 Stage 1-5
+    """
+    from core.discovery.discover_navigation import (
+        discover_modules,
+        compare_with_existing,
+        interactive_select,
+    )
+
+    LOG.info("")
+    LOG.info("=" * 70)
+    LOG.info("Phase 0: 导航自动发现模式")
+    LOG.info("=" * 70)
+
+    # 1. 交互式收集参数
+    # 主页面 URL（默认使用 login_url 去掉 /login，即应用主页）
+    app_home_url = login_url.replace("/login", "")
+    default_home_url = profile.get("home_url") or app_home_url
+    try:
+        home_url_input = input(f"主页面 URL [默认 {default_home_url}]: ").strip()
+        home_url = home_url_input if home_url_input else default_home_url
+    except (EOFError, KeyboardInterrupt):
+        home_url = default_home_url
+        print()
+
+    LOG.info(f"使用主页面: {home_url}")
+
+    # 版本号（已在 main() 中处理，这里只是确认）
+    version = args.version or ver_mod.resolve_version(project_dir)
+    LOG.info(f"使用版本: {version}")
+
+    # 2. 启动浏览器并登录
+    if args.offline:
+        LOG.error("离线模式不支持 --discover，请使用在线模式")
+        sys.exit(1)
+
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(
+            headless=args.headless,
+            args=["--ignore-certificate-errors", "--disable-web-security",
+                  "--no-sandbox", "--disable-blink-features=AutomationControlled"],
+        )
+        context = await browser.new_context(
+            viewport={"width": 1600, "height": 1000},
+            locale="zh-CN",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        )
+        page = await context.new_page()
+
+        # 复用公共登录逻辑
+        workspace_dir = get_workspace_dir(project_dir)
+        login_ok = await _ensure_login(page, context, profile, login_url, home_url, args, workspace_dir)
+        if not login_ok:
+            await browser.close()
+            return
+
+        # 3. 导航自动发现
+        LOG.info("")
+        LOG.info("Phase 0.5: 导航自动发现")
+        LOG.info("-" * 70)
+
+        # 记录登录后的实际页面 URL（这是真正的门户页面）
+        landing_url = page.url
+        LOG.info(f"  登录后着陆页: {landing_url}")
+
+        # 如果用户指定了不同的 home_url 且不是着陆页，才导航过去
+        if home_url and home_url != landing_url and not landing_url.endswith("/portal"):
+            LOG.info(f"  导航到指定主页: {home_url}")
+            await page.goto(home_url, wait_until="load", timeout=45000)
+            await page.wait_for_timeout(3000)
+        else:
+            # 使用着陆页，只需等待渲染
+            await page.wait_for_timeout(3000)
+
+        # 调用导航发现
+        discovered = await discover_modules(
+            page, context, base_url, login_url, profile, project_dir,
+            force=args.force
+        )
+
+        if not discovered:
+            LOG.error("❌ 未发现任何有效模块")
+            LOG.info("  可能原因：")
+            LOG.info("  1. 当前页面不包含侧边栏菜单")
+            LOG.info("  2. SPA 未完全加载")
+            LOG.info("  3. 登录凭据已过期")
+            LOG.info("")
+
+            # 交互式提示用户输入正确的URL
+            try:
+                LOG.info("请输入一个包含侧边栏菜单的页面URL（例如用户管理或角色管理页面）：")
+                new_url = input(f"URL [{home_url}]: ").strip()
+                if new_url:
+                    home_url = new_url
+                    LOG.info(f"导航到: {home_url}")
+                    await page.goto(home_url, wait_until="load", timeout=45000)
+                    await page.wait_for_timeout(3000)
+
+                    # 重新尝试发现
+                    discovered = await discover_modules(
+                        page, context, base_url, login_url, profile, project_dir,
+                        force=args.force
+                    )
+            except (EOFError, KeyboardInterrupt):
+                pass
+
+            if not discovered:
+                LOG.error("仍未发现有效模块，退出")
+                await browser.close()
+                return
+
+        # 4. 与已有脚本对比
+        version_dir = project_dir / version
+        modules_with_status = compare_with_existing(discovered, version_dir)
+
+        new_count = sum(1 for m in modules_with_status if not m.get("has_script"))
+        existing_count = sum(1 for m in modules_with_status if m.get("has_script"))
+        LOG.info(f"  发现 {len(modules_with_status)} 个模块: {new_count} 个新模块, {existing_count} 个已有脚本")
+
+        # 5. 交互式选择
+        selected = interactive_select(modules_with_status)
+
+        if not selected:
+            LOG.info("未选择任何模块，退出")
+            await browser.close()
+            return
+
+        LOG.info(f"  选择了 {len(selected)} 个模块进行处理")
+
+        # 6. 批量执行（复用已有的 run_all_modules 管线）
+        LOG.info("")
+        LOG.info("Phase 1-5: 批量执行")
+        LOG.info("-" * 70)
+
+        # 格式适配：discover 输出 {"label": ...} → run_all_modules 期望 {"name": ...}
+        modules_for_pipeline = [
+            {"name": m["label"], "url": m["url"]}
+            for m in selected
+        ]
+
+        await run_all_modules(
+            page, context, project_dir, profile, base_url, login_url, args,
+            run_stage1=run_stage1,
+            run_stage2=run_stage2,
+            run_stage34=run_stage34,
+            _run_stage4_verify=_run_stage4_verify,
+            run_stage5=run_stage5,
+            modules_override=modules_for_pipeline
+        )
+
+        await browser.close()
+
+    LOG.info("")
+    LOG.info("✅ 自动发现模式完成")
+
+
+def _resolve_home_url(profile, login_url, args) -> str:
+    """解析主页面 URL：优先 --home-url 参数，其次 profile 配置，最后推导。"""
+    if args.home_url:
+        return args.home_url
+    default = profile.get("home_url") or login_url.replace("/login", "")
+    try:
+        home_url_input = input(f"主页面 URL [默认 {default}]: ").strip()
+        return home_url_input if home_url_input else default
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return default
+
+
+async def _discover_and_cache(project_dir: Path, profile: dict, base_url: str,
+                              login_url: str, args) -> bool:
+    """阶段 1：登录 → 爬取菜单 → 对比已有脚本 → 输出列表 → 保存缓存。
+
+    供 --discover-only 使用，也供 --discover 模式复用。
+
+    Returns:
+        (bool, list): (是否成功, 带对比状态的模块列表)
+    """
+    from core.discovery.discover_navigation import (
+        discover_modules,
+        compare_with_existing,
+    )
+    from core.discovery.nav_discovery import save_discovery_result
+
+    home_url = _resolve_home_url(profile, login_url, args)
+    version = args.version or ver_mod.resolve_version(project_dir)
+
+    LOG.info("")
+    LOG.info("=" * 70)
+    LOG.info("Phase 0: 导航发现（仅探测）")
+    LOG.info("=" * 70)
+    LOG.info(f"  主页面: {home_url}")
+    LOG.info(f"  版本: {version}")
+
+    if args.offline:
+        LOG.error("离线模式不支持 --discover-only")
+        return False, []
+
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(
+            headless=args.headless,
+            args=["--ignore-certificate-errors", "--disable-web-security",
+                  "--no-sandbox", "--disable-blink-features=AutomationControlled"],
+        )
+        context = await browser.new_context(
+            viewport={"width": 1600, "height": 1000},
+            locale="zh-CN",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        )
+        page = await context.new_page()
+
+        workspace_dir = get_workspace_dir(project_dir)
+        login_ok = await _ensure_login(page, context, profile, login_url, home_url, args, workspace_dir)
+        if not login_ok:
+            await browser.close()
+            return False, []
+
+        # 导航到主页面
+        landing_url = page.url
+        LOG.info(f"  登录后着陆页: {landing_url}")
+
+        if home_url != landing_url and not landing_url.endswith("/portal"):
+            LOG.info(f"  导航到指定主页: {home_url}")
+            await page.goto(home_url, wait_until="load", timeout=45000)
+            await page.wait_for_timeout(3000)
+        else:
+            await page.wait_for_timeout(3000)
+
+        # 爬取菜单
+        discovered = await discover_modules(
+            page, context, base_url, login_url, profile, project_dir,
+            force=args.force
+        )
+
+        if not discovered:
+            LOG.error("❌ 未发现任何模块")
+            LOG.info("  请通过 --home-url 提供包含侧边栏菜单的页面 URL")
+            await browser.close()
+            return False, []
+
+        await browser.close()
+
+    # 与已有脚本对比
+    version_dir = project_dir / version
+    modules_with_status = compare_with_existing(discovered, version_dir)
+
+    new_count = sum(1 for m in modules_with_status if not m.get("has_script"))
+    existing_count = sum(1 for m in modules_with_status if m.get("has_script"))
+
+    # 输出结果
+    output_format = getattr(args, "output_format", "text") or "text"
+
+    if output_format == "json":
+        from core.discovery.discover_navigation import format_discovery_result
+        result_json = format_discovery_result(modules_with_status)
+        print(result_json)
+    else:
+        _print_discovery_summary(modules_with_status, new_count, existing_count)
+
+    LOG.info(f"  发现 {len(modules_with_status)} 个模块: {new_count} 个新模块, {existing_count} 个已有脚本")
+    LOG.info(f"  缓存文件: {workspace_dir / 'kb' / 'navigation_discovered.json'}")
+
+    return True, modules_with_status
+
+
+def _print_discovery_summary(modules_with_status: list, new_count: int, existing_count: int):
+    """打印发现结果摘要（text 格式）。"""
+    print()
+    print("=" * 70)
+    print(f"  发现 {len(modules_with_status)} 个模块: {new_count} 个新模块, {existing_count} 个已有脚本")
+    print("=" * 70)
+    print(f"  {'编号':<6} {'模块名称':<20} {'分组':<20} {'状态'}")
+    print("  " + "-" * 64)
+
+    for i, m in enumerate(modules_with_status, 1):
+        label = m["label"]
+        group = m.get("group", "")
+        status = "✅ 已有" if m.get("has_script") else "🆕 新模块"
+        print(f"  [{i:>2}]  {label:<18} {group:<18} {status}")
+
+    print()
+    print("  使用以下命令执行选定模块的管线：")
+    print("  python -m core.discovery.run --project <项目名> --discover-select \"1,3,5\"")
+    print("  python -m core.discovery.run --project <项目名> --discover-select \"all\"")
+    print()
+
+
+async def _execute_selected_modules(project_dir: Path, profile: dict,
+                                     base_url: str, login_url: str,
+                                     selected_ids, args):
+    """阶段 2：从缓存加载 → 按编号筛选 → 启动浏览器 → 执行管线。
+
+    Args:
+        selected_ids: 选中的模块编号列表（如 [1, 3, 5]），None 表示全部
+    """
+    from core.discovery.discover_navigation import compare_with_existing
+    from core.discovery.nav_discovery import load_discovery_result
+
+    workspace_dir = get_workspace_dir(project_dir)
+    version = args.version or ver_mod.resolve_version(project_dir)
+
+    # 1. 从缓存加载
+    cached = load_discovery_result(workspace_dir, max_age_days=7)
+    if not cached:
+        LOG.error("❌ 缓存不存在或已过期，请先运行 --discover-only")
+        sys.exit(1)
+
+    # 对比已有脚本
+    version_dir = project_dir / version
+    modules_with_status = compare_with_existing(cached, version_dir)
+
+    # 2. 按编号筛选
+    if selected_ids is None:
+        selected = list(modules_with_status)
+        LOG.info(f"选择了全部 {len(selected)} 个模块")
+    else:
+        selected = []
+        for idx in selected_ids:
+            if 1 <= idx <= len(modules_with_status):
+                selected.append(modules_with_status[idx - 1])
+            else:
+                LOG.warning(f"  编号 {idx} 超出范围（1-{len(modules_with_status)}），已忽略")
+
+        if not selected:
+            LOG.error("❌ 未选择任何有效模块")
+            sys.exit(1)
+
+        LOG.info(f"选择了 {len(selected)} 个模块:")
+        for m in selected:
+            LOG.info(f"  - {m['label']} ({m.get('group', '')})")
+
+    # 3. 启动浏览器 + 登录 + 执行
+    home_url = _resolve_home_url(profile, login_url, args)
+
+    if args.offline:
+        # 离线模式不需要浏览器，直接执行 Stage 34
+        LOG.info("离线模式：跳过 Stage 1-2，仅执行 Stage 34")
+        from playwright.async_api import async_playwright
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            context = await browser.new_context()
+            page = await context.new_page()
+            await _run_discovered_pipeline(page, context, project_dir, profile,
+                                            base_url, login_url, selected, args)
+            await browser.close()
+        return
+
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(
+            headless=args.headless,
+            args=["--ignore-certificate-errors", "--disable-web-security",
+                  "--no-sandbox", "--disable-blink-features=AutomationControlled"],
+        )
+        context = await browser.new_context(
+            viewport={"width": 1600, "height": 1000},
+            locale="zh-CN",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        )
+        page = await context.new_page()
+
+        login_ok = await _ensure_login(page, context, profile, login_url, home_url, args, workspace_dir)
+        if not login_ok:
+            await browser.close()
+            return
+
+        await _run_discovered_pipeline(page, context, project_dir, profile,
+                                        base_url, login_url, selected, args)
+        await browser.close()
+
+    LOG.info("")
+    LOG.info("✅ 选择执行完成")
+
+
+async def _run_discovered_pipeline(page, context, project_dir, profile,
+                                    base_url, login_url, selected, args):
+    """从选中的模块列表执行 Stage 1-5 管线。"""
+    LOG.info("")
+    LOG.info("Phase 1-5: 批量执行")
+    LOG.info("-" * 70)
+
+    modules_for_pipeline = [
+        {"name": m["label"], "url": m["url"]}
+        for m in selected
+    ]
+
+    await run_all_modules(
+        page, context, project_dir, profile, base_url, login_url, args,
+        run_stage1=run_stage1,
+        run_stage2=run_stage2,
+        run_stage34=run_stage34,
+        _run_stage4_verify=_run_stage4_verify,
+        run_stage5=run_stage5,
+        modules_override=modules_for_pipeline
+    )
+
+
 async def main():
     # Windows GBK 编码兼容：日志中的 emoji/中文不崩溃
     import io
@@ -954,6 +1484,33 @@ async def main():
         LOG.error("profile.yaml 缺少 login_url 配置")
         sys.exit(1)
 
+    # 自动发现模式（--discover）
+    if args.discover:
+        await _run_discover_mode(project_dir, profile, base_url, login_url, args)
+        return
+
+    # 仅发现模式（--discover-only）
+    if args.discover_only:
+        await _discover_and_cache(project_dir, profile, base_url, login_url, args)
+        return
+
+    # 选择执行模式（--discover-select）
+    if args.discover_select:
+        # 解析选择：'1,3,5' → [1,3,5]，'all' → None
+        if args.discover_select.strip().lower() == "all":
+            selected_ids = None
+        else:
+            try:
+                selected_ids = [int(x.strip()) for x in args.discover_select.split(",")]
+            except ValueError:
+                LOG.error(f"❌ --discover-select 格式错误: '{args.discover_select}'")
+                LOG.error("   请使用逗号分隔的数字，如 '1,3,5'，或 'all'")
+                sys.exit(1)
+
+        await _execute_selected_modules(project_dir, profile, base_url,
+                                         login_url, selected_ids, args)
+        return
+
     # 批量发现模式
     if args.all_modules:
         # 离线模式不支持批量发现（需要浏览器）
@@ -977,69 +1534,11 @@ async def main():
             )
             page = await context.new_page()
 
-            # ---- 鉴权（批量模式统一登录一次）----
-            LOG.info("登录...")
-            creds = profile.get("credentials", {}) or {}
-            username = (args.user
-                        or creds.get("username")
-                        or os.environ.get(creds.get("username_env", ""), "")
-                        or "")
-            password = (args.password
-                        or creds.get("password")
-                        or os.environ.get(creds.get("password_env", ""), "")
-                        or "")
-
-            if not username or not password:
-                LOG.error("缺少登录凭据，请通过 --user/--pass 提供")
+            # ---- 鉴权（统一登录）----
+            login_ok = await _ensure_login(page, context, profile, login_url, base_url, args, workspace_dir)
+            if not login_ok:
                 await browser.close()
                 return
-
-            # 尝试从 output/config 加载已有 cookie
-            cookie_file = workspace_dir / "output" / "config" / "cookies.json"
-            logged_in = False
-            if cookie_file.exists():
-                try:
-                    cookies = json.loads(cookie_file.read_text(encoding="utf-8"))
-                    if cookies:
-                        await context.add_cookies(cookies)
-                        try:
-                            await page.goto(base_url, wait_until="load", timeout=30000)
-                        except Exception:
-                            pass
-                        await page.wait_for_timeout(5000)
-                        if "/login" not in page.url:
-                            LOG.info("  ✅ Cookie 有效，直接进入系统")
-                            logged_in = True
-                except Exception:
-                    pass
-
-            if not logged_in:
-                LOG.info("  执行滑块登录...")
-                ok = await _login_with_playwright(page, context, login_url, username, password,
-                                                  project_profile=profile)
-                if not ok:
-                    LOG.error("❌ 登录失败")
-                    await browser.close()
-                    return
-                LOG.info("  ✅ 登录成功")
-
-                # 登录成功后自动保存凭据到全局凭据库
-                from core.discovery.io_helpers import save_credentials
-                credentials_to_save = {
-                    "username": username,
-                    "password": password,
-                    "base_url": profile.get("base_url", base_url),
-                    "login_url": login_url,
-                }
-                # 保存 auth 配置（如果存在）
-                if "auth" in profile:
-                    credentials_to_save["auth"] = profile["auth"]
-                save_credentials(args.project, credentials_to_save)
-
-                # 保存 cookie
-                cookies = await context.cookies()
-                cookie_file.parent.mkdir(parents=True, exist_ok=True)
-                cookie_file.write_text(json.dumps(cookies, ensure_ascii=False, indent=2), encoding="utf-8")
 
             # 执行批量发现
             await run_all_modules(
@@ -1114,92 +1613,11 @@ async def main():
         )
         page = await context.new_page()
 
-        # ---- 鉴权 ----
-        LOG.info("登录...")
-        creds = profile.get("credentials", {}) or {}
-        username = (args.user
-                    or creds.get("username")
-                    or os.environ.get(creds.get("username_env", ""), "")
-                    or "")
-        password = (args.password
-                    or creds.get("password")
-                    or os.environ.get(creds.get("password_env", ""), "")
-                    or "")
-
-        if not username or not password:
-            LOG.error("缺少登录凭据，请通过 --user/--pass 提供")
+        # ---- 鉴权（统一登录）----
+        login_ok = await _ensure_login(page, context, profile, login_url, target_url, args, workspace_dir)
+        if not login_ok:
             await browser.close()
             return
-
-        # 尝试从 output/config 加载已有 cookie
-        cookie_file = workspace_dir / "output" / "config" / "cookies.json"
-        logged_in = False
-        if cookie_file.exists():
-            try:
-                cookies = json.loads(cookie_file.read_text(encoding="utf-8"))
-                if cookies:
-                    await context.add_cookies(cookies)
-                    # 注入 token 到 localStorage（cookie 有效时也需要）
-                    token_key = profile.get("auth", {}).get("token_key", "accessToken")
-                    token_cookie = next((c["value"] for c in cookies if c["name"] == token_key), None)
-                    if token_cookie:
-                        await context.add_init_script(f"""
-                            localStorage.setItem('{token_key}', '{token_cookie}');
-                        """)
-                    try:
-                        await page.goto(target_url, wait_until="load", timeout=30000)
-                    except Exception:
-                        pass
-                    await page.wait_for_timeout(5000)
-                    if "/login" not in page.url:
-                        LOG.info("  ✅ Cookie 有效，直接进入目标页")
-                        logged_in = True
-            except Exception:
-                pass
-
-        if not logged_in:
-            LOG.info("  执行滑块登录...")
-            ok = await _login_with_playwright(page, context, login_url, username, password,
-                                              project_profile=profile)
-            if not ok:
-                LOG.error("❌ 登录失败")
-                await browser.close()
-                return
-            LOG.info("  ✅ 登录成功")
-
-            # 登录成功后自动保存凭据到全局凭据库
-            from core.discovery.io_helpers import save_credentials
-            credentials_to_save = {
-                "username": username,
-                "password": password,
-                "base_url": profile.get("base_url", base_url),
-                "login_url": login_url,
-            }
-            # 保存 auth 配置（如果存在）
-            if "auth" in profile:
-                credentials_to_save["auth"] = profile["auth"]
-            save_credentials(args.project, credentials_to_save)
-
-            # 保存 cookie
-            cookies = await context.cookies()
-            cookie_file.parent.mkdir(parents=True, exist_ok=True)
-            cookie_file.write_text(json.dumps(cookies, ensure_ascii=False, indent=2), encoding="utf-8")
-
-            # 从 cookie 提取 token，用 addInitScript 注入到 localStorage（所有后续页面）
-            token_key = profile.get("auth", {}).get("token_key", "accessToken")
-            token_cookie = next((c["value"] for c in cookies if c["name"] == token_key), None)
-            if token_cookie:
-                await context.add_init_script(f"""
-                    localStorage.setItem('{token_key}', '{token_cookie}');
-                """)
-                LOG.info("  ✅ 已通过 addInitScript 注入 token 到 localStorage")
-
-            # 跳转到目标 URL
-            try:
-                await page.goto(target_url, wait_until="load", timeout=45000)
-            except Exception:
-                pass
-            await page.wait_for_timeout(5000)
 
         # ---- 各阶段执行 ----
         stage = args.stage

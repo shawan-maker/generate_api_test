@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "d8ebc74d-2f88-40a5-b2d3-d4a80f1413a0",
+    "_postman_id": "79229b8a-2ad7-442a-8b98-9eb434a609f3",
     "name": "用户管理 API 测试",
     "description": "由 module_discovery Stage 5 自动导出",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -201,7 +201,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userName\": \"{{name_userName}}\",\n  \"password\": \"fCRipPb+1Ee6VzFtCSEQi+M3ayRGFVJJF1TZRMLQM09RqmS0wLHEx/zePaHx45H6ebMQb9z3ovBBxVNGLzY6+SqeMHqYSfCikoiB8/Km0YExjqzvvam2yjsmokSkvHX/MvBQQ9WP1gZGeg+Dhhr4SO/rMbXqIb7HRNEuUl/ZhAY=\",\n  \"name\": \"{{name_name}}\",\n  \"email\": \"dTHJpnGIw9dc7kpoKOR4YfMF5OUt9F6bTXwCR3c4X7/oTh/sfVjCTBiCL5YG1rpzwMi9zpilTY1VnKsRuowrwQi3Djic6kegrRIBo4a/ZYULIk9t/HGTsj002uHFNLucX6FG58a1FYiPr+VEX4YKJCqemM11d9jHF8hgEaOx5us=\",\n  \"phone\": \"CYOzYeg8w4dVUvBshTlB6FdYQXj32S4G2W4Oy3wIxjDR0In7dNo8DBxKK+nH8Zo6Xzh93WBba9cpseEB/5k9yS7OV7HWwpVMhLR03TVi6CfLx9mr3Kh6yuvGSfz+PVtGoTDgwYLVbXTMa7WZOhjE2ex/026KuINnZNIdHhF5bpY=\",\n  \"description\": \"{{mutable_description}}\",\n  \"policyIds\": [\n    \"1f8e392309fc414c9d77d45d0315fedc\",\n    \"33f460698adb4f4e812a2b07e8439f81\"\n  ],\n  \"adminId\": \"{{entity_adminId}}\",\n  \"tenantId\": \"{{entity_0_id}}\",\n  \"countryCode\": \"{{entity_countryCode}}\"\n}",
+              "raw": "{\n  \"userName\": \"{{name_userName}}\",\n  \"password\": \"aqKR98aTGMMXE5eNDGgi3uOcQ4+W/TY6fAdmh398m0U2H53QWKkbRu5FpLQeXMxcIkTdB2bua1ys6WLJu/wpyh9pRtYHQBMWMmA0uvQBt7W50wKC/SFUP7tfIjfr9MpIiSwVO+pOY1klr/SUUY1J+xxiLxUfTjKc29wWeLeNe+k=\",\n  \"name\": \"{{name_name}}\",\n  \"email\": \"bbKqd37Pokep7ra1SSEHuOeY306/ru3WmS8vTKk1U7o2Nz/iUTRw45vlhsyRUWBIm7PS3yQI0xpUCQ307sFHsze9uE+3Rc4Op/apGGZmSdis0Kq/chgJU3I7k6qdsTg9knCjxEsj36Wjori+g7shb54JHiXzC8rQKj2tHrARlHY=\",\n  \"phone\": \"HlBL6zNOOglfHApeSVaCZ100DpxQ+Qj3eAAFywsQY4cKIHuAthYG1Q6qTXfZQDYldTxAxYc8NVkB2j2csx7yfEraxyIVEbkA/z8k7r4LOK5vjcyvMWvmpqwt8fBFn+0HXh6JPpfXBZYgyr/aUwl19Yx5Xe3onn9/PuJtBhs84n4=\",\n  \"description\": \"{{mutable_description}}\",\n  \"policyIds\": [\n    \"1f8e392309fc414c9d77d45d0315fedc\",\n    \"33f460698adb4f4e812a2b07e8439f81\"\n  ],\n  \"adminId\": \"{{entity_adminId}}\",\n  \"tenantId\": \"{{entity_0_id}}\",\n  \"countryCode\": \"{{entity_countryCode}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -482,7 +482,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"forceChangePassword\": 1,\n  \"isRandomPassword\": 1,\n  \"newPassword\": \"LYMNZ6N9cREbt/LK2e/Jz0aLAZxnB8+EeXiKC3ij4GL3aBHS0q9zlhyfJY31Hl944XN3/Ft7ko3/uPTeMcE5JVQJtdpr9dCsHrxXfK1Pwz+Az2dW3I8rqNM3tjiOeavdqsYBs18PgVtDPP3/3laL883UJdvTU7xH+8bylKSLrc0=\",\n  \"passwordPolicy\": {\n    \"id\": \"{{entity_id}}\",\n    \"tenantId\": \"{{entity_tenantId}}\",\n    \"minPasswordLength\": 8,\n    \"requireLowercaseCharacters\": false,\n    \"requireUppercaseCharacters\": true,\n    \"requireNumbers\": true,\n    \"requireSymbols\": true,\n    \"minPasswordDifferentCharacter\": 0,\n    \"createdAt\": \"{{entity_createdAt}}\",\n    \"updatedAt\": \"{{entity_updatedAt}}\",\n    \"deleted\": false,\n    \"userName\": null\n  },\n  \"userId\": \"{{id}}\",\n  \"noticeType\": [\n    \"email\"\n  ]\n}",
+              "raw": "{\n  \"forceChangePassword\": 1,\n  \"isRandomPassword\": 1,\n  \"newPassword\": \"cHEiVPbqCr3MNWZ3T3GYui3Cy7T64OnZYNB0hDxNzBW25Ud9YElzje2UbFyQSGuGIIFH4mHZeMsKvEawyPbH2lE10YVe5UmrY/g2G/KlQVgkR2ktsZEwWMI/Ixc13nhlpTZXvChZivDg6k8NFfSTNN9I4v1R5BQI9PWfp5g5xcQ=\",\n  \"passwordPolicy\": {\n    \"id\": \"{{entity_id}}\",\n    \"tenantId\": \"{{entity_tenantId}}\",\n    \"minPasswordLength\": 8,\n    \"requireLowercaseCharacters\": false,\n    \"requireUppercaseCharacters\": true,\n    \"requireNumbers\": true,\n    \"requireSymbols\": true,\n    \"minPasswordDifferentCharacter\": 0,\n    \"createdAt\": \"{{entity_createdAt}}\",\n    \"updatedAt\": \"{{entity_updatedAt}}\",\n    \"deleted\": false,\n    \"userName\": null\n  },\n  \"userId\": \"{{id}}\",\n  \"noticeType\": [\n    \"email\"\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"

@@ -1,6 +1,6 @@
 """
 用户管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-23 12:35:07
+生成时间: 2026-09-23 15:04:53
 目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/user
 
 执行流程:
@@ -83,10 +83,10 @@ MANIFEST = {
       },
       "body_template": {
         "userName": "${gen_test_name(\"userName\")}",
-        "password": "fCRipPb+1Ee6VzFtCSEQi+M3ayRGFVJJF1TZRMLQM09RqmS0wLHEx/zePaHx45H6ebMQb9z3ovBBxVNGLzY6+SqeMHqYSfCikoiB8/Km0YExjqzvvam2yjsmokSkvHX/MvBQQ9WP1gZGeg+Dhhr4SO/rMbXqIb7HRNEuUl/ZhAY=",
+        "password": "aqKR98aTGMMXE5eNDGgi3uOcQ4+W/TY6fAdmh398m0U2H53QWKkbRu5FpLQeXMxcIkTdB2bua1ys6WLJu/wpyh9pRtYHQBMWMmA0uvQBt7W50wKC/SFUP7tfIjfr9MpIiSwVO+pOY1klr/SUUY1J+xxiLxUfTjKc29wWeLeNe+k=",
         "name": "${gen_test_name(\"name\")}",
-        "email": "dTHJpnGIw9dc7kpoKOR4YfMF5OUt9F6bTXwCR3c4X7/oTh/sfVjCTBiCL5YG1rpzwMi9zpilTY1VnKsRuowrwQi3Djic6kegrRIBo4a/ZYULIk9t/HGTsj002uHFNLucX6FG58a1FYiPr+VEX4YKJCqemM11d9jHF8hgEaOx5us=",
-        "phone": "CYOzYeg8w4dVUvBshTlB6FdYQXj32S4G2W4Oy3wIxjDR0In7dNo8DBxKK+nH8Zo6Xzh93WBba9cpseEB/5k9yS7OV7HWwpVMhLR03TVi6CfLx9mr3Kh6yuvGSfz+PVtGoTDgwYLVbXTMa7WZOhjE2ex/026KuINnZNIdHhF5bpY=",
+        "email": "bbKqd37Pokep7ra1SSEHuOeY306/ru3WmS8vTKk1U7o2Nz/iUTRw45vlhsyRUWBIm7PS3yQI0xpUCQ307sFHsze9uE+3Rc4Op/apGGZmSdis0Kq/chgJU3I7k6qdsTg9knCjxEsj36Wjori+g7shb54JHiXzC8rQKj2tHrARlHY=",
+        "phone": "HlBL6zNOOglfHApeSVaCZ100DpxQ+Qj3eAAFywsQY4cKIHuAthYG1Q6qTXfZQDYldTxAxYc8NVkB2j2csx7yfEraxyIVEbkA/z8k7r4LOK5vjcyvMWvmpqwt8fBFn+0HXh6JPpfXBZYgyr/aUwl19Yx5Xe3onn9/PuJtBhs84n4=",
         "description": "${gen_mutable_value()}",
         "policyIds": [
           "1f8e392309fc414c9d77d45d0315fedc",
@@ -381,7 +381,7 @@ MANIFEST = {
       "body_template": {
         "forceChangePassword": 1,
         "isRandomPassword": 1,
-        "newPassword": "LYMNZ6N9cREbt/LK2e/Jz0aLAZxnB8+EeXiKC3ij4GL3aBHS0q9zlhyfJY31Hl944XN3/Ft7ko3/uPTeMcE5JVQJtdpr9dCsHrxXfK1Pwz+Az2dW3I8rqNM3tjiOeavdqsYBs18PgVtDPP3/3laL883UJdvTU7xH+8bylKSLrc0=",
+        "newPassword": "cHEiVPbqCr3MNWZ3T3GYui3Cy7T64OnZYNB0hDxNzBW25Ud9YElzje2UbFyQSGuGIIFH4mHZeMsKvEawyPbH2lE10YVe5UmrY/g2G/KlQVgkR2ktsZEwWMI/Ixc13nhlpTZXvChZivDg6k8NFfSTNN9I4v1R5BQI9PWfp5g5xcQ=",
         "passwordPolicy": {
           "id": None,
           "tenantId": None,

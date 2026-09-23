@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-角色管理 - UI 自动化测试脚本
+用户组管理 - UI 自动化测试脚本
 
-生成时间: 2026-09-23 14:56:43
+生成时间: 2026-09-23 17:53:34
 生成工具: API AI Test Framework - Stage 2
 版本: v1.0.0
 
 用法:
-    python 角色管理.py                    # 运行所有操作
-    python 角色管理.py create update      # 只运行 create 和 update
-    python 角色管理.py --headless         # 无头模式
+    python 用户组管理.py                    # 运行所有操作
+    python 用户组管理.py create update      # 只运行 create 和 update
+    python 用户组管理.py --headless         # 无头模式
 
 依赖:
     pip install playwright
@@ -40,7 +40,7 @@ from lib.button_driver import ButtonDriver
 CONFIG = {
     "base_url": "https://10.151.61.248",
     "login_url": "https://10.151.61.248/estack/web/estack/login",
-    "target_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/role",
+    "target_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/user-group",
     "headless": False,
     "slow_mo": 100,
     # 鉴权配置（cookie_client 统一使用）
@@ -51,7 +51,7 @@ CONFIG = {
     },
 }
 
-AVAILABLE_OPERATIONS = ['创建角色', 'query', '编辑', '删除']
+AVAILABLE_OPERATIONS = ['创建用户组', 'query', '用户组', '批量删除']
 
 # ==================== Cookie 鉴权 ====================
 
@@ -123,7 +123,13 @@ async def _cleanup_dialogs(page):
         await page.wait_for_timeout(1000)
 
 # 操作失败原因（由 Stage 1 标记）
-_OPERATION_STATUS = {}
+_OPERATION_STATUS = {
+    "用户组": {
+        "status": "failed",
+        "error_type": "no_confirm_button",
+        "error_text": "用户组 操作未检测到确认弹窗"
+    }
+}
 
 async def run_operation(page, operation_name, operations_data, marker=None):
     """使用回放引擎执行单个操作"""
@@ -250,13 +256,13 @@ async def main():
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
-    parser = argparse.ArgumentParser(description="角色管理 UI 自动化测试脚本")
+    parser = argparse.ArgumentParser(description="用户组管理 UI 自动化测试脚本")
     parser.add_argument("operations", nargs="*", help="要执行的操作列表")
     parser.add_argument("--headless", action="store_true", help="无头模式")
     args = parser.parse_args()
 
     # 加载 playbook
-    playbook_path = Path(__file__).parent / "角色管理_playbook.json"
+    playbook_path = Path(__file__).parent / "用户组管理_playbook.json"
     if not playbook_path.exists():
         print(f"❌ Playbook 文件不存在: {playbook_path}")
         return
@@ -301,7 +307,7 @@ async def main():
             marker, op_result = await run_operation(page, op_name, operations_data, marker)
             results.append(op_result)
 
-        report_path = generate_html_report(results, "角色管理")
+        report_path = generate_html_report(results, "用户组管理")
         print(f"\n{'='*60}")
         print(f"  ✅ 测试完成")
         print(f"{'='*60}")

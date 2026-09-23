@@ -1,0 +1,68 @@
+{
+  "info": {
+    "_postman_id": "d697f56b-25cd-4e77-9545-dde2b0fad84b",
+    "name": "AccessKey设置 API 测试",
+    "description": "由 module_discovery Stage 5 自动导出",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://10.151.61.248",
+      "type": "string"
+    }
+  ],
+  "item": [],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// helpers.js — 由 module_discovery Stage 5 自动导出",
+          "// Postman Pre-request Script 版本的测试数据生成函数",
+          "",
+          "function _ts6() {",
+          "    return Date.now().toString(16).slice(-6);",
+          "}",
+          "",
+          "function gen_test_name() {",
+          "    return 'AT_' + _ts6();",
+          "}",
+          "",
+          "function gen_mutable_value() {",
+          "    return 'auto_modified_' + _ts6();",
+          "}",
+          "",
+          "function gen_email() {",
+          "    return 'at_' + _ts6() + '@test.com';",
+          "}",
+          "",
+          "function gen_phone() {",
+          "    return '138' + Math.floor(Math.random() * 100000000);",
+          "}",
+          "",
+          "function gen_text() {",
+          "    return 'auto_' + _ts6();",
+          "}",
+          "",
+          "// 表达式解析: ${function(args)} → 调用对应函数",
+          "var _fnMap = {",
+          "    gen_test_name: gen_test_name,",
+          "    gen_mutable_value: gen_mutable_value,",
+          "    gen_email: gen_email,",
+          "    gen_phone: gen_phone,",
+          "    gen_text: gen_text",
+          "};",
+          "",
+          "function resolveExpr(expr) {",
+          "    var m = expr.match(/^\\$\\{(\\w+)\\([^)]*\\)\\}$/);",
+          "    if (!m) return expr;",
+          "    var fn = _fnMap[m[1]];",
+          "    return fn ? fn() : expr;",
+          "}"
+        ]
+      }
+    }
+  ]
+}

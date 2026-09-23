@@ -18,8 +18,9 @@ LOG = logging.getLogger("batch_runner")
 async def run_all_modules(page, context, project_dir: Path, profile: dict,
                           base_url: str, login_url: str, args,
                           run_stage1, run_stage2, run_stage34,
-                          _run_stage4_verify, run_stage5):
-    """批量发现: 读取 modules.yaml，逐一执行指定 stage。
+                          _run_stage4_verify, run_stage5,
+                          modules_override: list = None):
+    """批量发现: 读取 modules.yaml（或使用传入的模块列表），逐一执行指定 stage。
 
     Args:
         page: Playwright page 对象
@@ -34,8 +35,12 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
         run_stage34: Stage 3+4 执行函数
         _run_stage4_verify: Stage 4 验证函数
         run_stage5: Stage 5 执行函数
+        modules_override: 覆盖 modules.yaml 的模块列表（discover 模式传入）
     """
-    modules = load_modules_yaml(project_dir)
+    if modules_override is not None:
+        modules = modules_override
+    else:
+        modules = load_modules_yaml(project_dir)
     if not modules:
         LOG.error("没有可用的模块")
         return

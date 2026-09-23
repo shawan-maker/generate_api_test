@@ -1,0 +1,193 @@
+{
+  "meta": {
+    "module_name": "用户组管理",
+    "target_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/user-group",
+    "base_url": "https://10.151.61.248",
+    "login_url": "https://10.151.61.248/estack/web/estack/login",
+    "framework": "element-ui",
+    "generated_at": "2026-09-23 17:52:47",
+    "version": "1.0",
+    "auth_config": {
+      "token_key": "accessToken",
+      "token_storage": "localStorage",
+      "cookie_token_key": "accessToken"
+    }
+  },
+  "page_structure": {
+    "hasFixedLeft": true,
+    "hasFixedRight": true,
+    "mainBodyRows": 0,
+    "fixedRightRows": 0,
+    "fixedLeftRows": 0,
+    "columnCount": 6,
+    "operationColumnIndex": 5,
+    "operationColumnLocation": "last",
+    "tableWrappers": [
+      {
+        "cls": "el-table__header-wrapper",
+        "rowCount": 0
+      },
+      {
+        "cls": "el-table__body-wrapper is-scrolling-none",
+        "rowCount": 0
+      },
+      {
+        "cls": "el-table__fixed-header-wrapper",
+        "rowCount": 0
+      },
+      {
+        "cls": "el-table__fixed-body-wrapper",
+        "rowCount": 0
+      },
+      {
+        "cls": "el-table__fixed-header-wrapper",
+        "rowCount": 0
+      },
+      {
+        "cls": "el-table__fixed-body-wrapper",
+        "rowCount": 0
+      }
+    ]
+  },
+  "operations": {
+    "创建用户组": {
+      "display_name": "创建用户组",
+      "description": "创建用户组",
+      "role": "create",
+      "steps": [
+        {
+          "action": "click_button",
+          "playwright_locator": "button:has-text(\"创建用户组\")",
+          "description": "点击创建按钮"
+        },
+        {
+          "action": "wait_for_dialog",
+          "playwright_locator": ".el-dialog__wrapper",
+          "interaction_mode": "page-nav",
+          "description": "等待创建对话框"
+        },
+        {
+          "action": "fill_form",
+          "fields": [
+            {
+              "label": "用户组名称",
+              "playwright_locator": "#app > div > section > section > main > div > div > div:nth-of-type(3) > div > div:nth-of-type(2) > form > div:nth-of-type(2) > div > div:nth-of-type(1) > input",
+              "type": "input",
+              "kb_category": "input-generic",
+              "fill_rule": {
+                "rule": "name_pattern",
+                "params": {
+                  "prefix": "test"
+                }
+              },
+              "is_marker": true
+            },
+            {
+              "label": "描述",
+              "playwright_locator": "#app > div > section > section > main > div > div > div:nth-of-type(3) > div > div:nth-of-type(2) > form > div:nth-of-type(3) > div > div > textarea:nth-of-type(1)",
+              "type": "textarea",
+              "kb_category": "textarea-generic",
+              "fill_rule": {
+                "rule": "description_pattern",
+                "params": {
+                  "prefix": "auto"
+                }
+              }
+            },
+            {
+              "label": "归属组织",
+              "playwright_locator": ".el-form-item:nth-child(1) .el-select",
+              "type": "select",
+              "kb_category": "el-select",
+              "fill_rule": {},
+              "is_editable": false,
+              "option_text": "cs-zpw-xuni"
+            }
+          ],
+          "description": "填充表单字段"
+        },
+        {
+          "action": "click_button",
+          "playwright_locator": "button:has-text(\"确 定\")",
+          "text": "确 定",
+          "description": "点击提交按钮",
+          "click_strategy": "js"
+        },
+        {
+          "action": "assert_success",
+          "playwright_locator": ".el-message--success",
+          "description": "验证创建成功"
+        }
+      ],
+      "marker": "test",
+      "status": "success"
+    },
+    "query": {
+      "display_name": "query",
+      "description": "query",
+      "role": "query",
+      "steps": [
+        {
+          "action": "fill_input",
+          "playwright_locator": "input[placeholder=\"请输入\"]",
+          "value": "{marker_name}",
+          "description": "搜索框输入: 请输入"
+        },
+        {
+          "action": "press_key",
+          "key": "Enter",
+          "description": "回车触发搜索"
+        },
+        {
+          "action": "wait_for_table_ready",
+          "description": "等待表格数据刷新"
+        }
+      ],
+      "marker": null,
+      "status": "success"
+    },
+    "用户组": {
+      "display_name": "用户组",
+      "description": "用户组",
+      "role": "unknown",
+      "steps": [],
+      "marker": null,
+      "status": "failed",
+      "error_type": "no_confirm_button",
+      "error_text": "用户组 操作未检测到确认弹窗"
+    },
+    "批量删除": {
+      "display_name": "批量删除",
+      "description": "批量删除",
+      "role": "generic",
+      "steps": [
+        {
+          "action": "find_row",
+          "description": "定位目标数据行"
+        },
+        {
+          "action": "select_row_checkbox",
+          "checkbox_locator": ".el-checkbox__input",
+          "description": "勾选行 checkbox"
+        },
+        {
+          "action": "click_button",
+          "text": "批量删除",
+          "playwright_locator": "button:has-text(\"批量删除\")",
+          "description": "点击操作按钮"
+        },
+        {
+          "action": "confirm_dialog",
+          "description": "点击确认对话框"
+        },
+        {
+          "action": "assert_success",
+          "playwright_locator": ".el-message--success, .el-notification__content:has-text('成功'), [role='alert']:has-text('成功')",
+          "description": "验证操作成功"
+        }
+      ],
+      "marker": null,
+      "status": "success"
+    }
+  }
+}

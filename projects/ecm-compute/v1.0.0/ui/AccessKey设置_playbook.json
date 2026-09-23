@@ -1,0 +1,137 @@
+{
+  "meta": {
+    "module_name": "AccessKey设置",
+    "target_url": "https://10.151.61.248/estack/web/estack/user-center/account-manage/access-key-manage",
+    "base_url": "https://10.151.61.248",
+    "login_url": "https://10.151.61.248/estack/web/estack/login",
+    "framework": "element-ui",
+    "generated_at": "2026-09-23 17:50:13",
+    "version": "1.0",
+    "auth_config": {
+      "token_key": "accessToken",
+      "token_storage": "localStorage",
+      "cookie_token_key": "accessToken"
+    }
+  },
+  "page_structure": {
+    "hasFixedLeft": false,
+    "hasFixedRight": true,
+    "mainBodyRows": 3,
+    "fixedRightRows": 3,
+    "fixedLeftRows": 0,
+    "columnCount": 5,
+    "operationColumnIndex": 4,
+    "operationColumnLocation": "last",
+    "tableWrappers": [
+      {
+        "cls": "el-table__header-wrapper",
+        "rowCount": 0
+      },
+      {
+        "cls": "el-table__body-wrapper is-scrolling-none",
+        "rowCount": 3
+      },
+      {
+        "cls": "el-table__fixed-header-wrapper",
+        "rowCount": 0
+      },
+      {
+        "cls": "el-table__fixed-body-wrapper",
+        "rowCount": 3
+      }
+    ]
+  },
+  "operations": {
+    "AccessKey设置": {
+      "display_name": "AccessKey设置",
+      "description": "AccessKey设置",
+      "role": "unknown",
+      "steps": [],
+      "marker": null,
+      "status": "failed",
+      "error_type": "no_confirm_button",
+      "error_text": "AccessKey设置 操作未检测到确认弹窗"
+    },
+    "创建": {
+      "display_name": "创建",
+      "description": "创建",
+      "role": "generic",
+      "steps": [
+        {
+          "action": "find_row",
+          "description": "定位目标数据行"
+        },
+        {
+          "action": "select_row_checkbox",
+          "checkbox_locator": ".el-checkbox__input",
+          "description": "勾选行 checkbox"
+        },
+        {
+          "action": "click_button",
+          "text": "创建",
+          "playwright_locator": "button:has-text(\"创建\")",
+          "description": "点击操作按钮"
+        },
+        {
+          "action": "confirm_dialog",
+          "description": "点击确认对话框"
+        },
+        {
+          "action": "assert_success",
+          "playwright_locator": ".el-message--success, .el-notification__content:has-text('成功'), [role='alert']:has-text('成功')",
+          "description": "验证操作成功"
+        }
+      ],
+      "marker": null,
+      "status": "success"
+    },
+    "禁用": {
+      "display_name": "禁用",
+      "description": "禁用",
+      "role": "generic",
+      "steps": [
+        {
+          "action": "click_button",
+          "text": "禁用",
+          "playwright_locator": "button:has-text(\"禁用\")",
+          "description": "点击操作按钮"
+        },
+        {
+          "action": "confirm_dialog",
+          "description": "点击确认对话框"
+        },
+        {
+          "action": "assert_success",
+          "playwright_locator": ".el-message--success, .el-notification__content:has-text('成功'), [role='alert']:has-text('成功')",
+          "description": "验证操作成功"
+        }
+      ],
+      "marker": null,
+      "status": "success"
+    },
+    "删除": {
+      "display_name": "删除",
+      "description": "删除",
+      "role": "generic",
+      "steps": [
+        {
+          "action": "click_button",
+          "text": "删除",
+          "playwright_locator": "button:has-text(\"删除\")",
+          "description": "点击操作按钮"
+        },
+        {
+          "action": "confirm_dialog",
+          "description": "点击确认对话框"
+        },
+        {
+          "action": "assert_success",
+          "playwright_locator": ".el-message--success, .el-notification__content:has-text('成功'), [role='alert']:has-text('成功')",
+          "description": "验证操作成功"
+        }
+      ],
+      "marker": null,
+      "status": "success"
+    }
+  }
+}

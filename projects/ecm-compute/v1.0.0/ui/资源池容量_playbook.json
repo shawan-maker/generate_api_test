@@ -1,0 +1,98 @@
+{
+  "meta": {
+    "module_name": "资源池容量",
+    "target_url": "https://10.151.61.248/estack/web/estack/user-center/project-manage/capacity-manage/resource-pool-capacity",
+    "base_url": "https://10.151.61.248",
+    "login_url": "https://10.151.61.248/estack/web/estack/login",
+    "framework": "element-ui",
+    "generated_at": "2026-09-23 17:51:49",
+    "version": "1.0",
+    "auth_config": {
+      "token_key": "accessToken",
+      "token_storage": "localStorage",
+      "cookie_token_key": "accessToken"
+    }
+  },
+  "page_structure": {
+    "hasFixedLeft": false,
+    "hasFixedRight": true,
+    "mainBodyRows": 35,
+    "fixedRightRows": 35,
+    "fixedLeftRows": 0,
+    "columnCount": 10,
+    "operationColumnIndex": 9,
+    "operationColumnLocation": "last",
+    "tableWrappers": [
+      {
+        "cls": "el-table__header-wrapper",
+        "rowCount": 0
+      },
+      {
+        "cls": "el-popover__reference-wrapper",
+        "rowCount": 0
+      },
+      {
+        "cls": "el-table__body-wrapper is-scrolling-left",
+        "rowCount": 35
+      },
+      {
+        "cls": "el-table__fixed-header-wrapper",
+        "rowCount": 0
+      },
+      {
+        "cls": "el-popover__reference-wrapper",
+        "rowCount": 0
+      },
+      {
+        "cls": "el-table__fixed-body-wrapper",
+        "rowCount": 35
+      }
+    ]
+  },
+  "operations": {
+    "query": {
+      "display_name": "query",
+      "description": "query",
+      "role": "query",
+      "steps": [
+        {
+          "action": "fill_input",
+          "playwright_locator": "input[placeholder=\"按资源池名称搜索\"]",
+          "value": "{marker_name}",
+          "description": "搜索框输入: 按资源池名称搜索"
+        },
+        {
+          "action": "press_key",
+          "key": "Enter",
+          "description": "回车触发搜索"
+        },
+        {
+          "action": "wait_for_table_ready",
+          "description": "等待表格数据刷新"
+        }
+      ],
+      "marker": null,
+      "status": "success"
+    },
+    "资源池容量": {
+      "display_name": "资源池容量",
+      "description": "资源池容量",
+      "role": "unknown",
+      "steps": [],
+      "marker": null,
+      "status": "failed",
+      "error_type": "no_confirm_button",
+      "error_text": "资源池容量 操作未检测到确认弹窗"
+    },
+    "修改容量": {
+      "display_name": "修改容量",
+      "description": "修改容量",
+      "role": "unknown",
+      "steps": [],
+      "marker": null,
+      "status": "failed",
+      "error_type": "no_confirm_button",
+      "error_text": "修改容量 操作未检测到确认弹窗"
+    }
+  }
+}

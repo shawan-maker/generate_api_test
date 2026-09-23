@@ -46,6 +46,42 @@ python -m core.discovery.run --project <项目名> --all-modules --tag "用户,�
 python -m core.discovery.run --project <项目名> --all-modules --force
 ```
 
+### 导航自动发现模式（Discover）
+分两阶段执行，适合 AI 客户端或脚本化场景。
+
+**阶段 1：探测菜单，输出模块列表**
+```bash
+# 仅探测，输出 JSON 格式（适合 AI 客户端解析）
+python -m core.discovery.run --project <项目名> --discover-only \
+  --home-url "<带菜单的页面URL>" --headless --output-format json
+
+# 仅探测，输出文本格式（适合人工查看）
+python -m core.discovery.run --project <项目名> --discover-only \
+  --home-url "<带菜单的页面URL>" --headless
+
+# 强制重新探测（忽略缓存）
+python -m core.discovery.run --project <项目名> --discover-only \
+  --home-url "<带菜单的页面URL>" --headless --force
+```
+
+**阶段 2：从缓存选择模块，执行管线**
+```bash
+# 选择指定模块执行（编号来自阶段 1 的输出）
+python -m core.discovery.run --project <项目名> --discover-select "1,3,5" --headless
+
+# 选择所有模块执行
+python -m core.discovery.run --project <项目名> --discover-select "all" --headless
+
+# 选择 + 指定阶段
+python -m core.discovery.run --project <项目名> --discover-select "1,2,3" --stage 34
+```
+
+**一体化交互模式**
+```bash
+# 完整流程：探测 → 交互选择 → 执行（适合人工操作）
+python -m core.discovery.run --project <项目名> --discover --headless
+```
+
 ### 并行测试执行
 ```bash
 # 并行运行所有已生成的测试脚本
@@ -83,6 +119,11 @@ python run_suite.py --project <项目名>
 | --max-recapture | 否 | Stage 2 最大重试捕获次数 |
 | --capture-all | 否 | 捕获所有 XHR/fetch（不限于 /estack/api） |
 | --export | 否 | Stage 4 验证通过后导出 artifacts |
+| --discover | 否 | 一体化发现模式（探测 + 交互选择 + 执行） |
+| --discover-only | 否 | 仅探测菜单，输出模块列表后退出 |
+| --discover-select | 否 | 从缓存选择模块执行（如 "1,3,5" 或 "all"） |
+| --home-url | 否 | 导航发现的主页面 URL（避免交互式输入） |
+| --output-format | 否 | 输出格式：text/json（默认 text） |
 
 ## 辅助工具
 
