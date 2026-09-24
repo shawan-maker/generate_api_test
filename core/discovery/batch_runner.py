@@ -19,7 +19,8 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
                           base_url: str, login_url: str, args,
                           run_stage1, run_stage2, run_stage34,
                           _run_stage4_verify, run_stage5,
-                          modules_override: list = None):
+                          modules_override: list = None,
+                          _run_ui_script=None):
     """批量发现: 读取 modules.yaml（或使用传入的模块列表），逐一执行指定 stage。
 
     Args:
@@ -36,6 +37,7 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
         _run_stage4_verify: Stage 4 验证函数
         run_stage5: Stage 5 执行函数
         modules_override: 覆盖 modules.yaml 的模块列表（discover 模式传入）
+        _run_ui_script: UI 脚本运行函数（可选，用于 Stage 4.5 生成 UI 报告）
     """
     if modules_override is not None:
         modules = modules_override
@@ -141,15 +143,34 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
 
             # Stage 4.5: 自动运行验证 + 生成报告（默认执行，--no-run 跳过）
             script_ok = False
+            ui_script_ok = False
             if script_path and not args.no_run:
                 LOG.info(f"\n  Stage 4.5: 自动运行验证 + 生成报告 [{name}]")
+                version = args.version or ver_mod.resolve_version(project_dir)
+
+                # 4.5.1: 运行 API 脚本
                 script_ok = await _run_stage4_verify(
                     str(script_path), project_dir, profile, login_url,
                     username=(args.user or ""), password=(args.password or ""),
                     headless=args.headless
                 )
                 if not script_ok:
-                    LOG.warning(f"  ⚠️ {name}: 脚本运行失败，但仍继续后续阶段")
+                    LOG.warning(f"  ⚠️ {name}: API 脚本运行失败，但仍继续后续阶段")
+
+                # 4.5.2: 运行 UI 脚本
+                ui_script_path = project_dir / version / "ui" / f"{name}.py"
+                if ui_script_path.exists():
+                    LOG.info(f"\n  Stage 4.5.2: 运行 UI 脚本 [{name}]")
+                    if _run_ui_script:
+                        ui_script_ok = await _run_ui_script(
+                            str(ui_script_path), headless=args.headless
+                        )
+                        if not ui_script_ok:
+                            LOG.warning(f"  ⚠️ {name}: UI 脚本运行失败，但仍继续后续阶段")
+                    else:
+                        LOG.warning(f"  ⚠️ {name}: 未提供 _run_ui_script 回调，跳过 UI 脚本运行")
+                else:
+                    LOG.info(f"  ⏭️ {name}: UI 脚本不存在: {ui_script_path.name}")
 
             # Stage 5：导出 artifacts（默认执行）
             if manifest is None:

@@ -127,6 +127,56 @@ def _is_list_query(pathname: str, response_samples: dict) -> bool:
     return False
 
 
+def _is_post_list_query(ep) -> bool:
+    """判断 POST 端点是否为列表查询（基于请求体特征，而非响应结构）。
+
+    解决的问题：response_samples 按 pathname 存储，当 POST 写操作和 GET 列表查询
+    共享同一 URL 时（如 POST /groups 和 GET /groups），_is_list_query 会因响应混合
+    而误判 POST 写操作为列表查询。
+
+    本函数通过请求体特征判断，不依赖 response_samples：
+    1. pathname 以查询后缀结尾 → 列表查询
+    2. 请求体含分页字段 → 列表查询
+    3. 请求体字段数 ≤ 2 且无业务实体字段 → 可能是简单查询
+    4. 其他 → 写操作
+
+    Args:
+        ep: 端点数据 dict（含 method, pathname, body_field_count, request_body_sample 等）
+
+    Returns:
+        True 表示 POST 列表查询（只读），False 表示写操作
+    """
+    if ep.get("method") != "POST":
+        return False
+
+    pathname = ep.get("pathname", "")
+
+    # 策略 1：pathname 以查询后缀结尾
+    query_suffixes = ("/list", "/search", "/query", "/check", "/validate")
+    if any(pathname.endswith(s) for s in query_suffixes):
+        return True
+
+    # 策略 2：请求体含分页字段
+    pagination_fields = {"pageNum", "pageSize", "page", "size", "offset", "limit",
+                         "currentPage", "pageNo", "pageNumber"}
+    body_sample = ep.get("request_body_sample")
+    if body_sample:
+        try:
+            body = json.loads(body_sample) if isinstance(body_sample, str) else body_sample
+            if isinstance(body, dict):
+                body_keys = set(body.keys())
+                if body_keys & pagination_fields:
+                    return True
+        except Exception:
+            pass
+
+    # 策略 3：无请求体或空请求体 → 可能是列表查询
+    if ep.get("body_field_count", 0) == 0:
+        return True
+
+    return False
+
+
 def analyze(core_api_map, all_endpoints, response_samples, ui_result,
             pre_api_candidates=None, profile=None,
             operation_order=None) -> dict:
@@ -248,9 +298,10 @@ def _build_core_apis_from_core_api_map(core_api_map: dict, infra_apis: set) -> d
 
         # ★ 保留其他写操作候选（操作链）
         # 过滤条件：
-        #   1. 是写操作（POST/PUT/PATCH/DELETE）且有 body
+        #   1. 是写操作（POST/PUT/PATCH/DELETE）
         #   2. pathname 不以 /list, /search, /query 结尾（这些是伪写操作=查询）
         #   3. 与核心 API 共享资源路径前缀（排除不同资源的 API）
+        #   4. DELETE 操作豁免 body 检查（DELETE 通常通过 URL path params 传 ID，无请求体）
         core_pathname = selected.get("pathname", "")
         core_resource = "/".join(core_pathname.rstrip("/").split("/")[:-1])  # 如 /estack/api/estack/draco/v1/users
         query_suffixes = ("/list", "/search", "/query", "/check", "/validate", "/generate")
@@ -259,9 +310,12 @@ def _build_core_apis_from_core_api_map(core_api_map: dict, infra_apis: set) -> d
         for c in candidates:
             if c is selected:
                 continue
-            if c.get("method", "").upper() not in ("POST", "PUT", "PATCH", "DELETE"):
+            c_method = c.get("method", "").upper()
+            if c_method not in ("POST", "PUT", "PATCH", "DELETE"):
                 continue
-            if c.get("body_field_count", 0) <= 0:
+            # DELETE 操作通常通过 URL path params 传 ID，无需请求体
+            # PUT 操作也可能无请求体（如状态切换 PUT /xxx/{id}/enable）
+            if c.get("body_field_count", 0) <= 0 and c_method not in ("DELETE", "PUT"):
                 continue
             # 排除伪写操作（pathname 以 /list 等结尾 = 实际是查询）
             c_pathname = c.get("pathname", "")
@@ -426,7 +480,9 @@ def _derive_dependencies(core_apis: dict, response_samples: dict, operation_orde
         ep = endpoints[0]  # 只处理 main endpoint，避免 chain candidate 污染
         pn = ep["pathname"]
         samples = response_samples.get(pn, [])
-        for s in samples[:1]:
+        # 检查多个样本（最多前 5 个），避免 response_samples 按 pathname 混合存储时
+        # POST 写操作和 GET 列表查询共享同一 key 导致第一个样本恰好是列表响应
+        for s in samples[:5]:
             try:
                 body = json.loads(s["body"]) if isinstance(s["body"], str) else {}
             except Exception as e:
@@ -450,7 +506,11 @@ def _derive_dependencies(core_apis: dict, response_samples: dict, operation_orde
                         id_producer = action
                         LOG.debug(f"  ID 生产者: {action}")
 
-        # 如果已找到 ID 生产者，停止扫描
+            # 如果当前样本已找到 ID，停止检查更多样本
+            if id_producer:
+                break
+
+        # 如果已找到 ID 生产者，停止扫描更多操作
         if id_producer:
             break
 
@@ -1830,10 +1890,11 @@ def build_manifest(analysis: dict, capture_result: dict,
             continue
 
         # 跳过只读操作：它们应作为验证端点（verify_endpoints），不作为 CRUD 步骤
-        # 判断：所有端点都是 GET，或所有端点都是列表查询（POST 列表查询）
+        # GET → 只读；POST 用请求体特征判断（避免 response_samples 混合导致误判）；
+        # PUT/PATCH/DELETE → 一定是写操作
         all_read_only = all(
             ep.get("method") == "GET"
-            or _is_list_query(ep.get("pathname", ""), response_samples)
+            or _is_post_list_query(ep)
             for ep in eps
         )
         if all_read_only:

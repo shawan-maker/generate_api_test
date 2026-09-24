@@ -1,9 +1,15 @@
 """
 资源池容量_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-23 17:51:59
+生成时间: 2026-09-24 10:15:03
 目标URL: https://10.151.61.248/estack/web/estack/user-center/project-manage/capacity-manage/resource-pool-capacity
 
 执行流程:
+  1. query
+  2. 搜索验证（query后）
+  3. 资源池容量
+  4. 搜索验证（资源池容量后）
+  5. 修改容量
+  6. 搜索验证（删除后）
 """
 
 import sys, json
@@ -54,7 +60,170 @@ MANIFEST = {
       "password": "APP_PASS"
     }
   },
-  "steps": [],
+  "steps": [
+    {
+      "action": "query",
+      "label": "query",
+      "api": {
+        "method": "POST",
+        "pathname": "/estack/api/estack/virgo/v1/capacity/statistics-pool",
+        "path_params": {},
+        "query_params": {}
+      },
+      "body_template": {
+        "poolOrDataCenterId": None,
+        "productNames": []
+      },
+      "body_field_roles": {
+        "poolOrDataCenterId": {
+          "role": "context",
+          "source": "pools.entity_0_pools_0_poolId"
+        },
+        "productNames": {
+          "role": "static"
+        }
+      },
+      "requires": [
+        "id"
+      ]
+    },
+    {
+      "action": "post",
+      "label": "搜索验证（query后）",
+      "api": {
+        "method": "POST",
+        "pathname": "/estack/api/estack/virgo/v1/capacity/statistics-pool",
+        "path_params": {},
+        "query_params": {}
+      },
+      "body_template": {
+        "poolOrDataCenterId": None,
+        "productNames": []
+      },
+      "body_field_roles": {
+        "poolOrDataCenterId": {
+          "role": "context",
+          "source": "pools.entity_0_pools_0_poolId"
+        },
+        "productNames": {
+          "role": "static"
+        }
+      },
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_verify",
+      "search_param": "poolOrDataCenterId"
+    },
+    {
+      "action": "资源池容量",
+      "label": "资源池容量",
+      "api": {
+        "method": "POST",
+        "pathname": "/estack/api/estack/virgo/v1/capacity/statistics-pool",
+        "path_params": {},
+        "query_params": {}
+      },
+      "body_template": {
+        "poolOrDataCenterId": None,
+        "productNames": []
+      },
+      "body_field_roles": {
+        "poolOrDataCenterId": {
+          "role": "context",
+          "source": "pools.entity_0_pools_0_poolId"
+        },
+        "productNames": {
+          "role": "static"
+        }
+      },
+      "requires": [
+        "id"
+      ]
+    },
+    {
+      "action": "post",
+      "label": "搜索验证（资源池容量后）",
+      "api": {
+        "method": "POST",
+        "pathname": "/estack/api/estack/virgo/v1/capacity/statistics-pool",
+        "path_params": {},
+        "query_params": {}
+      },
+      "body_template": {
+        "poolOrDataCenterId": None,
+        "productNames": []
+      },
+      "body_field_roles": {
+        "poolOrDataCenterId": {
+          "role": "context",
+          "source": "pools.entity_0_pools_0_poolId"
+        },
+        "productNames": {
+          "role": "static"
+        }
+      },
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_verify",
+      "search_param": "poolOrDataCenterId"
+    },
+    {
+      "action": "修改容量",
+      "label": "修改容量",
+      "api": {
+        "method": "POST",
+        "pathname": "/estack/api/estack/virgo/v1/capacity/statistics-pool",
+        "path_params": {},
+        "query_params": {}
+      },
+      "body_template": {
+        "poolOrDataCenterId": None,
+        "productNames": []
+      },
+      "body_field_roles": {
+        "poolOrDataCenterId": {
+          "role": "context",
+          "source": "pools.entity_0_pools_0_poolId"
+        },
+        "productNames": {
+          "role": "static"
+        }
+      },
+      "requires": [
+        "id"
+      ]
+    },
+    {
+      "action": "post",
+      "label": "搜索验证（删除后）",
+      "api": {
+        "method": "POST",
+        "pathname": "/estack/api/estack/virgo/v1/capacity/statistics-pool",
+        "path_params": {},
+        "query_params": {}
+      },
+      "body_template": {
+        "poolOrDataCenterId": None,
+        "productNames": []
+      },
+      "body_field_roles": {
+        "poolOrDataCenterId": {
+          "role": "context",
+          "source": "pools.entity_0_pools_0_poolId"
+        },
+        "productNames": {
+          "role": "static"
+        }
+      },
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_not_found",
+      "search_param": "poolOrDataCenterId"
+    }
+  ],
   "state_assertions": {
     "state_field": None,
     "values_by_crud": {}
@@ -73,6 +242,7 @@ MANIFEST = {
           "used_by": [
             "query",
             "资源池容量",
+            "post",
             "修改容量"
           ]
         }

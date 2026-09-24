@@ -1,6 +1,6 @@
 """
 用户管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-23 15:04:53
+生成时间: 2026-09-24 10:14:29
 目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/user
 
 执行流程:
@@ -83,10 +83,10 @@ MANIFEST = {
       },
       "body_template": {
         "userName": "${gen_test_name(\"userName\")}",
-        "password": "aqKR98aTGMMXE5eNDGgi3uOcQ4+W/TY6fAdmh398m0U2H53QWKkbRu5FpLQeXMxcIkTdB2bua1ys6WLJu/wpyh9pRtYHQBMWMmA0uvQBt7W50wKC/SFUP7tfIjfr9MpIiSwVO+pOY1klr/SUUY1J+xxiLxUfTjKc29wWeLeNe+k=",
+        "password": "C49we+y8bpoApd65UouK8QPRWP1LU27JgrMS1dx0O+HHUO1xaHa01s9kwKfhqhdhgIkcqAkaG58myiIvs1JZ0l+p2c1QGNqNlL+7GSSu4Th7ZAWRKZ9mskDoJUNm8aLeA/582fQesjG3SnoGWhbjATQpA1gZymdfkr7/88elZas=",
         "name": "${gen_test_name(\"name\")}",
-        "email": "bbKqd37Pokep7ra1SSEHuOeY306/ru3WmS8vTKk1U7o2Nz/iUTRw45vlhsyRUWBIm7PS3yQI0xpUCQ307sFHsze9uE+3Rc4Op/apGGZmSdis0Kq/chgJU3I7k6qdsTg9knCjxEsj36Wjori+g7shb54JHiXzC8rQKj2tHrARlHY=",
-        "phone": "HlBL6zNOOglfHApeSVaCZ100DpxQ+Qj3eAAFywsQY4cKIHuAthYG1Q6qTXfZQDYldTxAxYc8NVkB2j2csx7yfEraxyIVEbkA/z8k7r4LOK5vjcyvMWvmpqwt8fBFn+0HXh6JPpfXBZYgyr/aUwl19Yx5Xe3onn9/PuJtBhs84n4=",
+        "email": "IZL2s8i++EptVoMtJHiLeMEpHwt/QXMCMVjLRlF2F1FTaqENq0r/aOpXCJj2oApWLtGPwJ+cdT+1ucdSjVwarfFzQqvMgaMOD1SGFbschmzFU43lLuPKWjDO2nIesgmsMONKe+MYSJ/3Ox1SYJ7RPO3nEML+nHP2/zmqqqYfMvc=",
+        "phone": "L9ipgR7den7VPdKWXuE5f7ZqD5M9fGZg3LYnpmLH6cuYnZ2x/M8X1PwHpFgv5uOhDR0/UKEkCg4NdJGla3ii4+0msT4A4eyfKGqoINzfqLDeCoMPeQUSAeD4cUtr521mCdMzacVAEDy7ogeO+XNOdjdlSP1M5rgJi1Q0zl/lxBU=",
         "description": "${gen_mutable_value()}",
         "policyIds": [
           "1f8e392309fc414c9d77d45d0315fedc",
@@ -381,7 +381,7 @@ MANIFEST = {
       "body_template": {
         "forceChangePassword": 1,
         "isRandomPassword": 1,
-        "newPassword": "cHEiVPbqCr3MNWZ3T3GYui3Cy7T64OnZYNB0hDxNzBW25Ud9YElzje2UbFyQSGuGIIFH4mHZeMsKvEawyPbH2lE10YVe5UmrY/g2G/KlQVgkR2ktsZEwWMI/Ixc13nhlpTZXvChZivDg6k8NFfSTNN9I4v1R5BQI9PWfp5g5xcQ=",
+        "newPassword": "bmYRLE4FRIExyHZ6e1qAQ2OSIrtQS1TjlroZQHn9nqQdb4oXisnm/dXJx2dG7EU71lWVRMb28hwHoATcdPRZvBPNwL8KHTVryA8rTA4EVRzBSTzWocsho9uUCXGa8Dw+0urIkQmh3H4Dh6+vtvrIQiPfQg5AZ9Dgi6Gpa1GU5go=",
         "passwordPolicy": {
           "id": None,
           "tenantId": None,
@@ -562,8 +562,8 @@ MANIFEST = {
           "name": "entity_countryCode",
           "path": "entity.countryCode",
           "used_by": [
-            "创建用户",
-            "编辑"
+            "编辑",
+            "创建用户"
           ]
         },
         {

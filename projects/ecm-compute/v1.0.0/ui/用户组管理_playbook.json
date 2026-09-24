@@ -5,7 +5,7 @@
     "base_url": "https://10.151.61.248",
     "login_url": "https://10.151.61.248/estack/web/estack/login",
     "framework": "element-ui",
-    "generated_at": "2026-09-23 17:52:47",
+    "generated_at": "2026-09-24 10:11:47",
     "version": "1.0",
     "auth_config": {
       "token_key": "accessToken",

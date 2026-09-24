@@ -1,9 +1,13 @@
 """
 用户组管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-23 17:53:35
+生成时间: 2026-09-24 10:12:34
 目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/user-group
 
 执行流程:
+  1. 创建用户组
+  2. 搜索验证（创建用户组后）
+  3. 批量删除
+  4. 搜索验证（删除后）
 
 状态断言:
   - 删除后数据不应出现
@@ -57,7 +61,114 @@ MANIFEST = {
       "password": "APP_PASS"
     }
   },
-  "steps": [],
+  "steps": [
+    {
+      "action": "创建用户组",
+      "label": "创建用户组",
+      "api": {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/groups",
+        "path_params": {},
+        "query_params": {}
+      },
+      "body_template": {
+        "organizationId": None,
+        "name": "${gen_test_name(\"name\")}",
+        "description": "${gen_mutable_value()}",
+        "tenantId": None
+      },
+      "body_field_roles": {
+        "organizationId": {
+          "role": "context",
+          "source": "display_by_role.entity_0_name"
+        },
+        "name": {
+          "role": "name"
+        },
+        "description": {
+          "role": "mutable"
+        },
+        "tenantId": {
+          "role": "context",
+          "source": "display_by_role.entity_0_id"
+        }
+      },
+      "requires": [],
+      "extract": {
+        "id": "entity.id",
+        "names": [
+          "name"
+        ]
+      }
+    },
+    {
+      "action": "get",
+      "label": "搜索验证（创建用户组后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/groups",
+        "path_params": {},
+        "query_params": {
+          "pageNum": "1",
+          "pageSize": "10",
+          "tenantId": "$display_by_role.entity_0_id"
+        }
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_verify",
+      "search_param": "name",
+      "search_param_source": "name"
+    },
+    {
+      "action": "批量删除",
+      "label": "批量删除",
+      "api": {
+        "method": "DELETE",
+        "pathname": "/estack/api/estack/draco/v1/groups/batch-delete",
+        "path_params": {},
+        "query_params": {}
+      },
+      "body_template": [
+        "85250deb74504ff0ad174d2dd2b195a6"
+      ],
+      "body_field_roles": {
+        "__array_items__": {
+          "role": "context",
+          "source": "create.id",
+          "is_array": True
+        }
+      },
+      "requires": [
+        "id"
+      ]
+    },
+    {
+      "action": "get",
+      "label": "搜索验证（删除后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/groups",
+        "path_params": {},
+        "query_params": {
+          "pageNum": "1",
+          "pageSize": "10",
+          "tenantId": "$display_by_role.entity_0_id"
+        }
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_not_found",
+      "search_param": "name",
+      "search_param_source": "name"
+    }
+  ],
   "state_assertions": {
     "state_field": None,
     "values_by_crud": {},

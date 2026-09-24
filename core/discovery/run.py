@@ -469,13 +469,13 @@ async def _run_stage4_verify(script_path: str, project_dir: Path, profile: dict,
     framework_config = get_workspace_dir(project_dir) / "output" / "config"
     framework_config.mkdir(parents=True, exist_ok=True)
 
-    # 预复制: 框架 cookies → 脚本 config（首次运行前确保 cookie 可用）
+    # 预复制: 框架 cookies → 脚本 config（始终用最新 cookie 覆盖，避免使用过期旧 cookie）
     fw_cookie = framework_config / "cookies.json"
     sc_cookie = script_config / "cookies.json"
-    if fw_cookie.exists() and not sc_cookie.exists():
+    if fw_cookie.exists():
         import shutil
         shutil.copy2(str(fw_cookie), str(sc_cookie))
-        LOG.info(f"  Cookie 预复制: {fw_cookie.name} → {script_config}")
+        LOG.info(f"  Cookie 同步: {fw_cookie.name} → {script_config}")
 
     def _run_script() -> subprocess.CompletedProcess:
         """运行脚本并返回结果。"""
@@ -985,6 +985,10 @@ async def _ensure_login(page, context, profile, login_url, target_url, args, wor
                     except Exception:
                         pass
                     await page.wait_for_timeout(3000)
+                    # 重新保存 cookie（页面加载可能刷新了 cookie）
+                    fresh_cookies = await context.cookies()
+                    cookie_file.parent.mkdir(parents=True, exist_ok=True)
+                    cookie_file.write_text(json.dumps(fresh_cookies, ensure_ascii=False, indent=2), encoding="utf-8")
                 else:
                     LOG.info("  ⚠️ Cookie 已过期，将执行完整登录")
         except Exception:
@@ -1192,7 +1196,8 @@ async def _run_discover_mode(project_dir: Path, profile: dict, base_url: str, lo
             run_stage34=run_stage34,
             _run_stage4_verify=_run_stage4_verify,
             run_stage5=run_stage5,
-            modules_override=modules_for_pipeline
+            modules_override=modules_for_pipeline,
+            _run_ui_script=_run_ui_script
         )
 
         await browser.close()
@@ -1441,7 +1446,8 @@ async def _run_discovered_pipeline(page, context, project_dir, profile,
         run_stage34=run_stage34,
         _run_stage4_verify=_run_stage4_verify,
         run_stage5=run_stage5,
-        modules_override=modules_for_pipeline
+        modules_override=modules_for_pipeline,
+        _run_ui_script=_run_ui_script
     )
 
 
