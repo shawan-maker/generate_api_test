@@ -1,7 +1,7 @@
 """
 资源池容量_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-24 10:15:03
-目标URL: https://10.151.61.248/estack/web/estack/user-center/project-manage/capacity-manage/resource-pool-capacity
+生成时间: 2026-09-24 15:56:55
+目标URL: https://10.151.61.248/estack/web/estack/compute/resource-pool/capacity
 
 执行流程:
   1. query
@@ -26,7 +26,7 @@ MANIFEST = {
     "name": "资源池容量",
     "base_url": "https://10.151.61.248",
     "login_url": "https://10.151.61.248/estack/web/estack/login",
-    "target_url": "https://10.151.61.248/estack/web/estack/user-center/project-manage/capacity-manage/resource-pool-capacity"
+    "target_url": "https://10.151.61.248/estack/web/estack/compute/resource-pool/capacity"
   },
   "response_contract": {
     "envelope_keys": [
@@ -43,7 +43,7 @@ MANIFEST = {
     "total_keys": [
       "total"
     ],
-    "id_field": "id"
+    "id_field": "poolId"
   },
   "auth_profile": {
     "header_name": "Authorization",
@@ -83,9 +83,12 @@ MANIFEST = {
           "role": "static"
         }
       },
-      "requires": [
-        "id"
-      ]
+      "requires": [],
+      "extract": {
+        "poolId": "entity[0].poolId",
+        "id": "entity[0].poolId",
+        "names": []
+      }
     },
     {
       "action": "post",
@@ -103,7 +106,7 @@ MANIFEST = {
       "body_field_roles": {
         "poolOrDataCenterId": {
           "role": "context",
-          "source": "pools.entity_0_pools_0_poolId"
+          "source": "create_body.poolOrDataCenterId"
         },
         "productNames": {
           "role": "static"
@@ -113,7 +116,8 @@ MANIFEST = {
         "id"
       ],
       "assertion": "search_verify",
-      "search_param": "poolOrDataCenterId"
+      "search_param": "poolOrDataCenterId",
+      "search_param_source": "poolOrDataCenterId"
     },
     {
       "action": "资源池容量",
@@ -131,7 +135,7 @@ MANIFEST = {
       "body_field_roles": {
         "poolOrDataCenterId": {
           "role": "context",
-          "source": "pools.entity_0_pools_0_poolId"
+          "source": "create_body.poolOrDataCenterId"
         },
         "productNames": {
           "role": "static"
@@ -157,7 +161,7 @@ MANIFEST = {
       "body_field_roles": {
         "poolOrDataCenterId": {
           "role": "context",
-          "source": "pools.entity_0_pools_0_poolId"
+          "source": "create_body.poolOrDataCenterId"
         },
         "productNames": {
           "role": "static"
@@ -167,7 +171,8 @@ MANIFEST = {
         "id"
       ],
       "assertion": "search_verify",
-      "search_param": "poolOrDataCenterId"
+      "search_param": "poolOrDataCenterId",
+      "search_param_source": "poolOrDataCenterId"
     },
     {
       "action": "修改容量",
@@ -185,7 +190,7 @@ MANIFEST = {
       "body_field_roles": {
         "poolOrDataCenterId": {
           "role": "context",
-          "source": "pools.entity_0_pools_0_poolId"
+          "source": "create_body.poolOrDataCenterId"
         },
         "productNames": {
           "role": "static"
@@ -211,7 +216,7 @@ MANIFEST = {
       "body_field_roles": {
         "poolOrDataCenterId": {
           "role": "context",
-          "source": "pools.entity_0_pools_0_poolId"
+          "source": "create_body.poolOrDataCenterId"
         },
         "productNames": {
           "role": "static"
@@ -221,7 +226,8 @@ MANIFEST = {
         "id"
       ],
       "assertion": "search_not_found",
-      "search_param": "poolOrDataCenterId"
+      "search_param": "poolOrDataCenterId",
+      "search_param_source": "poolOrDataCenterId"
     }
   ],
   "state_assertions": {
@@ -240,10 +246,7 @@ MANIFEST = {
           "name": "entity_0_pools_0_poolId",
           "path": "entity[0].pools[0].poolId",
           "used_by": [
-            "query",
-            "资源池容量",
-            "post",
-            "修改容量"
+            "query"
           ]
         }
       ],

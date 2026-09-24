@@ -148,7 +148,7 @@ STATE_LIKE_VALUES = set()
 # 只保留通用 ID 字段，业务特定字段（tenantId, roleId, policyId 等）
 # 通过策略 1（精确值匹配）自动发现，不再硬编码
 COMMON_ID_FIELDS = [
-    "id", "ids",
+    "id", "ids", "accessKeyId",
 ]
 
 

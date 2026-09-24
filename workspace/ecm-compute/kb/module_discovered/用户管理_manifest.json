@@ -43,7 +43,7 @@
     },
     "credentials_default": {
       "username": "estack-yy",
-      "password": "R@9eDuckmpleM00n"
+      "password": "R@9eDuck$!mpleM00n"
     }
   },
   "steps": [
@@ -537,8 +537,8 @@
           "name": "entity_countryCode",
           "path": "entity.countryCode",
           "used_by": [
-            "编辑",
-            "创建用户"
+            "创建用户",
+            "编辑"
           ]
         },
         {

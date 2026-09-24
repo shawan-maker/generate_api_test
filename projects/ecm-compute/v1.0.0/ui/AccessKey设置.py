@@ -2,7 +2,7 @@
 """
 AccessKey设置 - UI 自动化测试脚本
 
-生成时间: 2026-09-23 17:50:50
+生成时间: 2026-09-24 15:04:06
 生成工具: API AI Test Framework - Stage 2
 版本: v1.0.0
 
@@ -51,7 +51,7 @@ CONFIG = {
     },
 }
 
-AVAILABLE_OPERATIONS = ['AccessKey设置', '创建', '禁用', '删除']
+AVAILABLE_OPERATIONS = ['创建', 'AccessKey设置', '禁用', '删除']
 
 # ==================== Cookie 鉴权 ====================
 

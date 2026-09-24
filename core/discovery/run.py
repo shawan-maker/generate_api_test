@@ -1016,13 +1016,42 @@ async def _ensure_login(page, context, profile, login_url, target_url, args, wor
         save_credentials(args.project, credentials_to_save)
 
         # 保存 cookie
+        token_key = profile.get("auth", {}).get("token_key", "accessToken")
         cookies = await context.cookies()
+        token_cookie = next((c["value"] for c in cookies if c["name"] == token_key), None)
+
+        # 如果 cookie 中没有 token，从 localStorage 获取并添加为 cookie
+        if not token_cookie:
+            try:
+                ls_token = await page.evaluate(f"() => localStorage.getItem('{token_key}')")
+                if ls_token:
+                    base_url = profile.get("base_url", "")
+                    # 提取 domain（去掉协议和端口）
+                    import re as _re
+                    domain_match = _re.search(r'https?://([^/:]+)', base_url)
+                    domain = domain_match.group(1) if domain_match else ""
+                    if domain:
+                        token_cookie_obj = {
+                            "name": token_key,
+                            "value": ls_token,
+                            "domain": domain,
+                            "path": "/",
+                            "expires": -1,
+                            "httpOnly": False,
+                            "secure": False,
+                            "sameSite": "Lax",
+                        }
+                        await context.add_cookies([token_cookie_obj])
+                        cookies = await context.cookies()
+                        token_cookie = ls_token
+                        LOG.info(f"  ✅ 已从 localStorage 注入 {token_key} 到 cookie")
+            except Exception as e:
+                LOG.warning(f"  ⚠️ 从 localStorage 获取 token 失败: {e}")
+
         cookie_file.parent.mkdir(parents=True, exist_ok=True)
         cookie_file.write_text(json.dumps(cookies, ensure_ascii=False, indent=2), encoding="utf-8")
 
-        # 从 cookie 提取 token，用 addInitScript 注入到 localStorage（所有后续页面）
-        token_key = profile.get("auth", {}).get("token_key", "accessToken")
-        token_cookie = next((c["value"] for c in cookies if c["name"] == token_key), None)
+        # 用 addInitScript 注入 token 到 localStorage（所有后续页面）
         if token_cookie:
             await context.add_init_script(f"""
                 localStorage.setItem('{token_key}', '{token_cookie}');

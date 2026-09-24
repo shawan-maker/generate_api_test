@@ -213,12 +213,28 @@ class ResponseParser:
     def extract_by_path(self, obj: Any, path: str) -> Optional[Any]:
         if not path or obj is None:
             return None
+        # 支持数组索引，如 entity[0].poolId
+        import re
         parts = path.split(".")
         current = obj
         for part in parts:
             if current is None:
                 return None
-            if isinstance(current, dict):
+            # 检查是否包含数组索引，如 entity[0]
+            match = re.match(r'^([^\[]+)\[(\d+)\]$', part)
+            if match:
+                key, index = match.groups()
+                if isinstance(current, dict):
+                    current = current.get(key)
+                else:
+                    return None
+                if current is None or not isinstance(current, list):
+                    return None
+                idx = int(index)
+                if idx >= len(current):
+                    return None
+                current = current[idx]
+            elif isinstance(current, dict):
                 current = current.get(part)
             else:
                 return None
@@ -905,6 +921,15 @@ class StepExecutor:
         entity = self.parser.extract_entity(resp_json)
         target_id = self.state.get("id", "")
 
+        # 当无 id_producer（纯查询模块）时，验证步骤只需确认 API 返回成功即可
+        if not target_id and assertion in ("search_verify", "contains_id", "not_contains_id", "search_not_found"):
+            if isinstance(entity, dict):
+                items, total = self.parser.extract_list(entity)
+                return f"验证通过: 响应成功 (共 {total} 条记录)"
+            elif isinstance(entity, list):
+                return f"验证通过: 响应成功 (共 {len(entity)} 条记录)"
+            return f"验证通过: API 返回成功"
+
         if assertion == "contains_id":
             # 验证列表中是否包含刚创建的 ID
             if isinstance(entity, dict):
@@ -1024,10 +1049,31 @@ class StepExecutor:
         entity = self.parser.extract_entity(resp_json)
         if entity is None:
             return
-        id_val = self.parser.extract_id(entity)
-        if id_val:
-            self.state["id"] = id_val
-            print(f"  ✅ 提取 ID: {id_val}")
+
+        # 使用 step 的 extract 配置提取所有字段（包括 ID）
+        extract_config = step_def.get("extract", {})
+        if extract_config and isinstance(extract_config, dict):
+            for key, path in extract_config.items():
+                if key == "names" or not isinstance(path, str):
+                    continue
+                val = self.parser.extract_by_path(resp_json, path)
+                if val:
+                    self.state[key] = str(val)
+                    if key == "id":
+                        print(f"  ✅ 提取 ID: {val}")
+
+        # 降级：使用默认的 ID 提取逻辑
+        if "id" not in self.state:
+            id_val = self.parser.extract_id(entity)
+            if not id_val and isinstance(entity, dict):
+                # 尝试从列表响应中提取第一个 item 的 ID（用于查询操作）
+                items, _ = self.parser.extract_list(entity)
+                if items and len(items) > 0 and isinstance(items[0], dict):
+                    id_val = self.parser.extract_id(items[0])
+            if id_val:
+                self.state["id"] = id_val
+                print(f"  ✅ 提取 ID: {id_val}")
+
         field_roles = step_def.get("body_field_roles", {})
         create_body = self.state.get("create_body", {})
         for key, role_config in field_roles.items():

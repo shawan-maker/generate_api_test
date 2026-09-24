@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "eba5c3e6-f2ba-486b-aa59-81782d2e1031",
+    "_postman_id": "f02f5786-e490-46d4-9786-c43af0f438c6",
     "name": "资源池容量 API 测试",
     "description": "由 module_discovery Stage 5 自动导出",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -58,6 +58,185 @@
               }
             }
           ]
+        }
+      ]
+    },
+    {
+      "name": "01_业务操作",
+      "item": [
+        {
+          "name": "01_query",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/virgo/v1/capacity/statistics-pool"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"poolOrDataCenterId\": \"{{entity_0_pools_0_poolId}}\",\n  \"productNames\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "02_搜索验证（query后）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/virgo/v1/capacity/statistics-pool"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"poolOrDataCenterId\": \"{{entity_0_pools_0_poolId}}\",\n  \"productNames\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "03_资源池容量",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/virgo/v1/capacity/statistics-pool"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"poolOrDataCenterId\": \"{{entity_0_pools_0_poolId}}\",\n  \"productNames\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "04_搜索验证（资源池容量后）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/virgo/v1/capacity/statistics-pool"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"poolOrDataCenterId\": \"{{entity_0_pools_0_poolId}}\",\n  \"productNames\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "05_修改容量",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/virgo/v1/capacity/statistics-pool"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"poolOrDataCenterId\": \"{{entity_0_pools_0_poolId}}\",\n  \"productNames\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06_搜索验证（删除后）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/virgo/v1/capacity/statistics-pool"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"poolOrDataCenterId\": \"{{entity_0_pools_0_poolId}}\",\n  \"productNames\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
         }
       ]
     }

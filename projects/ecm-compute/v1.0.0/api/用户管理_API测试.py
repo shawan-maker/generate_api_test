@@ -1,6 +1,6 @@
 """
 用户管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-24 10:14:29
+生成时间: 2026-09-24 15:55:53
 目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/user
 
 执行流程:
@@ -562,8 +562,8 @@ MANIFEST = {
           "name": "entity_countryCode",
           "path": "entity.countryCode",
           "used_by": [
-            "编辑",
-            "创建用户"
+            "创建用户",
+            "编辑"
           ]
         },
         {

@@ -5,7 +5,7 @@
     "base_url": "https://10.151.61.248",
     "login_url": "https://10.151.61.248/estack/web/estack/login",
     "framework": "element-ui",
-    "generated_at": "2026-09-23 17:50:13",
+    "generated_at": "2026-09-24 15:02:41",
     "version": "1.0",
     "auth_config": {
       "token_key": "accessToken",
@@ -42,30 +42,11 @@
     ]
   },
   "operations": {
-    "AccessKey设置": {
-      "display_name": "AccessKey设置",
-      "description": "AccessKey设置",
-      "role": "unknown",
-      "steps": [],
-      "marker": null,
-      "status": "failed",
-      "error_type": "no_confirm_button",
-      "error_text": "AccessKey设置 操作未检测到确认弹窗"
-    },
     "创建": {
       "display_name": "创建",
       "description": "创建",
       "role": "generic",
       "steps": [
-        {
-          "action": "find_row",
-          "description": "定位目标数据行"
-        },
-        {
-          "action": "select_row_checkbox",
-          "checkbox_locator": ".el-checkbox__input",
-          "description": "勾选行 checkbox"
-        },
         {
           "action": "click_button",
           "text": "创建",
@@ -84,6 +65,16 @@
       ],
       "marker": null,
       "status": "success"
+    },
+    "AccessKey设置": {
+      "display_name": "AccessKey设置",
+      "description": "AccessKey设置",
+      "role": "unknown",
+      "steps": [],
+      "marker": null,
+      "status": "failed",
+      "error_type": "no_confirm_button",
+      "error_text": "AccessKey设置 操作未检测到确认弹窗"
     },
     "禁用": {
       "display_name": "禁用",

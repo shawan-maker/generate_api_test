@@ -1,9 +1,18 @@
 """
 AccessKey设置_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-24 10:13:53
+生成时间: 2026-09-24 16:00:01
 目标URL: https://10.151.61.248/estack/web/estack/user-center/account-manage/access-key-manage
 
 执行流程:
+  1. 创建
+  2. 查询验证（创建后）
+  3. 禁用
+  4. 查询验证（禁用后）
+  5. 删除
+  6. 查询验证（删除后）
+
+状态断言:
+  - 删除后数据不应出现
 """
 
 import sys, json
@@ -37,7 +46,7 @@ MANIFEST = {
     "total_keys": [
       "total"
     ],
-    "id_field": "id"
+    "id_field": "accessKeyId"
   },
   "auth_profile": {
     "header_name": "Authorization",
@@ -54,10 +63,174 @@ MANIFEST = {
       "password": "APP_PASS"
     }
   },
-  "steps": [],
+  "steps": [
+    {
+      "action": "创建",
+      "label": "创建",
+      "api": {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/accesskey/create",
+        "path_params": {},
+        "query_params": {}
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [],
+      "extract": {
+        "accessKeyId": "entity.accessKeyId",
+        "id": "entity.accessKeyId",
+        "names": []
+      }
+    },
+    {
+      "action": "post",
+      "label": "查询验证（创建后）",
+      "api": {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/accesskey/list",
+        "path_params": {},
+        "query_params": {}
+      },
+      "body_template": {
+        "pageNum": 1,
+        "pageSize": 10
+      },
+      "body_field_roles": {
+        "pageNum": {
+          "role": "static"
+        },
+        "pageSize": {
+          "role": "static"
+        }
+      },
+      "requires": [
+        "id"
+      ],
+      "assertion": "contains_id"
+    },
+    {
+      "action": "禁用",
+      "label": "禁用",
+      "api": {
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/accesskey/{path_0}/update",
+        "path_params": {
+          "path_0": {
+            "source": "create.accessKeyId",
+            "match_from": "body_context"
+          }
+        },
+        "query_params": {}
+      },
+      "body_template": {
+        "id": None,
+        "accessKeyId": None,
+        "accessKeyStatus": "DISABLE"
+      },
+      "body_field_roles": {
+        "id": {
+          "role": "context",
+          "source": "create.accessKeyId"
+        },
+        "accessKeyId": {
+          "role": "context",
+          "source": "create.accessKeyId"
+        },
+        "accessKeyStatus": {
+          "role": "static"
+        }
+      },
+      "requires": [
+        "id"
+      ]
+    },
+    {
+      "action": "post",
+      "label": "查询验证（禁用后）",
+      "api": {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/accesskey/list",
+        "path_params": {},
+        "query_params": {}
+      },
+      "body_template": {
+        "pageNum": 1,
+        "pageSize": 10
+      },
+      "body_field_roles": {
+        "pageNum": {
+          "role": "static"
+        },
+        "pageSize": {
+          "role": "static"
+        }
+      },
+      "requires": [
+        "id"
+      ],
+      "assertion": "contains_id"
+    },
+    {
+      "action": "删除",
+      "label": "删除",
+      "api": {
+        "method": "DELETE",
+        "pathname": "/estack/api/estack/draco/v1/accesskey/{path_0}",
+        "path_params": {
+          "path_0": {
+            "source": "create.accessKeyId",
+            "match_from": "body_context"
+          }
+        },
+        "query_params": {}
+      },
+      "body_template": {
+        "id": None
+      },
+      "body_field_roles": {
+        "id": {
+          "role": "context",
+          "source": "create.accessKeyId"
+        }
+      },
+      "requires": [
+        "id"
+      ]
+    },
+    {
+      "action": "post",
+      "label": "查询验证（删除后）",
+      "api": {
+        "method": "POST",
+        "pathname": "/estack/api/estack/draco/v1/accesskey/list",
+        "path_params": {},
+        "query_params": {}
+      },
+      "body_template": {
+        "pageNum": 1,
+        "pageSize": 10
+      },
+      "body_field_roles": {
+        "pageNum": {
+          "role": "static"
+        },
+        "pageSize": {
+          "role": "static"
+        }
+      },
+      "requires": [
+        "id"
+      ],
+      "assertion": "not_contains_id"
+    }
+  ],
   "state_assertions": {
-    "state_field": None,
-    "values_by_crud": {}
+    "state_field": "status",
+    "values_by_crud": {
+      "创建": "AVAILABLE"
+    },
+    "after_create": "AVAILABLE",
+    "after_delete": "NOT_EXIST"
   }
 }
 

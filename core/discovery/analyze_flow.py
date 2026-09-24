@@ -170,10 +170,6 @@ def _is_post_list_query(ep) -> bool:
         except Exception:
             pass
 
-    # 策略 3：无请求体或空请求体 → 可能是列表查询
-    if ep.get("body_field_count", 0) == 0:
-        return True
-
     return False
 
 
@@ -472,7 +468,7 @@ def _derive_dependencies(core_apis: dict, response_samples: dict, operation_orde
     id_field_details = {}  # {字段名: {source_action, sample_value, path}}
     injections = {}
 
-    # 1. 按 operation_order 顺序找 ID 生产者（数据驱动，不依赖操作名）
+    # 1. 按 operation_order 顺序找 ID 生产者（数据流反向推导）
     for action in operation_order:
         endpoints = core_apis.get(action, [])
         if not endpoints:
@@ -480,6 +476,23 @@ def _derive_dependencies(core_apis: dict, response_samples: dict, operation_orde
         ep = endpoints[0]  # 只处理 main endpoint，避免 chain candidate 污染
         pn = ep["pathname"]
         samples = response_samples.get(pn, [])
+
+        # 收集后续操作的请求和路径（用于值匹配）
+        subsequent_requests = []
+        subsequent_pathnames = []
+        for other_action, other_eps in core_apis.items():
+            if other_action == action:
+                continue
+            for other_ep in other_eps:
+                body_sample = other_ep.get("request_body_sample")
+                if body_sample:
+                    try:
+                        req_body = json.loads(body_sample) if isinstance(body_sample, str) else body_sample
+                        subsequent_requests.append(req_body)
+                    except:
+                        pass
+                subsequent_pathnames.append(other_ep.get("pathname", ""))
+
         # 检查多个样本（最多前 5 个），避免 response_samples 按 pathname 混合存储时
         # POST 写操作和 GET 列表查询共享同一 key 导致第一个样本恰好是列表响应
         for s in samples[:5]:
@@ -489,25 +502,22 @@ def _derive_dependencies(core_apis: dict, response_samples: dict, operation_orde
                 LOG.debug(f"解析响应样本失败 ({pn}): {e}")
                 continue
 
-            # 递归提取 ID 字段
-            found_ids = _extract_ids_recursive(body, path="", max_depth=4)
+            # 通过数据流反向推导 ID 字段
+            result = _find_id_by_data_flow(body, subsequent_requests, subsequent_pathnames)
 
-            for field_path, field_name, sample_value in found_ids:
-                if field_name not in id_field_details:
-                    id_field_details[field_name] = {
-                        "source_action": action,
-                        "sample_value": sample_value,
-                        "path": field_path,
-                    }
-                    LOG.debug(f"  发现 ID 字段: {field_path} = {sample_value} (来自 {action})")
+            if result:
+                field_name, field_path, sample_value = result
+                id_field_details[field_name] = {
+                    "source_action": action,
+                    "sample_value": sample_value,
+                    "path": field_path,
+                }
+                LOG.debug(f"  发现 ID 字段: {field_path} = {sample_value} (来自 {action})")
 
-                    # 第一个找到 ID 的操作即为 ID 生产者
-                    if id_producer is None:
-                        id_producer = action
-                        LOG.debug(f"  ID 生产者: {action}")
-
-            # 如果当前样本已找到 ID，停止检查更多样本
-            if id_producer:
+                # 第一个找到 ID 的操作即为 ID 生产者
+                if id_producer is None:
+                    id_producer = action
+                    LOG.debug(f"  ID 生产者: {action}")
                 break
 
         # 如果已找到 ID 生产者，停止扫描更多操作
@@ -544,8 +554,8 @@ def _derive_dependencies(core_apis: dict, response_samples: dict, operation_orde
         if not isinstance(req_body, dict):
             continue
 
-        # 检查请求体中是否包含 ID 字段
-        for fname in const.COMMON_ID_FIELDS:
+        # 检查请求体中是否包含 ID 字段（使用动态识别的字段名）
+        for fname in id_field_details.keys():
             if fname in req_body and fname not in injections:
                 injections[fname] = {
                     "source": id_field_details.get(fname, {}).get(
@@ -560,6 +570,105 @@ def _derive_dependencies(core_apis: dict, response_samples: dict, operation_orde
         "injections": injections,
     }
     return result
+
+
+def _find_id_by_data_flow(create_response: dict,
+                          subsequent_requests: list,
+                          subsequent_pathnames: list):
+    """
+    通过数据流反向推导 ID 字段。
+
+    原理：ID 字段在创建响应中产生，会在后续操作（PUT/DELETE）的请求体或 URL 中被引用。
+
+    Args:
+        create_response: 创建操作的响应体
+        subsequent_requests: 后续操作的请求体列表
+        subsequent_pathnames: 后续操作的 URL 路径列表
+
+    Returns:
+        (field_name, full_path, value) 或 None
+    """
+    exclude_keys = {
+        "status", "name", "userName", "userId", "createAt", "updateAt",
+        "lastUsedDate", "description", "remark", "memo",
+        "secretKey", "password", "token", "accessToken", "secret"
+    }
+
+    response_values = {}
+    _collect_leaf_values(create_response, response_values, exclude_keys)
+
+    # 第一轮：优先检查 URL 路径（最可靠）
+    for path, value in response_values.items():
+        if not _looks_like_identifier(value):
+            continue
+        value_str = str(value)
+        for pn in subsequent_pathnames:
+            if value_str in pn:
+                return path.split(".")[-1], path, value_str
+
+    # 第二轮：检查请求体
+    for path, value in response_values.items():
+        if not _looks_like_identifier(value):
+            continue
+        value_str = str(value)
+        for req_body in subsequent_requests:
+            try:
+                if value_str in json.dumps(req_body):
+                    return path.split(".")[-1], path, value_str
+            except:
+                pass
+
+    return None
+
+
+def _collect_leaf_values(obj: dict, result: dict, exclude_keys: set,
+                         path: str = "", max_depth: int = 4, _depth: int = 0):
+    """递归收集 JSON 对象中的所有叶子值。"""
+    if _depth >= max_depth:
+        return
+
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            current_path = f"{path}.{key}" if path else key
+
+            if key in exclude_keys:
+                continue
+
+            if isinstance(value, (str, int, float)) and value:
+                result[current_path] = value
+            elif isinstance(value, dict):
+                _collect_leaf_values(value, result, exclude_keys, current_path, max_depth, _depth + 1)
+            elif isinstance(value, list) and len(value) > 0:
+                first = value[0]
+                if isinstance(first, dict):
+                    _collect_leaf_values(first, result, exclude_keys, f"{current_path}[0]", max_depth, _depth + 1)
+
+
+def _looks_like_identifier(value) -> bool:
+    """判断值是否看起来像标识符（ID 类字段）。"""
+    if not isinstance(value, (str, int)):
+        return False
+
+    value_str = str(value)
+
+    if len(value_str) < 6:
+        return False
+    if value_str.isdigit() and len(value_str) < 8:
+        return False
+    if value_str.lower() in ("true", "false", "null", "0", "1"):
+        return False
+    if value_str.startswith(("http://", "https://", "/")):
+        return False
+
+    has_letter = any(c.isalpha() for c in value_str)
+    has_digit = any(c.isdigit() for c in value_str)
+    if has_letter and has_digit and len(value_str) >= 8:
+        return True
+
+    if value_str.isdigit() and len(value_str) >= 16:
+        return True
+
+    return False
 
 
 def _extract_ids_recursive(obj, path: str = "", max_depth: int = 4, _depth: int = 0):
@@ -585,10 +694,9 @@ def _extract_ids_recursive(obj, path: str = "", max_depth: int = 4, _depth: int 
         for key, value in obj.items():
             current_path = f"{path}.{key}" if path else key
 
-            # 检查是否是 ID 字段
-            if key in const.COMMON_ID_FIELDS:
-                if isinstance(value, (str, int)) and value:
-                    results.append((current_path, key, str(value)))
+            # 检查是否是 ID 字段（使用值特征判断）
+            if isinstance(value, (str, int)) and _looks_like_identifier(value):
+                results.append((current_path, key, str(value)))
 
             # 递归进入子对象
             if isinstance(value, (dict, list)):
@@ -914,49 +1022,11 @@ def _discover_list_structure(response_samples: dict, envelope_keys: list) -> tup
 
 
 def _discover_id_field(response_samples: dict, envelope_keys: list) -> str:
-    """从创建类响应中发现 ID 字段名。
-
-    Args:
-        response_samples: 响应样本
-        envelope_keys: 已发现的信封键
-
-    Returns:
-        ID 字段名（默认从 const.DEFAULT_ID_FIELD）
     """
-    # 优先使用 COMMON_ID_FIELDS 中的顺序
-    id_hits = {}
-
-    for samples in response_samples.values():
-        for s in samples[:3]:
-            try:
-                body = json.loads(s["body"]) if isinstance(s["body"], str) else s["body"]
-            except Exception:
-                continue
-            if not isinstance(body, dict):
-                continue
-
-            # 在信封内查找 ID 字段
-            entity = None
-            for ek in envelope_keys:
-                if ek in body:
-                    entity = body[ek]
-                    break
-            if not isinstance(entity, dict):
-                continue
-
-            for fname in const.COMMON_ID_FIELDS:
-                if fname in entity:
-                    val = entity[fname]
-                    if isinstance(val, (str, int)) and val:
-                        id_hits[fname] = id_hits.get(fname, 0) + 1
-
-    if id_hits:
-        # 优先选 const.DEFAULT_ID_FIELD，其次选出现最多的
-        if const.DEFAULT_ID_FIELD in id_hits:
-            return const.DEFAULT_ID_FIELD
-        return max(id_hits, key=id_hits.get)
-
-    return const.DEFAULT_ID_FIELD
+    全局 ID 字段发现（降级使用）。
+    真正的 ID 字段由 _derive_dependencies 通过数据流反向推导确定。
+    """
+    return "id"  # 默认值，会被 id_field_details 覆盖
 
 
 def _discover_response_contract(response_samples: dict) -> dict:
@@ -1074,6 +1144,15 @@ def build_manifest(analysis: dict, capture_result: dict,
     # 4. 构建 steps 列表
     id_field_details = analysis.get("dependencies", {}).get("id_field_details", {})
 
+    # ★ 用 id_field_details（创建响应中识别的 ID 字段）覆盖全局 id_field
+    # 全局 _discover_id_field 扫描所有端点投票，init 端点的 id 字段会"污染"结果
+    # id_field_details 只来自创建响应，是模块真正的 ID 字段
+    if id_field_details:
+        real_id_field = next(iter(id_field_details.keys()))
+        if real_id_field != response_contract.get("id_field"):
+            LOG.info(f"  ID字段覆盖: {response_contract.get('id_field')} → {real_id_field}（来自创建响应）")
+            response_contract["id_field"] = real_id_field
+
     # 5. 获取 context_fields 字段名（用于优先标记 context 角色）
     context_fields = auth_profile.get("context_fields", {})
     context_field_names = set(context_fields.keys())
@@ -1112,9 +1191,7 @@ def build_manifest(analysis: dict, capture_result: dict,
         # 从 create 响应样本中提取 ID（用于验证 verify endpoint 是否返回同类数据）
         create_eps = core_apis.get(id_producer, [])
         if create_eps:
-            # 遍历操作链所有端点，找到第一个有 ID 的响应
-            envelope_keys = response_contract.get("envelope_keys", const.ENVELOPE_KEY_CANDIDATES)
-            id_field = response_contract.get("id_field", const.DEFAULT_ID_FIELD)
+            # 优先从 id_field_details 获取真实的 ID 字段
             for ep in create_eps:
                 if create_id_sample:
                     break
@@ -1122,13 +1199,21 @@ def build_manifest(analysis: dict, capture_result: dict,
                 for s in ep_resp_samples:
                     try:
                         body = json.loads(s["body"]) if isinstance(s["body"], str) else s["body"]
-                        entity = body
-                        for ek in envelope_keys:
-                            if ek in body and isinstance(body[ek], dict):
-                                entity = body[ek]
-                                break
-                        if isinstance(entity, dict) and id_field in entity:
-                            create_id_sample = entity[id_field]
+                        if id_field_details:
+                            id_field_name = next(iter(id_field_details.keys()))
+                            create_id_sample = id_field_details[id_field_name]["sample_value"]
+                        else:
+                            # 降级：使用 response_contract
+                            envelope_keys = response_contract.get("envelope_keys", const.ENVELOPE_KEY_CANDIDATES)
+                            id_field = response_contract.get("id_field", "id")
+                            entity = body
+                            for ek in envelope_keys:
+                                if ek in body and isinstance(body[ek], dict):
+                                    entity = body[ek]
+                                    break
+                            if isinstance(entity, dict) and id_field in entity:
+                                create_id_sample = entity[id_field]
+                        if create_id_sample:
                             break
                     except Exception:
                         pass
@@ -1155,7 +1240,7 @@ def build_manifest(analysis: dict, capture_result: dict,
     # ★ 使用 core_api_map 选择验证端点（语义优先级 > 字母排序）
     core_api_map = analysis.get("core_api_map", {})
 
-    # 验证端点选择优先级：搜索操作 > init 操作 > 列表查询兜底
+    # 验证端点选择优先级：搜索操作 > 业务阶段列表查询 > init 操作(备选) > 列表查询兜底
     verify_ep = None
     verify_source = None  # 记录来源用于日志
 
@@ -1169,7 +1254,21 @@ def build_manifest(analysis: dict, capture_result: dict,
                 verify_source = f"搜索操作 ({search_action})"
                 break
 
-    # 优先级 2：从 init 操作获取（导航阶段的列表查询）
+    # 优先级 2：从 all_endpoints 中找业务阶段触发的列表查询
+    # contexts 包含 "replay:" 说明是 CRUD 操作后自动触发的刷新查询，优先于 init
+    if verify_ep is None:
+        for ep in capture_result.get("all_endpoints", []):
+            ctx_list = ep.get("contexts", [])
+            has_replay = any("replay:" in str(c) for c in ctx_list)
+            if not has_replay:
+                continue
+            pn = ep.get("pathname", "")
+            if _is_list_query(pn, response_samples):
+                verify_ep = ep
+                verify_source = f"业务阶段列表查询 ({pn[:50]})"
+                break
+
+    # 优先级 3：从 init 操作获取（导航阶段的列表查询，仅作备选）
     if verify_ep is None and "init" in core_api_map:
         candidates = core_api_map["init"]
         full_ep = _select_core_api(candidates, "step")
@@ -1425,19 +1524,30 @@ def build_manifest(analysis: dict, capture_result: dict,
 
             # ── Step 3: 值模式兜底 ──
             if source is None:
-                # 检查是否是 ID 模式（hex_id ≥24 字符、uuid、长数字 ID ≥8 位）
+                # 检查是否是 ID 模式
                 is_id_pattern = False
                 if is_pure_digit and len(segment_value) >= 8:
                     is_id_pattern = True
-                elif not is_pure_digit and len(segment_value) >= 24:
+                elif not is_pure_digit and len(segment_value) >= 16:
                     if re.fullmatch(r'[0-9a-fA-F]{24,}', segment_value):
                         is_id_pattern = True
                     elif len(segment_value) == 36 and segment_value.count('-') == 4:
                         is_id_pattern = True  # UUID 格式
+                    elif re.fullmatch(r'[A-Za-z0-9]{16,}', segment_value):
+                        # 混合大小写+数字的 ID（如 AccessKey ID: 93552EDCG26cEWowiJylDR7M）
+                        has_letter = any(c.isalpha() for c in segment_value)
+                        has_digit = any(c.isdigit() for c in segment_value)
+                        if has_letter and has_digit:
+                            is_id_pattern = True
 
                 if is_id_pattern and current_action != id_producer:
-                    source = "create.id"
-                    match_from = "create_id_fallback"
+                    if id_producer is not None:
+                        source = "create.id"
+                        match_from = "create_id_fallback"
+                    else:
+                        # 无 id_producer（如纯查询模块），从列表查询响应中提取
+                        source = "query.id"
+                        match_from = "query_id_fallback"
                 else:
                     # 非 ID 模式或是 create 操作 → static，不替换
                     continue
@@ -1550,11 +1660,20 @@ def build_manifest(analysis: dict, capture_result: dict,
         extract = None
         if action == id_producer:
             envelope_keys = response_contract["envelope_keys"]
-            id_field = response_contract["id_field"]
-            extract = {
-                "id": f"{envelope_keys[0]}.{id_field}" if envelope_keys else id_field,
-                "names": [k for k, v in field_roles.items() if v.get("role") == "name" and "." not in k],
-            }
+            extract_fields = {}
+            # 从 id_field_details 获取实际 ID 字段名和路径
+            for field_name, field_info in id_field_details.items():
+                extract_fields[field_name] = field_info["path"]
+            # 兼容：也存一份 "id" key
+            if id_field_details:
+                first_info = next(iter(id_field_details.values()))
+                extract_fields["id"] = first_info["path"]
+            else:
+                # 回退：使用全局 id_field
+                id_field = response_contract["id_field"]
+                extract_fields["id"] = f"{envelope_keys[0]}.{id_field}" if envelope_keys else id_field
+            extract_fields["names"] = [k for k, v in field_roles.items() if v.get("role") == "name" and "." not in k]
+            extract = extract_fields
 
         # 分析 pathname 中的动态关联参数（值匹配驱动）
         pathname = ep["pathname"]
@@ -1565,8 +1684,25 @@ def build_manifest(analysis: dict, capture_result: dict,
         pathname = path_result["pathname"]
         path_params = path_result["path_params"]
 
-        # requires: 非 create 操作一律需要 id（确保 create 已成功）
-        requires = [] if action == id_producer else ["id"]
+        # ★ 修正：body 中与 path param 同值的字段应引用 path param 的 source
+        # 例如 PUT /accesskey/{id}/update body 中 id="93552..." 应和 path 中的 id 使用同一 source
+        if path_params and isinstance(body_sample, dict):
+            for pp_key, pp_info in path_params.items():
+                pp_original = pp_info.get("original_value", "")
+                pp_source = pp_info.get("source", "")
+                if not pp_original or not pp_source:
+                    continue
+                for body_key, body_val in body_sample.items():
+                    if isinstance(body_val, str) and body_val == pp_original:
+                        if body_key in field_roles:
+                            old_role = field_roles[body_key].get("role", "")
+                            if old_role in ("generate", "static"):
+                                field_roles[body_key] = {"role": "context", "source": pp_source}
+                                LOG.info(f"  body.{body_key} 角色修正: {old_role} → context (source={pp_source})")
+
+        # requires: 非 create 操作需要 id（确保 create 已成功）
+        # 当 id_producer 为 None 时（纯查询模块，无创建操作），不添加 id 依赖
+        requires = [] if (id_producer is None or action == id_producer) else ["id"]
 
         step = {
             "action": action,
@@ -1689,7 +1825,7 @@ def build_manifest(analysis: dict, capture_result: dict,
             "action": action,
             "label": (ui_result or {}).get("button_labels", {}).get(action) or action,
             "phases": phases,
-            "requires": [] if action == id_producer else ["id"],
+            "requires": [] if (id_producer is None or action == id_producer) else ["id"],
         }
         if extract:
             step["extract"] = extract
@@ -1815,7 +1951,7 @@ def build_manifest(analysis: dict, capture_result: dict,
             },
             "body_template": _clean_body_template(body_sample or {}, field_roles, value_index, verify_action, collected_pre_api_ids),
             "body_field_roles": field_roles,
-            "requires": ["id"],
+            "requires": [] if id_producer is None else ["id"],
             "assertion": assertion,
         }
         # search_verify / search_not_found 需要携带搜索参数名
@@ -1883,6 +2019,81 @@ def build_manifest(analysis: dict, capture_result: dict,
                     plans.append(("detail", f"详情验证（{action_label}后）", "field_changed"))
 
         return plans
+
+    # ── 无 id_producer 但有写操作时，插入列表查询步骤获取 ID ──
+    has_write_ops = any(
+        ep.get("method") in ("PUT", "PATCH", "DELETE")
+        for action_eps in core_apis.values()
+        for ep in action_eps
+    )
+    if id_producer is None and has_write_ops:
+        # 优先找模块自身的列表查询端点（通过 write 端点的 pathname 推断）
+        # 例如：PUT /accesskey/{id}/update → 查找 POST /accesskey/list
+        init_query_ep = None
+        write_path_prefixes = set()
+        for action_eps in core_apis.values():
+            for ep in action_eps:
+                pn = ep.get("pathname", "")
+                # 提取模块路径前缀（去掉最后的 ID 段和操作段）
+                segments = [s for s in pn.split("/") if s]
+                if len(segments) >= 4:
+                    # 取倒数第 2~3 段作为模块标识（如 accesskey）
+                    prefix = "/".join(segments[:-2]) if "/update" in pn or segments[-1] != "update" else "/".join(segments[:-3])
+                    write_path_prefixes.add(prefix)
+
+        # 从 all_endpoints 中找匹配的列表查询
+        for ep in capture_result.get("all_endpoints", []):
+            pn = ep.get("pathname", "")
+            if ep.get("method") == "POST" and pn.endswith("/list"):
+                segments = [s for s in pn.split("/") if s]
+                if len(segments) >= 4:
+                    ep_prefix = "/".join(segments[:-1])
+                    if any(ep_prefix.startswith(wp) or wp.startswith(ep_prefix) for wp in write_path_prefixes):
+                        init_query_ep = ep
+                        break
+            elif ep.get("method") == "GET" and _is_list_query(pn, response_samples):
+                init_query_ep = ep
+                break
+
+        # 降级：使用 verify_endpoints 中的 query
+        if init_query_ep is None and "query" in verify_endpoints:
+            init_query_ep = verify_endpoints["query"]["ep"]
+
+        if init_query_ep:
+            query_ep = init_query_ep
+            query_body = _parse_body(query_ep)
+            query_roles = classify_fields_recursive(
+                query_body, value_index, create_body_sample, current_action="query"
+            )
+            path_result = _analyze_path_params(
+                query_ep["pathname"], query_body, query_roles, value_index,
+                create_body_sample, "query", id_producer
+            )
+            init_step = {
+                "action": "query",
+                "label": "初始列表查询（获取 ID）",
+                "api": {
+                    "method": query_ep["method"],
+                    "pathname": path_result["pathname"],
+                    "path_params": _strip_path_params_original(path_result["path_params"]),
+                    "query_params": query_ep.get("query_params", {}),
+                },
+                "body_template": _clean_body_template(query_body or {}, query_roles, value_index, "query", collected_pre_api_ids),
+                "body_field_roles": query_roles,
+                "requires": [],
+                "extract": {
+                    "id": "entity.list_0.id" if response_contract["envelope_keys"] else "list_0.id",
+                },
+            }
+            steps.append(init_step)
+            LOG.info("  插入初始列表查询步骤（从列表响应提取 ID）")
+
+            # ★ 同时更新 verify_endpoints，让后续验证步骤使用正确的列表查询端点
+            verify_endpoints["query"] = {
+                "ep": query_ep,
+                "body_sample": query_body,
+            }
+            LOG.info(f"  更新验证端点为: {query_ep['method']} {query_ep['pathname']}")
 
     for action in crud_order:
         eps = core_apis.get(action, [])

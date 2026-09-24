@@ -2009,8 +2009,12 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
 
         # 使用按钮文本作为 action（不再调用 _match_crud）
         action = btn.get("action", "") or btn.get("text", "")
-        if action and action not in buttons_by_action:
-            buttons_by_action[action] = btn
+        if action:
+            existing = buttons_by_action.get(action)
+            # 优先选择 BUTTON 元素，避免被 DIV 包装器覆盖
+            # 扫描顺序可能先遇到 DIV.btn-group-left，后遇到真正的 BUTTON.el-button--primary
+            if not existing or (existing.get("tag") != "BUTTON" and btn.get("tag") == "BUTTON"):
+                buttons_by_action[action] = btn
 
     # 自动推断 query 操作：如果没有 query 按钮但探测到搜索输入框
     if "query" not in buttons_by_action and ui_result.get("search_inputs"):
@@ -2326,9 +2330,32 @@ async def _do_create(page, context: dict) -> dict:
     if not fields:
         fields = await form_filler.scan_form_fields_v2()
     if not fields:
+        # 无表单字段的特殊情况：可能是简单确认对话框（如 AccessKey 创建）
+        # 尝试直接点击确认按钮
+        from .replay.button_driver import confirm_dialog
+        confirmed = await confirm_dialog(page)
+        if confirmed:
+            await page.wait_for_timeout(1500)
+            success = await _verify_operation_success(page, "create")
+            if success:
+                LOG.info(f"    无表单字段的确认对话框操作成功")
+                # 构建 trigger_locator_verified（与正常 _do_create 路径一致）
+                trigger_locator_verified = btn_click_result.get("locator")
+                if not trigger_locator_verified:
+                    trigger_tag = btn_click_result.get("tag", "button")
+                    actual_text = btn_click_result.get("actual_text", btn_text)
+                    trigger_locator_verified = f"{trigger_tag}:has-text('{actual_text}')"
+                return {
+                    "success": True,
+                    "confirmed": confirmed,
+                    "trigger_text": btn_text,
+                    "fill_data": {},
+                    "selectors": {"trigger": btn_text, "confirm": confirmed},
+                    "trigger_locator_verified": trigger_locator_verified,
+                }
         await _close_dialog(page)
         return {"success": False, "error_type": "no_fields",
-                "error_text": "未扫描到表单字段"}
+                "error_text": "未扫描到表单字段且确认对话框处理失败"}
 
     # 4. 生成填充规则和数据
     fill_rules = generate_fill_rules(fields)
@@ -3564,9 +3591,14 @@ async def _do_generic_operation(page, context: dict) -> dict:
         result["trigger_locator_verified"] = verified_locator
 
     # 记录是否需要先勾选 checkbox（toolbar 按钮需要先选中行）
+    # 修复：只有批量操作按钮（非 primary）才需要 checkbox，创建按钮（primary）不需要
     if btn_location == "toolbar":
-        result["needs_checkbox"] = True
-        result["checkbox_locator"] = ".el-checkbox__input"
+        btn_class = btn.get("className", "") or ""
+        is_primary = "primary" in btn_class.lower()
+        if not is_primary:
+            # 非 primary 的 toolbar 按钮是批量操作，需要先选中行
+            result["needs_checkbox"] = True
+            result["checkbox_locator"] = ".el-checkbox__input"
 
     # 记录是否为 dropdown 操作
     if btn_location == "dropdown":
