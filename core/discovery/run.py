@@ -340,6 +340,16 @@ async def run_stage2(page, project_dir: Path, module_name: str,
                     ver = version or ver_mod.resolve_version(project_dir)
                     script_path = generate_ui_script(playbook_data, module_name, project_dir, version=ver)
                     LOG.info(f"  UI 脚本已生成: {script_path}")
+
+                    # 同步最新 cookie 到脚本目录（Stage 2 刚刷新过 token）
+                    framework_cookie = ws_dir / "output" / "config" / "cookies.json"
+                    script_config = Path(script_path).parent / "config"
+                    script_config.mkdir(parents=True, exist_ok=True)
+                    script_cookie = script_config / "cookies.json"
+                    if framework_cookie.exists():
+                        import shutil
+                        shutil.copy2(str(framework_cookie), str(script_cookie))
+                        LOG.info(f"  Cookie 同步: Stage 2 最新 cookie → {script_config}")
                 except Exception as e:
                     LOG.warning(f"  UI 脚本生成失败: {e}")
             else:

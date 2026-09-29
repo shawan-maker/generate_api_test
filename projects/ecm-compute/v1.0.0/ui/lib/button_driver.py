@@ -850,6 +850,9 @@ async def confirm_dialog(page: Page, confirm: bool = True, ui_framework: str = "
     2. el-popconfirm: <el-popconfirm> 气泡确认框
     3. 通用模态框: 任何包含确认按钮的可见对话框
 
+    按钮文本匹配统一使用去空格归一化（const.xpath_normalize_in / const.js_normalize_in），
+    兼容 "确 定" / "确定" 等空格变体。
+
     Args:
         page: Playwright 页面对象
         confirm: True 点击确认，False 点击取消
@@ -863,27 +866,16 @@ async def confirm_dialog(page: Page, confirm: bool = True, ui_framework: str = "
     # 获取隐藏过滤器
     hidden_filter = const.HIDDEN_FILTERS.get(ui_framework, const.HIDDEN_FILTERS['_universal'])
 
-    def _chars_all(text: str) -> str:
-        """Generate XPath character-by-character match pattern with hidden filters.
-        Example: "确定" -> "contains(.,'确') and contains(.,'定') and <hidden_filter>"
-        """
-        chars_match = " and ".join(f"contains(.,'{c}')" for c in text)
-        return f"{chars_match} and {hidden_filter}"
+    # 生成 XPath 归一化谓词（去空格后匹配）
+    confirm_xpath_pred = const.xpath_normalize_in(const.CONFIRM_TEXTS)
+    cancel_xpath_pred = const.xpath_normalize_in(const.CANCEL_TEXTS)
 
-    def _js_chars_all(text: str) -> str:
-        """Generate JS character-by-character check.
-        Example: "确定" -> "text.includes('确') && text.includes('定')"
-        """
-        return " && ".join(f"text.includes('{c}')" for c in text)
+    # 生成 JS 归一化检测表达式
+    confirm_js_check = const.js_normalize_in(const.CONFIRM_TEXTS, "txt")
 
     try:
         # 等待确认框出现（最多 2 秒）
-        # Build JS detection code with character-split matching
-        confirm_texts_js = json.dumps(const.CONFIRM_BUTTON_TEXTS, ensure_ascii=False)
-        chars_all_checks = " || ".join(f"({_js_chars_all(t)})" for t in const.CONFIRM_BUTTON_TEXTS)
-
         for _ in range(4):
-            # 检查各种确认框容器
             has_confirm = await page.evaluate(f"""() => {{
                 // 1. el-message-box（最高优先级）
                 const msgBox = document.querySelector('.el-message-box__wrapper:not([style*="display: none"])');
@@ -896,7 +888,6 @@ async def confirm_dialog(page: Page, confirm: bool = True, ui_framework: str = "
                 // 3. 通用对话框（包含确认按钮）- 增强过滤
                 const dialogs = document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"]), .ant-modal-wrap:not([style*="display: none"])');
                 for (const dialog of dialogs) {{
-                    // 增强过滤：检查 width + height + 内部容器
                     if (dialog.offsetWidth <= 0 || dialog.offsetHeight <= 0) continue;
                     const inner = dialog.querySelector('.el-dialog, .ant-modal');
                     if (inner && inner.offsetHeight <= 0) continue;
@@ -904,15 +895,13 @@ async def confirm_dialog(page: Page, confirm: bool = True, ui_framework: str = "
                     const btns = dialog.querySelectorAll('button');
                     const btnTexts = [];
                     for (const btn of btns) {{
-                        const text = btn.textContent.trim();
-                        btnTexts.push(text);
-                        // Match exact text OR character-by-character (handles spaces like "确 定")
-                        if ({confirm_texts_js}.includes(text) || {chars_all_checks}) {{
+                        const txt = btn.textContent.trim();
+                        btnTexts.push(txt);
+                        if ({confirm_js_check}) {{
                             return 'generic-dialog';
                         }}
                     }}
-                    // 调试：如果没有匹配，返回找到的按钮文本
-                    return {{type: 'no-match', buttons: btnTexts, expected: {confirm_texts_js}}};
+                    return {{type: 'no-match', buttons: btnTexts}};
                 }}
                 return null;
             }}""")
@@ -927,91 +916,39 @@ async def confirm_dialog(page: Page, confirm: bool = True, ui_framework: str = "
 
         LOG.debug(f"检测到确认框类型: {has_confirm}")
 
-        # 根据容器类型定位按钮
-        # Use XPath with character splitting to handle spaces in button text
-        confirm_xpaths = [f"//button[{_chars_all(t)}]" for t in const.CONFIRM_BUTTON_TEXTS]
-        cancel_xpaths = [f"//button[{_chars_all(t)}]" for t in const.CANCEL_BUTTON_TEXTS]
+        # 按容器类型定位按钮（统一使用 XPath 去空格归一化）
+        button = None
 
         if has_confirm == 'message-box':
+            scope = ".el-message-box__btns"
             if confirm:
-                button = page.locator('.el-message-box__btns button.el-button--primary').first
-                # If primary button not found, try character-split XPath
+                # 优先: primary 按钮
+                button = page.locator(f'{scope} button.el-button--primary').first
                 if await button.count() == 0:
-                    for xpath in confirm_xpaths:
-                        scoped_xpath = f".el-message-box__btns {xpath}"
-                        btn = page.locator(f"xpath={scoped_xpath}").first
-                        if await btn.count() > 0:
-                            button = btn
-                            break
+                    button = page.locator(f"xpath={scope}//button[{confirm_xpath_pred} and {hidden_filter}]").first
             else:
-                button = page.locator('.el-message-box__btns button:has-text("取消")').first
-                if await button.count() == 0:
-                    for xpath in cancel_xpaths:
-                        scoped_xpath = f".el-message-box__btns {xpath}"
-                        btn = page.locator(f"xpath={scoped_xpath}").first
-                        if await btn.count() > 0:
-                            button = btn
-                            break
+                button = page.locator(f"xpath={scope}//button[{cancel_xpath_pred} and {hidden_filter}]").first
 
         elif has_confirm == 'popconfirm':
+            scope = ".el-popconfirm__action"
             if confirm:
-                # el-popconfirm 的确认按钮在 .el-popconfirm__action 内
-                button = page.locator('.el-popconfirm__action button.el-button--primary').first
+                button = page.locator(f'{scope} button.el-button--primary').first
                 if await button.count() == 0:
-                    for xpath in confirm_xpaths:
-                        scoped_xpath = f".el-popconfirm__action {xpath}"
-                        btn = page.locator(f"xpath={scoped_xpath}").first
-                        if await btn.count() > 0:
-                            button = btn
-                            break
+                    button = page.locator(f"xpath={scope}//button[{confirm_xpath_pred} and {hidden_filter}]").first
             else:
-                button = page.locator('.el-popconfirm__action button:has-text("取消")').first
-                if await button.count() == 0:
-                    for xpath in cancel_xpaths:
-                        scoped_xpath = f".el-popconfirm__action {xpath}"
-                        btn = page.locator(f"xpath={scoped_xpath}").first
-                        if await btn.count() > 0:
-                            button = btn
-                            break
+                button = page.locator(f"xpath={scope}//button[{cancel_xpath_pred} and {hidden_filter}]").first
 
         else:  # generic-dialog
             if confirm:
-                # 首选: XPath 拆字符匹配 (处理 "确 定" 等带空格的按钮文本)
-                hidden_css = const.HIDDEN_FILTERS_CSS.get(ui_framework, const.HIDDEN_FILTERS_CSS['_universal'])
-                button = None
-                for xpath in confirm_xpaths:
-                    btn = page.locator(f"xpath={xpath}").first
-                    if await btn.count() > 0:
-                        button = btn
-                        break
-                # 降级: CSS has-text 匹配 (精确子串匹配，速度更快但不处理空格)
-                if not button:
-                    confirm_sel = ", ".join(f'button:has-text("{t}"){hidden_css}' for t in const.CONFIRM_BUTTON_TEXTS)
-                    css_btn = page.locator(confirm_sel).first
-                    if await css_btn.count() > 0:
-                        button = css_btn
+                button = page.locator(f"xpath=//button[{confirm_xpath_pred} and {hidden_filter}]").first
             else:
-                # 首选: XPath 拆字符匹配
-                hidden_css = const.HIDDEN_FILTERS_CSS.get(ui_framework, const.HIDDEN_FILTERS_CSS['_universal'])
-                button = None
-                for xpath in cancel_xpaths:
-                    btn = page.locator(f"xpath={xpath}").first
-                    if await btn.count() > 0:
-                        button = btn
-                        break
-                # 降级: CSS has-text 匹配
-                if not button:
-                    cancel_sel = ", ".join(f'button:has-text("{t}"){hidden_css}' for t in const.CANCEL_BUTTON_TEXTS)
-                    css_btn = page.locator(cancel_sel).first
-                    if await css_btn.count() > 0:
-                        button = css_btn
+                button = page.locator(f"xpath=//button[{cancel_xpath_pred} and {hidden_filter}]").first
 
-        if await button.count() > 0:
+        if button and await button.count() > 0:
             button_text = await button.inner_text()
             try:
                 await button.click(timeout=5000)
             except Exception as click_err:
-                # dialog body 遮挡 pointer events 时，回退到 JS click
                 if "intercepts pointer events" in str(click_err):
                     LOG.debug(f"按钮被遮挡，改用 JS click: {button_text[:20]}")
                     await button.evaluate("el => el.click()")
@@ -1019,17 +956,14 @@ async def confirm_dialog(page: Page, confirm: bool = True, ui_framework: str = "
                     raise
 
             await wait_for_loading_complete(page)
-            # 截图放在 wait 后面：此时通知已被 Observer 钉住，仍然可见
             if screenshot_holder is not None:
                 try:
-                    # 等待通知出现（最多 2s）
-                    await page.wait_for_timeout(500)  # 给 API 响应时间
+                    await page.wait_for_timeout(500)
                     try:
                         await page.wait_for_selector('.el-notification, .el-message', state='visible', timeout=1500)
-                    except:
-                        pass  # 某些操作不弹通知
+                    except Exception:
+                        pass
 
-                    # 诊断：检查钉住的通知状态
                     pinned_count = await page.evaluate("() => (window.__pinned_notifications || []).length")
                     LOG.warning(f"[诊断] 截图前钉住的通知数: {pinned_count}")
 
@@ -1042,50 +976,27 @@ async def confirm_dialog(page: Page, confirm: bool = True, ui_framework: str = "
 
             return button_text
 
-        # 兜底：尝试常见确认按钮文本
-        # 先尝试精确匹配，再尝试去空格版本
-        hidden_css = const.HIDDEN_FILTERS_CSS.get(ui_framework, const.HIDDEN_FILTERS_CSS['_universal'])
-        for text in const.CONFIRM_BUTTON_TEXTS:
-            # 精确匹配（带隐藏过滤），获取原始文本
-            clicked_info = await page.evaluate(f"""() => {{
-                const buttons = Array.from(document.querySelectorAll('button'));
-                for (const btn of buttons) {{
-                    if (btn.offsetWidth === 0 || btn.offsetHeight === 0) continue;
-                    if (btn.disabled || btn.classList.contains('is-disabled')) continue;
-                    if (btn.closest('.is-hidden') || btn.closest('[style*="display: none"]')) continue;
-                    const btnText = btn.textContent.trim();
-                    if (btnText.includes("{text}")) {{
-                        btn.click();
-                        return btnText;
-                    }}
+        # JS 兜底：去空格匹配所有可见按钮
+        target_texts = const.CONFIRM_TEXTS if confirm else const.CANCEL_TEXTS
+        target_json = json.dumps(target_texts, ensure_ascii=False)
+        clicked = await page.evaluate(f"""() => {{
+            const targetTexts = {target_json};
+            const buttons = Array.from(document.querySelectorAll('button'));
+            for (const btn of buttons) {{
+                if (btn.offsetWidth === 0 || btn.offsetHeight === 0) continue;
+                if (btn.disabled || btn.classList.contains('is-disabled')) continue;
+                if (btn.closest('.is-hidden') || btn.closest('[style*="display: none"]')) continue;
+                const txt = btn.textContent.trim();
+                if (targetTexts.includes(txt.replace(/\\s+/g, ''))) {{
+                    btn.click();
+                    return txt;
                 }}
-                return null;
-            }}""")
-            if clicked_info:
-                await wait_for_loading_complete(page)
-                return clicked_info
-
-        # 去空格容错：处理 "确 定" 这种带空格的按钮文本
-        for text in const.CONFIRM_BUTTON_TEXTS:
-            # 查找所有可见按钮，手动去空格匹配（含 disabled/hidden 检查）
-            clicked = await page.evaluate(f"""() => {{
-                const target = '{text}';
-                const buttons = Array.from(document.querySelectorAll('button'));
-                for (const btn of buttons) {{
-                    if (btn.offsetWidth === 0 || btn.offsetHeight === 0) continue;
-                    if (btn.disabled || btn.classList.contains('is-disabled')) continue;
-                    if (btn.closest('.is-hidden') || btn.closest('[style*="display: none"]')) continue;
-                    const btnText = btn.textContent.trim().replace(/\\s+/g, '');
-                    if (btnText.includes(target)) {{
-                        btn.click();
-                        return btn.textContent.trim();  // 返回原始文本（保留空格）
-                    }}
-                }}
-                return null;
-            }}""")
-            if clicked:
-                await wait_for_loading_complete(page)
-                return clicked
+            }}
+            return null;
+        }}""")
+        if clicked:
+            await wait_for_loading_complete(page)
+            return clicked
 
         return ""
 

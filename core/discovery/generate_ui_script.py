@@ -457,9 +457,11 @@ async def run_operation(page, operation_name, operations_data, marker=None):
         # 构建详细步骤信息（含 locator 和测试数据）
         detailed_steps = []
         for s in steps:
+            # 检查 replay_engine 是否标记了步骤失败（如 assert_success 失败）
+            step_status = "failed" if s.get("success") is False else "passed"
             step_info = {{
                 "action": s.get("action", ""),
-                "status": "passed",
+                "status": step_status,
                 "locator": s.get("playwright_locator", ""),
                 "description": s.get("description", ""),
             }}
@@ -489,15 +491,22 @@ async def run_operation(page, operation_name, operations_data, marker=None):
 
             detailed_steps.append(step_info)
 
+        # 检查是否有任何步骤失败（如 assert_success 未检测到成功提示）
+        has_failed_step = any(s["status"] == "failed" for s in detailed_steps)
+        op_status = "failed" if has_failed_step else "passed"
+
         op_result = {{
             "operation": operation_name,
             "display_name": op.get("display_name", operation_name),
-            "status": "passed",
+            "status": op_status,
             "steps": detailed_steps,
             "duration": duration,
             "screenshot": screenshot,
         }}
-        print(f"  ✅ 操作成功 (耗时 {{duration:.2f}}s)")
+        if has_failed_step:
+            print(f"  ⚠️ 操作完成但存在断言失败 (耗时 {{duration:.2f}}s)")
+        else:
+            print(f"  ✅ 操作成功 (耗时 {{duration:.2f}}s)")
 
         # 操作成功后清理残留弹窗
         await _cleanup_dialogs(page)

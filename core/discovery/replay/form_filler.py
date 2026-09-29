@@ -73,8 +73,8 @@ class FormFiller:
         return result
 
     async def fill_create_form(self, fields: List[Dict], username: str,
-                                 fill_data: Dict[str, str] = None) -> int:
-        """填充创建表单，返回成功填充的字段数。
+                                 fill_data: Dict[str, str] = None) -> Dict:
+        """填充创建表单，返回填充结果。
 
         优先使用 scan 返回的精确 selector，回退到 el-form-item 结构定位。
         填充数据从 _build_fill_data() 动态构建（hardcoded + type-based fallback）。
@@ -86,6 +86,13 @@ class FormFiller:
             fields: 表单字段列表
             username: 用户名
             fill_data: 可选的预生成填充数据（用于覆盖默认值）
+
+        Returns:
+            Dict: {
+                "filled": int,  # 成功填充的字段数
+                "cascade_actions": List[Dict],  # radio 触发的级联操作
+                "select_close_dropdown": List[Dict],  # el-select 下拉框关闭操作
+            }
         """
         from .. import const
 
@@ -93,6 +100,8 @@ class FormFiller:
             fill_data = self._build_fill_data(fields, username)
 
         filled = 0
+        cascade_actions = []  # ★ 记录 radio 触发的级联操作（如 transfer-box）
+        select_close_dropdown = []  # ★ 记录 el-select 下拉框关闭操作
         for field in fields:
             label = field.get("label", "")
             field_type = field.get("type", "input")
@@ -379,9 +388,18 @@ class FormFiller:
                                 if right_panel_status.get('exists') and not right_panel_status.get('hasSelection'):
                                     LOG.info(f"    [radio-cascade] transfer-box 需要选择")
                                     executor = self._get_executor()
-                                    success = await executor._execute_list_selector(label, "", None, "")
+                                    success, detail = await executor.execute_with_details(
+                                        "list-selector", label, "", None, ""
+                                    )
                                     if success:
                                         LOG.info(f"    [radio-cascade] transfer-box 选择成功")
+                                        # ★ 记录 cascade 操作，供 Stage 2 回放
+                                        cascade_actions.append({
+                                            "type": "list-selector",
+                                            "trigger_field": label,
+                                            "trigger_value": first_text,
+                                            "selected_items": detail.get("selected_items", []),
+                                        })
                                     else:
                                         LOG.warning(f"    [radio-cascade] transfer-box 选择失败")
                             except Exception:
@@ -456,9 +474,9 @@ class FormFiller:
             except Exception as e:
                 LOG.warning(f"填充字段 {label} 失败: {e}")
 
-        return filled
+        return {"filled": filled, "cascade_actions": cascade_actions}
 
-    async def fill_multi_step_fields(self, fields: List[Dict], framework: str = "element-ui") -> Tuple[int, List[Dict]]:
+    async def fill_multi_step_fields(self, fields: List[Dict], framework: str = "element-ui") -> Tuple[int, List[Dict], List[Dict]]:
         """处理 multi_step 类型的表单字段。
 
         遍历 fields，对 kb_category 在 MULTI_STEP_TYPES 中的字段调用 MultiStepExecutor。
@@ -473,8 +491,9 @@ class FormFiller:
             framework: UI 框架
 
         Returns:
-            (成功处理的字段数, 详细信息列表)
+            (成功处理的字段数, 详细信息列表, 下拉框关闭操作列表)
             详细信息列表包含每个字段的 label, kb_category, selector, is_editable, option_text
+            下拉框关闭操作列表记录 el-select 选择后需要关闭下拉框的操作
         """
         from .. import const
 
@@ -482,6 +501,7 @@ class FormFiller:
         filled = 0
         details = []
         no_options_fields = []  # 第一轮无选项的字段，等待后重试
+        close_dropdown_actions = []  # ★ 记录 el-select 下拉框关闭操作
 
         # === 第一轮：填充所有字段 ===
         for field in fields:
@@ -504,6 +524,23 @@ class FormFiller:
                     "option_text": detail.get("option_text", ""),
                 })
                 LOG.info(f"    ✅ multi_step: {label} ({kb_cat})")
+
+                # ★ el-select 选择后检查下拉框状态，如仍展开则关闭并记录
+                if kb_cat == "el-select":
+                    await self.page.wait_for_timeout(300)  # 等待下拉框动画
+                    dropdown_visible = await self.page.evaluate("""() => {
+                        const dropdown = document.querySelector('[x-placement]');
+                        if (!dropdown) return false;
+                        const style = window.getComputedStyle(dropdown);
+                        return style.display !== 'none' && style.visibility !== 'hidden';
+                    }""")
+                    if dropdown_visible:
+                        LOG.info(f"    [el-select] 下拉框仍展开，发送 ESC 关闭: {label}")
+                        await self.page.keyboard.press("Escape")
+                        close_dropdown_actions.append({
+                            "field_label": label,
+                            "action": "press_escape",
+                        })
             elif detail.get("skipped_reason") == "no_options":
                 # 记录 no_options 字段，第二轮重试
                 no_options_fields.append({
@@ -545,6 +582,24 @@ class FormFiller:
                         "option_text": detail.get("option_text", ""),
                     })
                     LOG.info(f"    ✅ multi_step 第二轮成功: {label} ({kb_cat})")
+
+                    # ★ el-select 第二轮选择后也检查下拉框状态
+                    if kb_cat == "el-select":
+                        await self.page.wait_for_timeout(300)
+                        dropdown_visible = await self.page.evaluate("""() => {
+                            const dropdown = document.querySelector('[x-placement]');
+                            if (!dropdown) return false;
+                            const style = window.getComputedStyle(dropdown);
+                            return style.display !== 'none' && style.visibility !== 'hidden';
+                        }""")
+                        if dropdown_visible:
+                            LOG.info(f"    [el-select] 第二轮下拉框仍展开，发送 ESC 关闭: {label}")
+                            await self.page.keyboard.press("Escape")
+                            close_dropdown_actions.append({
+                                "field_label": label,
+                                "action": "press_escape",
+                                "round": 2,
+                            })
                 else:
                     # 仍然失败，保留第一轮的结果
                     details.append(prev_detail)
@@ -553,7 +608,7 @@ class FormFiller:
                     else:
                         LOG.warning(f"    ⚠️ multi_step 第二轮失败: {label} ({kb_cat})")
 
-        return filled, details
+        return filled, details, close_dropdown_actions
 
     async def _select_by_css_selector(self, selector: str, label: str) -> bool:
         """CSS selector 回退：直接点击 el-select input 展开 + 选择第一项。

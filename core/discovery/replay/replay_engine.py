@@ -285,6 +285,12 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
                 marker_value = await _step_fill_form(page, step, button_driver)
                 if marker_value:
                     result["marker"] = marker_value
+                    LOG.info(f"    ✓ marker 已更新: {marker_value}")
+                else:
+                    # 检查是否有 is_marker 字段但未成功填充
+                    has_marker_field = any(f.get("is_marker") for f in step.get("fields", []))
+                    if has_marker_field:
+                        LOG.warning(f"    ⚠️ 存在 is_marker 字段但填充失败，marker 保持: {result.get('marker')}")
 
                 # 诊断：检查表单填充后的实际值
                 form_state = await page.evaluate("""() => {
@@ -345,6 +351,7 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
                 passed = await _step_assert_success(page, step)
                 if not passed:
                     result["assertion_failed"] = True
+                    step["success"] = False  # 同步标记步骤失败，供报告正确显示
                 # 记录成功使用的断言方式（无论成功失败都记录）
                 matched_method = step.get("matched_method")
                 if matched_method:
@@ -628,14 +635,225 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver) -> str 
         input_type = field.get("inputType", "text")
 
         # Radio 字段：Stage 1 已提供精确的 option_locator
+        # 处理逻辑与 Stage 1 fill_create_form() 保持一致（含 Vue v-model 同步）
         if kb_category == "radio":
             try:
                 enhanced = safe_css(locator, ui_framework) if locator else locator
                 await page.click(enhanced, timeout=3000)
+                LOG.info(f"      [Radio] 点击完成: {label}")
+
+                # 等待 Vue 响应
+                await page.wait_for_timeout(300)
+
+                # 检查 Vue v-model 是否更新
+                first_text = field.get("firstOptionText", "")
+                if first_text:
+                    vue_check = await page.evaluate("""(text) => {
+                        const radios = document.querySelectorAll('.el-radio, .el-radio-button');
+                        for (const radio of radios) {
+                            if (radio.textContent.includes(text)) {
+                                const input = radio.querySelector('input[type="radio"]');
+                                const isRadioBtn = radio.classList.contains('el-radio-button');
+                                return {
+                                    inputChecked: input ? input.checked : false,
+                                    hasIsChecked: radio.classList.contains('is-checked'),
+                                    hasIsActive: radio.classList.contains('is-active'),
+                                    isRadioButton: isRadioBtn,
+                                    radioClass: radio.className,
+                                    inputValue: input ? input.value : null
+                                };
+                            }
+                        }
+                        return null;
+                    }""", first_text)
+                    LOG.info(f"      [Radio] 点击后 Vue 状态: {vue_check}")
+
+                    # 使用 __vue__ API 强制更新 v-model（与 Stage 1 一致）
+                    LOG.info(f"      [Radio] 使用 __vue__ API 强制更新 v-model")
+                    vue_update_result = await page.evaluate("""async (text) => {
+                        const result = { found: false, methods: [] };
+                        const radios = document.querySelectorAll('.el-radio, .el-radio-button');
+                        for (const radio of radios) {
+                            if (radio.textContent.includes(text)) {
+                                const input = radio.querySelector('input[type="radio"]');
+                                if (!input) { result.error = 'no input'; return result; }
+
+                                result.found = true;
+                                result.inputValue = input.value;
+
+                                // 找到 radio-group 父元素
+                                const radioGroup = radio.closest('.el-radio-group');
+                                if (!radioGroup) { result.error = 'no radioGroup'; return result; }
+
+                                // 获取 Vue 实例
+                                const vueGroup = radioGroup.__vue__;
+                                if (!vueGroup) { result.error = 'no __vue__'; return result; }
+
+                                // 记录更新前的值
+                                result.beforeValue = vueGroup.value;
+
+                                const targetValue = input.value;
+
+                                // 方法 1: 直接设置 value 属性
+                                vueGroup.value = targetValue;
+                                result.methods.push('set_value');
+
+                                // 方法 2: $emit input 事件
+                                vueGroup.$emit('input', targetValue);
+                                result.methods.push('emit_input');
+
+                                // 方法 3: 触发 radio 组件的 handleChange
+                                const radioVue = radio.__vue__;
+                                if (radioVue && typeof radioVue.handleChange === 'function') {
+                                    radioVue.handleChange();
+                                    result.methods.push('handleChange');
+                                }
+
+                                // 方法 4: $forceUpdate
+                                vueGroup.$forceUpdate();
+                                result.methods.push('forceUpdate');
+
+                                // 记录更新后的值
+                                result.afterValue = vueGroup.value;
+
+                                // 向上查找 form-item 的 Vue 实例，触发 validate
+                                const formItem = radioGroup.closest('.el-form-item');
+                                if (formItem && formItem.__vue__) {
+                                    formItem.__vue__.$emit('el.form.change', targetValue);
+                                    result.methods.push('form_change');
+                                }
+
+                                // 向上遍历 $parent 链，找到页面组件的 form model
+                                let current = vueGroup.$parent;
+                                let depth = 0;
+                                result.parentChain = [];
+
+                                const propAttr = formItem ? formItem.getAttribute('prop') : null;
+                                result.formItemProp = propAttr;
+
+                                while (current && depth < 10) {
+                                    const componentName = current.$options && current.$options.name ? current.$options.name : 'anonymous';
+                                    const dataKeys = current.$data ? Object.keys(current.$data) : [];
+                                    result.parentChain.push({
+                                        name: componentName,
+                                        dataKeys: dataKeys.slice(0, 10),
+                                        depth: depth
+                                    });
+
+                                    if (componentName && componentName.startsWith('El')) {
+                                        current = current.$parent;
+                                        depth++;
+                                        continue;
+                                    }
+
+                                    const hasFormData = dataKeys.some(k =>
+                                        k.toLowerCase().includes('form') ||
+                                        k.toLowerCase().includes('model') ||
+                                        k.toLowerCase().includes('data')
+                                    );
+
+                                    if (hasFormData && dataKeys.length > 2) {
+                                        result.pageComponent = componentName;
+                                        result.pageComponentKeys = dataKeys;
+
+                                        const formFields = ['form', 'formData', 'model', 'formModel', 'ruleForm', 'data'];
+                                        for (const field of formFields) {
+                                            if (current.$data && current.$data[field]) {
+                                                const formObj = current.$data[field];
+                                                if (typeof formObj === 'object' && formObj !== null) {
+                                                    result[field + '_keys'] = Object.keys(formObj);
+
+                                                    if (propAttr && propAttr in formObj) {
+                                                        const oldValue = formObj[propAttr];
+                                                        formObj[propAttr] = targetValue;
+                                                        result.updatedField = field + '.' + propAttr;
+                                                        result.oldValue = oldValue;
+                                                        result.newValue = targetValue;
+                                                        result.matchStrategy = 'prop_exact';
+                                                        result.methods.push('page_form_update');
+                                                        break;
+                                                    }
+
+                                                    const labelLower = (text || '').toLowerCase();
+                                                    const formKeys = Object.keys(formObj);
+                                                    let matched = false;
+
+                                                    for (const key of formKeys) {
+                                                        const keyLower = key.toLowerCase();
+                                                        if (keyLower === labelLower ||
+                                                            keyLower.includes(labelLower) ||
+                                                            (labelLower.length > 2 && labelLower.includes(keyLower))) {
+                                                            const oldValue = formObj[key];
+                                                            formObj[key] = targetValue;
+                                                            result.updatedField = field + '.' + key;
+                                                            result.oldValue = oldValue;
+                                                            result.newValue = targetValue;
+                                                            result.matchStrategy = 'label_fuzzy';
+                                                            result.methods.push('page_form_update');
+                                                            matched = true;
+                                                            break;
+                                                        }
+                                                    }
+
+                                                    if (matched) break;
+                                                }
+                                            }
+                                        }
+
+                                        await new Promise((resolve) => {
+                                            vueGroup.$nextTick(() => {
+                                                const allFormItems = document.querySelectorAll('.el-form-item');
+                                                allFormItems.forEach(fi => {
+                                                    if (fi.__vue__) {
+                                                        fi.__vue__.validateState = 'success';
+                                                        fi.__vue__.validateMessage = '';
+                                                    }
+                                                });
+                                                result.methods.push('nextTick_formItems_clear');
+                                                resolve();
+                                            });
+                                        });
+
+                                        break;
+                                    }
+
+                                    current = current.$parent;
+                                    depth++;
+                                }
+
+                                return result;
+                            }
+                        }
+                        return result;
+                    }""", first_text)
+                    LOG.info(f"      [Radio] Vue 更新结果: {vue_update_result}")
+
+                # ★ 处理 cascade_actions（如 radio 触发 transfer-box 选择）
+                cascade_actions = field.get("cascade_actions", [])
+                if cascade_actions:
+                    LOG.info(f"      [Radio] 检测到 {len(cascade_actions)} 个 cascade 操作")
+                    for ca in cascade_actions:
+                        if ca.get("type") == "list-selector":
+                            trigger_value = ca.get("trigger_value", "")
+                            # 只有当选择的值匹配 trigger_value 时才执行 cascade
+                            if not trigger_value or trigger_value == first_text:
+                                LOG.info(f"      [Radio] 执行 cascade: list-selector (trigger: {trigger_value})")
+                                await page.wait_for_timeout(500)  # 等待动态组件渲染
+
+                                from .form_filler import MultiStepExecutor
+                                executor = MultiStepExecutor(page, None, ui_framework)
+                                success, detail = await executor.execute_with_details(
+                                    "list-selector", label, "", None, ""
+                                )
+                                if success:
+                                    LOG.info(f"      [Radio] cascade 成功: {detail.get('selected_items', [])}")
+                                else:
+                                    LOG.warning(f"      [Radio] cascade 失败")
+
                 filled_count += 1
-                LOG.debug(f"      选择 radio: {label}")
+                LOG.info(f"      [Radio] 处理完成: {label}")
             except Exception as e:
-                LOG.debug(f"      radio 失败: {label}: {e}")
+                LOG.error(f"      [Radio] 处理失败: {label}: {e}", exc_info=True)
             continue
 
         # 普通 input/textarea：生成填充值 + page.fill()
@@ -795,6 +1013,8 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver) -> str 
                     marker_value = value
             else:
                 LOG.warning(f"      ❌ 字段 {label} 所有候选选择器均失败")
+                if is_marker:
+                    LOG.warning(f"      ⚠️ marker 字段 {label} 填充失败，marker 未更新")
         except Exception as e:
             LOG.warning(f"      ❌ 填充失败: {label}: {e}")
 
@@ -802,9 +1022,11 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver) -> str 
     if multi_step_fields:
         ff = FormFiller(page)
         framework = step.get("framework", "element-ui")
-        ms_filled, _ = await ff.fill_multi_step_fields(multi_step_fields, framework)
+        ms_filled, _, close_dropdown_actions = await ff.fill_multi_step_fields(multi_step_fields, framework)
         filled_count += ms_filled
         LOG.debug(f"    multi_step 完成: {ms_filled}/{len(multi_step_fields)}")
+        if close_dropdown_actions:
+            LOG.info(f"    multi_step 检测到 {len(close_dropdown_actions)} 个下拉框关闭操作")
 
     LOG.info(f"    已填充 {filled_count}/{len(fields)} 个字段")
     return marker_value

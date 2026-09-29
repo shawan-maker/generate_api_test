@@ -253,8 +253,10 @@ async def _prewarm_table_data(page, form_fields: list, toolbar_buttons: list,
         # Step 4: 填充表单
         filler = form_filler.FormFiller(page)
         fill_result = await filler.fill_create_form(form_fields, "AT_prewarm", fill_data)
-        if not fill_result.get("success", True):
-            LOG.warning(f"    预热: 表单填充失败: {fill_result.get('error', '')}")
+        # fill_result 现在是 dict: {"filled": int, "cascade_actions": list}
+        filled_count = fill_result["filled"] if isinstance(fill_result, dict) else fill_result
+        if filled_count == 0 and form_fields:
+            LOG.warning(f"    预热: 表单填充失败: 0 个字段被填充")
             await _close_dialog(page)
             return result
 
@@ -2667,7 +2669,8 @@ async def _do_create(page, context: dict) -> dict:
             })
 
     # 5. 填充表单（传入预生成的 fill_data）
-    filled = await form_filler.fill_create_form(fields, username, fill_data)
+    fill_result = await form_filler.fill_create_form(fields, username, fill_data)
+    filled = fill_result["filled"] if isinstance(fill_result, dict) else fill_result
     # 重新扫描以获取最新字段状态
     if context.get("fill_overrides"):
         for label, value in context["fill_overrides"].items():
@@ -2693,7 +2696,7 @@ async def _do_create(page, context: dict) -> dict:
                 LOG.debug(f"    填充 override {label} 失败: {e}")
 
     # 6. 处理多步组件
-    ms_filled, ms_details = await form_filler.fill_multi_step_fields(fields, framework)
+    ms_filled, ms_details, _ = await form_filler.fill_multi_step_fields(fields, framework)
 
     # 跟踪因无选项被跳过的字段
     skipped_no_options = [d["label"] for d in ms_details if d.get("skipped_reason") == "no_options"]
@@ -4272,7 +4275,7 @@ async def _try_fill_empty_selects(page, empty_field_labels: list):
         filled_count = 0
         details = []
         for field in target_fields:
-            single_filled, single_details = await form_filler.fill_multi_step_fields(
+            single_filled, single_details, _ = await form_filler.fill_multi_step_fields(
                 [field], framework="element-ui"
             )
             filled_count += single_filled
@@ -4872,13 +4875,37 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
             nav_info["fill_data"] = fill_data
 
             # 填写表单（普通字段 + 多步组件）
-            filled_count = await form_filler.fill_create_form(form_field_details, "AT_test_auto", fill_data)
+            fill_result = await form_filler.fill_create_form(form_field_details, "AT_test_auto", fill_data)
+            filled_count = fill_result["filled"] if isinstance(fill_result, dict) else fill_result
+            cascade_actions = fill_result.get("cascade_actions", []) if isinstance(fill_result, dict) else []
 
             # 处理 el-select 等多步组件
-            ms_filled, ms_details = await form_filler.fill_multi_step_fields(form_field_details, "element-ui")
+            ms_filled, ms_details, close_dropdown_actions = await form_filler.fill_multi_step_fields(form_field_details, "element-ui")
             filled_count += ms_filled
 
             LOG.info(f"    已填写 {filled_count} 个字段（含 {ms_filled} 个多步组件）")
+            if cascade_actions:
+                LOG.info(f"    发现 {len(cascade_actions)} 个 cascade 操作")
+            if close_dropdown_actions:
+                LOG.info(f"    发现 {len(close_dropdown_actions)} 个下拉框关闭操作")
+
+            # ★ 将 cascade_actions 附加到对应的 radio 字段
+            if cascade_actions:
+                for field in form_field_details:
+                    if field.get("kb_category") == "radio":
+                        matching_cascades = [c for c in cascade_actions
+                                             if c["trigger_value"] == field.get("firstOptionText")]
+                        if matching_cascades:
+                            field["cascade_actions"] = matching_cascades
+
+            # ★ 将 close_dropdown_actions 附加到对应的 el-select 字段
+            if close_dropdown_actions:
+                for field in form_field_details:
+                    if field.get("kb_category") == "el-select":
+                        matching_closes = [c for c in close_dropdown_actions
+                                           if c["field_label"] == field.get("label")]
+                        if matching_closes:
+                            field["close_dropdown"] = matching_closes
 
             # 检查必填字段是否填写成功
             # 核心逻辑：fill 完后重新读 DOM，检查必填字段是否已有值（包括默认值）
@@ -5249,13 +5276,40 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
         nav_info["fill_data"] = fill_data
 
         # 填写表单（普通字段 + 多步组件）
-        filled_count = await form_filler.fill_create_form(form_field_details, "AT_test_auto", fill_data)
+        fill_result = await form_filler.fill_create_form(form_field_details, "AT_test_auto", fill_data)
+        filled_count = fill_result["filled"] if isinstance(fill_result, dict) else fill_result
+        cascade_actions = fill_result.get("cascade_actions", []) if isinstance(fill_result, dict) else []
 
         # 处理 el-select 等多步组件
-        ms_filled, ms_details = await form_filler.fill_multi_step_fields(form_field_details, "element-ui")
+        ms_filled, ms_details, close_dropdown_actions = await form_filler.fill_multi_step_fields(form_field_details, "element-ui")
         filled_count += ms_filled
 
         LOG.info(f"    已填写 {filled_count} 个字段（含 {ms_filled} 个多步组件）")
+        if cascade_actions:
+            LOG.info(f"    发现 {len(cascade_actions)} 个 cascade 操作")
+        if close_dropdown_actions:
+            LOG.info(f"    发现 {len(close_dropdown_actions)} 个下拉框关闭操作")
+
+        # ★ 将 cascade_actions 附加到对应的 radio 字段
+        if cascade_actions:
+            for field in form_field_details:
+                if field.get("kb_category") == "radio":
+                    matching_cascades = [c for c in cascade_actions
+                                         if c["trigger_value"] == field.get("firstOptionText")]
+                    if matching_cascades:
+                        field["cascade_actions"] = matching_cascades
+
+        # ★ 将 close_dropdown_actions 附加到对应的 el-select 字段
+        if close_dropdown_actions:
+            for field in form_field_details:
+                if field.get("kb_category") == "el-select":
+                    matching_closes = [c for c in close_dropdown_actions
+                                       if c["field_label"] == field.get("label")]
+                    if matching_closes:
+                        field["close_dropdown"] = matching_closes
+
+        # ★ 保存 form_field_details 到 nav_info（含 selector + kb_category，供 playbook 生成使用）
+        nav_info["form_fields"] = form_field_details
 
         # 7. 检查必填字段是否填写成功（与主页面相同的逻辑）
         unfilled_required = []
@@ -6473,10 +6527,12 @@ def build_playbook(ui_result: dict) -> dict:
         if op_steps or not is_success:
             # 使用 trigger_text 作为业务名称（按钮原文即操作名）
             display_name = op_data.get("trigger_text") or action
-            marker = op_data.get("marker")
-            # replayable: 有 marker 的操作需要 marker 不为空才能回放
+            # ★ 只有 create 操作存储 marker（自身生成的值）
+            # 其他操作的 marker 从上游 create 传播，不硬编码到 playbook
+            marker = op_data.get("marker") if steps_type == "create" else None
+            # replayable: create 操作总是可回放；其他操作依赖上游 marker 传播
             has_find_row = any(s.get("action") == "find_row" for s in op_steps)
-            replayable = is_success and (not has_find_row or marker is not None)
+            replayable = is_success
             entry = {
                 "display_name": display_name,
                 "description": op_data.get("description", action),
@@ -6788,6 +6844,9 @@ def _build_update_steps(op_data: dict) -> list:
             selector = field.get("selector")
             field_type = field.get("type", "input")
             kb_category = field.get("kb_category", "")
+            input_type = field.get("inputType", "text")
+            placeholder = field.get("placeholder", "")
+            visible_index = field.get("visible_index")
 
             if not selector:
                 continue
@@ -6797,10 +6856,56 @@ def _build_update_steps(op_data: dict) -> list:
                 continue
 
             rule = fill_rules.get(label, {})
+
+            # ★ 生成多候选选择器（与 _build_generic_steps 一致，跨会话稳定）
+            candidates = []
+
+            # 候选 1: 基于 placeholder（最稳定，跨会话完全不变）
+            if placeholder:
+                escaped_ph = placeholder.replace('"', '\\"')
+                candidates.append({
+                    "strategy": "placeholder",
+                    "selector": f'input[placeholder="{escaped_ph}"]',
+                })
+
+            # 候选 2: Stage 1 的原始绝对路径选择器（特定于编辑 dialog 的 DOM 位置）
+            if selector:
+                candidates.append({
+                    "strategy": "original",
+                    "selector": selector,
+                })
+
+            # 候选 3: 基于 label 文本（限定到可见 dialog/drawer，避免匹配多个弹窗中的同名字段）
+            if label and not label.startswith("字段"):
+                escaped_label = label.replace('"', '\\"')
+                candidates.append({
+                    "strategy": "label",
+                    "selector": (
+                        f'.el-dialog__wrapper:not([style*="display: none"]) '
+                        f'.el-form-item:has(.el-form-item__label:has-text("{escaped_label}")) input, '
+                        f'.el-drawer:not([style*="display: none"]) '
+                        f'.el-form-item:has(.el-form-item__label:has-text("{escaped_label}")) input'
+                    ),
+                })
+
+            # 候选 4: 基于 visible_index（JS 定位，跨会话最稳定）
+            if visible_index is not None:
+                candidates.append({
+                    "strategy": "visible_index",
+                    "selector": f"__js_index__:{visible_index}",
+                })
+
+            # 默认主选择器：第一个候选；fallbacks：其余候选
+            primary = candidates[0] if candidates else {"strategy": "none", "selector": ""}
+            fallbacks = candidates[1:] if len(candidates) > 1 else []
+
             field_info = {
                 "label": label,
-                "playwright_locator": selector,
+                "playwright_locator": primary.get("selector", ""),
+                "locator_strategy": primary.get("strategy", ""),
+                "fallback_locators": fallbacks,
                 "type": field_type,
+                "inputType": input_type,
                 "kb_category": kb_category,
                 "fill_rule": rule
             }
@@ -7032,30 +7137,33 @@ def _build_generic_steps(op_data: dict) -> list:
                     "selector": f'input[placeholder="{escaped_ph}"]',
                 })
 
-            # 候选 2: 基于 label 文本（标准 Element UI 表单结构）
-            if label and not label.startswith("字段"):
-                escaped_label = label.replace('"', '\\"')
-                candidates.append({
-                    "strategy": "label",
-                    "selector": (
-                        f'.el-form-item:has(.el-form-item__label:has-text("{escaped_label}")) input'
-                    ),
-                })
-
-            # 候选 3: 基于 visible_index（JS 定位，跨会话最稳定）
-            # 在 scope（drawer/dialog）内找第 N 个可见 input
-            if visible_index is not None:
-                candidates.append({
-                    "strategy": "visible_index",
-                    "selector": f"__js_index__:{visible_index}",  # 特殊标记，replay 层识别并用 JS 定位
-                })
-
-            # 候选 4: Stage 1 的原始绝对路径选择器（最不稳定，仅作兜底）
+            # 候选 2: Stage 1 的原始绝对路径选择器（特定于当前 dialog 的 DOM 位置）
             original_selector = field.get("selector", "")
             if original_selector:
                 candidates.append({
                     "strategy": "original",
                     "selector": original_selector,
+                })
+
+            # 候选 3: 基于 label 文本（限定到可见 dialog/drawer，避免匹配多个弹窗中的同名字段）
+            if label and not label.startswith("字段"):
+                escaped_label = label.replace('"', '\\"')
+                candidates.append({
+                    "strategy": "label",
+                    "selector": (
+                        f'.el-dialog__wrapper:not([style*="display: none"]) '
+                        f'.el-form-item:has(.el-form-item__label:has-text("{escaped_label}")) input, '
+                        f'.el-drawer:not([style*="display: none"]) '
+                        f'.el-form-item:has(.el-form-item__label:has-text("{escaped_label}")) input'
+                    ),
+                })
+
+            # 候选 4: 基于 visible_index（JS 定位，跨会话最稳定）
+            # 在 scope（drawer/dialog）内找第 N 个可见 input
+            if visible_index is not None:
+                candidates.append({
+                    "strategy": "visible_index",
+                    "selector": f"__js_index__:{visible_index}",  # 特殊标记，replay 层识别并用 JS 定位
                 })
 
             # 默认主选择器：第一个候选；fallbacks：其余候选
@@ -7232,59 +7340,103 @@ def _build_page_nav_steps(op_data: dict) -> list:
     if form_fields or field_states:
         fill_fields = []
 
-        # 优先使用 field_states（Stage 1 探测到的完整字段状态）
+        # ★ 构建 label → field_states 映射（用于获取 isDisabled/isMultiSelect/value 元数据）
+        field_states_by_label = {}
         for fs in field_states:
-            label = fs.get("label", "")
-            field_type = fs.get("type", "")
-            value = fs.get("value", "")
-            is_disabled = fs.get("isDisabled", False)
+            lbl = fs.get("label", "")
+            if lbl:
+                field_states_by_label[lbl] = fs
 
-            if is_disabled or not label:
+        # ★ 以 form_fields 为主数据源（含 selector + kb_category，来自 scan_form_fields_v2）
+        # field_states 仅补充元数据（isDisabled, isMultiSelect, value）
+        processed_labels = set()
+
+        for field in form_fields:
+            label = field.get("label", "")
+            selector = field.get("selector", "")
+            kb_category = field.get("kb_category", "")
+            field_type = field.get("type", "input")
+
+            if not label or not selector:
                 continue
 
-            # 生成 fill_rule
-            if field_type == "select":
-                fill_fields.append({
+            # 从 field_states 获取元数据
+            fs = field_states_by_label.get(label, {})
+            is_disabled = fs.get("isDisabled", False)
+            if is_disabled:
+                continue
+
+            processed_labels.add(label)
+
+            # 根据 kb_category 构建字段条目（使用 scan_form_fields_v2 的真实类别）
+            if kb_category == "el-select":
+                select_field = {
                     "label": label,
                     "type": "select",
                     "kb_category": "el-select",
+                    "playwright_locator": selector,
                     "fill_rule": {},
                     "is_editable": True,
                     "is_multi_select": fs.get("isMultiSelect", False),
-                })
-            elif field_type == "radio":
-                fill_fields.append({
+                }
+                # ★ 传递 close_dropdown（el-select 选择后下拉框仍展开，需发送 ESC 关闭）
+                if "close_dropdown" in field:
+                    select_field["close_dropdown"] = field["close_dropdown"]
+                fill_fields.append(select_field)
+            elif kb_category == "radio":
+                radio_field = {
                     "label": label,
                     "type": "radio",
                     "kb_category": "radio",
+                    "playwright_locator": selector,
                     "fill_rule": {},
-                    "option_text": value,
-                })
-            elif field_type == "transfer":
+                    "option_text": fs.get("value", ""),
+                    # ★ 保留 firstOptionText（来自 scan_form_fields_v2），供 Stage 2 Vue v-model 同步使用
+                    "firstOptionText": field.get("firstOptionText", ""),
+                }
+                # ★ 传递 cascade_actions（如 radio 触发 transfer-box 选择）
+                if "cascade_actions" in field:
+                    radio_field["cascade_actions"] = field["cascade_actions"]
+                fill_fields.append(radio_field)
+            elif kb_category in ("list-selector", "el-cascader", "date-picker", "form-checkbox"):
+                # 多步组件：kb_category 已在 MULTI_STEP_TYPES 中，replay_engine 正确路由
                 fill_fields.append({
                     "label": label,
-                    "type": "transfer",
-                    "kb_category": "transfer-box",
+                    "type": field_type,
+                    "kb_category": kb_category,
+                    "playwright_locator": selector,
+                    "fill_rule": {},
+                })
+            elif kb_category in ("input-generic", "textarea-generic"):
+                # 普通输入字段
+                fill_data_value = nav_info.get("fill_data", {}).get(label, "")
+                fill_fields.append({
+                    "label": label,
+                    "type": field_type,
+                    "kb_category": kb_category,
+                    "playwright_locator": selector,
+                    "fill_rule": {"rule": "fixed_value", "params": {"value": fill_data_value}} if fill_data_value else {},
+                })
+            else:
+                # 其他类型：直接使用
+                fill_fields.append({
+                    "label": label,
+                    "type": field_type,
+                    "kb_category": kb_category,
+                    "playwright_locator": selector,
                     "fill_rule": {},
                 })
 
-        # 补充 form_fields 中的字段（如果 field_states 中没有）
-        existing_labels = {f["label"] for f in fill_fields}
-        for field in form_fields:
-            label = field.get("label", "")
-            if label in existing_labels:
+        # 补充 field_states 中有但 form_fields 中没有的字段（旧 playbook 兼容）
+        for fs in field_states:
+            label = fs.get("label", "")
+            if not label or label in processed_labels:
                 continue
-            selector = field.get("selector")
-            if not selector:
+            is_disabled = fs.get("isDisabled", False)
+            if is_disabled:
                 continue
-            field_type = field.get("type", "input")
-            fill_fields.append({
-                "label": label,
-                "playwright_locator": selector,
-                "type": field_type,
-                "kb_category": field.get("kb_category", ""),
-                "fill_rule": {},
-            })
+            # 无 selector 的字段无法生成可执行步骤，跳过
+            LOG.debug(f"    field_states 字段 {label} 无对应 form_fields 条目，跳过")
 
         if fill_fields:
             steps.append({

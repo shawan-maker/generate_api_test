@@ -2,26 +2,6 @@
   "version": "1.0",
   "pre_apis": [
     {
-      "id": "pools",
-      "name": "前置 API: pools",
-      "method": "GET",
-      "pathname": "/estack/api/estack/pegasi/v1/service-menu/service-item/pools",
-      "extracts": [
-        {
-          "name": "entity_0_pools_0_poolId",
-          "path": "entity[0].pools[0].poolId",
-          "used_by": [
-            "query",
-            "资源池容量",
-            "修改容量"
-          ]
-        }
-      ],
-      "body_template": {},
-      "query_params": {},
-      "depends_on": []
-    },
-    {
       "id": "display_by_role",
       "name": "前置 API: display-by-role",
       "method": "GET",
@@ -33,12 +13,42 @@
           "used_by": [
             "创建用户组"
           ]
-        },
+        }
+      ],
+      "body_template": {},
+      "query_params": {},
+      "depends_on": []
+    },
+    {
+      "id": "users",
+      "name": "获取用户列表",
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/tenants/users",
+      "extracts": [
         {
-          "name": "entity_0_id",
-          "path": "entity[0].id",
+          "name": "entity_list_0_tenantId",
+          "path": "entity.list[0].tenantId",
           "used_by": [
+            "编辑",
             "创建用户组"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {},
+      "depends_on": []
+    },
+    {
+      "id": "access_log",
+      "name": "前置 API: access-log",
+      "method": "GET",
+      "pathname": "/estack/api/estack/pegasi/v1/menu/access-log",
+      "extracts": [
+        {
+          "name": "entity_0_userId",
+          "path": "entity[0].userId",
+          "used_by": [
+            "*"
           ]
         }
       ],
@@ -48,8 +58,8 @@
     }
   ],
   "global_context_fields": [
-    "entity_0_pools_0_poolId",
     "entity_0_name",
-    "entity_0_id"
+    "entity_list_0_tenantId",
+    "entity_0_userId"
   ]
 }
