@@ -454,37 +454,38 @@ async def _step_click_button(page, step: dict, button_driver: ButtonDriver, ctx:
 
         # 诊断：点击后检查表单状态和错误消息
         await page.wait_for_timeout(500)  # 短暂等待让表单验证完成
-        form_state = await page.evaluate("""() => {
+        _submit_check_js = const.js_normalize_in(const.SUBMIT_TEXTS, 'text')
+        form_state = await page.evaluate(f"""() => {{
             // 检查表单验证错误
             const errors = [];
-            document.querySelectorAll('.el-form-item__error, .el-form-item.is-error').forEach(el => {
-                if (el.offsetWidth > 0 || el.offsetHeight > 0) {
+            document.querySelectorAll('.el-form-item__error, .el-form-item.is-error').forEach(el => {{
+                if (el.offsetWidth > 0 || el.offsetHeight > 0) {{
                     errors.push(el.textContent.trim());
-                }
-            });
+                }}
+            }});
 
             // 检查对话框是否还在
             const dialogs = document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"])');
             const dialogVisible = Array.from(dialogs).some(d => d.offsetWidth > 0);
 
-            // 检查是否有提交按钮被禁用
+            // 检查是否有提交按钮被禁用（使用统一去空格归一化匹配）
             const submitButtons = document.querySelectorAll('button.el-button--primary');
-            const disabledSubmit = Array.from(submitButtons).filter(b => {
-                const text = b.textContent.trim().replace(/\\s+/g, '');
-                return text === '确定' || text === '保存';
-            }).map(b => ({
+            const disabledSubmit = Array.from(submitButtons).filter(b => {{
+                const text = b.textContent.trim();
+                return {_submit_check_js};
+            }}).map(b => ({{
                 disabled: b.disabled,
                 loading: b.classList.contains('is-loading'),
                 text: b.textContent.trim()
-            }));
+            }}));
 
-            return {
+            return {{
                 formErrors: errors,
                 dialogVisible,
                 submitButtons: disabledSubmit,
                 openDialogCount: dialogs.length
-            };
-        }""")
+            }};
+        }}""")
         LOG.info(f"    [click_button] 点击后表单状态: {form_state}")
 
         from .wait_helpers import wait_for_loading_complete

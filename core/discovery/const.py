@@ -4,6 +4,10 @@ const.py — module_discovery 常量定义
 按钮探测策略、CRUD 关键词表、表单填充规则、API 分类关键词。
 """
 
+import json as _json
+import re as _re
+from pathlib import Path as _Path
+
 # ============================================================
 # Stage 1: 按钮探测 — CSS 选择器集合
 # ============================================================
@@ -43,18 +47,78 @@ BUTTON_SELECTORS_STR = "button, a[href], .el-button, .el-button--text, .el-dropd
 # ============================================================
 ACTION_KEYWORDS = {}
 
+# ============================================================
+# 按钮文本常量（去空格归一化匹配）
+# 所有文本均为无空格的标准形式，匹配时统一去空格后比较
+# ============================================================
+
 # 提交按钮文本（表单提交时按优先级尝试）
-SUBMIT_BUTTON_TEXTS = ['确定', '保存', '提交', '确认', '立即创建',
-                       '完成', '更新', '修改', 'OK', 'Update', 'Save']
+SUBMIT_TEXTS = ['确定', '保存', '提交', '确认', '立即创建',
+                '完成', '更新', '修改', 'OK', 'Update', 'Save']
 
-# 提交按钮文本子集（Playwright locator 回退用）
-SUBMIT_BUTTON_TEXTS_FALLBACK = ['确定', '保存', '提交', '确认', '完成', '更新', 'OK']
-
-# 确认对话框按钮文本
-CONFIRM_BUTTON_TEXTS = ['确定', '确认', '是', 'OK', 'Yes', '迁移', '授权', '提交', '保存']
+# 确认对话框按钮文本（通用确认，不含业务操作名）
+CONFIRM_TEXTS = ['确定', '确认', '是', 'OK', 'Yes']
 
 # 取消对话框按钮文本
-CANCEL_BUTTON_TEXTS = ['取消', 'Cancel', '否']
+CANCEL_TEXTS = ['取消', 'Cancel', '否']
+
+# 预构建 set（供 Python 侧 in 操作，避免重复构建）
+SUBMIT_TEXTS_SET = set(SUBMIT_TEXTS)
+CONFIRM_TEXTS_SET = set(CONFIRM_TEXTS)
+CANCEL_TEXTS_SET = set(CANCEL_TEXTS)
+
+
+# ============================================================
+# 按钮文本匹配 — 跨语言表达式生成器
+# 统一策略：去空格后与标准文本列表比较
+# ============================================================
+def normalize_button_text(text: str) -> str:
+    """Python 侧：去除所有空白字符，返回归一化文本。
+
+    用于 Python 侧按钮文本比较：
+        if normalize_button_text(btn_text) in SUBMIT_TEXTS_SET:
+    """
+    return _re.sub(r'\s+', '', text)
+
+
+def js_normalize_in(texts: list, js_var: str = "btnText") -> str:
+    """生成 JS 表达式：检查去空格后的变量是否在文本列表中。
+
+    Args:
+        texts: 标准文本列表
+        js_var: JS 中要比较的变量名（默认 "btnText"）
+
+    Returns:
+        JS 表达式字符串，可直接嵌入 page.evaluate() 的 JS 代码中。
+        调用方需确保 js_var 已被赋值为 textContent.trim()。
+
+    Example:
+        >>> js_normalize_in(['确定', '保存'], 'txt')
+        "['确定','保存'].includes(txt.replace(/\\s+/g, ''))"
+    """
+    texts_json = _json.dumps(texts, ensure_ascii=False)
+    return f"{texts_json}.includes({js_var}.replace(/\\s+/g, ''))"
+
+
+def xpath_normalize_in(texts: list) -> str:
+    """生成 XPath 谓词：检查去空格后的文本是否匹配列表中任一。
+
+    使用 XPath 1.0 translate() 函数去除空格后做 contains 匹配。
+
+    Args:
+        texts: 标准文本列表
+
+    Returns:
+        XPath 谓词字符串（不含外层 []），可直接嵌入 XPath 表达式中。
+
+    Example:
+        >>> xpath_normalize_in(['确定', '确认'])
+        "(contains(translate(normalize-space(.), ' ', ''), '确定') or contains(translate(normalize-space(.), ' ', ''), '确认'))"
+    """
+    # normalize-space(.) 合并连续空白 + 去首尾，translate 去掉剩余空格
+    ns = "translate(normalize-space(.), ' ', '')"
+    parts = [f"contains({ns}, '{t}')" for t in texts]
+    return "(" + " or ".join(parts) + ")"
 
 # 写操作 HTTP 方法（通用规则，不依赖操作名）
 WRITE_HTTP_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
@@ -210,8 +274,6 @@ SUCCESS_CHECK_DEFAULT = {
 # ============================================================
 # UI 选择器注册表加载器
 # ============================================================
-import json as _json
-from pathlib import Path as _Path
 
 _UI_SELECTORS_DIR = _Path(__file__).parent / "ui_selectors"
 _ui_selectors_cache = {}

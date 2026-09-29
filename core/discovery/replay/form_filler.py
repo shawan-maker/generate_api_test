@@ -940,27 +940,21 @@ class FormFiller:
         """
         from .wait_helpers import wait_for_loading_complete
 
-        # JavaScript 方式：去掉空格后匹配常见提交按钮文本，返回原始文本 + 标签
+        # JavaScript 方式：统一去空格归一化匹配提交按钮文本，返回原始文本 + 标签
         try:
-            _submit_texts_js = json.dumps(const.SUBMIT_BUTTON_TEXTS)
             # 如果有 scope_selector，先在限定范围内搜索
             scope_js = f"document.querySelector('{scope_selector}')" if scope_selector else "document"
             clicked = await self.page.evaluate(f"""(() => {{
-                const submitTexts = {_submit_texts_js};
                 const scope = {scope_js};
 
                 // 优先搜索 button 元素，排除标题元素
                 const allButtons = scope ? Array.from(scope.querySelectorAll('button, span, a')) : Array.from(document.querySelectorAll('button, span, a'));
                 const visible = allButtons.filter(b => {{
-                    // 基本可见性和启用状态检查
                     if (b.offsetWidth <= 0 || b.offsetHeight <= 0) return false;
                     if (b.disabled || b.classList.contains('is-disabled')) return false;
                     if (b.closest('.is-hidden') || b.closest('[style*="display: none"]')) return false;
-
-                    // 排除标题元素（role="heading" 或 h1-h6 标签）
                     if (b.getAttribute('role') === 'heading') return false;
                     if (/^H[1-6]$/.test(b.tagName)) return false;
-
                     return true;
                 }});
 
@@ -972,18 +966,16 @@ class FormFiller:
 
                 for (const btn of visible) {{
                     const originalText = btn.textContent.trim();
-                    const normalized = originalText.replace(/\\s+/g, '');
-                    // 严格匹配：normalized 长度应小于 10 个字符，避免匹配到长文本
-                    if (normalized.length < 10 && submitTexts.some(t => normalized === t || normalized.includes(t))) {{
+                    // 统一去空格归一化匹配（长度限制 < 10 避免误中长文本）
+                    if (originalText.replace(/\\s+/g, '').length < 10 && {const.js_normalize_in(const.SUBMIT_TEXTS, 'originalText')}) {{
                         btn.click();
-                        return {{normalized: normalized, original: originalText, tag: btn.tagName.toLowerCase()}};
+                        return {{original: originalText, tag: btn.tagName.toLowerCase()}};
                     }}
                 }}
                 return null;
             }})()""")
             if clicked:
                 await wait_for_loading_complete(self.page)
-                # 构建已验证的 locator：使用原始文本（含空格），确保 Stage 2 回放时能匹配
                 original = clicked['original']
                 tag = clicked['tag']
                 verified_locator = f"{tag}:has-text(\"{original}\")"
@@ -991,9 +983,9 @@ class FormFiller:
         except Exception as e:
             LOG.debug(f"JavaScript 提交按钮匹配失败: {e}")
 
-        # Playwright locator 回退（带隐藏过滤）
+        # Playwright locator 回退（带隐藏过滤，使用 SUBMIT_TEXTS 列表）
         from .locator_helpers import safe_css
-        for text in const.SUBMIT_BUTTON_TEXTS_FALLBACK:
+        for text in const.SUBMIT_TEXTS:
             try:
                 enhanced = safe_css(f'button:has-text("{text}"):visible')
                 btn = self.page.locator(enhanced).first

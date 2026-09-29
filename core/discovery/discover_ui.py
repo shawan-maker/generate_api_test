@@ -3968,7 +3968,8 @@ async def _do_generic_operation(page, context: dict) -> dict:
     # P1: 确认按钮未点击（仅对确认框路径生效，表单路径和即时操作已提前处理）
     if not confirmed and actual_state in ("message-box", "popconfirm"):
         # 诊断失败原因：检查所有类型的弹窗（含 drawer），找出真正原因
-        diag = await page.evaluate("""() => {
+        _confirm_check_js = const.js_normalize_in(const.CONFIRM_TEXTS, "txt")
+        _diag_js = """() => {
             const containers = [];
 
             // 1. el-message-box
@@ -4033,11 +4034,10 @@ async def _do_generic_operation(page, context: dict) -> dict:
                     });
                 });
 
-                const CONFIRM_TEXTS = ['确定', '确认', '是', 'OK', 'Yes', '迁移', '提交', '保存'];
                 let confirmBtn = null;
                 allBtns.forEach(btn => {
                     const txt = (btn.textContent || '').trim();
-                    if (CONFIRM_TEXTS.includes(txt) && !confirmBtn) confirmBtn = btn;
+                    if (CONFIRM_TEXTS_PLACEHOLDER && !confirmBtn) confirmBtn = btn;
                 });
 
                 result.buttons = btnInfos;
@@ -4055,7 +4055,9 @@ async def _do_generic_operation(page, context: dict) -> dict:
             }
 
             return { has_dialog: false };
-        }""")
+        }""".replace("CONFIRM_TEXTS_PLACEHOLDER", _confirm_check_js)
+
+        diag = await page.evaluate(_diag_js)
 
         LOG.debug(f"    弹窗诊断: {diag}")
 
@@ -5076,58 +5078,54 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
             LOG.info(f"    表单已填写，查找提交按钮...")
 
             # 查找提交按钮（优先级：确定 > 保存 > 提交）
-            import re as _re
-            _SUBMIT_TEXTS_SET = {"确定", "保存", "提交", "确认", "OK", "Save", "Submit"}
             submit_btn = None
             for btn in toolbar_buttons + dialog_buttons:
                 btn_text = btn.get("text", "")
-                btn_text_clean = _re.sub(r'\s+', '', btn_text)
-                if btn_text_clean in _SUBMIT_TEXTS_SET:
+                if const.normalize_button_text(btn_text) in const.SUBMIT_TEXTS_SET:
                     submit_btn = btn
                     break
 
             if not submit_btn:
                 # === DIAGNOSTIC: dump 所有可见按钮和容器 ===
-                diag = await page.evaluate("""() => {
-                    const result = { allBtns: [], dialogs: [], submitLikeBtns: [] };
-                    document.querySelectorAll('button').forEach((btn, i) => {
+                _submit_check_js = const.js_normalize_in(const.SUBMIT_TEXTS, 'text')
+                diag = await page.evaluate(f"""() => {{
+                    const result = {{ allBtns: [], dialogs: [], submitLikeBtns: [] }};
+                    document.querySelectorAll('button').forEach((btn, i) => {{
                         const r = btn.getBoundingClientRect();
                         if (r.width <= 0 || r.height <= 0) return;
                         const text = (btn.textContent || '').trim();
                         const parent = btn.closest('.el-dialog, .el-drawer, .el-message-box, .el-form, section');
-                        result.allBtns.push({
+                        result.allBtns.push({{
                             idx: i, text: text.substring(0, 30),
                             cls: (btn.className || '').substring(0, 60),
                             w: Math.round(r.width), h: Math.round(r.height),
                             parentTag: parent ? parent.tagName : 'none',
                             parentCls: parent ? (parent.className || '').substring(0, 60) : '',
                             disabled: btn.disabled
-                        });
-                    });
-                    document.querySelectorAll('.el-dialog__wrapper, .el-drawer, .ant-modal-wrap').forEach(d => {
+                        }});
+                    }});
+                    document.querySelectorAll('.el-dialog__wrapper, .el-drawer, .ant-modal-wrap').forEach(d => {{
                         const r = d.getBoundingClientRect();
-                        result.dialogs.push({
+                        result.dialogs.push({{
                             cls: (d.className || '').substring(0, 60),
                             visible: r.width > 0 && r.height > 0 && d.style.display !== 'none',
                             display: d.style.display
-                        });
-                    });
-                    const SUBMIT_TEXTS = ['确定', '保存', '提交', '确认', 'OK'];
-                    document.querySelectorAll('button').forEach(btn => {
+                        }});
+                    }});
+                    document.querySelectorAll('button').forEach(btn => {{
                         const r = btn.getBoundingClientRect();
                         if (r.width <= 0 || r.height <= 0) return;
                         const text = (btn.textContent || '').trim();
-                        const textClean = text.replace(/\s+/g, '');
-                        if (SUBMIT_TEXTS.some(t => textClean.includes(t))) {
-                            result.submitLikeBtns.push({
+                        if ({_submit_check_js}) {{
+                            result.submitLikeBtns.push({{
                                 text: text, cls: (btn.className || '').substring(0, 60),
                                 closest: btn.closest('.el-dialog, .el-drawer, .el-form-item') ? 'in-container' : 'standalone',
                                 parentHTML: btn.parentElement ? btn.parentElement.outerHTML.substring(0, 150) : ''
-                            });
-                        }
-                    });
+                            }});
+                        }}
+                    }});
                     return result;
-                }""")
+                }}""")
                 import json as _json
                 LOG.warning(f"    [DIAG-submit-PathA] toolbar_buttons={len(toolbar_buttons)}, dialog_buttons={len(dialog_buttons)}")
                 _btns_a = [{"t": b.get("text","")[:15], "c": b.get("cls","")[:30], "p": b.get("parentTag","")} for b in diag.get("allBtns", [])]
@@ -5443,61 +5441,56 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
         LOG.info(f"    表单已填写，查找提交按钮...")
 
         # 8. 查找提交按钮（优先级：确定 > 保存 > 提交）
-        import re as _re
-        _SUBMIT_TEXTS_SET = {"确定", "保存", "提交", "确认", "OK", "Save", "Submit"}
         submit_btn = None
         for btn in toolbar_buttons + dialog_buttons:
             btn_text = btn.get("text", "")
-            btn_text_clean = _re.sub(r'\s+', '', btn_text)
-            if btn_text_clean in _SUBMIT_TEXTS_SET:
+            if const.normalize_button_text(btn_text) in const.SUBMIT_TEXTS_SET:
                 submit_btn = btn
                 break
 
         if not submit_btn:
             # === DIAGNOSTIC: dump 所有可见按钮和容器 ===
-            diag = await page.evaluate("""() => {
-                const result = { allBtns: [], dialogs: [], submitLikeBtns: [] };
+            _submit_check_js = const.js_normalize_in(const.SUBMIT_TEXTS, 'text')
+            diag = await page.evaluate(f"""() => {{
+                const result = {{ allBtns: [], dialogs: [], submitLikeBtns: [] }};
                 // 所有可见按钮
-                document.querySelectorAll('button').forEach((btn, i) => {
+                document.querySelectorAll('button').forEach((btn, i) => {{
                     const r = btn.getBoundingClientRect();
                     if (r.width <= 0 || r.height <= 0) return;
                     const text = (btn.textContent || '').trim();
                     const parent = btn.closest('.el-dialog, .el-drawer, .el-message-box, .el-form, section');
-                    result.allBtns.push({
+                    result.allBtns.push({{
                         idx: i, text: text.substring(0, 30),
                         cls: (btn.className || '').substring(0, 60),
                         w: Math.round(r.width), h: Math.round(r.height),
                         parentTag: parent ? parent.tagName : 'none',
                         parentCls: parent ? (parent.className || '').substring(0, 60) : '',
                         disabled: btn.disabled
-                    });
-                });
+                    }});
+                }});
                 // 检查弹窗/抽屉
-                document.querySelectorAll('.el-dialog__wrapper, .el-drawer, .ant-modal-wrap').forEach(d => {
+                document.querySelectorAll('.el-dialog__wrapper, .el-drawer, .ant-modal-wrap').forEach(d => {{
                     const r = d.getBoundingClientRect();
-                    result.dialogs.push({
+                    result.dialogs.push({{
                         cls: (d.className || '').substring(0, 60),
                         visible: r.width > 0 && r.height > 0 && d.style.display !== 'none',
                         display: d.style.display
-                    });
-                });
-                // 查找 "确定"/"保存" 类按钮（无论是否被扫描器发现）
-                const SUBMIT_TEXTS = ['确定', '保存', '提交', '确认', 'OK'];
-                document.querySelectorAll('button').forEach(btn => {
+                    }});
+                }});
+                document.querySelectorAll('button').forEach(btn => {{
                     const r = btn.getBoundingClientRect();
                     if (r.width <= 0 || r.height <= 0) return;
                     const text = (btn.textContent || '').trim();
-                    const textClean = text.replace(/\s+/g, '');
-                    if (SUBMIT_TEXTS.some(t => textClean.includes(t))) {
-                        result.submitLikeBtns.push({
+                    if ({_submit_check_js}) {{
+                        result.submitLikeBtns.push({{
                             text: text, cls: (btn.className || '').substring(0, 60),
                             closest: btn.closest('.el-dialog, .el-drawer, .el-form-item') ? 'in-container' : 'standalone',
                             parentHTML: btn.parentElement ? btn.parentElement.outerHTML.substring(0, 150) : ''
-                        });
-                    }
-                });
+                        }});
+                    }}
+                }});
                 return result;
-            }""")
+            }}""")
             import json as _json2
             LOG.warning(f"    [DIAG-submit] toolbar_buttons={len(toolbar_buttons)}, dialog_buttons={len(dialog_buttons)}")
             _btns_b = [{"t": b.get("text","")[:15], "c": b.get("cls","")[:30], "p": b.get("parentTag","")} for b in diag.get("allBtns", [])]
@@ -7300,9 +7293,9 @@ def _build_page_nav_steps(op_data: dict) -> list:
                 "description": "填充表单字段"
             })
 
-    # Step 5: 点击提交按钮
+    # Step 5: 点击提交按钮（默认值使用无空格标准形式，replay_engine 有去空格容错）
     submit_result = nav_info.get("submit_result", {})
-    submit_text = submit_result.get("button_text", "确 定")
+    submit_text = submit_result.get("button_text", "确定")
     if submit_result.get("success"):
         steps.append({
             "action": "click_button",
