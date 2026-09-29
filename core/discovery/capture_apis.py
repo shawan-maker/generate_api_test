@@ -146,6 +146,19 @@ async def _cleanup_after_operation(page, ui_framework: str = "element-ui"):
     except Exception as e:
         LOG.debug(f"UI 选择器清理失败: {e}")
 
+    # 2.5 清除搜索框（避免过滤干扰后续操作）
+    try:
+        search_inputs = await page.query_selector_all('input[placeholder*="搜索"], input[placeholder*="查询"], input[placeholder*="请输入"]')
+        for search_input in search_inputs:
+            if await search_input.is_visible():
+                current_value = await search_input.input_value()
+                if current_value and current_value.strip():
+                    await search_input.fill("")
+                    await page.wait_for_timeout(100)
+                    LOG.debug(f"已清除搜索框: {current_value}")
+    except Exception as e:
+        LOG.debug(f"搜索框清理失败: {e}")
+
     await page.wait_for_timeout(500)
 
     # 3. 再次按 Escape（兜底）
@@ -230,9 +243,9 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
         try:
             # 执行 playbook 中的步骤序列
             steps = op.get("steps", [])
-            # 传递 marker：优先使用操作自己的 marker 字段，否则使用 created_marker
-            # 操作自己的 marker 来自 Stage 1 探测（如从表格提取的 fallback marker）
-            op_marker = op.get("marker") or created_marker
+            # 传递 marker：优先使用当前会话创建的 marker（数据关联），否则使用 playbook 记录的 fallback marker
+            # created_marker 来自本会话 create 操作的 fill_form，op.get("marker") 是 Stage 1 快照（可能已过期）
+            op_marker = created_marker or op.get("marker")
             # 需要 marker 的情况：
             # 1. 步骤包含 find_row（行级操作定位）
             # 2. 步骤值引用 {marker_name}（如 query 搜索框）
@@ -267,14 +280,18 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
                         if desc in assert_methods:
                             step["matched_method"] = assert_methods[desc]
 
-            # 如果是 create 类操作且成功，记录 marker
+            # 如果是 create 或 update 类操作且成功，记录/更新 marker
             op_role = op.get("role", "")
-            if op_role == "create":
+            if op_role in ("create", "update"):
                 if result.get("marker"):
                     created_marker = result["marker"]
-                    LOG.info(f"  创建成功，marker: {created_marker}")
+                    if op_role == "create":
+                        LOG.info(f"  创建成功，marker: {created_marker}")
+                    else:
+                        LOG.info(f"  编辑成功，marker 已更新为: {created_marker}")
                 else:
-                    LOG.warning(f"  创建操作完成但未获取 marker")
+                    if op_role == "create":
+                        LOG.warning(f"  创建操作完成但未获取 marker")
 
                 # 输出所有用户相关请求（诊断 POST /users 是否发出）
                 import sys

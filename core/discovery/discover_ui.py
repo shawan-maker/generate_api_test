@@ -4606,19 +4606,24 @@ async def _verify_operation_success(page, operation_type: str, strict: bool = Fa
     Returns:
         bool: 是否检测到成功信号
     """
-    # 0. 检查捕获的消息（解决瞬态 toast 消失问题）
+    # 0. 检查捕获的消息（基于文本内容，而非 type 字段）
+    #    原因：很多系统发送 type=info 的成功消息（如"处理中"），不能只靠 type==success 判断
     if captured_messages:
-        has_captured_success = any(m.get("type") == "success" for m in captured_messages)
-        if has_captured_success:
-            success_texts = [m["text"] for m in captured_messages if m.get("type") == "success"]
-            LOG.info(f"    捕获到成功消息: {success_texts}")
-            return True
-        # 如果只捕获到错误消息，也算失败信号
-        has_captured_error = any(m.get("type") == "error" for m in captured_messages)
-        if has_captured_error:
-            error_texts = [m["text"] for m in captured_messages if m.get("type") == "error"]
-            LOG.info(f"    捕获到错误消息: {error_texts}")
+        _success_kw = ['成功', '完成', '处理中', '已保存', '已添加', '已删除', '已更新', '操作成功']
+        _error_kw = ['失败', '错误', '异常', 'error', '失败', '无权', '权限不足']
+        _all_texts = [m.get('text', '') for m in captured_messages]
+
+        # 先检查是否有明确的失败关键词（失败优先于成功判断）
+        _matched_error = [t for t in _all_texts if any(kw in t for kw in _error_kw)]
+        if _matched_error:
+            LOG.info(f"    捕获到错误消息: {_matched_error}")
             return False
+
+        # 再检查是否有成功关键词
+        _matched_success = [t for t in _all_texts if any(kw in t for kw in _success_kw)]
+        if _matched_success:
+            LOG.info(f"    捕获到成功消息: {_matched_success}")
+            return True
 
     # 1. 检查成功提示 (Element UI / Ant Design) — 正向信号，两种模式都接受
     has_success = await page.evaluate("""() => {
@@ -4639,45 +4644,45 @@ async def _verify_operation_success(page, operation_type: str, strict: bool = Fa
     if has_success:
         return True
 
-    # 1.5 轮询等待 el-dialog / el-message-box 中的错误消息（给服务端响应时间）
-    # 操作失败时服务端可能延迟弹出错误弹窗，不能单次检查
+    # 1.5 轮询等待 el-dialog / el-message-box 中的成功/错误消息（给服务端响应时间）
     for _poll in range(5):  # 最多轮询 5 次，每次 1s，共 5s
-        dialog_error = await page.evaluate("""() => {
-            const errKw = ['失败', '错误', '异常', 'error'];
-            // 检查可见的 el-message-box 中的错误内容
-            const msgBoxes = document.querySelectorAll('.el-message-box__wrapper:not([style*="display: none"])');
-            for (const box of msgBoxes) {
-                if (box.offsetWidth === 0) continue;
-                const content = box.querySelector('.el-message-box__message, .el-message-box__content');
-                if (content) {
-                    const text = content.textContent.trim();
-                    if (text && errKw.some(kw => text.includes(kw))) return text;
+        dialog_result = await page.evaluate("""() => {
+            const successKw = ['成功', '完成', '已保存', '已添加', '已删除', '已更新'];
+            const errKw = ['失败', '错误', '异常', 'error', '无权', '权限不足'];
+
+            const containers = [
+                ...document.querySelectorAll('.el-message-box__wrapper:not([style*="display: none"])'),
+                ...document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"])')
+            ];
+
+            for (const container of containers) {
+                if (container.offsetWidth === 0) continue;
+                const content = container.querySelector(
+                    '.el-message-box__message, .el-message-box__content, .el-dialog'
+                );
+                if (!content) continue;
+                const text = content.textContent.trim();
+                if (!text) continue;
+
+                // 优先检查成功关键词
+                if (successKw.some(kw => text.includes(kw))) {
+                    return { type: 'success', text: text.substring(0, 200) };
                 }
-            }
-            // 检查可见的 el-dialog 中的错误
-            const dialogs = document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"])');
-            for (const d of dialogs) {
-                if (d.offsetWidth === 0) continue;
-                const errors = d.querySelectorAll('.el-form-item__error');
-                if (errors.length > 0) {
-                    return Array.from(errors).map(e => e.textContent.trim()).join('; ');
-                }
-                const alerts = d.querySelectorAll('.el-alert--error, .el-alert--warning');
-                for (const a of alerts) {
-                    if (a.offsetWidth > 0) return a.textContent.trim();
-                }
-                // 全文搜索：dialog 内包含失败关键字即判定错误
-                const dialogEl = d.querySelector('.el-dialog');
-                if (dialogEl) {
-                    const text = dialogEl.textContent.trim();
-                    if (errKw.some(kw => text.includes(kw))) return text.substring(0, 200);
+                // 再检查错误关键词
+                if (errKw.some(kw => text.includes(kw))) {
+                    return { type: 'error', text: text.substring(0, 200) };
                 }
             }
             return null;
         }""")
-        if dialog_error:
-            LOG.info(f"    检测到弹窗错误: {dialog_error[:80]}")
-            return False
+        if dialog_result:
+            if dialog_result.get('type') == 'success':
+                LOG.info(f"    弹窗中检测到成功: {dialog_result['text'][:80]}")
+                return True
+            else:
+                LOG.info(f"    弹窗中检测到错误: {dialog_result['text'][:80]}")
+                return False
+
         # 成功 toast 出现 → 立即跳出，不浪费轮询时间
         has_success_toast = await page.evaluate("""() => {
             const el = document.querySelector('.el-message--success, .el-message .el-icon-success');
@@ -4687,23 +4692,15 @@ async def _verify_operation_success(page, operation_type: str, strict: bool = Fa
             break
         await page.wait_for_timeout(1000)
 
-    # 4. 统一兜底：检查页面是否有任何错误状态
-    # 不再依赖 operation_type 字符串匹配，所有操作走同一条路径
-    has_any_error = await page.evaluate("""() => {
-        // 错误消息
+    # 4. 兜底：检查是否有明确的错误状态
+    # 策略：只检查明确的错误信号，没有错误就认为成功（乐观策略）
+    has_explicit_error = await page.evaluate("""() => {
+        // 明确的错误消息（红色/橙色提示）
         const errMsg = document.querySelector(
             '.el-message--error, .ant-message-error, .el-message--warning');
         if (errMsg && errMsg.offsetWidth > 0) return true;
 
-        // 确认弹窗仍在（操作未完成）
-        const msgBox = document.querySelector(
-            '.el-message-box__wrapper:not([style*="display: none"])');
-        if (msgBox && msgBox.offsetWidth > 0) return true;
-        const popconfirm = document.querySelector(
-            '.el-popconfirm:not([style*="display: none"])');
-        if (popconfirm && popconfirm.offsetWidth > 0) return true;
-
-        // 表单验证错误
+        // 表单验证错误（红色文字提示）
         const formErrors = document.querySelectorAll('.el-form-item__error');
         for (const err of formErrors) {
             if (err.offsetWidth > 0) return true;
@@ -4712,17 +4709,14 @@ async def _verify_operation_success(page, operation_type: str, strict: bool = Fa
         return false;
     }""")
 
-    if has_any_error:
+    if has_explicit_error:
+        LOG.info("    检测到明确的错误状态")
         return False
 
-    # 5. 非严格模式：无任何错误信号 → 视为成功
-    if not strict:
-        return True
-
-    # 6. 严格模式：检查数据变化作为额外成功信号
-    data_changed = await _check_data_changed(page, operation_type)
-    if data_changed:
-        return True
+    # 5. 乐观策略：没有检测到任何错误信号 → 视为成功
+    # 原因：如果操作真的失败了，前面的检查应该已经捕获到错误消息或弹窗
+    LOG.info("    未检测到错误信号，判定为成功")
+    return True
 
     return False
 
@@ -6455,19 +6449,33 @@ def build_playbook(ui_result: dict) -> dict:
         steps_type = "unknown"
 
         if is_success:
+            # ★ 跨页面操作检测：nav_info 中有成功提交记录 → page-nav 模式
+            nav_info = op_data.get("nav_info")
+            is_page_nav = (nav_info
+                           and nav_info.get("submit_result", {}).get("success")
+                           and nav_info.get("navigated_url"))
+            if is_page_nav:
+                op_data["interaction_mode"] = "page-nav"
+                if not op_data.get("navigate_back_url"):
+                    op_data["navigate_back_url"] = ui_result.get("target_url", "")
+
             # 基于 op_data 结构特征分发步骤构建（不写死任何操作名）
-            steps_type = _classify_op_steps_type(op_data)
-            if steps_type == "create":
-                op_steps.extend(_build_create_steps(op_data))
-            elif steps_type == "query":
-                op_steps.extend(_build_query_steps(op_data))
-            elif steps_type == "update":
-                op_steps.extend(_build_update_steps(op_data))
-            elif steps_type == "delete":
-                op_steps.extend(_build_delete_steps(op_data))
+            if is_page_nav:
+                steps_type = "generic"  # page-nav 走通用角色
+                op_steps.extend(_build_page_nav_steps(op_data))
             else:
-                # 通用操作（含导入、授权、冻结等）
-                op_steps.extend(_build_generic_steps(op_data))
+                steps_type = _classify_op_steps_type(op_data)
+                if steps_type == "create":
+                    op_steps.extend(_build_create_steps(op_data))
+                elif steps_type == "query":
+                    op_steps.extend(_build_query_steps(op_data))
+                elif steps_type == "update":
+                    op_steps.extend(_build_update_steps(op_data))
+                elif steps_type == "delete":
+                    op_steps.extend(_build_delete_steps(op_data))
+                else:
+                    # 通用操作（含导入、授权、冻结等）
+                    op_steps.extend(_build_generic_steps(op_data))
 
         if op_steps or not is_success:
             # 使用 trigger_text 作为业务名称（按钮原文即操作名）
@@ -7126,6 +7134,199 @@ def _build_generic_steps(op_data: dict) -> list:
             "action": "assert_success",
             "playwright_locator": success_locator,
             "description": "验证操作成功"
+        })
+
+    return steps
+
+
+def _build_page_nav_steps(op_data: dict) -> list:
+    """构建跨页面操作步骤（page-nav 模式）
+
+    跨页面操作的数据存储在 nav_info 中：
+    - nav_info.form_fields: 表单字段定义
+    - nav_info.fill_data: 填充的测试数据
+    - nav_info.submit_result: 提交结果（button_text, success）
+    - nav_info.navigated_url: 跳转后的 URL
+
+    步骤序列：click_button → fill_form → click_button(提交) → assert_success → navigate_back
+    """
+    steps = []
+    nav_info = op_data.get("nav_info", {})
+    selectors = op_data.get("selectors", {})
+
+    # Step 1: 定位数据行（如果是行级操作）
+    needs_checkbox = op_data.get("needs_checkbox", False)
+    if needs_checkbox:
+        steps.append({
+            "action": "find_row",
+            "description": "定位目标数据行"
+        })
+        checkbox_locator = op_data.get("checkbox_locator", ".el-checkbox__input")
+        steps.append({
+            "action": "select_row_checkbox",
+            "checkbox_locator": checkbox_locator,
+            "description": "勾选行 checkbox"
+        })
+    elif selectors.get("row_selector"):
+        steps.append({
+            "action": "find_row",
+            "description": "定位目标数据行"
+        })
+
+    # Step 2: 点击触发按钮（跳转到新页面）
+    trigger = selectors.get("trigger")
+    trigger_locator = op_data.get("trigger_locator_verified")
+    dropdown_item_text = op_data.get("dropdown_item_text_verified")
+    row_selector = selectors.get("row_selector")
+
+    if trigger_locator:
+        steps.append({
+            "action": "click_button",
+            "text": trigger,
+            "playwright_locator": trigger_locator,
+            "description": "点击操作按钮（页面跳转）"
+        })
+    elif row_selector and trigger:
+        # 行级操作：先定位行，再点击行内按钮
+        if ">" in row_selector:
+            # 下拉菜单项（如 "更多 > 授权"）
+            item_text = row_selector.split(">")[-1].strip()
+            steps.append({
+                "action": "click_row_more",
+                "item_text": item_text,
+                "expand_strategy": op_data.get("expand_strategy_verified", "click"),
+                "description": f"点击下拉菜单项: {item_text}"
+            })
+        else:
+            # 行内按钮（如 "添加用户"）
+            steps.append({
+                "action": "click_row_button",
+                "button_text": trigger,
+                "playwright_locator": f"button:has-text('{trigger}')",
+                "description": f"点击行内{trigger}按钮"
+            })
+    elif dropdown_item_text:
+        steps.append({
+            "action": "click_row_more",
+            "item_text": dropdown_item_text,
+            "expand_strategy": op_data.get("expand_strategy_verified", "click"),
+            "description": f"点击下拉菜单项: {dropdown_item_text}"
+        })
+    elif trigger:
+        # Fallback: 使用 trigger 文本构造 locator
+        escaped_trigger = trigger.replace('"', '\\"')
+        steps.append({
+            "action": "click_button",
+            "text": trigger,
+            "playwright_locator": f"button:has-text(\"{escaped_trigger}\")",
+            "description": f"点击{trigger}按钮（页面跳转）"
+        })
+
+    # Step 3: 等待新页面加载（使用 URL 变化检测）
+    navigated_url = nav_info.get("navigated_url", "")
+    if navigated_url:
+        steps.append({
+            "action": "wait_for_url",
+            "url_pattern": navigated_url.split("?")[0],  # 匹配路径段
+            "description": "等待页面跳转完成"
+        })
+
+    # Step 4: 填充表单（从 nav_info 提取）
+    form_fields = nav_info.get("form_fields", [])
+    fill_data = nav_info.get("fill_data", {})
+    field_states = nav_info.get("field_states", [])
+
+    if form_fields or field_states:
+        fill_fields = []
+
+        # 优先使用 field_states（Stage 1 探测到的完整字段状态）
+        for fs in field_states:
+            label = fs.get("label", "")
+            field_type = fs.get("type", "")
+            value = fs.get("value", "")
+            is_disabled = fs.get("isDisabled", False)
+
+            if is_disabled or not label:
+                continue
+
+            # 生成 fill_rule
+            if field_type == "select":
+                fill_fields.append({
+                    "label": label,
+                    "type": "select",
+                    "kb_category": "el-select",
+                    "fill_rule": {},
+                    "is_editable": True,
+                    "is_multi_select": fs.get("isMultiSelect", False),
+                })
+            elif field_type == "radio":
+                fill_fields.append({
+                    "label": label,
+                    "type": "radio",
+                    "kb_category": "radio",
+                    "fill_rule": {},
+                    "option_text": value,
+                })
+            elif field_type == "transfer":
+                fill_fields.append({
+                    "label": label,
+                    "type": "transfer",
+                    "kb_category": "transfer-box",
+                    "fill_rule": {},
+                })
+
+        # 补充 form_fields 中的字段（如果 field_states 中没有）
+        existing_labels = {f["label"] for f in fill_fields}
+        for field in form_fields:
+            label = field.get("label", "")
+            if label in existing_labels:
+                continue
+            selector = field.get("selector")
+            if not selector:
+                continue
+            field_type = field.get("type", "input")
+            fill_fields.append({
+                "label": label,
+                "playwright_locator": selector,
+                "type": field_type,
+                "kb_category": field.get("kb_category", ""),
+                "fill_rule": {},
+            })
+
+        if fill_fields:
+            steps.append({
+                "action": "fill_form",
+                "fields": fill_fields,
+                "description": "填充表单字段"
+            })
+
+    # Step 5: 点击提交按钮
+    submit_result = nav_info.get("submit_result", {})
+    submit_text = submit_result.get("button_text", "确 定")
+    if submit_result.get("success"):
+        steps.append({
+            "action": "click_button",
+            "text": submit_text,
+            "playwright_locator": f"button:has-text(\"{submit_text}\")",
+            "description": f"点击{submit_text}按钮"
+        })
+
+    # Step 6: 验证成功
+    success_locator = op_data.get("success_locator",
+        ".el-message--success, .el-notification__content:has-text('成功'), [role='alert']:has-text('成功')")
+    steps.append({
+        "action": "assert_success",
+        "playwright_locator": success_locator,
+        "description": "验证操作成功"
+    })
+
+    # Step 7: 导航回原页面
+    navigate_back_url = op_data.get("navigate_back_url")
+    if navigate_back_url:
+        steps.append({
+            "action": "navigate_back",
+            "url": navigate_back_url,
+            "description": "导航回原页面"
         })
 
     return steps

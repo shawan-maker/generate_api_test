@@ -356,14 +356,11 @@ class FormFiller:
                                 current_labels = {f['label'] for f in fields}
                                 new_fields = [f for f in post_fields if f['label'] not in current_labels]
                                 if new_fields:
-                                    LOG.info(f"    [radio-cascade] radio 选择后新增 {len(new_fields)} 个字段:")
-                                    for nf in new_fields:
-                                        LOG.info(f"      - label='{nf['label']}', type='{nf.get('type')}', "
-                                                 f"kb_category='{nf.get('kb_category')}'")
-                            except Exception as e:
-                                LOG.warning(f"    [radio-cascade] 重新扫描失败: {e}")
+                                    LOG.info(f"    [radio-cascade] 新增 {len(new_fields)} 个字段")
+                            except Exception:
+                                pass
 
-                            # 检测 transfer-box 是否需要选择
+                            # 检测 transfer-box 是否需要选择（如"授权"选择"组织架构"后）
                             # 如果右侧面板为空（无选择），则执行选择
                             try:
                                 right_panel_status = await self.page.evaluate("""() => {
@@ -372,27 +369,23 @@ class FormFiller:
                                     const r = rightPanel.getBoundingClientRect();
                                     if (r.width <= 0 || r.height <= 0) return { exists: false, hasSelection: false };
 
-                                    // 检查是否有选择项
                                     const text = rightPanel.textContent || '';
                                     const hasNoData = text.includes('暂无数据');
                                     const hasSelection = !hasNoData && (text.includes('已选择') || text.includes('已选项'));
 
-                                    return { exists: true, hasSelection, hasNoData, text: text.substring(0, 100) };
+                                    return { exists: true, hasSelection };
                                 }""")
 
-                                # 如果 transfer-box 存在但右侧无选择，执行选择
                                 if right_panel_status.get('exists') and not right_panel_status.get('hasSelection'):
-                                    LOG.info(f"    [radio-cascade] transfer-box 右侧无选择，执行列表选择...")
+                                    LOG.info(f"    [radio-cascade] transfer-box 需要选择")
                                     executor = self._get_executor()
-                                    success = await executor._execute_list_selector(
-                                        label, "", None, ""
-                                    )
+                                    success = await executor._execute_list_selector(label, "", None, "")
                                     if success:
                                         LOG.info(f"    [radio-cascade] transfer-box 选择成功")
                                     else:
                                         LOG.warning(f"    [radio-cascade] transfer-box 选择失败")
-                            except Exception as e:
-                                LOG.warning(f"    [radio-cascade] transfer-box 检测/选择失败: {e}")
+                            except Exception:
+                                pass
 
                         else:
                             # 回退：直接点击 label

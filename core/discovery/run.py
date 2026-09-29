@@ -331,7 +331,7 @@ async def run_stage2(page, project_dir: Path, module_name: str,
                 LOG.info(f"    {action}: {len(candidates)} 个候选")
 
             # 生成 UI 自动化脚本
-            from .generate_ui_script import generate_ui_script
+            from core.discovery.generate_ui_script import generate_ui_script
             playbook_path = ws_dir / "kb" / "module_discovered" / f"{module_name}_playbook.json"
             if playbook_path.exists():
                 try:
@@ -661,7 +661,7 @@ def run_stage5(manifest: dict, project_dir: Path, module_name: str, version: str
     LOG.info("=" * 50)
 
     try:
-        from .export_artifacts import (
+        from core.discovery.export_artifacts import (
             export_postman_collection,
             export_helpers,
             export_excel_params
@@ -1678,7 +1678,7 @@ async def main():
             playbook_path = workspace_dir / "kb" / "module_discovered" / f"{args.module}_playbook.json"
             if playbook_path.exists():
                 try:
-                    from .generate_ui_script import generate_ui_script
+                    from core.discovery.generate_ui_script import generate_ui_script
                     with open(playbook_path, 'r', encoding='utf-8') as f:
                         playbook_data = json.load(f)
                     ver = args.version or ver_mod.resolve_version(project_dir)

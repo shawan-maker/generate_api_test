@@ -318,9 +318,11 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
                 await _step_find_row(page, step, button_driver, marker)
 
             elif action == "click_row_button":
+                ctx["url_before_click"] = page.url
                 await _step_click_row_button(page, step, button_driver, marker)
 
             elif action == "click_row_more":
+                ctx["url_before_click"] = page.url
                 await _step_click_row_more(page, step, button_driver, marker)
 
             elif action == "confirm_dialog":
@@ -332,6 +334,9 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
 
             elif action == "close_dialog":
                 await _step_close_dialog(page, step)
+
+            elif action == "wait_for_url":
+                await _step_wait_for_url(page, step, ctx)
 
             elif action == "navigate_back":
                 await _step_navigate_back(page, step)
@@ -832,6 +837,35 @@ async def _step_click_row_more(page, step: dict, button_driver: ButtonDriver, ma
     # 等待菜单项触发的 API 请求完成
     from .wait_helpers import wait_for_loading_complete
     await wait_for_loading_complete(page, timeout=10000)
+
+
+async def _step_wait_for_url(page, step: dict, ctx: dict):
+    """步骤：等待页面 URL 发生变化（用于 page-nav 操作）
+
+    前置步骤（click_button/click_row_button/click_row_more）已触发页面跳转，
+    此步骤只需确认 URL 已变化且页面开始加载。
+
+    Args:
+        page: Playwright 页面对象
+        step: 步骤定义
+        ctx: 交互状态上下文，包含 url_before_click
+    """
+    initial_url = ctx.get("url_before_click", page.url)
+
+    # 最多等待 15 秒
+    for _ in range(150):
+        if page.url != initial_url:
+            # URL 已变化，等待页面基本加载
+            try:
+                await page.wait_for_load_state("domcontentloaded", timeout=10000)
+            except Exception:
+                pass
+            await page.wait_for_timeout(500)
+            LOG.info(f"    页面已跳转: {page.url[:80]}")
+            return
+        await page.wait_for_timeout(100)
+
+    raise Exception(f"等待页面跳转超时，URL 未变化: {page.url}")
 
 
 async def _step_navigate_back(page, step: dict):

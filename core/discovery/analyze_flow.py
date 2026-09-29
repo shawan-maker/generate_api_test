@@ -589,21 +589,25 @@ def _find_id_by_data_flow(create_response: dict,
         (field_name, full_path, value) 或 None
     """
     exclude_keys = {
-        "status", "name", "userName", "userId", "createAt", "updateAt",
-        "lastUsedDate", "description", "remark", "memo",
-        "secretKey", "password", "token", "accessToken", "secret"
+        # 人类可读文本字段 — 值不可能是标识符
+        "status", "name", "userName", "displayName",
+        "createAt", "updateAt", "lastUsedDate", "createdAt", "updatedAt",
+        "description", "remark", "memo", "note", "comment", "content",
+        # 敏感凭据 — 值是标识符但不应作为 API 关联的 ID
+        "secretKey", "password", "token", "accessToken", "secret",
     }
 
     response_values = {}
     _collect_leaf_values(create_response, response_values, exclude_keys)
 
-    # 第一轮：优先检查 URL 路径（最可靠）
+    # 第一轮：优先检查 URL 路径段（最可靠，排除查询参数）
     for path, value in response_values.items():
         if not _looks_like_identifier(value):
             continue
         value_str = str(value)
         for pn in subsequent_pathnames:
-            if value_str in pn:
+            path_only = pn.split("?")[0]  # ★ 只匹配路径段，不匹配 ?tenantId=xxx
+            if value_str in path_only:
                 return path.split(".")[-1], path, value_str
 
     # 第二轮：检查请求体

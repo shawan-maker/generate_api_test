@@ -1,13 +1,19 @@
 """
 用户组管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-24 15:56:08
-目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/group
+生成时间: 2026-09-29 12:53:42
+目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/user-group
 
 执行流程:
   1. 创建用户组
   2. 搜索验证（创建用户组后）
-  3. 批量删除
-  4. 搜索验证（删除后）
+  3. 编辑
+  4. 搜索验证（编辑后）
+  5. 添加用户
+  6. 搜索验证（添加用户后）
+  7. 授权
+  8. 搜索验证（授权后）
+  9. 删除用户组
+  10. 搜索验证（删除后）
 
 状态断言:
   - 删除后数据不应出现
@@ -27,7 +33,7 @@ MANIFEST = {
     "name": "用户组管理",
     "base_url": "https://10.151.61.248",
     "login_url": "https://10.151.61.248/estack/web/estack/login",
-    "target_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/group"
+    "target_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/user-group"
   },
   "response_contract": {
     "envelope_keys": [
@@ -44,7 +50,7 @@ MANIFEST = {
     "total_keys": [
       "total"
     ],
-    "id_field": "id"
+    "id_field": "tenantId"
   },
   "auth_profile": {
     "header_name": "Authorization",
@@ -90,12 +96,13 @@ MANIFEST = {
         },
         "tenantId": {
           "role": "context",
-          "source": "display_by_role.entity_0_id"
+          "source": "users.entity_list_0_tenantId"
         }
       },
       "requires": [],
       "extract": {
-        "id": "entity.id",
+        "tenantId": "entity.list[0].tenantId",
+        "id": "entity.list[0].tenantId",
         "names": [
           "name"
         ]
@@ -111,7 +118,7 @@ MANIFEST = {
         "query_params": {
           "pageNum": "1",
           "pageSize": "10",
-          "tenantId": "$display_by_role.entity_0_id"
+          "tenantId": "$users.entity_list_0_tenantId"
         }
       },
       "body_template": {},
@@ -124,8 +131,285 @@ MANIFEST = {
       "search_param_source": "name"
     },
     {
-      "action": "批量删除",
-      "label": "批量删除",
+      "action": "编辑",
+      "label": "编辑",
+      "api": {
+        "method": "PUT",
+        "pathname": "/estack/api/estack/draco/v1/groups/{path_0}",
+        "path_params": {
+          "path_0": {
+            "source": "create.id",
+            "match_from": "create_id_fallback"
+          }
+        },
+        "query_params": {
+          "name": "AT_test_657411",
+          "description": "auto_desc_657412"
+        }
+      },
+      "body_template": {
+        "name": "${gen_test_name(\"name\")}",
+        "description": "${gen_mutable_value()}",
+        "groupId": None,
+        "tenantId": None
+      },
+      "body_field_roles": {
+        "name": {
+          "role": "name"
+        },
+        "description": {
+          "role": "mutable"
+        },
+        "groupId": {
+          "role": "context",
+          "source": "create.id"
+        },
+        "tenantId": {
+          "role": "context",
+          "source": "users.entity_list_0_tenantId"
+        }
+      },
+      "requires": [
+        "id"
+      ]
+    },
+    {
+      "action": "get",
+      "label": "搜索验证（编辑后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/groups",
+        "path_params": {},
+        "query_params": {
+          "pageNum": "1",
+          "pageSize": "10",
+          "tenantId": "$users.entity_list_0_tenantId"
+        }
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_verify",
+      "search_param": "name",
+      "search_param_source": "name"
+    },
+    {
+      "action": "添加用户",
+      "label": "添加用户",
+      "phases": [
+        {
+          "id": "side-tree",
+          "label": "添加用户(side-tree)",
+          "api": {
+            "method": "POST",
+            "pathname": "/estack/api/estack/pegasi/v1/menu/side-tree",
+            "path_params": {},
+            "query_params": {}
+          },
+          "body_template": {
+            "userId": None,
+            "isVisible": 1
+          },
+          "body_field_roles": {
+            "userId": {
+              "role": "context",
+              "source": "access_log.entity_0_userId"
+            },
+            "isVisible": {
+              "role": "static"
+            }
+          },
+          "extract": []
+        },
+        {
+          "id": "side-tree",
+          "label": "添加用户(side-tree)",
+          "api": {
+            "method": "POST",
+            "pathname": "/estack/api/estack/pegasi/v1/menu/side-tree",
+            "path_params": {},
+            "query_params": {}
+          },
+          "body_template": {
+            "userId": None,
+            "isVisible": 1
+          },
+          "body_field_roles": {
+            "userId": {
+              "role": "context",
+              "source": "access_log.entity_0_userId"
+            },
+            "isVisible": {
+              "role": "static"
+            }
+          },
+          "extract": []
+        },
+        {
+          "id": "main",
+          "label": "添加用户",
+          "api": {
+            "method": "POST",
+            "pathname": "/estack/api/estack/pegasi/v1/menu/tree",
+            "path_params": {},
+            "query_params": {}
+          },
+          "body_template": {
+            "userId": None,
+            "rootId": "all-resource",
+            "isVisible": 1
+          },
+          "body_field_roles": {
+            "userId": {
+              "role": "context",
+              "source": "access_log.entity_0_userId"
+            },
+            "rootId": {
+              "role": "static"
+            },
+            "isVisible": {
+              "role": "static"
+            }
+          }
+        }
+      ],
+      "requires": [
+        "id"
+      ]
+    },
+    {
+      "action": "get",
+      "label": "搜索验证（添加用户后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/groups",
+        "path_params": {},
+        "query_params": {
+          "pageNum": "1",
+          "pageSize": "10",
+          "tenantId": "$users.entity_list_0_tenantId"
+        }
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_verify",
+      "search_param": "name",
+      "search_param_source": "name"
+    },
+    {
+      "action": "授权",
+      "label": "授权",
+      "phases": [
+        {
+          "id": "side-tree",
+          "label": "授权(side-tree)",
+          "api": {
+            "method": "POST",
+            "pathname": "/estack/api/estack/pegasi/v1/menu/side-tree",
+            "path_params": {},
+            "query_params": {}
+          },
+          "body_template": {
+            "userId": None,
+            "isVisible": 1
+          },
+          "body_field_roles": {
+            "userId": {
+              "role": "context",
+              "source": "access_log.entity_0_userId"
+            },
+            "isVisible": {
+              "role": "static"
+            }
+          },
+          "extract": []
+        },
+        {
+          "id": "side-tree",
+          "label": "授权(side-tree)",
+          "api": {
+            "method": "POST",
+            "pathname": "/estack/api/estack/pegasi/v1/menu/side-tree",
+            "path_params": {},
+            "query_params": {}
+          },
+          "body_template": {
+            "userId": None,
+            "isVisible": 1
+          },
+          "body_field_roles": {
+            "userId": {
+              "role": "context",
+              "source": "access_log.entity_0_userId"
+            },
+            "isVisible": {
+              "role": "static"
+            }
+          },
+          "extract": []
+        },
+        {
+          "id": "main",
+          "label": "授权",
+          "api": {
+            "method": "POST",
+            "pathname": "/estack/api/estack/pegasi/v1/menu/tree",
+            "path_params": {},
+            "query_params": {}
+          },
+          "body_template": {
+            "userId": None,
+            "rootId": "all-resource",
+            "isVisible": 1
+          },
+          "body_field_roles": {
+            "userId": {
+              "role": "context",
+              "source": "access_log.entity_0_userId"
+            },
+            "rootId": {
+              "role": "static"
+            },
+            "isVisible": {
+              "role": "static"
+            }
+          }
+        }
+      ],
+      "requires": [
+        "id"
+      ]
+    },
+    {
+      "action": "get",
+      "label": "搜索验证（授权后）",
+      "api": {
+        "method": "GET",
+        "pathname": "/estack/api/estack/draco/v1/groups",
+        "path_params": {},
+        "query_params": {
+          "pageNum": "1",
+          "pageSize": "10",
+          "tenantId": "$users.entity_list_0_tenantId"
+        }
+      },
+      "body_template": {},
+      "body_field_roles": {},
+      "requires": [
+        "id"
+      ],
+      "assertion": "search_verify",
+      "search_param": "name",
+      "search_param_source": "name"
+    },
+    {
+      "action": "删除用户组",
+      "label": "删除用户组",
       "api": {
         "method": "DELETE",
         "pathname": "/estack/api/estack/draco/v1/groups/batch-delete",
@@ -133,7 +417,7 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": [
-        "85250deb74504ff0ad174d2dd2b195a6"
+        "66f187047dd2471590f699fbfaae5e41"
       ],
       "body_field_roles": {
         "__array_items__": {
@@ -156,7 +440,7 @@ MANIFEST = {
         "query_params": {
           "pageNum": "1",
           "pageSize": "10",
-          "tenantId": "$display_by_role.entity_0_id"
+          "tenantId": "$users.entity_list_0_tenantId"
         }
       },
       "body_template": {},
@@ -188,12 +472,42 @@ MANIFEST = {
           "used_by": [
             "创建用户组"
           ]
-        },
+        }
+      ],
+      "body_template": {},
+      "query_params": {}
+    },
+    {
+      "name": "获取用户列表",
+      "id": "users",
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/tenants/users",
+      "depends_on": [],
+      "extracts": [
         {
-          "name": "entity_0_id",
-          "path": "entity[0].id",
+          "name": "entity_list_0_tenantId",
+          "path": "entity.list[0].tenantId",
           "used_by": [
-            "创建用户组"
+            "创建用户组",
+            "编辑"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {}
+    },
+    {
+      "name": "前置 API: access-log",
+      "id": "access_log",
+      "method": "GET",
+      "pathname": "/estack/api/estack/pegasi/v1/menu/access-log",
+      "depends_on": [],
+      "extracts": [
+        {
+          "name": "entity_0_userId",
+          "path": "entity[0].userId",
+          "used_by": [
+            "*"
           ]
         }
       ],
@@ -202,7 +516,9 @@ MANIFEST = {
     }
   ],
   "pre_api_refs": [
-    "display_by_role"
+    "display_by_role",
+    "users",
+    "access_log"
   ]
 }
 

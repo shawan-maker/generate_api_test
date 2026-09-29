@@ -385,6 +385,16 @@ async def _cleanup_dialogs(page):
     except Exception:
         pass
 
+    # --- Phase 1.5: 清除搜索框（避免过滤干扰后续操作） ---
+    try:
+        search_inputs = await page.query_selector_all('input[placeholder*="搜索"], input[placeholder*="查询"], input[placeholder*="请输入"]')
+        for search_input in search_inputs:
+            if await search_input.is_visible():
+                await search_input.fill("")
+                await page.wait_for_timeout(100)
+    except Exception:
+        pass
+
     # --- Phase 2: 等待表格恢复就绪 ---
     try:
         from lib.wait_helpers import wait_for_table_ready
