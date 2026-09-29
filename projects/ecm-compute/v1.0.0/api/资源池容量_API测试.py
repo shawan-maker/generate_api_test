@@ -1,15 +1,13 @@
 """
 资源池容量_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-24 15:56:55
-目标URL: https://10.151.61.248/estack/web/estack/compute/resource-pool/capacity
+生成时间: 2026-09-28 11:17:14
+目标URL: https://10.151.61.248/estack/web/estack/user-center/project-manage/capacity-manage/resource-pool-capacity
 
 执行流程:
   1. query
   2. 搜索验证（query后）
-  3. 资源池容量
-  4. 搜索验证（资源池容量后）
-  5. 修改容量
-  6. 搜索验证（删除后）
+  3. 修改容量
+  4. 搜索验证（修改容量后）
 """
 
 import sys, json
@@ -26,7 +24,7 @@ MANIFEST = {
     "name": "资源池容量",
     "base_url": "https://10.151.61.248",
     "login_url": "https://10.151.61.248/estack/web/estack/login",
-    "target_url": "https://10.151.61.248/estack/web/estack/compute/resource-pool/capacity"
+    "target_url": "https://10.151.61.248/estack/web/estack/user-center/project-manage/capacity-manage/resource-pool-capacity"
   },
   "response_contract": {
     "envelope_keys": [
@@ -120,25 +118,41 @@ MANIFEST = {
       "search_param_source": "poolOrDataCenterId"
     },
     {
-      "action": "资源池容量",
-      "label": "资源池容量",
+      "action": "修改容量",
+      "label": "修改容量",
       "api": {
         "method": "POST",
-        "pathname": "/estack/api/estack/virgo/v1/capacity/statistics-pool",
+        "pathname": "/estack/api/estack/virgo/v1/capacity/update",
         "path_params": {},
         "query_params": {}
       },
       "body_template": {
-        "poolOrDataCenterId": None,
-        "productNames": []
+        "capacityUpdateReqs": [
+          {
+            "attributeAlias": "MySQL的内存数目GB",
+            "attributeName": "MySQL_MEM",
+            "totalCapacity": 664915
+          },
+          {
+            "attributeAlias": "MySQL的CPU数目个",
+            "attributeName": "MySQL_CPU",
+            "totalCapacity": 664916
+          }
+        ],
+        "poolId": None,
+        "resourceType": None
       },
       "body_field_roles": {
-        "poolOrDataCenterId": {
-          "role": "context",
-          "source": "create_body.poolOrDataCenterId"
-        },
-        "productNames": {
+        "capacityUpdateReqs": {
           "role": "static"
+        },
+        "poolId": {
+          "role": "context",
+          "source": "pools.entity_0_pools_0_poolId"
+        },
+        "resourceType": {
+          "role": "context",
+          "source": "products.entity_0_resourceType"
         }
       },
       "requires": [
@@ -147,7 +161,7 @@ MANIFEST = {
     },
     {
       "action": "post",
-      "label": "搜索验证（资源池容量后）",
+      "label": "搜索验证（修改容量后）",
       "api": {
         "method": "POST",
         "pathname": "/estack/api/estack/virgo/v1/capacity/statistics-pool",
@@ -171,61 +185,6 @@ MANIFEST = {
         "id"
       ],
       "assertion": "search_verify",
-      "search_param": "poolOrDataCenterId",
-      "search_param_source": "poolOrDataCenterId"
-    },
-    {
-      "action": "修改容量",
-      "label": "修改容量",
-      "api": {
-        "method": "POST",
-        "pathname": "/estack/api/estack/virgo/v1/capacity/statistics-pool",
-        "path_params": {},
-        "query_params": {}
-      },
-      "body_template": {
-        "poolOrDataCenterId": None,
-        "productNames": []
-      },
-      "body_field_roles": {
-        "poolOrDataCenterId": {
-          "role": "context",
-          "source": "create_body.poolOrDataCenterId"
-        },
-        "productNames": {
-          "role": "static"
-        }
-      },
-      "requires": [
-        "id"
-      ]
-    },
-    {
-      "action": "post",
-      "label": "搜索验证（删除后）",
-      "api": {
-        "method": "POST",
-        "pathname": "/estack/api/estack/virgo/v1/capacity/statistics-pool",
-        "path_params": {},
-        "query_params": {}
-      },
-      "body_template": {
-        "poolOrDataCenterId": None,
-        "productNames": []
-      },
-      "body_field_roles": {
-        "poolOrDataCenterId": {
-          "role": "context",
-          "source": "create_body.poolOrDataCenterId"
-        },
-        "productNames": {
-          "role": "static"
-        }
-      },
-      "requires": [
-        "id"
-      ],
-      "assertion": "search_not_found",
       "search_param": "poolOrDataCenterId",
       "search_param_source": "poolOrDataCenterId"
     }
@@ -252,10 +211,29 @@ MANIFEST = {
       ],
       "body_template": {},
       "query_params": {}
+    },
+    {
+      "name": "前置 API: products",
+      "id": "products",
+      "method": "GET",
+      "pathname": "/estack/api/estack/virgo/v1/pool-quota-items/products",
+      "depends_on": [],
+      "extracts": [
+        {
+          "name": "entity_0_resourceType",
+          "path": "entity[0].resourceType",
+          "used_by": [
+            "修改容量"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {}
     }
   ],
   "pre_api_refs": [
-    "pools"
+    "pools",
+    "products"
   ]
 }
 

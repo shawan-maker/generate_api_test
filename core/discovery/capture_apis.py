@@ -230,7 +230,10 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
         try:
             # 执行 playbook 中的步骤序列
             steps = op.get("steps", [])
-            # 传递 marker：需要 marker 的情况：
+            # 传递 marker：优先使用操作自己的 marker 字段，否则使用 created_marker
+            # 操作自己的 marker 来自 Stage 1 探测（如从表格提取的 fallback marker）
+            op_marker = op.get("marker") or created_marker
+            # 需要 marker 的情况：
             # 1. 步骤包含 find_row（行级操作定位）
             # 2. 步骤值引用 {marker_name}（如 query 搜索框）
             # 3. 步骤包含 click_row_more（下拉菜单行级操作）
@@ -239,7 +242,7 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
                 or any(s.get("action") == "click_row_more" for s in steps)
                 or any("{marker_name}" in str(s.get("value", "")) for s in steps)
             )
-            pass_marker = created_marker if needs_marker else None
+            pass_marker = op_marker if needs_marker else None
             result = await replay_from_playbook(page, steps, button_driver, pass_marker, interceptor)
 
             # 检查 assert_success 标记（软断言，不影响 marker 提取和 replay_windows）

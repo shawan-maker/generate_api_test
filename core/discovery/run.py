@@ -1673,6 +1673,19 @@ async def main():
         # Stage 1
         if stage in ("1", "all"):
             ui_result = await run_stage1(page, project_dir, args.module, target_url)
+
+            # Stage 1 完成后生成 UI 脚本（基于 playbook）
+            playbook_path = workspace_dir / "kb" / "module_discovered" / f"{args.module}_playbook.json"
+            if playbook_path.exists():
+                try:
+                    from .generate_ui_script import generate_ui_script
+                    with open(playbook_path, 'r', encoding='utf-8') as f:
+                        playbook_data = json.load(f)
+                    ver = args.version or ver_mod.resolve_version(project_dir)
+                    ui_script_path = generate_ui_script(playbook_data, args.module, project_dir, version=ver)
+                    LOG.info(f"  UI 脚本已生成: {ui_script_path}")
+                except Exception as e:
+                    LOG.warning(f"  UI 脚本生成失败: {e}")
         else:
             ui_result = _load_ui_result(project_dir, args.module)
 
@@ -1709,10 +1722,10 @@ async def main():
                     _, script_path, manifest = result
                     LOG.info(f"\n✅ Stage 3+4 完成! 测试脚本: {script_path}")
 
-        # Stage 4.5: 自动运行验证 + 生成报告（默认执行，--no-run 跳过）
+        # Stage 4.5: 只在 Stage 3+4 生成了脚本后才运行（默认执行，--no-run 跳过）
         script_ok = False
         ui_script_ok = False
-        if not args.no_run:
+        if not args.no_run and script_path:
             LOG.info("\n" + "=" * 60)
             LOG.info("Stage 4.5: 自动运行验证 + 生成报告")
             LOG.info("=" * 60)

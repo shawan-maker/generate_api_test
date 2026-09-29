@@ -2,7 +2,7 @@
 """
 用户组管理 - UI 自动化测试脚本
 
-生成时间: 2026-09-24 10:12:34
+生成时间: 2026-09-29 11:09:31
 生成工具: API AI Test Framework - Stage 2
 版本: v1.0.0
 
@@ -51,7 +51,10 @@ CONFIG = {
     },
 }
 
-AVAILABLE_OPERATIONS = ['创建用户组', 'query', '用户组', '批量删除']
+AVAILABLE_OPERATIONS = ['创建用户组', 'query', '编辑', '添加用户', '授权', '删除用户组']
+
+# Playbook 数据内嵌到脚本中（不依赖外部 JSON 文件）
+_PLAYBOOK_JSON = '{"meta": {"module_name": "用户组管理", "target_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/user-group", "base_url": "https://10.151.61.248", "login_url": "https://10.151.61.248/estack/web/estack/login", "framework": "element-ui", "generated_at": "2026-09-29 11:09:31", "version": "1.0", "auth_config": {"token_key": "accessToken", "token_storage": "localStorage", "cookie_token_key": "accessToken"}}, "page_structure": {"hasFixedLeft": true, "hasFixedRight": true, "mainBodyRows": 2, "fixedRightRows": 2, "fixedLeftRows": 2, "columnCount": 6, "operationColumnIndex": 5, "operationColumnLocation": "last", "tableWrappers": [{"cls": "el-table__header-wrapper", "rowCount": 0}, {"cls": "el-table__body-wrapper is-scrolling-none", "rowCount": 2}, {"cls": "el-table__fixed-header-wrapper", "rowCount": 0}, {"cls": "el-table__fixed-body-wrapper", "rowCount": 2}, {"cls": "el-table__fixed-header-wrapper", "rowCount": 0}, {"cls": "el-table__fixed-body-wrapper", "rowCount": 2}]}, "operations": {"创建用户组": {"display_name": "创建用户组", "description": "创建用户组", "role": "create", "steps": [{"action": "click_button", "playwright_locator": "button:has-text(\\"创建用户组\\")", "description": "点击创建按钮"}, {"action": "wait_for_dialog", "playwright_locator": ".el-dialog__wrapper", "interaction_mode": "page-nav", "description": "等待创建对话框"}, {"action": "fill_form", "fields": [{"label": "用户组名称", "playwright_locator": "#app > div > section > section > main > div > div > div:nth-of-type(3) > div > div:nth-of-type(2) > form > div:nth-of-type(2) > div > div:nth-of-type(1) > input", "type": "input", "kb_category": "input-generic", "fill_rule": {"rule": "name_pattern", "params": {"prefix": "test"}}, "is_marker": true}, {"label": "描述", "playwright_locator": "#app > div > section > section > main > div > div > div:nth-of-type(3) > div > div:nth-of-type(2) > form > div:nth-of-type(3) > div > div > textarea:nth-of-type(1)", "type": "textarea", "kb_category": "textarea-generic", "fill_rule": {"rule": "description_pattern", "params": {"prefix": "auto"}}}, {"label": "归属组织", "playwright_locator": ".el-form-item:nth-child(1) .el-select", "type": "select", "kb_category": "el-select", "fill_rule": {}, "is_editable": false, "option_text": "cs-zpw-xuni"}], "description": "填充表单字段"}, {"action": "click_button", "playwright_locator": "button:has-text(\\"确 定\\")", "text": "确 定", "description": "点击提交按钮", "click_strategy": "js"}, {"action": "assert_success", "playwright_locator": ".el-message--success", "description": "验证创建成功"}], "marker": "AT_test_651227", "detection_status": "success", "replayable": true}, "query": {"display_name": "query", "description": "query", "role": "query", "steps": [{"action": "fill_input", "playwright_locator": "input[placeholder=\\"请输入\\"]", "value": "{marker_name}", "description": "搜索框输入: 请输入"}, {"action": "press_key", "key": "Enter", "description": "回车触发搜索"}, {"action": "wait_for_table_ready", "description": "等待表格数据刷新"}], "marker": null, "detection_status": "success", "replayable": true}, "编辑": {"display_name": "编辑", "description": "编辑", "role": "update", "steps": [{"action": "find_row", "description": "定位目标数据行"}, {"action": "click_row_button", "button_text": "编辑", "playwright_locator": "button:has-text(\'编辑\')", "description": "点击行内编辑按钮"}, {"action": "wait_for_dialog", "playwright_locator": ".el-dialog__wrapper", "interaction_mode": "page-nav", "description": "等待编辑对话框"}, {"action": "fill_form", "fields": [{"label": "用户组名称", "playwright_locator": "#app > div > section > section > main > div > div > div:nth-of-type(4) > div > div:nth-of-type(2) > form > div:nth-of-type(1) > div > div:nth-of-type(1) > input", "type": "input", "kb_category": "input-generic", "fill_rule": {"rule": "name_pattern", "params": {"prefix": "test"}}, "is_marker": true}, {"label": "描述", "playwright_locator": "#app > div > section > section > main > div > div > div:nth-of-type(4) > div > div:nth-of-type(2) > form > div:nth-of-type(2) > div > div > textarea:nth-of-type(1)", "type": "textarea", "kb_category": "textarea-generic", "fill_rule": {"rule": "description_pattern", "params": {"prefix": "auto"}}}], "description": "填充编辑表单"}, {"action": "click_button", "playwright_locator": "button:has-text(\\"确 定\\")", "text": "确 定", "description": "点击提交按钮"}, {"action": "assert_success", "playwright_locator": ".el-message--success", "description": "验证更新成功"}], "marker": null, "detection_status": "success", "replayable": false}, "添加用户": {"display_name": "添加用户", "description": "添加用户", "role": "create", "steps": [{"action": "wait_for_dialog", "playwright_locator": ".el-dialog__wrapper", "interaction_mode": "dialog", "description": "等待创建对话框"}, {"action": "assert_success", "playwright_locator": ".el-message--success", "description": "验证创建成功"}], "marker": null, "detection_status": "success", "replayable": true, "nav_info": {"navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/user-group/add-user?group_id=5304b51587c34f769d506779962d629e&name=AT_test_651227&tenantId=42ffdba38c58484f9be2bc1adf1672e6", "depth": 0, "page_title": "eStack Enterprise", "has_form": false, "form_fields": [], "fill_data": {"添加用户": "AT_AT_test_auto_651257"}, "submit_result": {"success": true, "button_text": "确定"}, "error_type": "", "error_text": "", "field_states": [{"label": "添加用户", "type": "transfer", "value": "已选择 (1项) 清空  AT_test_981450 | a*****0@test.com", "isDisabled": false, "hasValue": true, "_diag": "found", "_diagBoxCls": "transfer-box", "_diagRightText": "已选择 (1项) 清空  AT_test_981450 | a*****0@test.com"}]}}, "授权": {"display_name": "授权", "description": "授权", "role": "unknown", "steps": [], "marker": null, "detection_status": "failed", "replayable": false, "error_type": "cross_page_submit_failed", "error_text": "跨页面操作提交失败: 确 定", "nav_info": {"navigated_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/authority-manage/add-authority?tenantId=42ffdba38c58484f9be2bc1adf1672e6&type=userGroupList&rowId=5304b51587c34f769d506779962d629e", "depth": 0, "page_title": "eStack Enterprise", "has_form": false, "form_fields": [], "fill_data": {"授权用户": "AT_AT_test_auto_651304", "授权用户组": "AT_AT_test_auto_651304", "授权角色": "AT_AT_test_auto_651304", "授权范围": "AT_AT_test_auto_651304"}, "submit_result": {"success": false, "button_text": "确 定"}, "error_type": "no_success_signal", "error_text": "提交后未检测到成功提示", "field_states": [{"label": "授权用户", "type": "select", "value": "AT_test_981450, AT_test_981450", "isDisabled": false, "hasValue": true, "isMultiSelect": true}, {"label": "授权用户组", "type": "select", "value": "AT_test_651227, AT_test_651227", "isDisabled": true, "hasValue": true, "isMultiSelect": true}, {"label": "授权角色", "type": "radio", "value": "组织架构", "isDisabled": false, "hasValue": true}]}}, "删除用户组": {"display_name": "删除用户组", "description": "删除用户组", "role": "generic", "steps": [{"action": "find_row", "description": "定位目标数据行"}, {"action": "click_row_more", "item_text": "删除用户组", "expand_strategy": "click", "description": "点击下拉菜单项: 删除用户组"}, {"action": "confirm_dialog", "description": "点击确认对话框"}, {"action": "assert_success", "playwright_locator": ".el-message--success, .el-notification__content:has-text(\'成功\'), [role=\'alert\']:has-text(\'成功\')", "description": "验证操作成功"}], "marker": "AT_test_651227", "detection_status": "success", "replayable": true}}}'
 
 # ==================== Cookie 鉴权 ====================
 
@@ -124,10 +127,10 @@ async def _cleanup_dialogs(page):
 
 # 操作失败原因（由 Stage 1 标记）
 _OPERATION_STATUS = {
-    "用户组": {
+    "授权": {
         "status": "failed",
-        "error_type": "no_confirm_button",
-        "error_text": "用户组 操作未检测到确认弹窗"
+        "error_type": "cross_page_submit_failed",
+        "error_text": "跨页面操作提交失败: 确 定"
     }
 }
 
@@ -137,6 +140,9 @@ async def run_operation(page, operation_name, operations_data, marker=None):
     if not op:
         print(f"⚠️ 操作不存在: {operation_name}")
         return marker, {"operation": operation_name, "status": "failed", "error": "操作不存在", "steps": []}
+
+    # 使用 playbook 中定义的 marker（如果有），否则使用上一个操作传递的 marker
+    op_marker = op.get("marker") or marker
 
     # 跳过 Stage 1 标记为失败的操作
     st = _OPERATION_STATUS.get(operation_name, {})
@@ -161,10 +167,10 @@ async def run_operation(page, operation_name, operations_data, marker=None):
     op_start = time.time()
 
     try:
-        result = await replay_from_playbook(page, steps, button_driver, marker)
+        result = await replay_from_playbook(page, steps, button_driver, op_marker)
         duration = time.time() - op_start
 
-        new_marker = result.get("marker", marker)
+        new_marker = result.get("marker", op_marker)
         # 截图（成功）
         screenshot = None
         try:
@@ -261,13 +267,8 @@ async def main():
     parser.add_argument("--headless", action="store_true", help="无头模式")
     args = parser.parse_args()
 
-    # 加载 playbook
-    playbook_path = Path(__file__).parent / "用户组管理_playbook.json"
-    if not playbook_path.exists():
-        print(f"❌ Playbook 文件不存在: {playbook_path}")
-        return
-    with open(playbook_path, "r", encoding="utf-8") as f:
-        playbook = json.load(f)
+    # 加载 playbook（内嵌在脚本中）
+    playbook = json.loads(_PLAYBOOK_JSON)
 
     operations_data = playbook.get("operations", {})
 

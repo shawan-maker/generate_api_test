@@ -1988,11 +1988,14 @@ def build_manifest(analysis: dict, capture_result: dict,
         # 写操作后验证：基于 HTTP method 判断，不硬编码操作名
         # 检查该 action 对应的端点是否为写操作
         is_write_op = False
+        is_delete_op = False
         if action in core_apis:
             for ep in core_apis[action]:
-                if ep.get("method") in ("POST", "PUT", "PATCH", "DELETE"):
+                method = ep.get("method", "GET")
+                if method in ("POST", "PUT", "PATCH", "DELETE"):
                     is_write_op = True
-                    break
+                if method == "DELETE":
+                    is_delete_op = True
 
         if is_write_op:
             # 优先用 query（列表验证），其次 detail（详情验证）
@@ -2002,12 +2005,12 @@ def build_manifest(analysis: dict, capture_result: dict,
 
                 # 有 search_param → 使用 search_verify/search_not_found
                 if search_param:
-                    if action == last_write_op:
+                    if is_delete_op:
                         plans.append(("query", f"搜索验证（删除后）", "search_not_found"))
                     else:
                         plans.append(("query", f"搜索验证（{action_label}后）", "search_verify"))
                 # 无 search_param → 使用 contains_id/not_contains_id
-                elif action == last_write_op:
+                elif is_delete_op:
                     plans.append(("query", f"查询验证（删除后）", "not_contains_id"))
                 elif action == id_producer:
                     plans.append(("query", f"查询验证（创建后）", "contains_id"))
@@ -2015,7 +2018,7 @@ def build_manifest(analysis: dict, capture_result: dict,
                     plans.append(("query", f"查询验证（{action_label}后）", "contains_id"))
             elif "detail" in verify_endpoints:
                 # 非 create/delete 的写操作可以用 detail 验证
-                if action != id_producer and action != last_write_op:
+                if action != id_producer and not is_delete_op:
                     plans.append(("detail", f"详情验证（{action_label}后）", "field_changed"))
 
         return plans

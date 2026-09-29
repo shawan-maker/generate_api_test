@@ -242,13 +242,13 @@ document.addEventListener('keydown', function(e) {{
     import os
     from pathlib import Path
     # HTML 报告保留在脚本包内（便于拷贝后查看），日志外移到项目 output/
-    # 生成脚本场景：ui/lib/ui_report.py → ui/reports/
-    # 框架内场景：lib/report/ui_report.py → workspace/<project>/output/ui_report/
+    # 生成脚本场景：ui/lib/ui_report.py → ui/reports/{module_name}/
+    # 框架内场景：lib/report/ui_report.py → workspace/<project>/output/ui_report/{module_name}/
     self_path = Path(__file__).resolve()
     parent_dir = self_path.parent.parent  # ui/ 或 report/
     if parent_dir.name == "ui":
-        # 生成脚本场景：ui/lib/ui_report.py → ui/reports/
-        report_dir = parent_dir / "reports"
+        # 生成脚本场景：ui/lib/ui_report.py → ui/reports/{module_name}/
+        report_dir = parent_dir / "reports" / module_name
     else:
         # 框架内场景：lib/report/ui_report.py
         # 从环境变量获取项目名，避免硬编码
@@ -264,7 +264,7 @@ document.addEventListener('keydown', function(e) {{
             if not project_name:
                 # 默认使用 workspace 根目录
                 project_name = "_default"
-        report_dir = self_path.parent.parent.parent / "workspace" / project_name / "output" / "ui_report"
+        report_dir = self_path.parent.parent.parent / "workspace" / project_name / "output" / "ui_report" / module_name
     report_dir.mkdir(parents=True, exist_ok=True)
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")

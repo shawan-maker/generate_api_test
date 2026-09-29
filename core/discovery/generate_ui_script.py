@@ -38,13 +38,8 @@ def generate_ui_script(playbook: dict, module_name: str, project_dir: Path, vers
     # 2. 同步运行时 lib/
     _sync_ui_runtime_lib(ui_dir, project_dir)
 
-    # 3. 输出 playbook 为独立 JSON 文件
-    playbook_path = ui_dir / f"{module_name}_playbook.json"
-    playbook_path.write_text(json.dumps(playbook, ensure_ascii=False, indent=2), encoding="utf-8")
-    LOG.info(f"Playbook 已生成: {playbook_path}")
-
-    # 4. 生成薄主脚本
-    script_content = _render_script(playbook, module_name, playbook_path.name, version)
+    # 3. 生成薄主脚本（playbook 内嵌到脚本中，不生成独立 JSON 文件）
+    script_content = _render_script(playbook, module_name, version)
     script_path = ui_dir / f"{module_name}.py"
     script_path.write_text(script_content, encoding="utf-8")
     LOG.info(f"UI 脚本已生成: {script_path}")
@@ -235,8 +230,8 @@ def _sync_ui_runtime_lib(ui_dir: Path, project_dir: Path):
     LOG.info(f"  UI 运行时同步完成: {len(synced)} 个文件")
 
 
-def _render_script(playbook: dict, module_name: str, playbook_filename: str, version: str) -> str:
-    """渲染薄主脚本"""
+def _render_script(playbook: dict, module_name: str, version: str) -> str:
+    """渲染薄主脚本（playbook 内嵌到脚本中）"""
     meta = playbook.get("meta", {})
     target_url = meta.get("target_url", "")
     base_url = meta.get("base_url", "")
@@ -262,13 +257,17 @@ def _render_script(playbook: dict, module_name: str, playbook_filename: str, ver
     # 提取 Stage 1 标记的操作状态（用于跳过失败操作）
     op_status = {}
     for name, op in operations.items():
-        if op.get("status") == "failed":
+        if op.get("detection_status") == "failed":
             op_status[name] = {
                 "status": "failed",
                 "error_type": op.get("error_type", "unknown"),
                 "error_text": op.get("error_text", ""),
             }
     operation_status_json = json.dumps(op_status, ensure_ascii=False, indent=4)
+
+    # 将 playbook 转换为可嵌入的 Python 字符串表达式
+    # repr() 产出带引号的字符串（含转义），直接作为 Python 赋值右侧使用
+    playbook_json_str = repr(json.dumps(playbook, ensure_ascii=False))
 
     return f'''#!/usr/bin/env python3
 """
@@ -324,6 +323,9 @@ CONFIG = {{
 }}
 
 AVAILABLE_OPERATIONS = {repr(op_names)}
+
+# Playbook 数据内嵌到脚本中（不依赖外部 JSON 文件）
+_PLAYBOOK_JSON = {playbook_json_str}
 
 # ==================== Cookie 鉴权 ====================
 
@@ -404,6 +406,9 @@ async def run_operation(page, operation_name, operations_data, marker=None):
         print(f"⚠️ 操作不存在: {{operation_name}}")
         return marker, {{"operation": operation_name, "status": "failed", "error": "操作不存在", "steps": []}}
 
+    # 使用 playbook 中定义的 marker（如果有），否则使用上一个操作传递的 marker
+    op_marker = op.get("marker") or marker
+
     # 跳过 Stage 1 标记为失败的操作
     st = _OPERATION_STATUS.get(operation_name, {{}})
     if st.get("status") == "failed":
@@ -427,10 +432,10 @@ async def run_operation(page, operation_name, operations_data, marker=None):
     op_start = time.time()
 
     try:
-        result = await replay_from_playbook(page, steps, button_driver, marker)
+        result = await replay_from_playbook(page, steps, button_driver, op_marker)
         duration = time.time() - op_start
 
-        new_marker = result.get("marker", marker)
+        new_marker = result.get("marker", op_marker)
         # 截图（成功）
         screenshot = None
         try:
@@ -527,13 +532,8 @@ async def main():
     parser.add_argument("--headless", action="store_true", help="无头模式")
     args = parser.parse_args()
 
-    # 加载 playbook
-    playbook_path = Path(__file__).parent / "{playbook_filename}"
-    if not playbook_path.exists():
-        print(f"❌ Playbook 文件不存在: {{playbook_path}}")
-        return
-    with open(playbook_path, "r", encoding="utf-8") as f:
-        playbook = json.load(f)
+    # 加载 playbook（内嵌在脚本中）
+    playbook = json.loads(_PLAYBOOK_JSON)
 
     operations_data = playbook.get("operations", {{}})
 

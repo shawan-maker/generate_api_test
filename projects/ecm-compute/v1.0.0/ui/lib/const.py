@@ -79,7 +79,7 @@ ELEMENT_TYPE_MAP = {
 }
 
 # 需要多步操作的组件类型（由 MultiStepExecutor 处理）
-MULTI_STEP_TYPES = ["el-select", "el-cascader", "date-picker"]
+MULTI_STEP_TYPES = ["el-select", "el-cascader", "date-picker", "list-selector"]
 
 # ============================================================
 # 统一 Locator 增强 — 隐藏过滤器
@@ -145,11 +145,6 @@ STATE_LIKE_VALUES = set()
 # ============================================================
 # Stage 3: 依赖注入字段名
 # ============================================================
-# 只保留通用 ID 字段，业务特定字段（tenantId, roleId, policyId 等）
-# 通过策略 1（精确值匹配）自动发现，不再硬编码
-COMMON_ID_FIELDS = [
-    "id", "ids", "accessKeyId",
-]
 
 
 # ============================================================

@@ -2,7 +2,7 @@
 """
 角色管理 - UI 自动化测试脚本
 
-生成时间: 2026-09-24 09:57:12
+生成时间: 2026-09-29 11:11:51
 生成工具: API AI Test Framework - Stage 2
 版本: v1.0.0
 
@@ -52,6 +52,9 @@ CONFIG = {
 }
 
 AVAILABLE_OPERATIONS = ['创建角色', 'query', '编辑', '删除']
+
+# Playbook 数据内嵌到脚本中（不依赖外部 JSON 文件）
+_PLAYBOOK_JSON = '{"meta": {"module_name": "角色管理", "target_url": "https://10.151.61.248/estack/web/estack/user-center/user-manage/role", "base_url": "https://10.151.61.248", "login_url": "https://10.151.61.248/estack/web/estack/login", "framework": "element-ui", "generated_at": "2026-09-29 11:11:51", "version": "1.0", "auth_config": {"token_key": "accessToken", "token_storage": "localStorage", "cookie_token_key": "accessToken"}}, "page_structure": {"hasFixedLeft": true, "hasFixedRight": true, "mainBodyRows": 10, "fixedRightRows": 10, "fixedLeftRows": 10, "columnCount": 7, "operationColumnIndex": 6, "operationColumnLocation": "last", "tableWrappers": [{"cls": "el-table__header-wrapper", "rowCount": 0}, {"cls": "el-popover__reference-wrapper", "rowCount": 0}, {"cls": "el-popover__reference-wrapper", "rowCount": 0}, {"cls": "el-table__body-wrapper is-scrolling-none", "rowCount": 10}, {"cls": "el-table__fixed-header-wrapper", "rowCount": 0}, {"cls": "el-popover__reference-wrapper", "rowCount": 0}, {"cls": "el-popover__reference-wrapper", "rowCount": 0}, {"cls": "el-table__fixed-body-wrapper", "rowCount": 10}, {"cls": "el-table__fixed-header-wrapper", "rowCount": 0}, {"cls": "el-popover__reference-wrapper", "rowCount": 0}]}, "operations": {"创建角色": {"display_name": "创建角色", "description": "创建角色", "role": "create", "steps": [{"action": "click_button", "playwright_locator": "button:has-text(\\"创建角色\\")", "description": "点击创建按钮"}, {"action": "wait_for_dialog", "playwright_locator": ".el-dialog__wrapper", "interaction_mode": "page-nav", "description": "等待创建对话框"}, {"action": "fill_form", "fields": [{"label": "角色名称", "playwright_locator": "#app > div > section > section > main > div > div > div:nth-of-type(2) > div > form > div:nth-of-type(2) > div > div:nth-of-type(1) > input", "type": "input", "kb_category": "input-generic", "fill_rule": {"rule": "name_pattern", "params": {"prefix": "test"}}, "is_marker": true}, {"label": "描述", "playwright_locator": "#app > div > section > section > main > div > div > div:nth-of-type(2) > div > form > div:nth-of-type(4) > div > div > textarea:nth-of-type(1)", "type": "textarea", "kb_category": "textarea-generic", "fill_rule": {"rule": "description_pattern", "params": {"prefix": "auto"}}}, {"label": "策略内容", "playwright_locator": ".el-form-item:nth-child(8) .el-select", "type": "select", "kb_category": "el-select", "fill_rule": {}, "is_editable": true, "option_text": "WORKFLOW(工作流)"}, {"label": "产品/服务", "playwright_locator": ".el-form-item:nth-child(2) .el-select", "type": "select", "kb_category": "el-select", "fill_rule": {}, "is_editable": false, "option_text": "WORKFLOW(工作流)"}, {"label": "关联菜单", "playwright_locator": ".el-form-item:nth-child(10) .el-checkbox", "type": "form-checkbox", "kb_category": "form-checkbox", "fill_rule": {}, "is_editable": false, "option_text": ""}, {"label": "角色范畴", "playwright_locator": ".el-form-item:nth-child(4) .el-radio-group", "type": "radio", "kb_category": "radio", "fill_rule": {}, "option_text": ""}, {"label": "配置模式", "playwright_locator": ".el-form-item:nth-child(7) .el-radio-group", "type": "radio", "kb_category": "radio", "fill_rule": {}, "option_text": ""}, {"label": "效果", "playwright_locator": ".el-form-item:nth-child(1) .el-radio-group", "type": "radio", "kb_category": "radio", "fill_rule": {}, "option_text": ""}, {"label": "操作", "playwright_locator": ".el-form-item:nth-child(3) .el-radio-group", "type": "radio", "kb_category": "radio", "fill_rule": {}, "option_text": ""}], "description": "填充表单字段"}, {"action": "click_button", "playwright_locator": "button:has-text(\\"确定\\")", "text": "确定", "description": "点击提交按钮", "click_strategy": "js"}, {"action": "assert_success", "playwright_locator": ".el-message--success", "description": "验证创建成功"}], "marker": "AT_test_651406", "detection_status": "success", "replayable": true}, "query": {"display_name": "query", "description": "query", "role": "query", "steps": [{"action": "fill_input", "playwright_locator": "input[placeholder=\\"按角色名称搜索\\"]", "value": "{marker_name}", "description": "搜索框输入: 按角色名称搜索"}, {"action": "press_key", "key": "Enter", "description": "回车触发搜索"}, {"action": "wait_for_table_ready", "description": "等待表格数据刷新"}], "marker": null, "detection_status": "success", "replayable": true}, "编辑": {"display_name": "编辑", "description": "编辑", "role": "update", "steps": [{"action": "find_row", "description": "定位目标数据行"}, {"action": "click_row_button", "button_text": "编辑", "playwright_locator": "button:has-text(\'编辑\')", "description": "点击行内编辑按钮"}, {"action": "wait_for_dialog", "playwright_locator": ".el-dialog__wrapper", "interaction_mode": "page-nav", "description": "等待编辑对话框"}, {"action": "fill_form", "fields": [{"label": "角色名称", "playwright_locator": "#app > div > section > section > main > div > div > div:nth-of-type(2) > div > div:nth-of-type(3) > div > div:nth-of-type(2) > form > div:nth-of-type(1) > div > div:nth-of-type(1) > input", "type": "input", "kb_category": "input-generic", "fill_rule": {"rule": "name_pattern", "params": {"prefix": "test"}}, "is_marker": true}, {"label": "描述", "playwright_locator": "#app > div > section > section > main > div > div > div:nth-of-type(2) > div > div:nth-of-type(3) > div > div:nth-of-type(2) > form > div:nth-of-type(2) > div > div > textarea:nth-of-type(1)", "type": "textarea", "kb_category": "textarea-generic", "fill_rule": {"rule": "description_pattern", "params": {"prefix": "auto"}}}], "description": "填充编辑表单"}, {"action": "click_button", "playwright_locator": "button:has-text(\\"确 定\\")", "text": "确 定", "description": "点击提交按钮"}, {"action": "assert_success", "playwright_locator": ".el-message--success", "description": "验证更新成功"}], "marker": null, "detection_status": "success", "replayable": false}, "删除": {"display_name": "删除", "description": "删除", "role": "delete", "steps": [{"action": "find_row", "description": "定位目标数据行"}, {"action": "click_button", "text": "删除", "playwright_locator": "button:has-text(\'删除\')", "description": "点击删除按钮"}, {"action": "confirm_dialog", "description": "点击确认对话框"}, {"action": "assert_row_disappeared", "description": "验证数据行已消失"}], "marker": "AT_test_651406", "detection_status": "success", "replayable": true}}}'
 
 # ==================== Cookie 鉴权 ====================
 
@@ -132,6 +135,9 @@ async def run_operation(page, operation_name, operations_data, marker=None):
         print(f"⚠️ 操作不存在: {operation_name}")
         return marker, {"operation": operation_name, "status": "failed", "error": "操作不存在", "steps": []}
 
+    # 使用 playbook 中定义的 marker（如果有），否则使用上一个操作传递的 marker
+    op_marker = op.get("marker") or marker
+
     # 跳过 Stage 1 标记为失败的操作
     st = _OPERATION_STATUS.get(operation_name, {})
     if st.get("status") == "failed":
@@ -155,10 +161,10 @@ async def run_operation(page, operation_name, operations_data, marker=None):
     op_start = time.time()
 
     try:
-        result = await replay_from_playbook(page, steps, button_driver, marker)
+        result = await replay_from_playbook(page, steps, button_driver, op_marker)
         duration = time.time() - op_start
 
-        new_marker = result.get("marker", marker)
+        new_marker = result.get("marker", op_marker)
         # 截图（成功）
         screenshot = None
         try:
@@ -255,13 +261,8 @@ async def main():
     parser.add_argument("--headless", action="store_true", help="无头模式")
     args = parser.parse_args()
 
-    # 加载 playbook
-    playbook_path = Path(__file__).parent / "角色管理_playbook.json"
-    if not playbook_path.exists():
-        print(f"❌ Playbook 文件不存在: {playbook_path}")
-        return
-    with open(playbook_path, "r", encoding="utf-8") as f:
-        playbook = json.load(f)
+    # 加载 playbook（内嵌在脚本中）
+    playbook = json.loads(_PLAYBOOK_JSON)
 
     operations_data = playbook.get("operations", {})
 

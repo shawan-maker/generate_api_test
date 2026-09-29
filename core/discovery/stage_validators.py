@@ -313,9 +313,11 @@ def validate_stage4(script_content: str, script_path: str) -> Tuple[bool, List[s
 
         if '"extract":' not in script_content:
             issues.append("manifest 缺少 id_producer 步骤（无 extract 字段）")
-        # 删除验证：支持 not_contains_id 或 search_not_found 两种断言
-        if '"not_contains_id"' not in script_content and '"search_not_found"' not in script_content:
-            issues.append("manifest 缺少 delete 验证（无 not_contains_id 或 search_not_found）")
+        # 删除验证：仅在 manifest 包含 DELETE 方法时才要求
+        has_delete_method = '"DELETE"' in script_content or '"method": "DELETE"' in script_content
+        if has_delete_method:
+            if '"not_contains_id"' not in script_content and '"search_not_found"' not in script_content:
+                issues.append("manifest 缺少 delete 验证（无 not_contains_id 或 search_not_found）")
 
     # 判断是否通过
     is_valid = len(issues) == 0

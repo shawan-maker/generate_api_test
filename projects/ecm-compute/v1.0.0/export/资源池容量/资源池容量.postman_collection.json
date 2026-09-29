@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "f02f5786-e490-46d4-9786-c43af0f438c6",
+    "_postman_id": "919da7dd-2d3b-44b6-bb45-606615ad4b6c",
     "name": "资源池容量 API 测试",
     "description": "由 module_discovery Stage 5 自动导出",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -16,6 +16,12 @@
       "value": "",
       "type": "string",
       "description": "由 前置 API: pools 提取"
+    },
+    {
+      "key": "entity_0_resourceType",
+      "value": "",
+      "type": "string",
+      "description": "由 前置 API: products 提取"
     }
   ],
   "item": [
@@ -58,6 +64,43 @@
               }
             }
           ]
+        },
+        {
+          "name": "unknown",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Status OK', function() {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "var entity_0_resourceType = jsonData.entity[0].resourceType;",
+                  "if (entity_0_resourceType !== undefined) pm.environment.set('entity_0_resourceType', entity_0_resourceType);"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -91,7 +134,25 @@
               }
             }
           },
-          "response": []
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Status OK', function() {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "var createdId = jsonData.entity[0].poolId;",
+                  "if (createdId) pm.environment.set('id', createdId);",
+                  ""
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "02_搜索验证（query后）",
@@ -112,7 +173,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"poolOrDataCenterId\": \"{{entity_0_pools_0_poolId}}\",\n  \"productNames\": []\n}",
+              "raw": "{\n  \"poolOrDataCenterId\": \"{{poolOrDataCenterId}}\",\n  \"productNames\": []\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -123,7 +184,36 @@
           "response": []
         },
         {
-          "name": "03_资源池容量",
+          "name": "03_修改容量",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/virgo/v1/capacity/update"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"capacityUpdateReqs\": [\n    {\n      \"attributeAlias\": \"MySQL的内存数目GB\",\n      \"attributeName\": \"MySQL_MEM\",\n      \"totalCapacity\": 664915\n    },\n    {\n      \"attributeAlias\": \"MySQL的CPU数目个\",\n      \"attributeName\": \"MySQL_CPU\",\n      \"totalCapacity\": 664916\n    }\n  ],\n  \"poolId\": \"{{entity_0_pools_0_poolId}}\",\n  \"resourceType\": \"{{entity_0_resourceType}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "04_搜索验证（修改容量后）",
           "request": {
             "method": "POST",
             "header": [
@@ -141,94 +231,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"poolOrDataCenterId\": \"{{entity_0_pools_0_poolId}}\",\n  \"productNames\": []\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "04_搜索验证（资源池容量后）",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/estack/api/estack/virgo/v1/capacity/statistics-pool"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"poolOrDataCenterId\": \"{{entity_0_pools_0_poolId}}\",\n  \"productNames\": []\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "05_修改容量",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/estack/api/estack/virgo/v1/capacity/statistics-pool"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"poolOrDataCenterId\": \"{{entity_0_pools_0_poolId}}\",\n  \"productNames\": []\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "06_搜索验证（删除后）",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/estack/api/estack/virgo/v1/capacity/statistics-pool"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"poolOrDataCenterId\": \"{{entity_0_pools_0_poolId}}\",\n  \"productNames\": []\n}",
+              "raw": "{\n  \"poolOrDataCenterId\": \"{{poolOrDataCenterId}}\",\n  \"productNames\": []\n}",
               "options": {
                 "raw": {
                   "language": "json"

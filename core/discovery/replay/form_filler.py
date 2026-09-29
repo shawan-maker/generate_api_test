@@ -42,9 +42,13 @@ class FormFiller:
             self._executor = MultiStepExecutor(self.page, self._kb, framework)
         return self._executor
 
-    async def scan_form_fields_v2(self) -> List[Dict]:
-        """扫描表单字段（v2 版本，返回完整结构含 selector + kb_category）"""
-        fields = await scan_form_fields(self.page)
+    async def scan_form_fields_v2(self, scope_selector: str = "") -> List[Dict]:
+        """扫描表单字段（v2 版本，返回完整结构含 selector + kb_category）
+
+        Args:
+            scope_selector: 可选，限定搜索范围的 CSS 选择器（如 '.el-drawer:not([style*="display: none"])'）
+        """
+        fields = await scan_form_fields(self.page, scope_selector=scope_selector)
         # 保留完整字段结构，含 kb_category
         result = []
         for f in fields:
@@ -58,6 +62,13 @@ class FormFiller:
             }
             if f.get("firstOptionText"):
                 entry["firstOptionText"] = f["firstOptionText"]
+            # ★ 透传 placeholder、thead_label、visible_index，用于跨会话稳定定位
+            if f.get("placeholder"):
+                entry["placeholder"] = f["placeholder"]
+            if f.get("thead_label"):
+                entry["thead_label"] = f["thead_label"]
+            if f.get("visible_index") is not None:
+                entry["visible_index"] = f["visible_index"]
             result.append(entry)
         return result
 
@@ -97,23 +108,300 @@ class FormFiller:
                 continue
 
             # radio 类型：点击第一个选项（默认选中即可）
+            # 注意：Element UI + Vue 需要正确的事件序列才能更新 v-model
+            # 策略：Playwright click → 检查 Vue 状态 → 如失败则用 Vue 2 内部 API 强制更新
             if kb_category == "radio" or field_type == "radio":
                 try:
                     first_text = field.get("firstOptionText", "")
                     if first_text:
                         from .locator_helpers import safe_css
-                        radio_label = self.page.locator(
+                        import json as _json
+
+                        # 第一次尝试：Playwright click wrapper
+                        radio_wrapper = self.page.locator(
                             safe_css(
-                                f'.el-radio-group .el-radio-button__inner:has-text("{first_text}"), '
-                                f'.el-radio-group .el-radio__label:has-text("{first_text}")'
+                                f'.el-radio-group .el-radio:has-text("{first_text}"), '
+                                f'.el-radio-group .el-radio-button:has-text("{first_text}")'
                             )
                         ).first
-                        if await radio_label.count() > 0:
-                            await radio_label.click()
+
+                        if await radio_wrapper.count() > 0:
+                            await radio_wrapper.click()
+                            await self.page.wait_for_timeout(300)
+
+                            # 检查 Vue v-model 是否更新
+                            # 注意：el-radio-button 用 is-active，el-radio 用 is-checked
+                            vue_check = await self.page.evaluate("""(text) => {
+                                const radios = document.querySelectorAll('.el-radio, .el-radio-button');
+                                for (const radio of radios) {
+                                    if (radio.textContent.includes(text)) {
+                                        const input = radio.querySelector('input[type="radio"]');
+                                        const isRadioBtn = radio.classList.contains('el-radio-button');
+                                        return {
+                                            inputChecked: input ? input.checked : false,
+                                            hasIsChecked: radio.classList.contains('is-checked'),
+                                            hasIsActive: radio.classList.contains('is-active'),
+                                            isRadioButton: isRadioBtn,
+                                            radioClass: radio.className,
+                                            inputValue: input ? input.value : null
+                                        };
+                                    }
+                                }
+                                return null;
+                            }""", first_text)
+
+                            LOG.info(f"    Radio 点击后 Vue 状态: {vue_check}")
+
+                            # 始终使用 __vue__ API 强制更新 v-model
+                            # 因为 DOM class (is-active/is-checked) 不等于 Vue v-model 更新
+                            LOG.info(f"    使用 __vue__ API 强制更新 radio v-model")
+                            vue_update_result = await self.page.evaluate("""async (text) => {
+                                const result = { found: false, methods: [] };
+                                const radios = document.querySelectorAll('.el-radio, .el-radio-button');
+                                for (const radio of radios) {
+                                    if (radio.textContent.includes(text)) {
+                                        const input = radio.querySelector('input[type="radio"]');
+                                        if (!input) { result.error = 'no input'; return result; }
+
+                                        result.found = true;
+                                        result.inputValue = input.value;
+
+                                        // 找到 radio-group 父元素
+                                        const radioGroup = radio.closest('.el-radio-group');
+                                        if (!radioGroup) { result.error = 'no radioGroup'; return result; }
+
+                                        // 获取 Vue 实例
+                                        const vueGroup = radioGroup.__vue__;
+                                        if (!vueGroup) { result.error = 'no __vue__'; return result; }
+
+                                        // 记录更新前的值
+                                        result.beforeValue = vueGroup.value;
+
+                                        const targetValue = input.value;
+
+                                        // 方法 1: 直接设置 value 属性
+                                        vueGroup.value = targetValue;
+                                        result.methods.push('set_value');
+
+                                        // 方法 2: $emit input 事件
+                                        vueGroup.$emit('input', targetValue);
+                                        result.methods.push('emit_input');
+
+                                        // 方法 3: 触发 radio 组件的 handleChange
+                                        const radioVue = radio.__vue__;
+                                        if (radioVue && typeof radioVue.handleChange === 'function') {
+                                            radioVue.handleChange();
+                                            result.methods.push('handleChange');
+                                        }
+
+                                        // 方法 4: $forceUpdate
+                                        vueGroup.$forceUpdate();
+                                        result.methods.push('forceUpdate');
+
+                                        // 记录更新后的值
+                                        result.afterValue = vueGroup.value;
+
+                                        // 向上查找 form-item 的 Vue 实例，触发 validate
+                                        const formItem = radioGroup.closest('.el-form-item');
+                                        if (formItem && formItem.__vue__) {
+                                            formItem.__vue__.$emit('el.form.change', targetValue);
+                                            result.methods.push('form_change');
+                                        }
+
+                                        // 向上遍历 $parent 链，找到页面组件的 form model
+                                        // ElForm 的 $data 只有 ['fields', 'potentialLabelWidthArr']
+                                        // 页面组件的 $data 包含实际的表单字段
+                                        let current = vueGroup.$parent;
+                                        let depth = 0;
+                                        result.parentChain = [];
+
+                                        // 首先获取 formItem 的 prop，这是最精确的匹配
+                                        const propAttr = formItem ? formItem.getAttribute('prop') : null;
+                                        result.formItemProp = propAttr;
+
+                                        while (current && depth < 10) {
+                                            const componentName = current.$options && current.$options.name ? current.$options.name : 'anonymous';
+                                            const dataKeys = current.$data ? Object.keys(current.$data) : [];
+                                            result.parentChain.push({
+                                                name: componentName,
+                                                dataKeys: dataKeys.slice(0, 10),
+                                                depth: depth
+                                            });
+
+                                            // 跳过 Element UI 内部组件
+                                            if (componentName && componentName.startsWith('El')) {
+                                                current = current.$parent;
+                                                depth++;
+                                                continue;
+                                            }
+
+                                            // 查找包含表单数据的组件
+                                            // 通常页面组件会有 form、formData、model 等字段
+                                            const hasFormData = dataKeys.some(k =>
+                                                k.toLowerCase().includes('form') ||
+                                                k.toLowerCase().includes('model') ||
+                                                k.toLowerCase().includes('data')
+                                            );
+
+                                            if (hasFormData && dataKeys.length > 2) {
+                                                // 找到页面组件，更新其 form model
+                                                result.pageComponent = componentName;
+                                                result.pageComponentKeys = dataKeys;
+
+                                                // 尝试更新各种常见的 form model 字段名
+                                                const formFields = ['form', 'formData', 'model', 'formModel', 'ruleForm', 'data'];
+                                                for (const field of formFields) {
+                                                    if (current.$data && current.$data[field]) {
+                                                        const formObj = current.$data[field];
+                                                        if (typeof formObj === 'object' && formObj !== null) {
+                                                            // 记录 formObj 的 keys 用于诊断
+                                                            result[field + '_keys'] = Object.keys(formObj);
+
+                                                            // 策略 1: 如果 formItem 有 prop 属性，直接匹配
+                                                            if (propAttr && propAttr in formObj) {
+                                                                const oldValue = formObj[propAttr];
+                                                                formObj[propAttr] = targetValue;
+                                                                result.updatedField = field + '.' + propAttr;
+                                                                result.oldValue = oldValue;
+                                                                result.newValue = targetValue;
+                                                                result.matchStrategy = 'prop_exact';
+                                                                result.methods.push('page_form_update');
+                                                                break;
+                                                            }
+
+                                                            // 策略 2: 用 radio 选项文本匹配字段名
+                                                            const labelLower = (text || '').toLowerCase();
+                                                            const formKeys = Object.keys(formObj);
+                                                            let matched = false;
+
+                                                            for (const key of formKeys) {
+                                                                const keyLower = key.toLowerCase();
+                                                                // 精确匹配：key 完全包含在 label 中，或 label 完全包含在 key 中
+                                                                if (keyLower === labelLower ||
+                                                                    keyLower.includes(labelLower) ||
+                                                                    (labelLower.length > 2 && labelLower.includes(keyLower))) {
+                                                                    const oldValue = formObj[key];
+                                                                    formObj[key] = targetValue;
+                                                                    result.updatedField = field + '.' + key;
+                                                                    result.oldValue = oldValue;
+                                                                    result.newValue = targetValue;
+                                                                    result.matchStrategy = 'label_fuzzy';
+                                                                    result.methods.push('page_form_update');
+                                                                    matched = true;
+                                                                    break;
+                                                                }
+                                                            }
+
+                                                            if (matched) break;
+                                                        }
+                                                    }
+                                                }
+
+                                                // 使用 Vue.$nextTick 确保在响应式更新后清除验证
+                                                // 返回 Promise，Playwright 会等待它完成
+                                                await new Promise((resolve) => {
+                                                    vueGroup.$nextTick(() => {
+                                                        // 清除所有 ElFormItem 的验证状态
+                                                        const allFormItems = document.querySelectorAll('.el-form-item');
+                                                        allFormItems.forEach(fi => {
+                                                            if (fi.__vue__) {
+                                                                fi.__vue__.validateState = 'success';
+                                                                fi.__vue__.validateMessage = '';
+                                                            }
+                                                        });
+                                                        result.methods.push('nextTick_formItems_clear');
+
+                                                        // 向上找 ElForm 并清除验证
+                                                        let searchVue = vueGroup.$parent;
+                                                        let sd = 0;
+                                                        while (searchVue && sd < 15) {
+                                                            if (searchVue.$options && searchVue.$options.name === 'ElForm') {
+                                                                searchVue.validateOnRuleChange = false;
+                                                                if (typeof searchVue.clearValidate === 'function') {
+                                                                    searchVue.clearValidate();
+                                                                    result.methods.push('nextTick_form_clearValidate');
+                                                                }
+                                                                break;
+                                                            }
+                                                            searchVue = searchVue.$parent;
+                                                            sd++;
+                                                        }
+                                                        resolve();
+                                                    });
+                                                });
+
+                                                break;
+                                            }
+
+                                            current = current.$parent;
+                                            depth++;
+                                        }
+
+                                        break;
+                                    }
+                                }
+                                return result;
+                            }""", first_text)
+                            LOG.info(f"    Vue v-model 更新结果: {vue_update_result}")
+
                             filled += 1
                             LOG.info(f"    选择 radio: {label} = {first_text}")
+
+                            # radio 级联：检测动态组件并自动处理
+                            await self.page.wait_for_timeout(1000)  # 等待动态组件渲染
+
+                            # 检测新增 form fields
+                            try:
+                                post_fields = await scan_form_fields(self.page)
+                                current_labels = {f['label'] for f in fields}
+                                new_fields = [f for f in post_fields if f['label'] not in current_labels]
+                                if new_fields:
+                                    LOG.info(f"    [radio-cascade] 新增 {len(new_fields)} 个字段")
+                            except Exception:
+                                pass
+
+                            # 检测 transfer-box 是否需要选择（如"授权"选择"组织架构"后）
+                            # 如果右侧面板为空（无选择），则执行选择
+                            try:
+                                right_panel_status = await self.page.evaluate("""() => {
+                                    const rightPanel = document.querySelector('[class*="transfer-box-right"]');
+                                    if (!rightPanel) return { exists: false, hasSelection: false };
+                                    const r = rightPanel.getBoundingClientRect();
+                                    if (r.width <= 0 || r.height <= 0) return { exists: false, hasSelection: false };
+
+                                    const text = rightPanel.textContent || '';
+                                    const hasNoData = text.includes('暂无数据');
+                                    const hasSelection = !hasNoData && (text.includes('已选择') || text.includes('已选项'));
+
+                                    return { exists: true, hasSelection };
+                                }""")
+
+                                if right_panel_status.get('exists') and not right_panel_status.get('hasSelection'):
+                                    LOG.info(f"    [radio-cascade] transfer-box 需要选择")
+                                    executor = self._get_executor()
+                                    success = await executor._execute_list_selector(label, "", None, "")
+                                    if success:
+                                        LOG.info(f"    [radio-cascade] transfer-box 选择成功")
+                                    else:
+                                        LOG.warning(f"    [radio-cascade] transfer-box 选择失败")
+                            except Exception:
+                                pass
+
+                        else:
+                            # 回退：直接点击 label
+                            radio_label = self.page.locator(
+                                safe_css(
+                                    f'.el-radio-group .el-radio-button__inner:has-text("{first_text}"), '
+                                    f'.el-radio-group .el-radio__label:has-text("{first_text}")'
+                                )
+                            ).first
+                            if await radio_label.count() > 0:
+                                await radio_label.click()
+                                filled += 1
+                                LOG.info(f"    选择 radio: {label} = {first_text} (label fallback)")
+
                 except Exception as e:
-                    LOG.debug(f"选择 radio {label} 失败: {e}")
+                    LOG.error(f"选择 radio {label} 失败: {e}", exc_info=True)
                 continue
 
             # 查找匹配的填充值
@@ -177,6 +465,9 @@ class FormFiller:
         优先使用 field 中的 selector（来自 Stage 1），KB XPath 作为回退。
         旧版 select_dropdowns() 作为兜底保留。
 
+        支持级联字段：第一轮填充后，对 no_options 的字段等待 1 秒后重试第二轮
+        （上游字段填充后，下游字段的 API 可能已加载完成）。
+
         Args:
             fields: scan_form_fields_v2() 返回的字段列表
             framework: UI 框架
@@ -190,7 +481,9 @@ class FormFiller:
         executor = self._get_executor(framework)
         filled = 0
         details = []
+        no_options_fields = []  # 第一轮无选项的字段，等待后重试
 
+        # === 第一轮：填充所有字段 ===
         for field in fields:
             kb_cat = field.get("kb_category", "")
             if kb_cat not in const.MULTI_STEP_TYPES and kb_cat != "form-checkbox":
@@ -199,7 +492,6 @@ class FormFiller:
             label = field.get("label", "")
             selector = field.get("selector") or field.get("playwright_locator", "")
 
-            # 传入 selector，优先使用
             success, detail = await executor.execute_with_details(kb_cat, label, option_text="", selector=selector)
 
             if success:
@@ -213,18 +505,53 @@ class FormFiller:
                 })
                 LOG.info(f"    ✅ multi_step: {label} ({kb_cat})")
             elif detail.get("skipped_reason") == "no_options":
-                # 非必填且无可选选项，跳过但不算失败
-                details.append({
-                    "label": label,
-                    "kb_category": kb_cat,
-                    "selector": selector,
-                    "is_editable": detail.get("is_editable", False),
-                    "option_text": "",
-                    "skipped_reason": "no_options",
+                # 记录 no_options 字段，第二轮重试
+                no_options_fields.append({
+                    "field": field,
+                    "detail": {
+                        "label": label,
+                        "kb_category": kb_cat,
+                        "selector": selector,
+                        "is_editable": detail.get("is_editable", False),
+                        "option_text": "",
+                        "skipped_reason": "no_options",
+                    },
                 })
-                LOG.info(f"    ⏭️ multi_step 跳过(无选项): {label} ({kb_cat})")
+                LOG.info(f"    ⏭️ multi_step 第一轮跳过(无选项): {label} ({kb_cat})")
             else:
                 LOG.warning(f"    ⚠️ multi_step 失败: {label} ({kb_cat})")
+
+        # === 第二轮：重试 no_options 的字段 ===
+        if no_options_fields:
+            LOG.info(f"    等待 1 秒后重试 {len(no_options_fields)} 个无选项字段...")
+            await self.page.wait_for_timeout(1000)
+
+            for item in no_options_fields:
+                field = item["field"]
+                prev_detail = item["detail"]
+                kb_cat = prev_detail["kb_category"]
+                label = prev_detail["label"]
+                selector = prev_detail["selector"]
+
+                success, detail = await executor.execute_with_details(kb_cat, label, option_text="", selector=selector)
+
+                if success:
+                    filled += 1
+                    details.append({
+                        "label": label,
+                        "kb_category": kb_cat,
+                        "selector": selector,
+                        "is_editable": detail.get("is_editable", False),
+                        "option_text": detail.get("option_text", ""),
+                    })
+                    LOG.info(f"    ✅ multi_step 第二轮成功: {label} ({kb_cat})")
+                else:
+                    # 仍然失败，保留第一轮的结果
+                    details.append(prev_detail)
+                    if detail.get("skipped_reason") == "no_options":
+                        LOG.info(f"    ⏭️ multi_step 第二轮仍无选项: {label} ({kb_cat})")
+                    else:
+                        LOG.warning(f"    ⚠️ multi_step 第二轮失败: {label} ({kb_cat})")
 
         return filled, details
 
@@ -303,7 +630,7 @@ class FormFiller:
         from .. import const
 
         # 标识字段：基于字段特征判断（不硬编码模块特定字段名）
-        # 跳过 ID 类、编码类、只读字段
+        # 跳过 ID 类、编码类、名称类、只读字段
         def _is_identifier(label: str, field: dict) -> bool:
             label_lower = label.lower()
             if field.get("readonly") or field.get("disabled"):
@@ -312,13 +639,21 @@ class FormFiller:
                 return True
             if any(kw in label_lower for kw in ["code", "编码", "编号", "account", "账号"]):
                 return True
+            # 名称/用户名类字段不应在编辑时修改（会破坏后续搜索）
+            if any(kw in label_lower for kw in ["名称", "name", "用户名", "username"]):
+                return True
             return False
 
         # 可编辑字段：基于字段类型和通用模式判断
         def _is_editable(label: str, field: dict) -> bool:
             label_lower = label.lower()
             field_type = field.get("type", "input")
+            input_type = field.get("inputType", "text")
+
             if field_type == "textarea":
+                return True
+            # number 类型默认可编辑
+            if input_type == "number":
                 return True
             if any(kw in label_lower for kw in ["描述", "备注", "说明", "remark", "description", "memo", "note", "comment"]):
                 return True
@@ -350,19 +685,34 @@ class FormFiller:
             elif not modifications:
                 # 自动模式：选择可编辑字段
                 if _is_editable(label, field):
-                    value = f"auto_edited_{ts}"
+                    if field.get("inputType") == "number":
+                        value = ts  # 纯数值字符串
+                    else:
+                        value = f"auto_edited_{ts}"
 
             if not value:
                 continue
 
             try:
                 from .locator_helpers import safe_css
+                input_type = field.get("inputType", "text")
+
                 if selector:
                     enhanced = safe_css(selector)
-                    await self.page.fill(enhanced, "", timeout=3000)
-                    await self.page.fill(enhanced, value, timeout=3000)
-                    filled += 1
-                    LOG.info(f"    编辑字段: {label} = {value}")
+                    if input_type == "number":
+                        # el-input-number：点击聚焦 → 清空 → 键入数值 → Tab 触发 blur
+                        await self.page.click(enhanced, timeout=3000)
+                        await self.page.keyboard.press("Control+A")
+                        await self.page.keyboard.press("Backspace")
+                        await self.page.keyboard.type(str(value), delay=50)
+                        await self.page.keyboard.press("Tab")
+                        filled += 1
+                        LOG.info(f"    编辑字段(number): {label} = {value}")
+                    else:
+                        await self.page.fill(enhanced, "", timeout=3000)
+                        await self.page.fill(enhanced, value, timeout=3000)
+                        filled += 1
+                        LOG.info(f"    编辑字段: {label} = {value}")
                 else:
                     # 从选择器注册表获取 form item 选择器
                     form_item = self.selectors["form"]["item"]
@@ -573,11 +923,14 @@ class FormFiller:
 
         return checked
 
-    async def submit_form_v2(self) -> dict:
+    async def submit_form_v2(self, scope_selector: str = "") -> dict:
         """提交表单（v2 版本），返回已验证的 locator、原始文本和成功策略。
 
         中文按钮文本常含空格（如 "确 定"、"保 存"），使用 JavaScript
         去掉空格后匹配，避免 Playwright has-text 匹配失败。
+
+        Args:
+            scope_selector: 可选，限定搜索范围的 CSS 选择器（如 '.el-drawer:not([style*="display: none"])'）
 
         Returns:
             dict: {"text": str, "locator": str, "click_strategy": str}
@@ -590,20 +943,38 @@ class FormFiller:
         # JavaScript 方式：去掉空格后匹配常见提交按钮文本，返回原始文本 + 标签
         try:
             _submit_texts_js = json.dumps(const.SUBMIT_BUTTON_TEXTS)
+            # 如果有 scope_selector，先在限定范围内搜索
+            scope_js = f"document.querySelector('{scope_selector}')" if scope_selector else "document"
             clicked = await self.page.evaluate(f"""(() => {{
                 const submitTexts = {_submit_texts_js};
-                const buttons = Array.from(document.querySelectorAll('button, span, a'));
-                const visible = buttons.filter(b =>
-                    b.offsetWidth > 0 && b.offsetHeight > 0
-                    && !b.disabled
-                    && !b.classList.contains('is-disabled')
-                    && !b.closest('.is-hidden')
-                    && !b.closest('[style*="display: none"]')
-                );
+                const scope = {scope_js};
+
+                // 优先搜索 button 元素，排除标题元素
+                const allButtons = scope ? Array.from(scope.querySelectorAll('button, span, a')) : Array.from(document.querySelectorAll('button, span, a'));
+                const visible = allButtons.filter(b => {{
+                    // 基本可见性和启用状态检查
+                    if (b.offsetWidth <= 0 || b.offsetHeight <= 0) return false;
+                    if (b.disabled || b.classList.contains('is-disabled')) return false;
+                    if (b.closest('.is-hidden') || b.closest('[style*="display: none"]')) return false;
+
+                    // 排除标题元素（role="heading" 或 h1-h6 标签）
+                    if (b.getAttribute('role') === 'heading') return false;
+                    if (/^H[1-6]$/.test(b.tagName)) return false;
+
+                    return true;
+                }});
+
+                // 按优先级排序：button > a > span
+                visible.sort((a, b) => {{
+                    const priority = {{ BUTTON: 1, A: 2, SPAN: 3 }};
+                    return (priority[a.tagName] || 99) - (priority[b.tagName] || 99);
+                }});
+
                 for (const btn of visible) {{
                     const originalText = btn.textContent.trim();
                     const normalized = originalText.replace(/\\s+/g, '');
-                    if (submitTexts.some(t => normalized === t || normalized.includes(t))) {{
+                    // 严格匹配：normalized 长度应小于 10 个字符，避免匹配到长文本
+                    if (normalized.length < 10 && submitTexts.some(t => normalized === t || normalized.includes(t))) {{
                         btn.click();
                         return {{normalized: normalized, original: originalText, tag: btn.tagName.toLowerCase()}};
                     }}
@@ -670,7 +1041,7 @@ class FormFiller:
         return {"text": "", "locator": ""}
 
 
-async def scan_form_fields(page: Page, ui_framework: str = "element-ui") -> List[Dict]:
+async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_selector: str = "") -> List[Dict]:
     """扫描页面表单字段，按 form-item 遍历，检测组件类型。
 
     以表单项为单位遍历，检测子元素的 DOM 类名判断组件类型。
@@ -703,18 +1074,29 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui") -> List
     checkbox_container = selectors["checkbox"]["container"]
     table_container = selectors["table"]["container"]
 
+    # 如果有 scope_selector，限定搜索范围到指定容器
+    _scope_js = f"document.querySelector('{scope_selector}')" if scope_selector else "document"
+
     script = f"""
     () => {{
         const FORM_ITEM_SEL = '{form_item}';
         const fields = [];
 
-        // 以 form-item 为单位遍历
-        const formItems = document.querySelectorAll('{form_item}');
+        // 以 form-item 为单位遍历（支持 scope 限定）
+        const scope = {_scope_js};
+        const formItems = scope ? scope.querySelectorAll('{form_item}') : document.querySelectorAll('{form_item}');
 
         formItems.forEach(fi => {{
-            // 1. 提取 label
+            // 1. 提取 label（优先 .el-form-item__label，fallback 到 input placeholder）
             const labelEl = fi.querySelector('{form_label}');
-            const label = labelEl ? labelEl.textContent.trim().replace(/[：:]/g, '') : '';
+            let label = labelEl ? labelEl.textContent.trim().replace(/[：:]/g, '') : '';
+            if (!label) {{
+                // fallback: 从 input/textarea 的 placeholder 获取
+                const inp = fi.querySelector('input:not([type="hidden"]), textarea');
+                if (inp && inp.placeholder) {{
+                    label = inp.placeholder.replace(/^[请输入]*[：:]?/, '').trim();
+                }}
+            }}
             if (!label) return;
 
             const required = fi.classList.contains('is-required') ||
@@ -770,7 +1152,31 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui") -> List
                              selector: _buildComponentSelector(fi, '{checkbox_container}', checkboxIdx), required }});
             }}
             else {{
+                // 检测列表选择器（穿梭框 / transfer-like 组件）
+                // 特征：搜索 input + 可点击列表项（>=3 个选项）
+                const listPanel = fi.querySelector(
+                    '.el-transfer, .el-transfer-panel, ' +
+                    '[class*="transfer"], [class*="picker-panel"], ' +
+                    '[class*="select-panel"], [class*="list-panel"]'
+                );
+                const listItems = fi.querySelectorAll(
+                    'li[class*="item"], .el-checkbox-group .el-checkbox, ' +
+                    '[class*="option-item"], [class*="list-item"]'
+                );
+                const searchInput = fi.querySelector('input[placeholder]');
+
+                if ((listPanel || listItems.length >= 3) && searchInput) {{
+                    const listIdx = fields.length;
+                    fields.push({{
+                        label, type: 'list-selector',
+                        kb_category: 'list-selector',
+                        selector: _buildComponentSelector(fi, listPanel ? listPanel.tagName.toLowerCase() : 'div', listIdx),
+                        required,
+                        itemCount: listItems.length
+                    }});
+                }}
                 // 通用 input / textarea
+                else {{
                 // 检测复合输入组：多个可见 input（如手机号 = 国家编码 + 手机号）
                 const allInputs = Array.from(fi.querySelectorAll(
                     'input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"])'
@@ -808,7 +1214,102 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui") -> List
                     fields.push({{ label, type: 'textarea', kb_category: 'textarea-generic',
                                  selector: _buildSelector(ta), required }});
                 }}
+                }}
             }}
+        }});
+
+        // Fallback: 如果 .el-form-item 扫描到 0 个字段，直接搜索 scope 内所有可见 input
+        if (fields.length === 0 && scope) {{
+            const directInputs = scope.querySelectorAll('input.el-input__inner');
+            let visibleIndex = 0;  // ★ 可见字段的顺序索引（跨会话稳定）
+            directInputs.forEach((inp, idx) => {{
+                const ir = inp.getBoundingClientRect();
+                if (ir.width <= 0 || ir.height <= 0) return;
+                if (inp.readOnly || inp.disabled) return;
+
+                const currentVisibleIndex = visibleIndex;
+                visibleIndex++;
+
+                // ★ 保存 placeholder 作为独立的字段识别特征（跨会话稳定）
+                const rawPlaceholder = inp.placeholder || '';
+                const placeholder = rawPlaceholder.replace(/^[请输入]*[：:]?\s*/, '').trim();
+
+                // 1) 优先从 .el-form-item__label 获取 label（标准结构）
+                let label = '';
+                const formItem = inp.closest('.el-form-item');
+                if (formItem) {{
+                    const labelEl = formItem.querySelector('.el-form-item__label');
+                    if (labelEl) label = labelEl.textContent.trim().replace(/[：:]/g, '');
+                }}
+
+                // 2) 表格内字段：优先用 thead 列名（最稳定、最有意义）
+                let theadLabel = '';
+                const td = inp.closest('td');
+                if (td) {{
+                    const table = td.closest('table');
+                    if (table) {{
+                        const cellIndex = td.cellIndex;
+                        const th = table.querySelector('thead tr th:nth-child(' + (cellIndex + 1) + ')');
+                        if (th) theadLabel = th.textContent.trim();
+                    }}
+                }}
+                if (theadLabel && !label) label = theadLabel;
+
+                // 3) 仍无 label 才用 placeholder（去掉"请输入"前缀后的干净文本）
+                if (!label && placeholder) label = placeholder;
+
+                // 4) 最后兜底：字段序号
+                if (!label) label = '字段' + (idx + 1);
+
+                // 检测 el-input-number 父容器
+                const isNumber = !!inp.closest('.el-input-number');
+
+                // ★ 返回完整字段信息，含多种定位特征用于跨会话定位
+                const fieldEntry = {{
+                    label, type: 'input', kb_category: 'input-generic',
+                    selector: _buildSelector(inp),
+                    inputType: isNumber ? 'number' : (inp.type || 'text'),
+                    required: false,
+                    visible_index: currentVisibleIndex  // ★ 在 scope 内的可见字段顺序
+                }};
+                if (rawPlaceholder) fieldEntry.placeholder = rawPlaceholder;
+                if (theadLabel) fieldEntry.thead_label = theadLabel;
+                fields.push(fieldEntry);
+            }});
+        }}
+
+        // Fallback 2: 检查是否有被遗漏的 el-select（同一 form-item 内有多个组件时可能发生）
+        // 复用上面已声明的 formItems 变量，不重复声明
+        formItems.forEach(fi => {{
+            const r = fi.getBoundingClientRect();
+            if (r.width <= 0 || r.height <= 0) return;
+
+            const labelEl = fi.querySelector('{form_label}');
+            let label = labelEl ? labelEl.textContent.trim().replace(/[：:]/g, '') : '';
+            if (!label) return;
+
+            // 检查该 form-item 内的所有 el-select
+            const selects = fi.querySelectorAll('{select_container}');
+            selects.forEach((sel, selIdx) => {{
+                const selR = sel.getBoundingClientRect();
+                if (selR.width <= 0 || selR.height <= 0) return;
+
+                // 检查该 el-select 是否已被 fields 覆盖（通过 label + type 匹配）
+                const alreadyCovered = fields.some(f =>
+                    f.label === label && f.type === 'select' && f.kb_category === 'el-select'
+                );
+                if (!alreadyCovered) {{
+                    const selectIdx = fields.length;
+                    fields.push({{
+                        label: label,
+                        type: 'select',
+                        kb_category: 'el-select',
+                        selector: _buildComponentSelector(fi, '{select_container}', selectIdx),
+                        required: fi.classList.contains('is-required') ||
+                                   fi.querySelector('[class*="required"]') !== null,
+                    }});
+                }}
+            }});
         }});
 
         return fields;
@@ -955,42 +1456,6 @@ async def select_dropdown_option(page: Page, selector: str, value: str) -> bool:
 
     except Exception as e:
         print(f"  ⚠️ 选择下拉框失败: {e}")
-        return False
-
-
-async def submit_form(page: Page, button_text: str = "提交") -> bool:
-    """提交表单。
-
-    Args:
-        page: Playwright 页面对象
-        button_text: 提交按钮文本
-
-    Returns:
-        是否成功点击提交按钮
-    """
-    try:
-        hidden_css = const.HIDDEN_FILTERS_CSS.get('element-ui', const.HIDDEN_FILTERS_CSS['_universal'])
-        # 查找提交按钮（带隐藏过滤）
-        buttons = await page.query_selector_all(f'button:visible{hidden_css}')
-        for btn in buttons:
-            text = await btn.inner_text()
-            if button_text in text:
-                await btn.click()
-                await page.wait_for_timeout(1000)
-                return True
-
-        # 尝试常见提交按钮文本
-        for text in const.SUBMIT_BUTTON_TEXTS_FALLBACK:
-            buttons = await page.query_selector_all(f'button:has-text("{text}"):visible{hidden_css}')
-            if buttons:
-                await buttons[0].click()
-                await page.wait_for_timeout(1000)
-                return True
-
-        return False
-
-    except Exception as e:
-        print(f"  ⚠️ 提交表单失败: {e}")
         return False
 
 
@@ -1296,6 +1761,7 @@ class MultiStepExecutor:
             "el-cascader": self._execute_cascader,
             "date-picker": self._execute_date_picker,
             "form-checkbox": self._execute_form_checkbox,
+            "list-selector": self._execute_list_selector,
         }
         handler = handlers.get(kb_category)
         if not handler:
@@ -1331,6 +1797,7 @@ class MultiStepExecutor:
             "el-cascader": self._execute_cascader,  # 暂未实现详情版本
             "date-picker": self._execute_date_picker,  # 暂未实现详情版本
             "form-checkbox": self._execute_form_checkbox,  # 暂未实现详情版本
+            "list-selector": self._execute_list_selector_with_details,
         }
         handler = handlers.get(kb_category)
         if not handler:
@@ -1338,7 +1805,7 @@ class MultiStepExecutor:
             return False, {}
 
         try:
-            if kb_category == "el-select":
+            if kb_category in ("el-select", "list-selector"):
                 return await handler(label, option_text, options, selector)
             else:
                 # 其他类型暂时只返回成功标志，详情为空字典
@@ -1663,6 +2130,299 @@ class MultiStepExecutor:
 
         # 兜底：尝试 fallback_strategies
         return await self._try_fallback(label)
+
+    async def _execute_list_selector(self, label: str, option_text: str, _options, selector: str = "") -> bool:
+        """list-selector：在列表选择器中选择一个选项（穿梭框/transfer-like 组件）
+
+        交互流程：
+        1. 找到搜索框（可选）
+        2. 找到第一个可点击的列表项
+        3. 点击该项（可能是 checkbox 或 li）
+        4. 验证"已选择"面板中是否出现该项
+
+        Args:
+            label: 字段标签
+            option_text: 要选择的选项文本（为空则选择第一个）
+            selector: 组件容器 selector
+            _options: 未使用
+
+        Returns:
+            bool: 是否成功选择
+        """
+        success, _ = await self._execute_list_selector_with_details(label, option_text, _options, selector)
+        return success
+
+    async def _execute_list_selector_with_details(self, label: str, option_text: str, _options, selector: str = "") -> Tuple[bool, Dict]:
+        """list-selector 多步交互，并返回详细的执行信息。
+
+        Returns:
+            Tuple[bool, Dict]: (是否成功, {"option_text": str, "selected_count": int})
+        """
+        # 1. 定位组件容器
+        container = None
+        if selector:
+            try:
+                container = await self.page.query_selector(selector)
+            except Exception:
+                pass
+
+        # === DIAGNOSTIC: dump 页面中的列表/选择相关 DOM 结构 ===
+        diag = await self.page.evaluate("""() => {
+            const result = { checkboxes: [], listItems: [], allVisibleBtns: [], transferPanels: [], customLists: [] };
+
+            // 1. 所有 checkbox
+            document.querySelectorAll('.el-checkbox').forEach((cb, i) => {
+                const r = cb.getBoundingClientRect();
+                const parent = cb.closest('.el-form-item, .el-dialog, .el-drawer, section');
+                const parentLabel = parent ? (parent.querySelector('.el-form-item__label, .el-dialog__title') || {}).textContent : '';
+                result.checkboxes.push({
+                    idx: i, visible: r.width > 0 && r.height > 0,
+                    w: Math.round(r.width), h: Math.round(r.height),
+                    checked: cb.classList.contains('is-checked'),
+                    text: (cb.textContent || '').trim().substring(0, 50),
+                    parentTag: parent ? parent.tagName : 'none',
+                    parentLabel: (parentLabel || '').trim().substring(0, 30),
+                    parentClass: parent ? (parent.className || '').substring(0, 60) : ''
+                });
+            });
+
+            // 2. 所有 li
+            document.querySelectorAll('li').forEach((li, i) => {
+                const r = li.getBoundingClientRect();
+                if (r.width <= 0 || r.height <= 0) return;
+                const parent = li.closest('.el-form-item, .el-dialog, .el-drawer, section, .el-table');
+                result.listItems.push({
+                    idx: i, w: Math.round(r.width), h: Math.round(r.height),
+                    text: (li.textContent || '').trim().substring(0, 50),
+                    cls: (li.className || '').substring(0, 60),
+                    parentTag: parent ? parent.tagName : 'none',
+                    parentClass: parent ? (parent.className || '').substring(0, 60) : ''
+                });
+            });
+
+            // 3. transfer-panel / picker-panel
+            document.querySelectorAll('[class*="transfer"], [class*="picker-panel"], [class*="select-panel"], [class*="list-panel"]').forEach((el, i) => {
+                const r = el.getBoundingClientRect();
+                result.transferPanels.push({
+                    idx: i, visible: r.width > 0 && r.height > 0,
+                    w: Math.round(r.width), h: Math.round(r.height),
+                    cls: (el.className || '').substring(0, 80),
+                    childCount: el.children.length,
+                    innerHTML: el.innerHTML.substring(0, 200)
+                });
+            });
+
+            // 4. 所有可见按钮（含文本）
+            document.querySelectorAll('button').forEach((btn, i) => {
+                const r = btn.getBoundingClientRect();
+                if (r.width <= 0 || r.height <= 0) return;
+                result.allVisibleBtns.push({
+                    text: (btn.textContent || '').trim().substring(0, 30),
+                    cls: (btn.className || '').substring(0, 60),
+                    visible: true
+                });
+            });
+
+            return result;
+        }""")
+        import json
+        LOG.info(f"    [DIAG-list-selector] selector='{selector}'")
+        _cb_summary = [{"v": c.get("visible"), "c": c.get("checked"), "t": c.get("text","")[:20], "p": c.get("parentLabel","")[:15]} for c in diag.get("checkboxes", [])[:10]]
+        LOG.info(f"    [DIAG] checkboxes({len(diag.get('checkboxes', []))}): {json.dumps(_cb_summary, ensure_ascii=False)}")
+        _li_summary = [{"t": li.get("text","")[:20], "c": li.get("cls","")[:30]} for li in diag.get("listItems", [])[:10]]
+        LOG.info(f"    [DIAG] listItems({len(diag.get('listItems', []))}): {json.dumps(_li_summary, ensure_ascii=False)}")
+        _tp_summary = [{"c": p.get("cls","")[:40], "v": p.get("visible"), "ch": p.get("childCount")} for p in diag.get("transferPanels", [])]
+        LOG.info(f"    [DIAG] transferPanels({len(diag.get('transferPanels', []))}): {json.dumps(_tp_summary, ensure_ascii=False)}")
+        _btn_summary = [b.get("text","")[:15] for b in diag.get("allVisibleBtns", [])]
+        LOG.info(f"    [DIAG] visibleBtns({len(diag.get('allVisibleBtns', []))}): {json.dumps(_btn_summary, ensure_ascii=False)}")
+        # === END DIAGNOSTIC ===
+
+        # 2. 在容器内或页面内搜索列表项
+        # 优先查找 checkbox 列表项（el-checkbox-group 内的 el-checkbox）
+        # 其次查找普通 li 列表项
+        search_scope = container if container else self.page
+
+        # 尝试找到第一个未勾选的 checkbox
+        checkbox = None
+        if container:
+            checkbox = await container.query_selector(
+                '.el-checkbox-group .el-checkbox:not(.is-checked), '
+                '.el-checkbox:not(.is-checked)'
+            )
+        if not checkbox:
+            # 尝试页面级别
+            checkbox = await self.page.query_selector(
+                '.el-checkbox-group .el-checkbox:not(.is-checked)'
+            )
+
+        if checkbox:
+            # 点击 checkbox 的 label 区域（更稳定）
+            label_el = await checkbox.query_selector('.el-checkbox__label')
+            if label_el:
+                await label_el.click()
+            else:
+                await checkbox.click()
+            await self.page.wait_for_timeout(500)
+
+            # 获取选中的选项文本
+            selected_text = await self.page.evaluate("""() => {
+                const checked = document.querySelectorAll('.el-checkbox.is-checked .el-checkbox__label');
+                return Array.from(checked).map(el => el.textContent.trim()).join(', ');
+            }""")
+
+            return True, {"option_text": selected_text, "selected_count": 1}
+
+        # 回退 1：尝试普通 li 列表项（增加可见性校验，避免匹配不可见的菜单项）
+        list_item = None
+        if container:
+            list_item = await container.query_selector('li:not(.is-selected):not(.is-disabled)')
+        if not list_item:
+            list_item = await self.page.query_selector(
+                'li[class*="item"]:not(.is-selected):not(.is-disabled)'
+            )
+
+        if list_item:
+            # 可见性校验：确保元素真正可见且在视口内
+            is_visible = await list_item.evaluate('el => el.offsetWidth > 0 && el.offsetHeight > 0 && el.getBoundingClientRect().top >= 0 && el.getBoundingClientRect().top < window.innerHeight')
+            if is_visible:
+                await list_item.click()
+                await self.page.wait_for_timeout(500)
+                item_text = await list_item.inner_text()
+                return True, {"option_text": item_text.strip(), "selected_count": 1}
+            else:
+                LOG.info(f"    li 元素不可见（可能在视口外），跳过")
+                list_item = None
+
+        # 回退 2：自定义穿梭框（transfer-box）— 在左侧面板内搜索可点击元素
+        transfer_left = await self.page.query_selector(
+            '[class*="transfer-box-left"], [class*="transfer-left"], '
+            '.el-transfer-panel:first-child, [class*="transfer"] .panel:first-child'
+        )
+        if transfer_left:
+            LOG.info(f"    检测到自定义穿梭框左侧面板，搜索可点击元素...")
+            # 在左侧面板内找到可见、可点击的叶子元素
+            click_result = await self.page.evaluate("""(container) => {
+                const items = container.querySelectorAll('div, span, p, label, a');
+                const candidates = [];
+                for (const el of items) {
+                    const r = el.getBoundingClientRect();
+                    if (r.width <= 0 || r.height <= 0) continue;
+                    if (r.height > 60) continue;
+                    const text = (el.textContent || '').trim();
+                    if (!text || text.length > 80) continue;
+                    if (el.tagName === 'INPUT' || el.tagName === 'BUTTON') continue;
+                    if (el.closest('[class*="header"], [class*="search"], [class*="filter"], [class*="title"]')) continue;
+                    if (el.children.length <= 2) {
+                        candidates.push({
+                            text,
+                            tag: el.tagName,
+                            cls: (el.className || '').substring(0, 60),
+                            w: Math.round(r.width),
+                            h: Math.round(r.height),
+                            childCount: el.children.length,
+                            isLeaf: el.children.length === 0,
+                            hasAlphanumeric: /[a-zA-Z0-9]/.test(text)
+                        });
+                    }
+                }
+                return candidates;
+            }""", transfer_left)
+
+            if click_result and len(click_result) > 0:
+                LOG.info(f"    穿梭框左侧面板找到 {len(click_result)} 个候选项: {[c['text'][:20] for c in click_result[:5]]}")
+                # === DIAG: 输出候选项详细信息 ===
+                for i, c in enumerate(click_result[:10]):
+                    LOG.info(f"    [DIAG-transfer] candidate[{i}]: text='{c['text']}', "
+                             f"childCount={c.get('childCount')}, isLeaf={c.get('isLeaf')}, "
+                             f"hasAlphanumeric={c.get('hasAlphanumeric')}, cls='{c.get('cls', '')}'")
+                # 结构性筛选：叶子元素 + 字母数字 + 非标题容器
+                # 基于诊断数据确定的特征：
+                #   - 用户名单元格: isLeaf=True, hasAlphanumeric=True, cls='cell el-tooltip'
+                #   - 标题包装器: isLeaf=False, cls='box-left-text' (必须排除)
+                #   - 计数文本: isLeaf=True, text='(5)个' (纯数字+单位，排除)
+                valid_candidates = [
+                    c for c in click_result
+                    if c.get('isLeaf')                           # 必须是叶子元素
+                    and c.get('hasAlphanumeric')                 # 必须包含字母或数字
+                    and len(c.get('text', '')) > 2               # 文本长度 > 2
+                    and 'box-left-text' not in c.get('cls', '')  # 排除标题容器
+                    and 'text-po' not in c.get('cls', '')        # 排除标题子容器
+                ]
+                if valid_candidates:
+                    target_text = valid_candidates[0]["text"]
+                    LOG.info(f"    穿梭框候选项筛选: 选择 '{target_text}' (从 {len(valid_candidates)} 个有效候选中)")
+                else:
+                    target_text = click_result[0]["text"]
+                    LOG.warning(f"    穿梭框候选项筛选: 未找到有效候选项，使用默认 '{target_text}'")
+                # 用文本精确点击目标元素（将文本嵌入 JS 避免多参数问题）
+                import json as _json_ls
+                _escaped_text = _json_ls.dumps(target_text)
+                clicked = await self.page.evaluate(f"""(container) => {{
+                    const targetText = {_escaped_text};
+                    const items = container.querySelectorAll('div, span, p, label, a');
+                    for (const el of items) {{
+                        if ((el.textContent || '').trim() === targetText) {{
+                            el.click();
+                            return true;
+                        }}
+                    }}
+                    return false;
+                }}""", transfer_left)
+
+                if clicked:
+                    await self.page.wait_for_timeout(500)
+                    LOG.info(f"    穿梭框点击成功: '{target_text}'")
+
+                    # === DIAG: 检查右侧面板是否更新 ===
+                    right_panel = await self.page.evaluate("""() => {
+                        const right = document.querySelector('[class*="transfer-box-right"]');
+                        if (!right) return { found: false };
+                        const items = right.querySelectorAll('div, span, p');
+                        const texts = [];
+                        for (const el of items) {
+                            const t = (el.textContent || '').trim();
+                            if (t && t.length < 80) texts.push(t);
+                        }
+                        return { found: true, itemCount: items.length, texts: texts.slice(0, 10) };
+                    }""")
+                    LOG.info(f"    [DIAG-transfer] 右侧面板: {json.dumps(right_panel, ensure_ascii=False)}")
+
+                    # === DIAG: 如果右侧面板为空，dump 左侧 DOM 树 ===
+                    if right_panel.get("itemCount", 0) == 0:
+                        deep_diag = await self.page.evaluate("""() => {
+                            const left = document.querySelector('[class*="transfer-box-left"]');
+                            if (!left) return { found: false };
+                            function dumpTree(el, depth) {
+                                if (depth > 3) return null;
+                                const r = el.getBoundingClientRect();
+                                if (r.width <= 0 || r.height <= 0) return null;
+                                const result = {
+                                    tag: el.tagName,
+                                    cls: (el.className || '').substring(0, 40),
+                                    text: (el.childNodes.length === 1 && el.childNodes[0].nodeType === 3)
+                                        ? el.textContent.trim().substring(0, 30) : '',
+                                    w: Math.round(r.width), h: Math.round(r.height),
+                                    children: []
+                                };
+                                for (const child of el.children) {
+                                    const c = dumpTree(child, depth + 1);
+                                    if (c) result.children.push(c);
+                                }
+                                return result;
+                            }
+                            return { found: true, tree: dumpTree(left, 0) };
+                        }""")
+                        LOG.info(f"    [DIAG-transfer] 左侧 DOM 树: {json.dumps(deep_diag, ensure_ascii=False)}")
+
+                    return True, {"option_text": target_text, "selected_count": 1}
+                else:
+                    LOG.warning(f"    穿梭框 JS click 失败: '{target_text}'")
+
+            else:
+                LOG.warning(f"    穿梭框左侧面板内未找到可点击元素")
+
+        LOG.warning(f"    list-selector {label}: 未找到可点击的列表项（checkbox/li/transfer-panel 均无匹配）")
+        return False, {"skipped_reason": "no_clickable_items"}
 
     # ---- 内部工具方法 ----
 

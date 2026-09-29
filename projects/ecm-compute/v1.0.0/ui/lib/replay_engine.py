@@ -258,6 +258,30 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
                 await _step_wait_for_dialog(page, step, ctx)
 
             elif action == "fill_form":
+                # ★ P1: 填充前等待抽屉/对话框完全打开（上一步通常是 click_button）
+                if i > 0 and steps[i-1].get("action") == "click_button":
+                    LOG.info(f"    等待抽屉/对话框完全打开...")
+                    await page.wait_for_timeout(800)  # 等动画
+                    # 等待可见的 overlay（抽屉或对话框）稳定
+                    try:
+                        await page.wait_for_function("""() => {
+                            // 检查 el-drawer
+                            const drawer = document.querySelector('.el-drawer:not([style*="display: none"])');
+                            if (drawer && drawer.offsetWidth > 0) return true;
+                            // 检查 el-dialog
+                            const dialog = document.querySelector('.el-dialog__wrapper:not([style*="display: none"])');
+                            if (dialog && dialog.offsetWidth > 0) return true;
+                            // 检查 ant-drawer / ant-modal
+                            const antDrawer = document.querySelector('.ant-drawer:not(.ant-drawer-hidden)');
+                            if (antDrawer && antDrawer.offsetWidth > 0) return true;
+                            const antModal = document.querySelector('.ant-modal:not(.ant-modal-hidden)');
+                            if (antModal && antModal.offsetWidth > 0) return true;
+                            return false;
+                        }""", timeout=5000)
+                        LOG.info(f"    ✓ 抽屉/对话框已打开")
+                    except Exception:
+                        LOG.warning(f"    ⚠️ 等待抽屉/对话框超时，继续尝试填充")
+
                 marker_value = await _step_fill_form(page, step, button_driver)
                 if marker_value:
                     result["marker"] = marker_value
@@ -563,12 +587,18 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver) -> str 
         label = field.get("label")
         kb_category = field.get("kb_category", "")
         locator = field.get("playwright_locator")
+        field_type = field.get("type", "input")
 
         if not locator:
             LOG.warning(f"    字段 {label} 缺少 locator，跳过")
             continue
 
-        # Stage 1 必须提供 kb_category，不做推断
+        # 如果没有 kb_category 但是普通 input 类型，当作简单字段处理
+        if not kb_category and field_type == "input":
+            simple_fields.append(field)
+            continue
+
+        # Stage 1 必须提供 kb_category，不做推断（除了普通 input）
         if not kb_category:
             LOG.warning(f"    字段 {label} 缺少 kb_category（Stage 1 未提供），跳过")
             continue
@@ -589,6 +619,7 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver) -> str 
         fill_rule = field.get("fill_rule")
         is_marker = field.get("is_marker", False)
         kb_category = field.get("kb_category", "")
+        input_type = field.get("inputType", "text")
 
         # Radio 字段：Stage 1 已提供精确的 option_locator
         if kb_category == "radio":
@@ -612,14 +643,154 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver) -> str 
             continue
 
         try:
-            enhanced = safe_css(locator, ui_framework) if locator else locator
-            await page.fill(enhanced, str(value), timeout=3000)
-            filled_count += 1
-            LOG.debug(f"      填充: {label} = {value}")
-            if is_marker and not marker_value:
-                marker_value = value
+            # ★ P0: 多候选选择器依次尝试（placeholder → label → original）
+            # 构造候选列表：primary locator + fallback_locators
+            fallback_list = field.get("fallback_locators", [])
+            if isinstance(fallback_list, list):
+                candidate_selectors = [locator] + [
+                    fb.get("selector") if isinstance(fb, dict) else fb
+                    for fb in fallback_list
+                ]
+            else:
+                # 兼容旧 playbook：fallback_locator 是字符串
+                old_fallback = field.get("fallback_locator", "")
+                candidate_selectors = [locator]
+                if old_fallback and old_fallback != locator:
+                    candidate_selectors.append(old_fallback)
+
+            # 去重（保持顺序）
+            seen = set()
+            candidates = []
+            for c in candidate_selectors:
+                if c and c not in seen:
+                    seen.add(c)
+                    candidates.append(c)
+
+            fill_success = False
+            used_selector = None
+
+            for cand_idx, cand_sel in enumerate(candidates):
+                if not cand_sel:
+                    continue
+                try:
+                    # ★ 特殊处理：__js_index__ 使用 JS 定位（跨会话最稳定）
+                    is_js_index = cand_sel.startswith("__js_index__:")
+                    if is_js_index:
+                        target_index = int(cand_sel.split(":")[1])
+                        # 在可见的 drawer/dialog 内找第 N 个可见 input
+                        actual_value = await page.evaluate("""(targetIdx) => {
+                            // 找可见的 overlay（drawer 或 dialog）
+                            const overlays = [
+                                ...document.querySelectorAll('.el-drawer:not([style*="display: none"])'),
+                                ...document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"])'),
+                                ...document.querySelectorAll('.ant-drawer:not(.ant-drawer-hidden)'),
+                                ...document.querySelectorAll('.ant-modal:not(.ant-modal-hidden)')
+                            ].filter(el => el.offsetWidth > 0 && el.offsetHeight > 0);
+
+                            const scope = overlays[0] || document.body;
+                            const allInputs = scope.querySelectorAll('input.el-input__inner');
+                            let visibleIdx = 0;
+                            for (const inp of allInputs) {
+                                const r = inp.getBoundingClientRect();
+                                if (r.width <= 0 || r.height <= 0) continue;
+                                if (inp.readOnly || inp.disabled) continue;
+                                if (visibleIdx === targetIdx) {
+                                    // 找到目标，填充并返回值
+                                    inp.focus();
+                                    inp.select();
+                                    return inp.value || '';
+                                }
+                                visibleIdx++;
+                            }
+                            return null;
+                        }""", target_index)
+
+                        if actual_value is not None:
+                            # JS 定位成功，现在用 keyboard 填充
+                            await page.keyboard.press("Control+A")
+                            await page.keyboard.press("Backspace")
+                            await page.keyboard.type(str(value), delay=50)
+                            await page.keyboard.press("Tab")
+                            LOG.info(f"      填充(js_index={target_index}): {label} = {value}")
+
+                            # 验证
+                            await page.wait_for_timeout(200)
+                            verify_value = await page.evaluate("""(targetIdx) => {
+                                const overlays = [
+                                    ...document.querySelectorAll('.el-drawer:not([style*="display: none"])'),
+                                    ...document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"])'),
+                                    ...document.querySelectorAll('.ant-drawer:not(.ant-drawer-hidden)'),
+                                    ...document.querySelectorAll('.ant-modal:not(.ant-modal-hidden)')
+                                ].filter(el => el.offsetWidth > 0 && el.offsetHeight > 0);
+                                const scope = overlays[0] || document.body;
+                                const allInputs = scope.querySelectorAll('input.el-input__inner');
+                                let visibleIdx = 0;
+                                for (const inp of allInputs) {
+                                    const r = inp.getBoundingClientRect();
+                                    if (r.width <= 0 || r.height <= 0) continue;
+                                    if (inp.readOnly || inp.disabled) continue;
+                                    if (visibleIdx === targetIdx) return inp.value;
+                                    visibleIdx++;
+                                }
+                                return null;
+                            }""", target_index)
+
+                            if verify_value and str(verify_value).strip():
+                                fill_success = True
+                                LOG.info(f"      ✓ 验证通过: {label} = {verify_value} (候选{cand_idx}/js_index)")
+                                break
+                            else:
+                                LOG.warning(f"      ⚠️ 候选{cand_idx}(js_index) 验证失败")
+                                continue
+                        else:
+                            LOG.warning(f"      ⚠️ 候选{cand_idx}(js_index={target_index}) 定位失败")
+                            continue
+
+                    # 常规 CSS 选择器
+                    enhanced = safe_css(cand_sel, ui_framework)
+
+                    # Number 类型字段：使用 click + keyboard 方式（el-input-number 组件需要）
+                    if input_type == "number":
+                        await page.click(enhanced, timeout=3000)
+                        await page.keyboard.press("Control+A")
+                        await page.keyboard.press("Backspace")
+                        await page.keyboard.type(str(value), delay=50)
+                        await page.keyboard.press("Tab")
+                        LOG.info(f"      填充(number)[候选{cand_idx}]: {label} = {value}")
+                    else:
+                        await page.fill(enhanced, str(value), timeout=3000)
+                        LOG.info(f"      填充[候选{cand_idx}]: {label} = {value}")
+
+                    # ★ 填充后验证 — 检查值是否真的写入了目标字段
+                    await page.wait_for_timeout(200)  # 等待 Vue 响应式更新
+                    actual_value = await page.evaluate("""(sel) => {
+                        try {
+                            const el = document.querySelector(sel);
+                            if (el && el.value) return el.value;
+                        } catch(e) {}
+                        return null;
+                    }""", cand_sel)
+
+                    if actual_value and str(actual_value).strip():
+                        fill_success = True
+                        used_selector = cand_sel
+                        LOG.info(f"      ✓ 验证通过: {label} = {actual_value} (候选{cand_idx})")
+                        break
+                    else:
+                        LOG.warning(f"      ⚠️ 候选{cand_idx} 验证失败（值为空），尝试下一个")
+                        continue
+                except Exception as cand_err:
+                    LOG.warning(f"      ⚠️ 候选{cand_idx} 失败: {cand_err}")
+                    continue
+
+            if fill_success:
+                filled_count += 1
+                if is_marker and not marker_value:
+                    marker_value = value
+            else:
+                LOG.warning(f"      ❌ 字段 {label} 所有候选选择器均失败")
         except Exception as e:
-            LOG.debug(f"      填充失败: {label}: {e}")
+            LOG.warning(f"      ❌ 填充失败: {label}: {e}")
 
     # --- 2. 处理 multi_step 字段 (el-select/el-cascader/date-picker/form-checkbox) ---
     if multi_step_fields:

@@ -885,7 +885,7 @@ async def confirm_dialog(page: Page, confirm: bool = True, ui_framework: str = "
         for _ in range(4):
             # 检查各种确认框容器
             has_confirm = await page.evaluate(f"""() => {{
-                // 1. el-message-box
+                // 1. el-message-box（最高优先级）
                 const msgBox = document.querySelector('.el-message-box__wrapper:not([style*="display: none"])');
                 if (msgBox && msgBox.offsetWidth > 0) return 'message-box';
 
@@ -893,23 +893,26 @@ async def confirm_dialog(page: Page, confirm: bool = True, ui_framework: str = "
                 const popconfirm = document.querySelector('.el-popconfirm:not([style*="display: none"])');
                 if (popconfirm && popconfirm.offsetWidth > 0) return 'popconfirm';
 
-                // 3. 通用对话框（包含确认按钮）
+                // 3. 通用对话框（包含确认按钮）- 增强过滤
                 const dialogs = document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"]), .ant-modal-wrap:not([style*="display: none"])');
                 for (const dialog of dialogs) {{
-                    if (dialog.offsetWidth > 0) {{
-                        const btns = dialog.querySelectorAll('button');
-                        const btnTexts = [];
-                        for (const btn of btns) {{
-                            const text = btn.textContent.trim();
-                            btnTexts.push(text);
-                            // Match exact text OR character-by-character (handles spaces like "确 定")
-                            if ({confirm_texts_js}.includes(text) || {chars_all_checks}) {{
-                                return 'generic-dialog';
-                            }}
+                    // 增强过滤：检查 width + height + 内部容器
+                    if (dialog.offsetWidth <= 0 || dialog.offsetHeight <= 0) continue;
+                    const inner = dialog.querySelector('.el-dialog, .ant-modal');
+                    if (inner && inner.offsetHeight <= 0) continue;
+
+                    const btns = dialog.querySelectorAll('button');
+                    const btnTexts = [];
+                    for (const btn of btns) {{
+                        const text = btn.textContent.trim();
+                        btnTexts.push(text);
+                        // Match exact text OR character-by-character (handles spaces like "确 定")
+                        if ({confirm_texts_js}.includes(text) || {chars_all_checks}) {{
+                            return 'generic-dialog';
                         }}
-                        // 调试：如果没有匹配，返回找到的按钮文本
-                        return {{type: 'no-match', buttons: btnTexts, expected: {confirm_texts_js}}};
                     }}
+                    // 调试：如果没有匹配，返回找到的按钮文本
+                    return {{type: 'no-match', buttons: btnTexts, expected: {confirm_texts_js}}};
                 }}
                 return null;
             }}""")

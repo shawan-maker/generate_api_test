@@ -2,7 +2,7 @@
 """
 资源池容量 - UI 自动化测试脚本
 
-生成时间: 2026-09-24 10:26:24
+生成时间: 2026-09-28 12:09:10
 生成工具: API AI Test Framework - Stage 2
 版本: v1.0.0
 
@@ -51,7 +51,10 @@ CONFIG = {
     },
 }
 
-AVAILABLE_OPERATIONS = ['query', '资源池容量', '修改容量']
+AVAILABLE_OPERATIONS = ['query', '修改容量']
+
+# Playbook 数据内嵌到脚本中（不依赖外部 JSON 文件）
+_PLAYBOOK_JSON = '{"meta": {"module_name": "资源池容量", "target_url": "https://10.151.61.248/estack/web/estack/user-center/project-manage/capacity-manage/resource-pool-capacity", "base_url": "https://10.151.61.248", "login_url": "https://10.151.61.248/estack/web/estack/login", "framework": "element-ui", "generated_at": "2026-09-28 12:09:10", "version": "1.0", "auth_config": {"token_key": "accessToken", "token_storage": "localStorage", "cookie_token_key": "accessToken"}}, "page_structure": {"hasFixedLeft": false, "hasFixedRight": true, "mainBodyRows": 35, "fixedRightRows": 35, "fixedLeftRows": 0, "columnCount": 10, "operationColumnIndex": 9, "operationColumnLocation": "last", "tableWrappers": [{"cls": "el-table__header-wrapper", "rowCount": 0}, {"cls": "el-popover__reference-wrapper", "rowCount": 0}, {"cls": "el-table__body-wrapper is-scrolling-left", "rowCount": 35}, {"cls": "el-table__fixed-header-wrapper", "rowCount": 0}, {"cls": "el-popover__reference-wrapper", "rowCount": 0}, {"cls": "el-table__fixed-body-wrapper", "rowCount": 35}]}, "operations": {"query": {"display_name": "query", "description": "query", "role": "query", "steps": [{"action": "fill_input", "playwright_locator": "input[placeholder=\\"按资源池名称搜索\\"]", "value": "{marker_name}", "description": "搜索框输入: 按资源池名称搜索"}, {"action": "press_key", "key": "Enter", "description": "回车触发搜索"}, {"action": "wait_for_table_ready", "description": "等待表格数据刷新"}], "marker": null, "detection_status": "success", "replayable": true}, "修改容量": {"display_name": "修改容量", "description": "修改容量", "role": "generic", "steps": [{"action": "find_row", "description": "定位目标数据行"}, {"action": "click_button", "text": "修改容量", "playwright_locator": "button:has-text(\'修改容量\')", "description": "点击操作按钮"}, {"action": "fill_form", "fields": [{"label": "字段1", "playwright_locator": "__js_index__:0", "locator_strategy": "visible_index", "fallback_locators": [{"strategy": "original", "selector": "html > body > div:nth-of-type(5) > div > div > section > form:nth-of-type(1) > div:nth-of-type(3) > div > div > div:nth-of-type(3) > table > tbody > tr > td:nth-of-type(5) > div > div:nth-of-type(1) > div > div > input"}], "type": "input", "inputType": "number", "fill_rule": {"rule": "number_pattern", "params": {"min": 100000, "max": 999999}}}, {"label": "字段2", "playwright_locator": "__js_index__:1", "locator_strategy": "visible_index", "fallback_locators": [{"strategy": "original", "selector": "html > body > div:nth-of-type(5) > div > div > section > form:nth-of-type(1) > div:nth-of-type(3) > div > div > div:nth-of-type(3) > table > tbody > tr > td:nth-of-type(5) > div > div:nth-of-type(2) > div > div > input"}], "type": "input", "inputType": "number", "fill_rule": {"rule": "number_pattern", "params": {"min": 100000, "max": 999999}}}], "description": "填充表单字段"}, {"action": "click_button", "text": "确定", "playwright_locator": "button:has-text(\\"确定\\")", "description": "点击确定按钮"}, {"action": "assert_success", "playwright_locator": ".el-message--success, .el-notification__content:has-text(\'成功\'), [role=\'alert\']:has-text(\'成功\')", "description": "验证操作成功"}], "marker": "MySQL", "detection_status": "success", "replayable": true}}}'
 
 # ==================== Cookie 鉴权 ====================
 
@@ -123,18 +126,7 @@ async def _cleanup_dialogs(page):
         await page.wait_for_timeout(1000)
 
 # 操作失败原因（由 Stage 1 标记）
-_OPERATION_STATUS = {
-    "资源池容量": {
-        "status": "failed",
-        "error_type": "no_confirm_button",
-        "error_text": "资源池容量 操作未检测到确认弹窗"
-    },
-    "修改容量": {
-        "status": "failed",
-        "error_type": "no_confirm_button",
-        "error_text": "修改容量 操作未检测到确认弹窗"
-    }
-}
+_OPERATION_STATUS = {}
 
 async def run_operation(page, operation_name, operations_data, marker=None):
     """使用回放引擎执行单个操作"""
@@ -142,6 +134,9 @@ async def run_operation(page, operation_name, operations_data, marker=None):
     if not op:
         print(f"⚠️ 操作不存在: {operation_name}")
         return marker, {"operation": operation_name, "status": "failed", "error": "操作不存在", "steps": []}
+
+    # 使用 playbook 中定义的 marker（如果有），否则使用上一个操作传递的 marker
+    op_marker = op.get("marker") or marker
 
     # 跳过 Stage 1 标记为失败的操作
     st = _OPERATION_STATUS.get(operation_name, {})
@@ -166,10 +161,10 @@ async def run_operation(page, operation_name, operations_data, marker=None):
     op_start = time.time()
 
     try:
-        result = await replay_from_playbook(page, steps, button_driver, marker)
+        result = await replay_from_playbook(page, steps, button_driver, op_marker)
         duration = time.time() - op_start
 
-        new_marker = result.get("marker", marker)
+        new_marker = result.get("marker", op_marker)
         # 截图（成功）
         screenshot = None
         try:
@@ -266,13 +261,8 @@ async def main():
     parser.add_argument("--headless", action="store_true", help="无头模式")
     args = parser.parse_args()
 
-    # 加载 playbook
-    playbook_path = Path(__file__).parent / "资源池容量_playbook.json"
-    if not playbook_path.exists():
-        print(f"❌ Playbook 文件不存在: {playbook_path}")
-        return
-    with open(playbook_path, "r", encoding="utf-8") as f:
-        playbook = json.load(f)
+    # 加载 playbook（内嵌在脚本中）
+    playbook = json.loads(_PLAYBOOK_JSON)
 
     operations_data = playbook.get("operations", {})
 
