@@ -5,6 +5,7 @@ discover_navigation.py — 导航自动发现 + 对比 + 交互选择
   1. 调用 nav_discovery.py 爬取菜单树
   2. 与已有脚本对比，标记状态（新模块 / 已有脚本）
   3. 交互式选择要处理的模块列表
+  4. 自动生成 modules.yaml（供 --all-modules 使用）
 
 入口：run.py --discover 模式调用
 """
@@ -49,6 +50,8 @@ async def discover_modules(page, context, base_url, login_url, profile, project_
         cached = load_discovery_result(workspace_dir, max_age_days=7)
         if cached:
             LOG.info(f"  使用缓存的导航发现结果（{len(cached)} 个模块，{workspace_dir / 'kb' / 'navigation_discovered.json'}）")
+            # 缓存命中时也检查 modules.yaml 是否存在
+            _generate_modules_yaml(cached, project_dir, base_url)
             return cached
 
     # 实际爬取
@@ -60,6 +63,9 @@ async def discover_modules(page, context, base_url, login_url, profile, project_
 
     # 保存缓存
     save_discovery_result(discovered, workspace_dir)
+
+    # 自动生成 modules.yaml（仅在文件不存在时）
+    _generate_modules_yaml(discovered, project_dir, base_url)
 
     return discovered
 
@@ -183,6 +189,85 @@ def interactive_select(modules_with_status: list) -> list:
 
     return selected
 
+
+
+def _generate_modules_yaml(discovered: list, project_dir: Path, base_url: str):
+    """从导航发现结果自动生成 modules.yaml。
+
+    仅在 modules.yaml 不存在时生成，不覆盖用户手动编辑的内容。
+
+    Args:
+        discovered: 导航发现结果 [{"label": ..., "url": ..., "group": ...}, ...]
+        project_dir: 项目目录
+        base_url: 基础 URL（用于将完整 URL 转为相对路径）
+    """
+    modules_yaml_path = project_dir / "modules.yaml"
+    if modules_yaml_path.exists():
+        return  # 不覆盖已有文件
+
+    try:
+        import yaml
+    except ImportError:
+        LOG.warning("PyYAML 未安装，无法生成 modules.yaml")
+        return
+
+    modules = []
+    base = base_url.rstrip("/")
+
+    for item in discovered:
+        full_url = item.get("url", "")
+        # 将完整 URL 转为相对路径（去掉 base_url 前缀）
+        if full_url.startswith(base):
+            relative_url = full_url[len(base):]
+        elif full_url.startswith("http"):
+            # 尝试提取路径部分
+            from urllib.parse import urlparse
+            parsed = urlparse(full_url)
+            relative_url = parsed.path
+        else:
+            relative_url = full_url
+
+        # group 转为 tags
+        group = item.get("group", "")
+        tags = [group] if group else []
+
+        modules.append({
+            "name": item["label"],
+            "url": relative_url,
+            "enabled": True,
+            "tags": tags,
+        })
+
+    data = {"modules": modules}
+    modules_yaml_path.write_text(
+        yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False),
+        encoding="utf-8"
+    )
+    LOG.info(f"  已生成 modules.yaml: {modules_yaml_path}（{len(modules)} 个模块）")
+
+
+def export_modules_from_cache(project_dir: Path, workspace_dir: Path, base_url: str) -> bool:
+    """从 navigation_discovered.json 缓存生成 modules.yaml。
+
+    供 --export-modules 参数调用。
+
+    Returns:
+        True = 成功生成，False = 缓存不存在或 modules.yaml 已存在
+    """
+    modules_yaml_path = project_dir / "modules.yaml"
+    if modules_yaml_path.exists():
+        LOG.info(f"modules.yaml 已存在，跳过生成: {modules_yaml_path}")
+        LOG.info("  如需重新生成，请先手动删除该文件")
+        return False
+
+    cached = load_discovery_result(workspace_dir, max_age_days=30)
+    if not cached:
+        LOG.error(f"导航发现缓存不存在或已过期: {workspace_dir / 'kb' / 'navigation_discovered.json'}")
+        LOG.info("  请先运行 --discover-only 探测菜单")
+        return False
+
+    _generate_modules_yaml(cached, project_dir, base_url)
+    return True
 
 
 def format_discovery_result(modules_with_status: list) -> str:

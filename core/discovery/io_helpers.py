@@ -136,7 +136,9 @@ def load_modules_yaml(project_dir: Path) -> list:
     modules_file = project_dir / "modules.yaml"
     if not modules_file.exists():
         LOG.error(f"模块清单不存在: {modules_file}")
-        LOG.info("请创建 modules.yaml，格式参考 projects/estack/modules.yaml")
+        LOG.info("请先运行导航发现生成 modules.yaml：")
+        LOG.info("  python -m core.discovery.run --project <项目名> --discover-only --home-url <URL> --headless")
+        LOG.info("  python -m core.discovery.run --project <项目名> --export-modules")
         return []
 
     try:
@@ -161,6 +163,9 @@ def needs_rediscovery(project_dir: Path, module_name: str, module_url: str,
                       force: bool = False) -> bool:
     """检查模块是否需要重新发现（增量逻辑）。
 
+    检查 _manifest.json（Stage 3-4 的最终产物）是否存在且有效。
+    有 manifest 说明全流程已完成，无需重跑。
+
     Returns:
         True = 需要重新发现
         False = 可以跳过（已有结果且 URL 未变更）
@@ -169,22 +174,28 @@ def needs_rediscovery(project_dir: Path, module_name: str, module_url: str,
         return True
 
     ws = get_workspace_dir(project_dir)
-    discovery_file = ws / "kb" / "module_discovered" / f"{module_name}.json"
-    if not discovery_file.exists():
+
+    # 检查 manifest（Stage 3-4 最终产物）
+    manifest_file = ws / "kb" / "module_discovered" / f"{module_name}_manifest.json"
+    if not manifest_file.exists():
         return True
 
     try:
-        data = json.loads(discovery_file.read_text(encoding="utf-8"))
-        old_url = data.get("target_url", "")
+        data = json.loads(manifest_file.read_text(encoding="utf-8"))
+        # manifest 中 module.url 存的是相对路径或完整 URL
+        module_info = data.get("module", {})
+        old_url = module_info.get("url", "")
 
-        # URL 变更则重新发现
-        if old_url != module_url:
-            LOG.info(f"  URL 已变更: {old_url} → {module_url}")
-            return True
+        # URL 变更则重新发现（兼容相对路径和完整 URL）
+        if old_url and old_url != module_url:
+            # 比较时去掉 base_url 前缀（manifest 可能存相对路径）
+            if not module_url.endswith(old_url) and not old_url.endswith(module_url.split("/")[-1]):
+                LOG.info(f"  URL 已变更: {old_url} → {module_url}")
+                return True
 
         # 检查文件 mtime（超过 7 天则重新发现）
         import os
-        mtime = os.path.getmtime(discovery_file)
+        mtime = os.path.getmtime(manifest_file)
         age_days = (time.time() - mtime) / 86400
         if age_days > 7:
             LOG.info(f"  发现结果已过期（{age_days:.1f} 天前）")

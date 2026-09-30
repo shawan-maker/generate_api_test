@@ -109,6 +109,8 @@ def parse_args():
                     help="--discover-only 的输出格式（默认 text，AI 客户端用 json）")
     ap.add_argument("--all-modules", action="store_true", default=False,
                     help="批量发现: 读取 projects/<project>/modules.yaml 中的模块清单逐一发现")
+    ap.add_argument("--export-modules", action="store_true", default=False,
+                    help="从导航发现缓存生成 modules.yaml（供 --all-modules 使用）")
     ap.add_argument("--force", action="store_true", default=False,
                     help="强制重新发现所有模块（忽略增量检查）")
     ap.add_argument("--tag", default=None,
@@ -1378,6 +1380,9 @@ def _print_discovery_summary(modules_with_status: list, new_count: int, existing
     print("  python -m core.discovery.run --project <项目名> --discover-select \"1,3,5\"")
     print("  python -m core.discovery.run --project <项目名> --discover-select \"all\"")
     print()
+    print("  生成 modules.yaml（供 --all-modules 批量使用）：")
+    print("  python -m core.discovery.run --project <项目名> --export-modules")
+    print()
 
 
 async def _execute_selected_modules(project_dir: Path, profile: dict,
@@ -1556,6 +1561,12 @@ async def main():
 
         await _execute_selected_modules(project_dir, profile, base_url,
                                          login_url, selected_ids, args)
+        return
+
+    # 导出 modules.yaml（从导航发现缓存）
+    if args.export_modules:
+        from core.discovery.discover_navigation import export_modules_from_cache
+        export_modules_from_cache(project_dir, workspace_dir, base_url)
         return
 
     # 批量发现模式

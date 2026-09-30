@@ -9,6 +9,41 @@
 - **Stage 3+4**：流程分析 + 测试脚本生成（analyze_flow + gen_test）— 离线可运行
 - **Stage 5**：导出 Postman Collection / helpers.py / Excel 参数文件 — 离线可运行
 
+## 典型工作流
+
+### 新项目首次发现
+```bash
+# 1. 探测所有模块（爬取侧边栏菜单，收集模块名称+URL）
+python -m core.discovery.run --project <项目名> --discover-only --home-url "<带菜单的页面URL>" --headless
+
+# 2. 查看输出，选择要处理的模块，执行管线
+python -m core.discovery.run --project <项目名> --discover-select "1,3,5" --headless
+
+# 或者：选择所有模块
+python -m core.discovery.run --project <项目名> --discover-select "all" --headless
+```
+
+### 生成 modules.yaml（供 --all-modules 批量使用）
+```bash
+# 从导航发现缓存生成 modules.yaml（仅在文件不存在时生成）
+python -m core.discovery.run --project <项目名> --export-modules
+
+# 然后可以用 --all-modules 批量处理
+python -m core.discovery.run --project <项目名> --all-modules --headless
+
+# 按标签过滤
+python -m core.discovery.run --project <项目名> --all-modules --tag "访问控制" --headless
+```
+
+### 日常增量处理
+```bash
+# 批量处理所有已配置模块（读 modules.yaml，7天内已完成的自动跳过）
+python -m core.discovery.run --project <项目名> --all-modules --headless
+
+# 强制重跑（忽略增量缓存）
+python -m core.discovery.run --project <项目名> --all-modules --force --headless
+```
+
 ## 常用命令
 
 ### 全流程（所有阶段）
@@ -112,6 +147,7 @@ python run_suite.py --project <项目名>
 | --headless | 否 | 无头浏览器模式 |
 | --offline | 否 | 离线模式（跳过 Stage 1-2） |
 | --all-modules | 否 | 批量处理 modules.yaml 中的模块 |
+| --export-modules | 否 | 从导航发现缓存生成 modules.yaml |
 | --force | 否 | 强制重新发现 |
 | --tag | 否 | 按标签过滤模块（逗号分隔） |
 | --version | 否 | 脚本版本号（默认 v1.0.0） |
