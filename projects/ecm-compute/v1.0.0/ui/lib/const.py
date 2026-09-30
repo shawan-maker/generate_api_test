@@ -273,6 +273,56 @@ EXTRACT_EXCLUDE_KEYS = frozenset({
     "secretKey", "password", "token", "accessToken",
 })
 
+# ============================================================
+# 通知消息语义分类（用于 assert_success / _verify_operation_success）
+# ============================================================
+
+# 成功关键词
+NOTIFICATION_SUCCESS_KEYWORDS = frozenset({
+    "成功", "完成", "已保存", "已添加", "已删除", "已更新",
+    "操作成功", "success", "done", "completed",
+})
+
+# 失败关键词
+NOTIFICATION_FAILURE_KEYWORDS = frozenset({
+    "失败", "错误", "异常", "error", "failed",
+    "无权", "权限不足", "不存在", "不允许", "无法",
+    "超时", "timeout",
+})
+
+# 进行中关键词（操作尚未完成，不作为最终结果）
+NOTIFICATION_PROCESSING_KEYWORDS = frozenset({
+    "处理中", "请稍后", "正在", "processing", "loading",
+})
+
+
+def classify_notification(text: str) -> str:
+    """对通知文本做语义分类。
+
+    用于 assert_success (Stage 2 replay) 和 _verify_operation_success (Stage 1 detect)
+    统一判断通知消息的含义。
+
+    Args:
+        text: 通知文本内容
+
+    Returns:
+        'success'    — 明确的成功信号
+        'failure'    — 明确的失败信号
+        'processing' — 操作进行中（非最终结果）
+        'neutral'    — 无法判断（信息提示等）
+    """
+    if not text:
+        return "neutral"
+    t = text.lower()
+    # 失败优先（"操作失败"不应被其他关键词覆盖）
+    if any(kw.lower() in t for kw in NOTIFICATION_FAILURE_KEYWORDS):
+        return "failure"
+    if any(kw.lower() in t for kw in NOTIFICATION_SUCCESS_KEYWORDS):
+        return "success"
+    if any(kw.lower() in t for kw in NOTIFICATION_PROCESSING_KEYWORDS):
+        return "processing"
+    return "neutral"
+
 
 # ============================================================
 # UI 选择器注册表加载器

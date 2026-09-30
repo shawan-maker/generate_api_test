@@ -58,6 +58,28 @@ async def _inject_notification_observer(page):
                             node.classList.contains('ant-message-notice') ||
                             node.classList.contains('ant-notification-notice')
                         );
+
+                        // el-dialog / el-message-box: 只捕获文本，不钉住（不会自动消失）
+                        const isDialog = (
+                            node.classList.contains('el-dialog') ||
+                            node.classList.contains('el-dialog__body') ||
+                            node.classList.contains('el-message-box__message') ||
+                            node.classList.contains('el-message-box')
+                        );
+
+                        if (isDialog && !isMessage) {
+                            const text = (node.textContent || '').trim().substring(0, 200);
+                            if (text) {
+                                window.__captured_messages.push({
+                                    text: text,
+                                    timestamp: Date.now(),
+                                    className: node.className,
+                                    source: 'dialog'
+                                });
+                            }
+                            continue;
+                        }
+
                         if (!isMessage) continue;
 
                         const text = (node.textContent || '').trim().substring(0, 200);
@@ -66,7 +88,8 @@ async def _inject_notification_observer(page):
                         window.__captured_messages.push({
                             text: text,
                             timestamp: Date.now(),
-                            className: node.className
+                            className: node.className,
+                            source: 'notification'
                         });
 
                         // 钉住通知：强制可见 + 阻止自动移除
@@ -359,6 +382,11 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
                 if not passed:
                     result["assertion_failed"] = True
                     step["success"] = False  # 同步标记步骤失败，供报告正确显示
+                    # 传递失败详情到 result，供 capture_apis.py 和 generate_ui_script.py 使用
+                    if step.get("failure_type"):
+                        result["failure_type"] = step["failure_type"]
+                    if step.get("failure_reason"):
+                        result["failure_reason"] = step["failure_reason"]
                 # 记录成功使用的断言方式（无论成功失败都记录）
                 matched_method = step.get("matched_method")
                 if matched_method:
@@ -1281,25 +1309,27 @@ async def _step_click_confirm_dialog_legacy(page, step: dict):
 async def _step_assert_success(page, step: dict) -> bool:
     """步骤：验证操作成功（软断言，失败仅标记不阻断）
 
-    四层策略依次尝试：
-      0. 快速检查 — 立即检测当前可见的通知元素（防止短暂消息在长等待后消失）
-      1. get_by_text("成功") — 最宽松，不关心 DOM 结构
-      2. 常见 Element UI 通知组件 CSS 选择器回退
-      3. 全部失败时执行 DOM 诊断，输出实际 DOM 结构
+    六层语义检测策略依次尝试：
+      0.   快速检查可见通知 — 语义分类（防止短暂消息消失）
+      0.5. 失败文本优先检测 — 通知组件内搜索"失败"
+      1.   成功文本匹配 — 通知组件内搜索"成功"（降低优先级）
+      2.   CSS 选择器 + 文本语义验证
+      2.5. MutationObserver 捕获 — 语义分类（不再 fallback 到任意消息）
+      F.   主动失败检测 — el-dialog / el-message--error / 表单校验错误
+      兜底: 仅 PROCESSING → 标记成功；完全无信号 → 标记失败
 
     Returns:
-        True 表示检测到成功提示，False 表示未检测到（超时）
+        True 表示检测到成功提示，False 表示检测到失败或未检测到
     """
     matched_method = None
+    failure_reason = None
+    has_processing = False
 
-    # ── 策略 0: 快速检查（50ms） ──
-    # 防止成功消息已出现但因前序步骤（confirm_dialog/click_button）
-    # 的等待消耗了消息的生命周期（el-message 默认 3 秒）导致检测失败
+    # ── 策略 0: 快速检查可见通知（语义分类） ──
     try:
-        # 检查所有常见通知组件是否当前可见
-        quick_visible = await page.evaluate("""() => {
+        quick_result = await page.evaluate("""() => {
             const selectors = [
-                '.el-message', '.el-message--success',
+                '.el-message', '.el-message--success', '.el-message--error',
                 '.el-notification', '.el-alert',
                 '[role="alert"]'
             ];
@@ -1312,24 +1342,76 @@ async def _step_assert_success(page, step: dict) -> bool:
             }
             return null;
         }""")
-        if quick_visible:
-            matched_method = f"quick_visible:{quick_visible[:30]}"
-            LOG.info(f"    ✓ 操作成功验证通过: {matched_method}")
+        if quick_result:
+            semantic = const.classify_notification(quick_result)
+            if semantic == "success":
+                matched_method = f"quick_visible:success:{quick_result[:30]}"
+                LOG.info(f"    ✓ 操作成功验证通过: {matched_method}")
+            elif semantic == "failure":
+                failure_reason = quick_result
+                LOG.info(f"    ✗ 检测到失败信号: {quick_result[:60]}")
+            elif semantic == "processing":
+                has_processing = True
+                LOG.debug(f"    [assert_success] 检测到处理中消息: {quick_result[:60]}")
     except Exception:
         pass
 
-    # ── 策略 1: Playwright 文本匹配（最宽松） ──
-    if matched_method is None:
+    # ── 策略 0.5: 失败文本优先检测（限定在通知组件范围内） ──
+    if matched_method is None and failure_reason is None:
         try:
-            locator = page.get_by_text("成功")
-            await locator.first.wait_for(state="visible", timeout=3000)
-            matched_method = "get_by_text:成功"
-            LOG.info(f"    ✓ 操作成功验证通过: {matched_method}")
+            failure_text = await page.evaluate("""() => {
+                const failKw = ['失败', '错误', '异常', 'error', '无权', '权限不足'];
+                const selectors = [
+                    '.el-message', '.el-message--error', '.el-message--warning',
+                    '.el-notification', '.el-alert',
+                    '[role="alert"]'
+                ];
+                for (const sel of selectors) {
+                    const el = document.querySelector(sel);
+                    if (el && el.offsetParent !== null) {
+                        const text = (el.textContent || '').trim();
+                        if (text && failKw.some(kw => text.includes(kw))) {
+                            return text.substring(0, 200);
+                        }
+                    }
+                }
+                return null;
+            }""")
+            if failure_text:
+                failure_reason = failure_text
+                LOG.info(f"    ✗ 通知组件中检测到失败: {failure_text[:60]}")
         except Exception:
             pass
 
-    # ── 策略 2: 常见 Element UI 通知组件 CSS 选择器 ──
-    if matched_method is None:
+    # ── 策略 1: 成功文本匹配（限定在通知组件内，降低优先级） ──
+    if matched_method is None and failure_reason is None:
+        try:
+            success_text = await page.evaluate("""() => {
+                const successKw = ['成功', '完成', '已保存', '已添加', '已删除', '已更新'];
+                const selectors = [
+                    '.el-message', '.el-message--success',
+                    '.el-notification', '.el-alert',
+                    '[role="alert"]'
+                ];
+                for (const sel of selectors) {
+                    const el = document.querySelector(sel);
+                    if (el && el.offsetParent !== null) {
+                        const text = (el.textContent || '').trim();
+                        if (text && successKw.some(kw => text.includes(kw))) {
+                            return text.substring(0, 200);
+                        }
+                    }
+                }
+                return null;
+            }""")
+            if success_text:
+                matched_method = f"notification_text:成功:{success_text[:30]}"
+                LOG.info(f"    ✓ 操作成功验证通过: {matched_method}")
+        except Exception:
+            pass
+
+    # ── 策略 2: CSS 选择器 + 文本语义验证 ──
+    if matched_method is None and failure_reason is None:
         css_selectors = [
             ".el-message",           # 轻量顶部提示
             ".el-notification",      # 右上角通知框
@@ -1338,74 +1420,150 @@ async def _step_assert_success(page, step: dict) -> bool:
         ]
         for selector in css_selectors:
             try:
-                await page.wait_for_selector(selector, state="visible", timeout=2000)
-                matched_method = f"css:{selector}"
-                LOG.info(f"    ✓ 操作成功验证通过: {matched_method}")
-                break
+                el = await page.wait_for_selector(selector, state="visible", timeout=2000)
+                if el:
+                    text = await el.text_content()
+                    text = (text or "").strip()
+                    semantic = const.classify_notification(text)
+                    if semantic == "success":
+                        matched_method = f"css:{selector}:{text[:30]}"
+                        LOG.info(f"    ✓ 操作成功验证通过: {matched_method}")
+                        break
+                    elif semantic == "failure":
+                        failure_reason = text
+                        LOG.info(f"    ✗ CSS选择器检测到失败: {text[:60]}")
+                        break
+                    elif semantic == "processing":
+                        has_processing = True
             except Exception:
                 continue
 
-    # ── 策略 2.5: MutationObserver 捕获结果 ──
-    # 成功消息生命周期约 3 秒，但 confirm_dialog 内部的等待（wait_for_loading_complete ~10s）
-    # 消耗了大部分时间，等 assert_success 执行时消息已消失
-    if matched_method is None:
+    # ── 策略 2.5: MutationObserver 捕获（语义分类，不 fallback 到任意消息） ──
+    if matched_method is None and failure_reason is None:
         try:
-            captured = await page.evaluate("""() => {
-                if (!window.__captured_messages) return null;
-                // 检查最近 30 秒内捕获的消息
+            captured_texts = await page.evaluate("""() => {
+                if (!window.__captured_messages) return [];
                 const now = Date.now();
-                const recent = window.__captured_messages.filter(m =>
-                    now - m.timestamp < 30000
-                );
-                if (recent.length === 0) return null;
-
-                const SUCCESS_KEYWORDS = ['成功', 'success', 'Success', '完成', 'done'];
-                for (const msg of recent) {
-                    if (SUCCESS_KEYWORDS.some(kw => msg.text.toLowerCase().includes(kw.toLowerCase()))) {
-                        return msg.text;
-                    }
-                }
-                // 如果没有成功关键字，返回最近捕获的消息（可能是其他提示）
-                return recent[recent.length - 1]?.text || null;
+                return window.__captured_messages
+                    .filter(m => now - m.timestamp < 30000)
+                    .map(m => m.text);
             }""")
-            if captured:
-                matched_method = f"captured:{captured[:40]}"
-                LOG.info(f"    ✓ 操作成功验证通过（捕获瞬态消息）: {matched_method}")
+            if captured_texts:
+                for text in captured_texts:
+                    semantic = const.classify_notification(text)
+                    if semantic == "failure":
+                        failure_reason = text
+                        LOG.info(f"    ✗ 捕获消息中检测到失败: {text[:60]}")
+                        break
+                    elif semantic == "success" and matched_method is None:
+                        matched_method = f"captured:success:{text[:40]}"
+                        LOG.info(f"    ✓ 操作成功验证通过（捕获瞬态消息）: {matched_method}")
+                    elif semantic == "processing":
+                        has_processing = True
         except Exception:
             pass
 
-    # ── 策略 3: DOM 诊断（全部失败时执行） ──
-    if matched_method is None:
-        diagnostic = await _diagnose_success_dom(page)
-        LOG.warning(f"    ⚠️ assert_success 未检测到成功提示（timeout 5s）")
-        if diagnostic:
-            LOG.warning(f"    🔍 DOM 诊断发现 {len(diagnostic)} 个候选元素:")
-            for d in diagnostic[:5]:
-                LOG.warning(f"       {d['selector']}  text={d['text'][:60]}")
-            # 记录诊断结果到 step，供后续使用
-            step["_dom_diagnostic"] = diagnostic
-        step["matched_method"] = "none"
+    # ── 策略 F: 主动失败检测 ──
+    if matched_method is None and failure_reason is None:
+        try:
+            failure_signals = await page.evaluate("""() => {
+                const failKw = ['失败', '错误', '异常', 'error', '无权', '权限不足'];
+                const results = [];
+
+                // 1. el-dialog 中的失败文本
+                document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"])')
+                    .forEach(d => {
+                        if (d.offsetWidth === 0) return;
+                        const text = (d.textContent || '').trim();
+                        if (failKw.some(kw => text.includes(kw))) {
+                            results.push({source: 'dialog', text: text.substring(0, 200)});
+                        }
+                    });
+
+                // 2. el-message-box 中的失败文本
+                document.querySelectorAll('.el-message-box__wrapper:not([style*="display: none"])')
+                    .forEach(d => {
+                        if (d.offsetWidth === 0) return;
+                        const text = (d.textContent || '').trim();
+                        if (failKw.some(kw => text.includes(kw))) {
+                            results.push({source: 'message_box', text: text.substring(0, 200)});
+                        }
+                    });
+
+                // 3. el-message--error / el-message--warning
+                const errMsg = document.querySelector('.el-message--error, .el-message--warning');
+                if (errMsg && errMsg.offsetParent !== null) {
+                    results.push({source: 'error_message', text: errMsg.textContent.trim().substring(0, 200)});
+                }
+
+                // 4. 表单校验错误
+                const formErrors = document.querySelectorAll('.el-form-item__error');
+                const errorTexts = [];
+                formErrors.forEach(e => {
+                    if (e.offsetWidth > 0) {
+                        errorTexts.push(e.textContent.trim());
+                    }
+                });
+                if (errorTexts.length > 0) {
+                    results.push({source: 'form_validation', text: errorTexts.join('; ')});
+                }
+
+                return results.length > 0 ? results : null;
+            }""")
+            if failure_signals:
+                failure_reason = failure_signals[0]["text"]
+                step["failure_type"] = failure_signals[0]["source"]
+                LOG.info(f"    ✗ 主动检测发现失败 ({failure_signals[0]['source']}): {failure_reason[:60]}")
+        except Exception:
+            pass
+
+    # ── 最终判定 ──
+    if matched_method:
+        step["matched_method"] = matched_method
+        await _take_assert_screenshot(page, step)
+        return True
+
+    if failure_reason:
+        step["matched_method"] = "failure_detected"
+        step["failure_reason"] = failure_reason
+        if "failure_type" not in step:
+            step["failure_type"] = "backend"
+        await _take_assert_screenshot(page, step)
         return False
 
-    # 记录成功的断言方式
-    step["matched_method"] = matched_method
+    # 兜底：无任何明确信号
+    if has_processing:
+        # 只有"处理中"类消息，按规则标记为成功
+        step["matched_method"] = "processing_only"
+        LOG.info(f"    ✓ 仅检测到处理中消息，标记为成功")
+        await _take_assert_screenshot(page, step)
+        return True
 
-    # 截图：验证成功后立即截图，确保通知框可见
-    # 这对于页面跳转类操作（添加用户、授权）尤为重要，
-    # 因为后续的 navigate_back 会销毁当前页面的通知元素
+    # 完全无信号
+    diagnostic = await _diagnose_success_dom(page)
+    LOG.warning(f"    ⚠️ assert_success 未检测到成功/失败提示")
+    if diagnostic:
+        LOG.warning(f"    🔍 DOM 诊断发现 {len(diagnostic)} 个候选元素:")
+        for d in diagnostic[:5]:
+            LOG.warning(f"       {d['selector']}  text={d['text'][:60]}")
+        step["_dom_diagnostic"] = diagnostic
+    step["matched_method"] = "none"
+    await _take_assert_screenshot(page, step)
+    return False
+
+
+async def _take_assert_screenshot(page, step: dict):
+    """截图：无论成功/失败都截取，确保报告有图。
+
+    在 assert_success 的最终判定后调用，捕获当前页面状态。
+    """
     try:
         import base64
-        pinned_count = await page.evaluate(
-            "() => (window.__pinned_notifications || []).length"
-        )
-        LOG.debug(f"    [assert_success] pinned notifications: {pinned_count}")
         raw = await page.screenshot(type="png")
         step["success_screenshot"] = base64.b64encode(raw).decode("ascii")
-        LOG.debug(f"    [assert_success] screenshot saved: {len(raw)} bytes")
+        LOG.debug(f"    [assert_screenshot] saved: {len(raw)} bytes")
     except Exception as e:
-        LOG.debug(f"    [assert_success] screenshot failed: {e}")
-
-    return True
+        LOG.debug(f"    [assert_screenshot] failed: {e}")
 
 
 async def _diagnose_success_dom(page) -> list:

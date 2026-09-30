@@ -340,6 +340,11 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
         replay_windows[action] = {"start": op_start, "end": op_end}
         if result.get("assertion_failed"):
             replay_windows[action]["assertion_failed"] = True
+            # 传递失败详情，供 Stage 3-4 分析使用
+            if result.get("failure_type"):
+                replay_windows[action]["failure_type"] = result["failure_type"]
+            if result.get("failure_reason"):
+                replay_windows[action]["failure_reason"] = result["failure_reason"]
 
         continue
 

@@ -419,21 +419,13 @@ async def run_operation(page, operation_name, operations_data, marker=None):
     # 使用 playbook 中定义的 marker（如果有），否则使用上一个操作传递的 marker
     op_marker = op.get("marker") or marker
 
-    # 跳过 Stage 1 标记为失败的操作
+    # 获取 Stage 1 的期望状态（用于报告标注，不跳过执行）
     st = _OPERATION_STATUS.get(operation_name, {{}})
-    if st.get("status") == "failed":
+    expected_status = st.get("status", "success")
+    if expected_status == "failed":
         reason = st.get("error_text", "Stage 1 标记为失败")
         err_type = st.get("error_type", "unknown")
-        display_name = op.get("display_name", op.get("description", operation_name))
-        print(f"\\n⏭ 跳过: {{display_name}} ({{err_type}}: {{reason}})")
-        return marker, {{
-            "operation": operation_name,
-            "display_name": display_name,
-            "status": "skipped",
-            "error": f"[{{err_type}}] {{reason}}",
-            "steps": [],
-            "duration": 0,
-        }}
+        print(f"\\n⚠ Stage 1 预期失败 ({{err_type}}: {{reason}})，仍执行以获取实际结果")
 
     print(f"\\n▶ 执行: {{op.get('display_name', op.get('description', operation_name))}}")
 
@@ -501,18 +493,48 @@ async def run_operation(page, operation_name, operations_data, marker=None):
 
         # 检查是否有任何步骤失败（如 assert_success 未检测到成功提示）
         has_failed_step = any(s["status"] == "failed" for s in detailed_steps)
-        op_status = "failed" if has_failed_step else "passed"
+
+        # 提取 assert_success 的失败详情（failure_type, failure_reason）
+        failure_type = ""
+        failure_reason = ""
+        matched_method = ""
+        for s in steps:
+            if s.get("action") == "assert_success":
+                failure_type = s.get("failure_type", "")
+                failure_reason = s.get("failure_reason", "")
+                matched_method = s.get("matched_method", "")
+                break
+
+        # 判定操作状态：三档
+        if has_failed_step:
+            # 有处理中消息兜底的情况标记为 passed_with_note
+            if matched_method == "processing_only":
+                op_status = "passed_with_note"
+                op_note = "仅检测到处理中消息"
+            else:
+                op_status = "failed"
+                op_note = failure_reason or "断言失败"
+        else:
+            op_status = "passed"
+            op_note = ""
 
         op_result = {{
             "operation": operation_name,
             "display_name": op.get("display_name", operation_name),
             "status": op_status,
+            "note": op_note,
+            "expected_status": expected_status,
+            "failure_type": failure_type,
+            "failure_reason": failure_reason,
+            "matched_method": matched_method,
             "steps": detailed_steps,
             "duration": duration,
             "screenshot": screenshot,
         }}
-        if has_failed_step:
-            print(f"  ⚠️ 操作完成但存在断言失败 (耗时 {{duration:.2f}}s)")
+        if op_status == "failed":
+            print(f"  ⚠ 操作失败: {{failure_reason or '断言失败'}} ({{failure_type or 'unknown'}}, 耗时 {{duration:.2f}}s)")
+        elif op_status == "passed_with_note":
+            print(f"  ⚠ 操作标记为成功 (仅处理中消息, 耗时 {{duration:.2f}}s)")
         else:
             print(f"  ✅ 操作成功 (耗时 {{duration:.2f}}s)")
 
@@ -533,12 +555,17 @@ async def run_operation(page, operation_name, operations_data, marker=None):
             "operation": operation_name,
             "display_name": op.get("display_name", operation_name),
             "status": "failed",
+            "note": str(e),
+            "expected_status": expected_status,
+            "failure_type": "exception",
+            "failure_reason": str(e),
+            "matched_method": "",
             "error": str(e),
             "steps": [],
             "duration": duration,
             "screenshot": screenshot,
         }}
-        print(f"  ❌ 操作失败: {{e}}")
+        print(f"  ❌ 操作异常: {{e}}")
 
         # 失败后也尝试清理弹窗
         await _cleanup_dialogs(page)

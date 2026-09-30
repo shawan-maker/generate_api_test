@@ -4611,24 +4611,26 @@ async def _verify_operation_success(page, operation_type: str, strict: bool = Fa
     Returns:
         bool: 是否检测到成功信号
     """
-    # 0. 检查捕获的消息（基于文本内容，而非 type 字段）
-    #    原因：很多系统发送 type=info 的成功消息（如"处理中"），不能只靠 type==success 判断
+    # 0. 检查捕获的消息（使用语义分类器）
+    has_processing = False
     if captured_messages:
-        _success_kw = ['成功', '完成', '处理中', '已保存', '已添加', '已删除', '已更新', '操作成功']
-        _error_kw = ['失败', '错误', '异常', 'error', '失败', '无权', '权限不足']
         _all_texts = [m.get('text', '') for m in captured_messages]
 
-        # 先检查是否有明确的失败关键词（失败优先于成功判断）
-        _matched_error = [t for t in _all_texts if any(kw in t for kw in _error_kw)]
-        if _matched_error:
-            LOG.info(f"    捕获到错误消息: {_matched_error}")
-            return False
+        # 语义分类每条消息，失败优先于成功
+        for t in _all_texts:
+            semantic = const.classify_notification(t)
+            if semantic == "failure":
+                LOG.info(f"    捕获到错误消息: {t[:60]}")
+                return False
+            elif semantic == "processing":
+                has_processing = True
 
-        # 再检查是否有成功关键词
-        _matched_success = [t for t in _all_texts if any(kw in t for kw in _success_kw)]
-        if _matched_success:
-            LOG.info(f"    捕获到成功消息: {_matched_success}")
-            return True
+        # 第二轮：检查成功（失败已在第一轮优先处理）
+        for t in _all_texts:
+            semantic = const.classify_notification(t)
+            if semantic == "success":
+                LOG.info(f"    捕获到成功消息: {t[:60]}")
+                return True
 
     # 1. 检查成功提示 (Element UI / Ant Design) — 正向信号，两种模式都接受
     has_success = await page.evaluate("""() => {
@@ -4669,13 +4671,14 @@ async def _verify_operation_success(page, operation_type: str, strict: bool = Fa
                 const text = content.textContent.trim();
                 if (!text) continue;
 
-                // 优先检查成功关键词
-                if (successKw.some(kw => text.includes(kw))) {
-                    return { type: 'success', text: text.substring(0, 200) };
-                }
-                // 再检查错误关键词
-                if (errKw.some(kw => text.includes(kw))) {
+                // 失败优先：如果同时包含成功和失败关键词（混合结果），判定为失败
+                const hasSuccess = successKw.some(kw => text.includes(kw));
+                const hasError = errKw.some(kw => text.includes(kw));
+                if (hasError) {
                     return { type: 'error', text: text.substring(0, 200) };
+                }
+                if (hasSuccess) {
+                    return { type: 'success', text: text.substring(0, 200) };
                 }
             }
             return null;
@@ -6490,39 +6493,38 @@ def build_playbook(ui_result: dict) -> dict:
         is_success = op_data.get("success", False)
         error_type = op_data.get("error_type", "")
 
-        # Phase 2.1: 只为成功的操作生成步骤
-        # 失败的操作只记录元数据，不生成步骤（避免 Stage 2 回放时出现问题）
+        # 所有操作都生成步骤（无论成功失败），确保 Stage 2 能回放并捕获 API
+        # 失败操作（如后端业务失败）仍需捕获 API 响应并生成脚本
         op_steps = []
         steps_type = "unknown"
 
-        if is_success:
-            # ★ 跨页面操作检测：nav_info 中有成功提交记录 → page-nav 模式
-            nav_info = op_data.get("nav_info")
-            is_page_nav = (nav_info
-                           and nav_info.get("submit_result", {}).get("success")
-                           and nav_info.get("navigated_url"))
-            if is_page_nav:
-                op_data["interaction_mode"] = "page-nav"
-                if not op_data.get("navigate_back_url"):
-                    op_data["navigate_back_url"] = ui_result.get("target_url", "")
+        # ★ 跨页面操作检测：nav_info 中有 navigated_url → page-nav 模式
+        # 不论成功失败，只要有导航信息就视为 page-nav
+        nav_info = op_data.get("nav_info")
+        is_page_nav = (nav_info
+                       and nav_info.get("navigated_url"))
+        if is_page_nav:
+            op_data["interaction_mode"] = "page-nav"
+            if not op_data.get("navigate_back_url"):
+                op_data["navigate_back_url"] = ui_result.get("target_url", "")
 
-            # 基于 op_data 结构特征分发步骤构建（不写死任何操作名）
-            if is_page_nav:
-                steps_type = "generic"  # page-nav 走通用角色
-                op_steps.extend(_build_page_nav_steps(op_data))
+        # 基于 op_data 结构特征分发步骤构建（不写死任何操作名）
+        if is_page_nav:
+            steps_type = "generic"  # page-nav 走通用角色
+            op_steps.extend(_build_page_nav_steps(op_data))
+        else:
+            steps_type = _classify_op_steps_type(op_data)
+            if steps_type == "create":
+                op_steps.extend(_build_create_steps(op_data))
+            elif steps_type == "query":
+                op_steps.extend(_build_query_steps(op_data))
+            elif steps_type == "update":
+                op_steps.extend(_build_update_steps(op_data))
+            elif steps_type == "delete":
+                op_steps.extend(_build_delete_steps(op_data))
             else:
-                steps_type = _classify_op_steps_type(op_data)
-                if steps_type == "create":
-                    op_steps.extend(_build_create_steps(op_data))
-                elif steps_type == "query":
-                    op_steps.extend(_build_query_steps(op_data))
-                elif steps_type == "update":
-                    op_steps.extend(_build_update_steps(op_data))
-                elif steps_type == "delete":
-                    op_steps.extend(_build_delete_steps(op_data))
-                else:
-                    # 通用操作（含导入、授权、冻结等）
-                    op_steps.extend(_build_generic_steps(op_data))
+                # 通用操作（含导入、授权、冻结等）
+                op_steps.extend(_build_generic_steps(op_data))
 
         if op_steps or not is_success:
             # 使用 trigger_text 作为业务名称（按钮原文即操作名）
@@ -6530,14 +6532,14 @@ def build_playbook(ui_result: dict) -> dict:
             # ★ 只有 create 操作存储 marker（自身生成的值）
             # 其他操作的 marker 从上游 create 传播，不硬编码到 playbook
             marker = op_data.get("marker") if steps_type == "create" else None
-            # replayable: create 操作总是可回放；其他操作依赖上游 marker 传播
-            has_find_row = any(s.get("action") == "find_row" for s in op_steps)
-            replayable = is_success
+            # replayable: 有步骤的操作都可回放（无论成功失败）
+            # 失败操作仍需回放以捕获 API 并在报告中展示实际结果
+            replayable = bool(op_steps)
             entry = {
                 "display_name": display_name,
                 "description": op_data.get("description", action),
                 "role": steps_type,
-                "steps": op_steps,  # 失败操作的 steps 为空列表
+                "steps": op_steps,
                 "marker": marker,
                 "detection_status": "success" if is_success else "failed",
                 "replayable": replayable,
@@ -6545,7 +6547,7 @@ def build_playbook(ui_result: dict) -> dict:
             if not is_success and error_type:
                 entry["error_type"] = error_type
                 entry["error_text"] = op_data.get("error_text", "")
-            # 导航类失败操作记录探索信息
+            # 导航类操作记录探索信息（无论成功失败）
             nav_info = op_data.get("nav_info")
             if nav_info:
                 entry["nav_info"] = nav_info
@@ -7445,10 +7447,10 @@ def _build_page_nav_steps(op_data: dict) -> list:
                 "description": "填充表单字段"
             })
 
-    # Step 5: 点击提交按钮（默认值使用无空格标准形式，replay_engine 有去空格容错）
+    # Step 5: 点击提交按钮（无论成功失败都生成，Stage 2 需要捕获 API）
     submit_result = nav_info.get("submit_result", {})
     submit_text = submit_result.get("button_text", "确定")
-    if submit_result.get("success"):
+    if submit_text:
         steps.append({
             "action": "click_button",
             "text": submit_text,
@@ -7456,7 +7458,7 @@ def _build_page_nav_steps(op_data: dict) -> list:
             "description": f"点击{submit_text}按钮"
         })
 
-    # Step 6: 验证成功
+    # Step 6: 验证成功（无论成功失败都生成，assert_success 会做语义判断）
     success_locator = op_data.get("success_locator",
         ".el-message--success, .el-notification__content:has-text('成功'), [role='alert']:has-text('成功')")
     steps.append({

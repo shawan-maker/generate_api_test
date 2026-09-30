@@ -34,9 +34,10 @@ def generate_ui_report(results, module_name):
         报告文件路径
     """
     total = len(results)
-    passed = sum(1 for r in results if r["status"] == "passed")
+    passed = sum(1 for r in results if r["status"] in ("passed", "passed_with_note"))
     skipped = sum(1 for r in results if r["status"] == "skipped")
     failed = total - passed - skipped
+    passed_with_note = sum(1 for r in results if r["status"] == "passed_with_note")
     exec_total = passed + failed
     pass_rate = f"{(passed / exec_total * 100) if exec_total > 0 else 0:.1f}%"
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -127,13 +128,47 @@ def generate_ui_report(results, module_name):
         steps = r.get("steps", [])
         error = r.get("error", "")
 
-        badge_cls = "badge-ok" if status == "passed" else "badge-fail" if status == "failed" else "badge-skip"
-        status_text = "通过" if status == "passed" else "失败" if status == "failed" else "跳过"
-        row_cls = "ok" if status == "passed" else "fail" if status == "failed" else "skip"
+        # 三档状态：passed / passed_with_note / failed / skipped
+        if status == "passed_with_note":
+            badge_cls = "badge-warn"
+            status_text = "通过(备注)"
+            row_cls = "warn"
+        elif status == "passed":
+            badge_cls = "badge-ok"
+            status_text = "通过"
+            row_cls = "ok"
+        elif status == "failed":
+            badge_cls = "badge-fail"
+            status_text = "失败"
+            row_cls = "fail"
+        else:
+            badge_cls = "badge-skip"
+            status_text = "跳过"
+            row_cls = "skip"
 
         steps_html = build_steps_html(steps)
         screenshot_html = build_screenshot_cell(r)
-        error_html = f'<div class="error-msg">{esc(error)}</div>' if error else ""
+
+        # 构建详情区域：失败原因 + 错误信息
+        failure_type = r.get("failure_type", "")
+        failure_reason = r.get("failure_reason", "")
+        note = r.get("note", "")
+        expected_status = r.get("expected_status", "")
+        matched_method = r.get("matched_method", "")
+
+        detail_parts = []
+        if failure_reason:
+            detail_parts.append(f'<div class="failure-info"><span class="failure-label">失败原因:</span> {esc(failure_reason)}</div>')
+        if failure_type:
+            detail_parts.append(f'<div class="failure-info"><span class="failure-label">失败类型:</span> <code>{esc(failure_type)}</code></div>')
+        if note and not failure_reason:
+            detail_parts.append(f'<div class="note-info"><span class="note-label">备注:</span> {esc(note)}</div>')
+        if expected_status == "failed":
+            detail_parts.append(f'<div class="expected-info"><span class="expected-label">Stage 1 预期:</span> 失败</div>')
+        if error and error != failure_reason:
+            detail_parts.append(f'<div class="error-msg">{esc(error)}</div>')
+
+        detail_html = "\n".join(detail_parts)
 
         return f'''<tr class="{row_cls}">
 <td>{i}</td>
@@ -141,7 +176,7 @@ def generate_ui_report(results, module_name):
 <td>{duration:.2f}s</td>
 <td><span class="badge {badge_cls}">{status_text}</span></td>
 {screenshot_html}
-<td>{steps_html}{error_html}</td>
+<td>{steps_html}{detail_html}</td>
 </tr>'''
 
     rows_html = "\n".join(build_result_row(i, r) for i, r in enumerate(results, 1))
@@ -170,11 +205,13 @@ th{{background:#f8f9fa;padding:8px 10px;text-align:left;border-bottom:2px solid 
 td{{padding:7px 10px;border-bottom:1px solid #eee;vertical-align:top;word-break:break-all}}
 tr.ok{{background:#f4fdf7}}
 tr.fail{{background:#fef0f0}}
+tr.warn{{background:#fef9e7}}
 tr.skip{{background:#f8f9fa}}
 .badge{{display:inline-block;padding:1px 9px;border-radius:10px;font-size:11px;font-weight:600;color:#fff}}
 .badge.ok{{background:#27ae60}}
 .badge.fail{{background:#e74c3c}}
 .badge.skip{{background:#95a5a6}}
+.badge-warn{{background:#f39c12;color:#fff;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600}}
 .badge-ok{{background:#d5f5e3;color:#27ae60;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600}}
 .badge-fail{{background:#fadbd8;color:#e74c3c;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600}}
 .badge-skip{{background:#f2f3f4;color:#95a5a6;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600}}
@@ -197,6 +234,12 @@ tr.skip{{background:#f8f9fa}}
 .fields-table td{{padding:3px 6px;border-bottom:1px solid #eee;vertical-align:top;word-break:break-all}}
 .fields-table .locator{{max-width:200px}}
 .error-msg{{color:#e74c3c;font-size:11px;margin-top:4px;white-space:pre-wrap}}
+.failure-info{{color:#c0392b;font-size:11px;margin-top:4px}}
+.failure-label{{font-weight:600}}
+.note-info{{color:#f39c12;font-size:11px;margin-top:4px}}
+.note-label{{font-weight:600}}
+.expected-info{{color:#7f8c8d;font-size:11px;margin-top:4px}}
+.expected-label{{font-weight:600}}
 .lightbox{{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.85);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out}}
 .lightbox.show{{display:flex}}
 .lightbox img{{max-width:92vw;max-height:92vh;border:2px solid #fff;box-shadow:0 8px 32px rgba(0,0,0,.5)}}
