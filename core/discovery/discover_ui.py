@@ -2609,7 +2609,9 @@ async def _do_create(page, context: dict) -> dict:
     btn_click_result = await _click_button_escalating(page, btn_text)
     if not btn_click_result["clicked"]:
         return {"success": False, "error_type": "click_failed",
-                "error_text": f"无法点击按钮: {btn_text}"}
+                "error_text": f"无法点击按钮: {btn_text}",
+                "trigger_text": btn_text,
+                "trigger_locator_verified": None}
 
     # 2. 等待弹窗/页面就绪
     await page.wait_for_timeout(1500)
@@ -2644,7 +2646,9 @@ async def _do_create(page, context: dict) -> dict:
                 }
         await _close_dialog(page)
         return {"success": False, "error_type": "no_fields",
-                "error_text": "未扫描到表单字段且确认对话框处理失败"}
+                "error_text": "未扫描到表单字段且确认对话框处理失败",
+                "trigger_text": btn_text,
+                "trigger_locator_verified": btn_click_result.get("locator")}
 
     # 4. 生成填充规则和数据
     fill_rules = generate_fill_rules(fields)
@@ -2731,7 +2735,9 @@ async def _do_create(page, context: dict) -> dict:
     if not submit_result.get("locator"):
         await _close_dialog(page)
         return {"success": False, "error_type": "submit_failed",
-                "error_text": "未找到提交按钮"}
+                "error_text": "未找到提交按钮",
+                "trigger_text": btn_text,
+                "trigger_locator_verified": btn_click_result.get("locator")}
 
     # 8. 等待结果
     await page.wait_for_timeout(2000)
@@ -2752,7 +2758,9 @@ async def _do_create(page, context: dict) -> dict:
             first_err = field_errors[0]
             return {"success": False, "error_type": "form_validation",
                     "error_field": first_err.get("field_label", ""),
-                    "error_text": first_err.get("error_text", "")}
+                    "error_text": first_err.get("error_text", ""),
+                    "trigger_text": btn_text,
+                    "trigger_locator_verified": btn_click_result.get("locator")}
         global_errors = [e for e in errors if e.get("severity") == "global"]
         if global_errors:
             err_text = global_errors[0].get("error_text", "")
@@ -2761,13 +2769,17 @@ async def _do_create(page, context: dict) -> dict:
                 LOG.info(f"    检测到成功消息: {err_text}，忽略")
             else:
                 return {"success": False, "error_type": "api_error",
-                        "error_text": err_text}
+                        "error_text": err_text,
+                        "trigger_text": btn_text,
+                        "trigger_locator_verified": btn_click_result.get("locator")}
 
     # 10. 验证成功（弹窗关闭 / 成功提示）
     success = await _verify_operation_success(page, "create")
     if not success:
         return {"success": False, "error_type": "no_success_signal",
-                "error_text": "提交后未检测到成功信号"}
+                "error_text": "提交后未检测到成功信号",
+                "trigger_text": btn_text,
+                "trigger_locator_verified": btn_click_result.get("locator")}
 
     # 10.5. API 触发检测（额外确认，从 Stage 2 移入）
     api_triggered = await _check_create_api_triggered_simple(page)
@@ -3171,7 +3183,9 @@ async def _do_edit(page, context: dict) -> dict:
                     await page.wait_for_timeout(1000)
                     continue
                 return {"success": False, "error_type": "row_not_found",
-                        "error_text": f"未找到数据行: {marker}"}
+                        "error_text": f"未找到数据行: {marker}",
+                        "trigger_text": btn_text,
+                        "trigger_locator_verified": None}
             clicked = await driver.click_row_button_v2(row, btn_text)
             row_selector = btn_text
         else:
@@ -3185,7 +3199,9 @@ async def _do_edit(page, context: dict) -> dict:
             await page.wait_for_timeout(500)
     else:
         return {"success": False, "error_type": "click_failed",
-                "error_text": f"无法点击编辑按钮: {btn_text}"}
+                "error_text": f"无法点击编辑按钮: {btn_text}",
+                "trigger_text": btn_text,
+                "trigger_locator_verified": None}
 
     await page.wait_for_timeout(1500)
     await wait_for_loading_complete(page)
@@ -3194,7 +3210,9 @@ async def _do_edit(page, context: dict) -> dict:
     state = await _check_precondition_state(page, {"type": "dialog"})
     if not state["success"]:
         return {"success": False, "error_type": "no_dialog",
-                "error_text": "点击编辑后未出现编辑弹窗"}
+                "error_text": "点击编辑后未出现编辑弹窗",
+                "trigger_text": btn_text,
+                "trigger_locator_verified": btn_click_result.get("locator")}
 
     # 扫描字段并修改
     fields = await form_filler.scan_form_fields_v2()
@@ -3203,14 +3221,18 @@ async def _do_edit(page, context: dict) -> dict:
     if filled == 0:
         await _close_dialog(page)
         return {"success": False, "error_type": "no_editable_fields",
-                "error_text": "未找到可修改的字段"}
+                "error_text": "未找到可修改的字段",
+                "trigger_text": btn_text,
+                "trigger_locator_verified": btn_click_result.get("locator")}
 
     # 提交
     submit_result = await form_filler.submit_form_v2()
     if not submit_result.get("locator"):
         await _close_dialog(page)
         return {"success": False, "error_type": "submit_failed",
-                "error_text": "未找到提交按钮"}
+                "error_text": "未找到提交按钮",
+                "trigger_text": btn_text,
+                "trigger_locator_verified": btn_click_result.get("locator")}
 
     await page.wait_for_timeout(2000)
 
@@ -3221,13 +3243,17 @@ async def _do_edit(page, context: dict) -> dict:
         if field_errors:
             return {"success": False, "error_type": "form_validation",
                     "error_field": field_errors[0].get("field_label", ""),
-                    "error_text": field_errors[0].get("error_text", "")}
+                    "error_text": field_errors[0].get("error_text", ""),
+                    "trigger_text": btn_text,
+                    "trigger_locator_verified": btn_click_result.get("locator")}
 
     success = await _verify_operation_success(page, "update")
     if not success:
         await _close_dialog(page)
         return {"success": False, "error_type": "no_success_signal",
-                "error_text": "编辑提交后未检测到成功信号"}
+                "error_text": "编辑提交后未检测到成功信号",
+                "trigger_text": btn_text,
+                "trigger_locator_verified": btn_click_result.get("locator")}
 
     # 使用 submit_form_v2 返回的已验证 locator
     submit_text = submit_result["text"]
@@ -3346,7 +3372,9 @@ async def _do_delete(page, context: dict) -> dict:
                     await page.wait_for_timeout(1000)
                     continue
                 return {"success": False, "error_type": "row_not_found",
-                        "error_text": f"未找到数据行: {marker}"}
+                        "error_text": f"未找到数据行: {marker}",
+                        "trigger_text": btn_text,
+                        "trigger_locator_verified": None}
             clicked = await driver.click_row_button_v2(row, btn_text)
             row_selector = btn_text
         else:
@@ -3360,7 +3388,9 @@ async def _do_delete(page, context: dict) -> dict:
             await page.wait_for_timeout(500)
     else:
         return {"success": False, "error_type": "click_failed",
-                "error_text": f"无法点击删除按钮: {btn_text}"}
+                "error_text": f"无法点击删除按钮: {btn_text}",
+                "trigger_text": btn_text,
+                "trigger_locator_verified": None}
 
     await page.wait_for_timeout(1000)
 
@@ -3468,7 +3498,9 @@ async def _do_delete(page, context: dict) -> dict:
 
     if not confirmed:
         return {"success": False, "error_type": "no_confirm_button",
-                "error_text": "未找到删除确认按钮"}
+                "error_text": "未找到删除确认按钮",
+                "trigger_text": btn_text,
+                "trigger_locator_verified": btn_click_result.get("locator")}
 
     await wait_for_loading_complete(page)
     await page.wait_for_timeout(1000)
@@ -3510,7 +3542,9 @@ async def _do_delete(page, context: dict) -> dict:
                 LOG.info(f"    检测到成功消息: {err_text}，忽略")
             else:
                 return {"success": False, "error_type": "api_error",
-                        "error_text": err_text}
+                        "error_text": err_text,
+                        "trigger_text": btn_text,
+                        "trigger_locator_verified": btn_click_result.get("locator")}
 
     # 读取捕获的消息
     captured_msgs = await _get_captured_messages(page)
@@ -3598,7 +3632,9 @@ async def _do_generic_operation(page, context: dict) -> dict:
         row = await driver.find_data_row(marker)
         if not row:
             return {"success": False, "error_type": "row_not_found",
-                    "error_text": f"未找到数据行: {marker}"}
+                    "error_text": f"未找到数据行: {marker}",
+                    "trigger_text": trigger_text_normalized,
+                    "trigger_locator_verified": None}
         clicked = await driver.click_row_button_v2(row, btn_text)
         row_selector = btn_text
     elif btn_location == "dropdown":
@@ -3606,14 +3642,18 @@ async def _do_generic_operation(page, context: dict) -> dict:
         if not marker:
             LOG.warning(f"  {action} 跳过: dropdown 操作需要 marker")
             return {"success": False, "error_type": "skipped",
-                    "error_text": "dropdown 操作需要 marker"}
+                    "error_text": "dropdown 操作需要 marker",
+                    "trigger_text": trigger_text_normalized,
+                    "trigger_locator_verified": None}
 
         from .replay.button_driver import ButtonDriver
         driver = ButtonDriver(page)
         row = await driver.find_data_row(marker)
         if not row:
             return {"success": False, "error_type": "row_not_found",
-                    "error_text": f"未找到数据行: {marker}"}
+                    "error_text": f"未找到数据行: {marker}",
+                    "trigger_text": trigger_text_normalized,
+                    "trigger_locator_verified": None}
         dropdown_click_result = await driver.click_row_more_item(row, btn_text)
         clicked = dropdown_click_result.get("clicked", False)
         row_selector = f"{btn.get('parent', '更多')} > {btn_text}"
@@ -3627,7 +3667,9 @@ async def _do_generic_operation(page, context: dict) -> dict:
 
     if not clicked:
         return {"success": False, "error_type": "click_failed",
-                "error_text": f"无法点击 {action} 按钮: {btn_text}"}
+                "error_text": f"无法点击 {action} 按钮: {btn_text}",
+                "trigger_text": trigger_text_normalized,
+                "trigger_locator_verified": btn_click_result.get("locator") if btn_click_result else None}
 
     await page.wait_for_timeout(1500)
     await wait_for_loading_complete(page)
@@ -6552,6 +6594,48 @@ def build_playbook(ui_result: dict) -> dict:
             if nav_info:
                 entry["nav_info"] = nav_info
             operations[action] = entry
+
+    # ★ Unvalidated buttons fallback: 扫描 toolbar_buttons/row_actions 中
+    # 未在 validated_operations 中出现的按钮，为它们生成最基本的 click 步骤
+    # 这确保 rescue 阶段发现的元素也能进入 playbook
+    validated_trigger_texts = {
+        op_data.get("trigger_text", "").strip()
+        for op_data in validated_operations.values()
+    }
+    fallback_count = 0
+
+    for btn_list_key in ("toolbar_buttons", "row_actions"):
+        for btn in ui_result.get(btn_list_key, []):
+            btn_text = btn.get("text", "").strip()
+            if not btn_text or btn_text in validated_trigger_texts:
+                continue
+            # 跳过已作为 action key 存在的按钮
+            action_key = btn_text
+            if action_key in operations:
+                continue
+            # 生成最基本的 click 步骤
+            btn_locator = btn.get("selector", "")
+            if not btn_locator:
+                btn_locator = f"button:has-text('{btn_text}')"
+            fallback_steps = [{
+                "action": "click_button",
+                "playwright_locator": btn_locator,
+                "description": f"点击 {btn_text} 按钮（未验证）"
+            }]
+            operations[action_key] = {
+                "display_name": btn_text,
+                "description": f"未验证操作: {btn_text}",
+                "role": "generic",
+                "steps": fallback_steps,
+                "marker": None,
+                "detection_status": "unvalidated",
+                "replayable": True,
+            }
+            validated_trigger_texts.add(btn_text)
+            fallback_count += 1
+
+    if fallback_count > 0:
+        LOG.info(f"  Playbook: 添加 {fallback_count} 个未验证按钮的 fallback 步骤")
 
     return {
         "meta": meta,

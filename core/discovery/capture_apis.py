@@ -230,7 +230,7 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
             LOG.debug(f"跳过 {action}: Playbook 中无定义")
             continue
 
-        op_status = op.get("status", "success")
+        op_status = op.get("detection_status", "success")
         if op_status == "failed":
             LOG.info(f"▶ 回放 {action} (Stage 1 标记为失败: {op.get('error_type', 'unknown')})")
         else:

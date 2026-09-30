@@ -197,6 +197,12 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str)
                 LOG.error(f"  Phase F: ❌ {len(critical)} 个关键元素缺失，终止")
                 for m in critical:
                     LOG.error(f"    - {m['desc']}")
+                # 保存部分结果供诊断和后续分析
+                ws_dir = get_workspace_dir(project_dir)
+                ws_dir.mkdir(parents=True, exist_ok=True)
+                out_path = ws_dir / "kb" / "module_discovered" / f"{module_name}_ui.json"
+                _save_json(ui_result, out_path)
+                LOG.info(f"部分结果已保存（供诊断）: {out_path}")
                 return None
             else:
                 LOG.warning(f"  Phase F: 仅非关键元素缺失（{len(missing)} 个），继续")

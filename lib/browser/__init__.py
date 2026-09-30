@@ -1,4 +1,2 @@
 """browser/ - 浏览器操作模块集群"""
-from .browser_ops import *
-from .nav import *
-from .api_client import *
+# 注：browser_ops, nav, api_client 已废弃并删除

@@ -3,7 +3,7 @@
 ## 元信息
 
 - **名称**: api-ai-test
-- **版本**: 2.0.0
+- **版本**: 2.1.0
 - **用途**: 自动化发现、生成和执行 API 测试
 - **平台**: 通用（Claude / GPT / 其他 AI 客户端）
 - **触发词**: api, test, 自动化, 发现, 生成, 执行, 测试, 用户管理, 角色管理
@@ -17,11 +17,12 @@
 ### 核心功能
 
 1. **Stage 1-5 全流程** — 从 UI 探测到测试脚本生成的完整流水线
-2. **5 角色分类系统** — name/mutable/context/generate/static 智能分类
-3. **值匹配驱动** — 基于值的精确匹配，context 靠值识别
-4. **前置 API 追踪** — 自动识别和排序依赖的前置 API
-5. **多格式导出** — Postman Collection / helpers.py / Excel 参数文件
-6. **增量发现** — 7 天内已发现的模块自动跳过
+2. **Playbook 架构** — Stage 1 生成可执行操作指令集，Stage 2 直接回放
+3. **5 角色分类系统** — name/mutable/context/generate/static 智能分类
+4. **值匹配驱动** — 基于值的精确匹配，context 靠值识别
+5. **前置 API 追踪** — 自动识别和排序依赖的前置 API
+6. **多格式导出** — Postman Collection / helpers.py / Excel 参数文件
+7. **增量发现** — 7 天内已发现的模块自动跳过
 
 ---
 
@@ -30,39 +31,26 @@
 ### 单模块完整流程
 
 ```bash
-# Stage 1-5 全流程
 python -m core.discovery.run --project <project_id> \
   --module <模块名> \
   --url <模块URL路径> \
-  --stage all
-
-# 示例：用户管理模块
-python -m core.discovery.run --project ecm-compute \
-  --module 用户管理 \
-  --url /estack/web/estack/user-center/user-manage/user \
   --stage all
 ```
 
 ### 分阶段执行
 
 ```bash
-# 只运行 Stage 3/4（分析和生成）
-python -m core.discovery.run --project ecm-compute \
-  --module 用户管理 \
-  --url /estack/web/estack/user-center/user-manage/user \
-  --stage 34
+# Stage 1: UI 探测
+python -m core.discovery.run --project ecm-compute --module 用户管理 --url /path --stage 1
 
-# 离线模式（使用已有的捕获数据）
-python -m core.discovery.run --project ecm-compute \
-  --module 用户管理 \
-  --url /estack/web/estack/user-center/user-manage/user \
-  --stage 34 --offline --headless
+# Stage 2: API 捕获
+python -m core.discovery.run --project ecm-compute --module 用户管理 --url /path --stage 2
 
-# Stage 5 导出
-python -m core.discovery.run --project ecm-compute \
-  --module 用户管理 \
-  --url /estack/web/estack/user-center/user-manage/user \
-  --stage 5
+# Stage 3+4: 分析 + 生成（离线）
+python -m core.discovery.run --project ecm-compute --module 用户管理 --stage 34 --offline
+
+# Stage 5: 导出
+python -m core.discovery.run --project ecm-compute --module 用户管理 --stage 5
 ```
 
 ### 批量处理
@@ -71,21 +59,31 @@ python -m core.discovery.run --project ecm-compute \
 # 处理 modules.yaml 中的所有模块
 python -m core.discovery.run --project ecm-compute --all-modules
 
-# 只处理特定标签的模块
+# 按标签过滤
 python -m core.discovery.run --project ecm-compute --all-modules --tag 用户中心
 
-# 强制重新发现（忽略增量检查）
+# 强制重新发现
 python -m core.discovery.run --project ecm-compute --all-modules --force
 ```
 
-### 执行生成的测试
+### 导航发现模式
 
 ```bash
-# 运行 API 测试脚本
-python projects/ecm-compute/v1.0.0/api/用户管理_API测试.py
+# 探测菜单，输出模块列表
+python -m core.discovery.run --project ecm-compute --discover-only --home-url "<URL>" --headless
 
-# 使用 pytest 运行
-python -m pytest projects/ecm-compute/v1.0.0/api/用户管理_API测试.py -v
+# 从缓存选择模块执行
+python -m core.discovery.run --project ecm-compute --discover-select "1,3,5" --headless
+
+# 一体化交互模式
+python -m core.discovery.run --project ecm-compute --discover --headless
+```
+
+### 并行测试执行
+
+```bash
+python -m core.discovery.run_parallel --project ecm-compute
+python -m core.discovery.run_parallel --project ecm-compute --version v1.0.0 --parallel 6
 ```
 
 ---
@@ -117,24 +115,57 @@ python -m pytest projects/ecm-compute/v1.0.0/api/用户管理_API测试.py -v
 ```
 API_AI_test/
 ├── core/
-│   ├── discovery/          # 主管线引擎（Stage 1-5）
-│   │   ├── run.py         # CLI 入口
-│   │   ├── analyze_flow.py # Stage 3: 流程分析（5 角色分类）
-│   │   ├── gen_test.py    # Stage 4: 测试脚本生成
-│   │   └── export_artifacts.py # Stage 5: 导出
-│   └── generators/        # 代码生成器
+│   └── discovery/              # 主管线引擎（Stage 1-5）
+│       ├── run.py              # CLI 入口
+│       ├── discover_ui.py      # Stage 1: UI 探测 + Playbook 生成
+│       ├── capture_apis.py     # Stage 2: API 捕获 + 回放
+│       ├── analyze_flow.py     # Stage 3: 逻辑分析 + Manifest 构建
+│       ├── gen_test.py         # Stage 4: API 脚本生成
+│       ├── generate_ui_script.py # Stage 2b: UI 脚本生成
+│       ├── export_artifacts.py # Stage 5: 导出
+│       ├── stage1_rescue.py    # Stage 1 Phase C/D/E 补救
+│       ├── feedback_loop.py    # Stage 1↔2 反馈循环
+│       ├── request_interceptor.py # HTTP 拦截 + KB 驱动注入
+│       ├── endpoint_classifier.py # 端点分类去重
+│       ├── stage_validators.py # 质量门禁
+│       ├── pre_api_merger.py   # 跨模块前置 API 合并
+│       ├── nav_discovery.py    # 导航菜单爬取
+│       ├── discover_navigation.py # 导航发现编排
+│       ├── run_parallel.py     # 并行测试执行
+│       └── replay/             # UI 操作回放引擎
+│           ├── replay_engine.py  # Playbook 回放执行器
+│           ├── button_driver.py  # 按钮点击驱动
+│           ├── form_filler.py    # 表单智能填充
+│           ├── locator_helpers.py # 定位器辅助
+│           └── wait_helpers.py   # 事件驱动等待
 ├── lib/
-│   ├── runtime/           # 运行时库
-│   │   └── test_runtime.py # 5 角色运行时处理
-│   └── auth/              # 认证模块
-├── projects/              # 项目数据（每个子目录是一个被测系统）
+│   ├── auth/                   # 认证模块
+│   │   ├── auth.py             # 鉴权引擎
+│   │   ├── slider.py           # 滑块验证码
+│   │   └── cookie_client.py    # Cookie 管理客户端
+│   ├── runtime/                # 测试运行时
+│   │   ├── test_runtime.py     # Manifest 驱动运行时
+│   │   ├── global_pre_apis.py  # 全局前置 API 执行器
+│   │   ├── run_history.py      # 运行历史记录
+│   │   └── path_utils.py       # 路径工具
+│   ├── report/                 # 报告生成
+│   │   ├── test_report.py      # JSONL → HTML 报告
+│   │   └── ui_report.py        # UI 测试报告
+│   └── utils.py                # 工具函数
+├── config/                     # 全局配置
+│   ├── credentials.yaml        # 全局凭据库
+│   ├── debug_strategies.json   # 调试策略
+│   ├── failure_patterns.yaml   # 失败模式
+│   └── probe_lessons_kb.json   # 探测经验知识库
+├── projects/                   # 项目数据
 │   └── <project_id>/
-│       ├── modules.yaml   # 模块清单
-│       ├── profile.yaml   # 项目配置
-│       └── v1.0.0/        # 版本化输出
-│           ├── api/       # 生成的 API 测试脚本
-│           └── export/    # Stage 5 导出文件
-└── workspace/             # 中间产物（不上传 git）
+│       ├── modules.yaml        # 模块清单
+│       ├── profile.yaml        # 项目配置
+│       └── v1.0.0/             # 版本化输出
+│           ├── api/            # API 测试脚本 + lib/
+│           ├── ui/             # UI 测试脚本 + lib/
+│           └── export/         # Stage 5 导出文件
+└── workspace/                  # 中间产物
     └── <project_id>/
         └── kb/module_discovered/ # KB 中间数据
 ```
@@ -143,56 +174,33 @@ API_AI_test/
 
 ## 关键特性
 
-### 1. 值匹配驱动
+### 1. Playbook 架构
 
-- **精确值匹配**：在前置 API 响应中查找相同的值
-- **纯值匹配**：context 完全靠值相等识别，不依赖字段名匹配
-- **URL 路径参数**：pathname 中的动态参数同样通过值匹配确定来源（`_analyze_path_params`），运行时只执行映射
+Stage 1 生成 playbook（结构化操作指令集），Stage 2 直接回放：
 
-### 2. URL 路径参数分析
-
-**Stage 3 分析，运行时执行**：pathname 中的动态参数（如 `/users/{id}`）在 Stage 3 通过值匹配确定完整映射关系，运行时只负责执行映射。
-
-**分析流程**（`_analyze_path_params` 函数）：
-1. **Step 1 - Body 关联**：检查 URL 中的值是否在当前请求 body 中出现，如果是 context 字段则复用其 source
-2. **Step 1.5 - 已有 source 优先**：如果 body 中已有 context source 指向某个 pre-API，且 value_index 中该 pre-API 也能匹配当前 path 段值，优先复用该 source（确保 pre-API 被收集）
-3. **Step 2 - Value_index 关联**：在前置 API 响应中查找相同值
-4. **Step 3 - 值模式兜底**：对于长 hex_id/uuid 等，如果 body 和 value_index 都未匹配，默认为 `create.id`（适用于编辑/删除场景）
-5. **Step 0 - 特异性判定**：纯数字需 ≥2 字符，含字母需 ≥16 字符，防止 `v1`、`active` 等静态路径段被误匹配
-
-**Manifest 输出**：
 ```json
 {
-  "action": "迁移",
-  "api": {
-    "method": "PUT",
-    "pathname": "/users/migrate/{path_0}",
-    "path_params": {
-      "path_0": {
-        "original_value": "5bcbffa7...",
-        "source": "display_by_role.entity_0_children_0_id",
-        "match_from": "body_context"
-      }
-    }
-  },
-  "body_field_roles": {
-    "tenantId": {
-      "role": "context",
-      "source": "display_by_role.entity_0_children_0_id"
+  "operations": {
+    "创建用户": {
+      "role": "create",
+      "detection_status": "success",
+      "steps": [
+        {"action": "click_button", "playwright_locator": "..."},
+        {"action": "fill_form", "fields": [...], "fill_rule": {...}},
+        {"action": "click_button", "text": "确定"}
+      ]
     }
   }
 }
 ```
 
-**运行时执行**（`_build_url` 方法）：
-- 读取 manifest 中的 `path_params` 映射
-- 根据 source 从 state 中取值并替换占位符
-- 不做任何分析推断，只执行已确定的映射
+失败操作也会生成步骤（至少包含 click_button），确保 Stage 2 能回放并捕获 API 响应。
 
-**设计原则**：
-- Stage 3 拥有最完整的原始数据，是确定关联关系的最佳时机
-- 运行时信息更少，不可能做得更好
-- path_params 和 body_field_roles 共享同一个 value_index，保持一致性
+### 2. 值匹配驱动
+
+- **精确值匹配**：在前置 API 响应中查找相同的值
+- **纯值匹配**：context 完全靠值相等识别，不依赖字段名匹配
+- **URL 路径参数**：pathname 中的动态参数通过值匹配确定来源
 
 ### 3. 前置 API 自动追踪
 
@@ -200,13 +208,13 @@ API_AI_test/
 - 拓扑排序确保执行顺序正确
 - 链式依赖追踪（前置 API 的参数也可能需要其他前置 API）
 
-### 3. 增量发现
+### 4. 增量发现
 
 - 7 天内已发现的模块自动跳过（除非 `--force`）
-- 基于 `kb/module_discovered/<name>.json` 的 mtime 检查
-- 支持 `--force` 强制重新发现
+- 基于 `kb/module_discovered/{module}_manifest.json` 的 mtime 检查
+- URL 变更也会触发重新发现
 
-### 4. 多格式导出
+### 5. 多格式导出
 
 - **Postman Collection** — 可直接导入 Postman
 - **helpers.py** — 高层辅助函数（供外部测试平台使用）
@@ -250,10 +258,7 @@ auth:
 
 ### Q: 认证失败怎么办？
 
-A: 重新登录生成 cookies.json：
-```bash
-python -m lib.auth.login_tool --project ecm-compute
-```
+A: 重新运行 Stage 1-2 时会自动登录并刷新 cookie。
 
 ### Q: 如何跳过浏览器阶段？
 
@@ -274,23 +279,11 @@ A: `projects/<project_id>/v1.0.0/api/<模块名>_API测试.py`
 
 ## 技术栈
 
-- **Python 3.8+**
+- **Python 3.9+**
 - **Playwright** — UI 探测和 API 捕获
 - **pytest** — 测试执行框架
-- **openpyxl** — Excel 导出
-
----
-
-## 更新日志
-
-### v2.0.0 (2026-09-18)
-
-- ✅ 9 角色简化为 5 角色（name/mutable/context/generate/static）
-- ✅ 纯值匹配驱动的分类系统（无字段名回退）
-- ✅ 通配符路径支持（`[*]`）
-
-### v1.0.0 (2026-09-01)
-
-- 初始版本：Stage 1-5 完整流水线
-- KB 驱动优化
-- Playbook 架构
+- **httpx** — HTTP 客户端
+- **opencv-python-headless** — 滑块验证码缺口识别
+- **pyyaml** — 配置文件解析
+- **jsonpath-ng** — JSON 路径查询
+- **openpyxl** — Excel 导出（可选）

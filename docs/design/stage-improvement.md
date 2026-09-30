@@ -75,7 +75,7 @@ Stage 1 的核心任务是扫描页面上所有可交互元素，分类归档，
 
 `discover_and_validate()` 在探测基础上增加验证：对每个关键操作（创建/编辑/删除）实际执行一遍，确认按钮可点击、弹窗可弹出、表单可填写、提交可成功。
 
-验证结果写入 `ui_result["validated_operations"]`，每个操作记录 `status`（success/failed）、`error_type`、`fill_data` 等信息。
+验证结果写入 `ui_result["validated_operations"]`，每个操作记录 `success`（true/false）、`error_type`、`trigger_text`、`trigger_locator_verified`、`fill_data` 等信息。所有失败路径均包含 trigger 信息，确保 `build_playbook()` 能为失败操作生成至少包含 click_button 步骤的 playbook。
 
 #### Phase C/D/E：补救流程
 
@@ -87,7 +87,7 @@ Stage 1 的核心任务是扫描页面上所有可交互元素，分类归档，
 
 #### Phase F：终止判定
 
-所有补救阶段执行完毕后，检查缺失元素中是否有 `critical` 标记的元素。如果有，返回 `None` 终止该模块；如果只是非关键元素缺失，继续后续阶段。
+所有补救阶段执行完毕后，检查缺失元素中是否有 `critical` 标记的元素。如果有，保存部分 `ui_result` 到 `{module}_ui.json`（供诊断分析）后返回 `None` 终止该模块；如果只是非关键元素缺失，继续后续阶段。
 
 ### 2.2 Playbook 生成
 
@@ -102,19 +102,22 @@ Playbook 核心结构：
   "operations": {
     "创建用户": {
       "role": "create",
-      "status": "success",
+      "detection_status": "success",
+      "replayable": true,
       "steps": [
-        {"action": "click_button", "text": "新增", "locator": "..."},
+        {"action": "click_button", "playwright_locator": "..."},
         {"action": "fill_form", "fields": [...], "fill_rule": {...}},
-        {"action": "click_button", "text": "确定", "locator": "..."},
-        {"action": "assert_success", "description": "操作成功"}
+        {"action": "click_button", "text": "确定", "playwright_locator": "..."},
+        {"action": "wait_for_dialog_dismissed"}
       ]
     },
-    "编辑": { "role": "update", "steps": [...] },
-    "删除": { "role": "delete", "steps": [...] }
+    "编辑": { "role": "update", "detection_status": "success", "steps": [...] },
+    "删除": { "role": "delete", "detection_status": "failed", "error_type": "no_confirm_button", "steps": [...] }
   }
 }
 ```
+
+`detection_status` 为 "failed" 的操作也会生成步骤（至少包含 click_button），Stage 2 读取该字段判断操作状态并回放，捕获 API 响应。
 
 每个 step 包含明确的 action 类型、locator、填充规则等，Stage 2 的回放引擎按序执行即可。
 
@@ -545,32 +548,16 @@ Stage 1 ↔ Stage 2 之间的联动：
 
 - **策略匹配** — `match_debug_strategy()` 根据错误类型从 `debug_strategies.json` 加载诊断策略
 - **结果合并** — `patch_ui_result()` 将修复后的元素合并回 ui_result（去重）
-- **经验保存** — 成功修复写入 `selector_patterns.json`（跨模块复用）
 
-### 7.2 自诊断（diagnostic_mode.py）
-
-`DiagnosticMode` 类在关键失败点自动触发：
-
-| 触发条件 | 策略 |
-|----------|------|
-| `find_data_row` 连续 3 次失败 | `row_not_found` — 表格结构 dump + 选择器测试 |
-| `click_row_button` 连续 2 次失败 | `button_click_failed` — 按钮可见性 + 隐藏检查 |
-| Stage 2 验证失败且重试耗尽 | `stage2_validation_failed` — 全面诊断 |
-
-诊断输出到 `output/debug/{module}/diagnostic_{timestamp}/`，包含截图、DOM 结构、选择器命中率等。如果 `auto_fix=true` 且发现新选择器，自动更新 `selector_patterns.json`。
-
-### 7.3 知识库体系
+### 7.2 知识库体系
 
 ```
 config/
-├── base_nav_kb.json         XPath/CSS 选择器模板（UI 框架适配）
+├── credentials.yaml         全局凭据库
+├── failure_patterns.yaml    失败模式（run_history 使用）
 ├── probe_lessons_kb.json    反模式库 + 系统配置（KB 驱动注入）
-├── selector_patterns.json   层1: UI 元素定位模式（跨模块积累）
-├── operation_patterns.json  层2: 操作流程模式
-└── debug_strategies.json    层3: 诊断策略
+└── debug_strategies.json    诊断策略（feedback_loop 使用）
 ```
-
-`kb_merger.py` 的 `KBMerger` 处理跨模块经验合并：pattern_key 去重、module_source 合并、confidence 取最大值、selectors 合并、冲突检测。
 
 ### 7.4 事件驱动等待（wait_helpers.py）
 
@@ -910,11 +897,11 @@ TestRunner(MANIFEST, shared_context)
 | `core/discovery/generate_ui_script.py` | Stage 2b UI 脚本生成 |
 | `core/discovery/export_artifacts.py` | Stage 5 导出（Postman/helpers/Excel） |
 | `core/discovery/feedback_loop.py` | Stage 1↔2 反馈循环 |
-| `core/discovery/diagnostic_mode.py` | 自诊断模式 |
-| `core/discovery/kb_loader.py` | 知识库加载器 |
-| `core/discovery/kb_merger.py` | 知识库跨模块合并 |
+| `core/discovery/nav_discovery.py` | 导航菜单爬取 |
+| `core/discovery/discover_navigation.py` | 导航发现编排 + modules.yaml 生成 |
 | `core/discovery/pre_api_merger.py` | 跨模块前置 API 合并 |
 | `core/discovery/const.py` | 常量定义（选择器、字段名、UI 框架配置） |
+| `core/discovery/run_parallel.py` | 并行测试执行 |
 | `lib/runtime/test_runtime.py` | 测试运行时（ResponseParser + StepExecutor + TestRunner） |
 | `lib/runtime/global_pre_apis.py` | 全局前置 API 执行器 |
 | `lib/auth/cookie_client.py` | Cookie 管理客户端 |
@@ -922,5 +909,5 @@ TestRunner(MANIFEST, shared_context)
 
 ---
 
-**文档版本**: v2.0  
-**最后更新**: 2026-09-22
+**文档版本**: v2.1  
+**最后更新**: 2026-09-30
