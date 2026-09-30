@@ -176,12 +176,20 @@ async def run_operation(page, operation_name, operations_data, marker=None):
 
         new_marker = result.get("marker", op_marker)
         # 截图（成功）
+        # 优先使用 assert_success 步骤中保存的截图（通知框可见时截取）
+        # 这对于页面跳转类操作（添加用户、授权）尤为重要，
+        # 因为后续的 navigate_back 会销毁通知元素
         screenshot = None
-        try:
-            raw = await page.screenshot(type="png")
-            screenshot = base64.b64encode(raw).decode("ascii")
-        except Exception:
-            pass
+        for s in steps:
+            if s.get("success_screenshot"):
+                screenshot = s["success_screenshot"]
+                break
+        if not screenshot:
+            try:
+                raw = await page.screenshot(type="png")
+                screenshot = base64.b64encode(raw).decode("ascii")
+            except Exception:
+                pass
 
         # 构建详细步骤信息（含 locator 和测试数据）
         detailed_steps = []

@@ -33,29 +33,12 @@ async def _is_page_crashed(page) -> bool:
         return True
 
 
-async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
-                               marker: str = None, interceptor=None) -> dict:
-    """执行 playbook 中的步骤序列（泛化版本）
+async def _inject_notification_observer(page):
+    """注入 MutationObserver 捕获并钉住瞬态消息（el-message 等 3 秒后自动消失）
 
-    自适应两种交互模式：
-    - dialog 模式：点击按钮 → 弹出对话框 → 填表 → 提交
-    - page-nav 模式：点击按钮 → 页面跳转 → 填表 → 提交 → 返回列表
-
-    Args:
-        page: Playwright Page 对象
-        steps: 步骤列表（来自 playbook.operations[action].steps）
-        button_driver: ButtonDriver 实例
-        marker: 已创建的记录标识（用于行级操作）
-        interceptor: RequestInterceptor 实例（可选，用于标记提交时间戳）
-
-    Returns:
-        dict: 执行结果，包含 marker（如果是 create 操作）
+    页面跳转后 JavaScript 上下文会丢失，需要重新注入。
+    在 replay_from_playbook 开始和 _step_wait_for_url 页面跳转后调用。
     """
-    result = {"success": True}
-
-    # 注入 MutationObserver 捕获并钉住瞬态消息（el-message 等 3 秒后自动消失）
-    # 检测到通知时：强制可见 + 拦截 remove + 监听属性变更
-    # 截图后通过 window.__unpin_notifications() 释放，让通知正常消失
     try:
         await page.evaluate("""() => {
             if (window.__msg_capture_installed) return;
@@ -178,6 +161,30 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
         }""")
     except Exception as e:
         LOG.debug(f"消息捕获注入失败（不影响执行）: {e}")
+
+
+async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
+                               marker: str = None, interceptor=None) -> dict:
+    """执行 playbook 中的步骤序列（泛化版本）
+
+    自适应两种交互模式：
+    - dialog 模式：点击按钮 → 弹出对话框 → 填表 → 提交
+    - page-nav 模式：点击按钮 → 页面跳转 → 填表 → 提交 → 返回列表
+
+    Args:
+        page: Playwright Page 对象
+        steps: 步骤列表（来自 playbook.operations[action].steps）
+        button_driver: ButtonDriver 实例
+        marker: 已创建的记录标识（用于行级操作）
+        interceptor: RequestInterceptor 实例（可选，用于标记提交时间戳）
+
+    Returns:
+        dict: 执行结果，包含 marker（如果是 create 操作）
+    """
+    result = {"success": True}
+
+    # 注入 MutationObserver 捕获并钉住瞬态消息
+    await _inject_notification_observer(page)
 
     # 交互状态上下文
     ctx = {
@@ -1085,6 +1092,8 @@ async def _step_wait_for_url(page, step: dict, ctx: dict):
                 pass
             await page.wait_for_timeout(500)
             LOG.info(f"    页面已跳转: {page.url[:80]}")
+            # 页面跳转后 JavaScript 上下文丢失，需要重新注入通知捕获
+            await _inject_notification_observer(page)
             return
         await page.wait_for_timeout(100)
 
@@ -1380,6 +1389,22 @@ async def _step_assert_success(page, step: dict) -> bool:
 
     # 记录成功的断言方式
     step["matched_method"] = matched_method
+
+    # 截图：验证成功后立即截图，确保通知框可见
+    # 这对于页面跳转类操作（添加用户、授权）尤为重要，
+    # 因为后续的 navigate_back 会销毁当前页面的通知元素
+    try:
+        import base64
+        pinned_count = await page.evaluate(
+            "() => (window.__pinned_notifications || []).length"
+        )
+        LOG.debug(f"    [assert_success] pinned notifications: {pinned_count}")
+        raw = await page.screenshot(type="png")
+        step["success_screenshot"] = base64.b64encode(raw).decode("ascii")
+        LOG.debug(f"    [assert_success] screenshot saved: {len(raw)} bytes")
+    except Exception as e:
+        LOG.debug(f"    [assert_success] screenshot failed: {e}")
+
     return True
 
 
