@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 
 from core.discovery.path_mapper import get_workspace_dir
+from lib.utils import safe_read_json, safe_write_json
 
 LOG = logging.getLogger("io_helpers")
 
@@ -111,24 +112,19 @@ def load_ui_result(project_dir: Path, module_name: str) -> dict:
     """加载已保存的 UI 探测结果。"""
     ws = get_workspace_dir(project_dir)
     p = ws / "kb" / "module_discovered" / f"{module_name}_ui.json"
-    if p.exists():
-        return json.loads(p.read_text(encoding="utf-8"))
-    return {}
+    return safe_read_json(p, default={})
 
 
 def load_capture_result(project_dir: Path, module_name: str) -> dict:
     """加载已保存的 API 捕获结果。"""
     ws = get_workspace_dir(project_dir)
     p = ws / "kb" / "module_discovered" / f"{module_name}_capture.json"
-    if p.exists():
-        return json.loads(p.read_text(encoding="utf-8"))
-    return {}
+    return safe_read_json(p, default={})
 
 
 def save_json(data: dict, path: Path):
-    """将数据保存为 JSON 文件。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    """将数据保存为 JSON 文件（使用安全写入，防 EPERM）。"""
+    safe_write_json(path, data, ensure_ascii=False, indent=2)
 
 
 def load_modules_yaml(project_dir: Path) -> list:
@@ -177,11 +173,11 @@ def needs_rediscovery(project_dir: Path, module_name: str, module_url: str,
 
     # 检查 manifest（Stage 3-4 最终产物）
     manifest_file = ws / "kb" / "module_discovered" / f"{module_name}_manifest.json"
-    if not manifest_file.exists():
+    data = safe_read_json(manifest_file, default=None)
+    if data is None:
         return True
 
     try:
-        data = json.loads(manifest_file.read_text(encoding="utf-8"))
         # manifest 中 module.url 存的是相对路径或完整 URL
         module_info = data.get("module", {})
         old_url = module_info.get("url", "")

@@ -363,19 +363,10 @@ class AuthSession:
     async def _login_flow(self, base_url: str = None):
         """浏览器登录全流：启动 → 滑块登录 → 回写 cookie。"""
         from playwright.async_api import async_playwright
+        from lib.browser_launcher import launch_browser
         login_url = self.profile.get("login_url")
         async with async_playwright() as pw:
-            browser = await pw.chromium.launch(
-                headless=True,
-                args=["--ignore-certificate-errors", "--disable-web-security",
-                      "--no-sandbox", "--disable-blink-features=AutomationControlled"],
-            )
-            context = await browser.new_context(
-                viewport={"width": 1600, "height": 1000},
-                locale="zh-CN",
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            )
-            page = await context.new_page()
+            browser, context, page = await launch_browser(pw, headless=True)
             try:
                 ok = await self.login_with_browser(page, context)
                 if ok and self.context_path:

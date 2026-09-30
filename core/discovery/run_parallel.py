@@ -105,19 +105,10 @@ async def refresh_cookies(project_dir: Path, workspace_dir: Path, base_url: str,
 
     try:
         from playwright.async_api import async_playwright
+        from lib.browser_launcher import launch_browser
 
         async with async_playwright() as pw:
-            browser = await pw.chromium.launch(
-                headless=False,  # 非 headless，需要滑块登录
-                args=["--ignore-certificate-errors", "--disable-web-security",
-                      "--no-sandbox", "--disable-blink-features=AutomationControlled"],
-            )
-            context = await browser.new_context(
-                viewport={"width": 1600, "height": 1000},
-                locale="zh-CN",
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            )
-            page = await context.new_page()
+            browser, context, page = await launch_browser(pw, headless=False)
 
             try:
                 ok = await login_with_playwright(page, context, login_url, username, password,

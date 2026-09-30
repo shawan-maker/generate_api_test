@@ -58,12 +58,7 @@ async def capture_all(page, ui_result: dict, base_url: str, target_url: str,
     LOG.info(f"[Stage 2] 开始 Playbook 回放模式捕获: {target_url}")
 
     try:
-        # 优先从 playbook.json 加载，否则从 ui_result 构建
         playbook = _load_playbook(project_dir, module_name)
-        if not playbook:
-            LOG.warning("Playbook 不存在，尝试从 ui_result 构建")
-            playbook = _build_playbook_from_ui_result(ui_result)
-
         if not playbook:
             LOG.error("无法获取 playbook，无法回放")
             return {"error": "no_playbook", "core_api_map": {}, "stats": {}}
@@ -108,17 +103,6 @@ def _load_playbook(project_dir: Path, module_name: str) -> dict | None:
     except Exception as e:
         LOG.warning(f"加载 Playbook 失败: {e}")
         return None
-
-
-def _build_playbook_from_ui_result(ui_result: dict) -> dict | None:
-    """从旧的 ui_result 构建 playbook（向后兼容）"""
-    validated = ui_result.get("validated_operations", {})
-    if not validated:
-        return None
-
-    # 调用 discover_ui.build_playbook
-    from .discover_ui import build_playbook
-    return build_playbook(ui_result)
 
 
 async def _cleanup_after_operation(page, ui_framework: str = "element-ui"):

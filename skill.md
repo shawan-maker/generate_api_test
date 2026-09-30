@@ -3,7 +3,7 @@
 ## 元信息
 
 - **名称**: api-ai-test
-- **版本**: 2.1.0
+- **版本**: 2.2.0（Round 4 重构后）
 - **用途**: 自动化发现、生成和执行 API 测试
 - **平台**: 通用（Claude / GPT / 其他 AI 客户端）
 - **触发词**: api, test, 自动化, 发现, 生成, 执行, 测试, 用户管理, 角色管理
@@ -115,59 +115,99 @@ python -m core.discovery.run_parallel --project ecm-compute --version v1.0.0 --p
 ```
 API_AI_test/
 ├── core/
-│   └── discovery/              # 主管线引擎（Stage 1-5）
-│       ├── run.py              # CLI 入口
-│       ├── discover_ui.py      # Stage 1: UI 探测 + Playbook 生成
-│       ├── capture_apis.py     # Stage 2: API 捕获 + 回放
-│       ├── analyze_flow.py     # Stage 3: 逻辑分析 + Manifest 构建
-│       ├── gen_test.py         # Stage 4: API 脚本生成
-│       ├── generate_ui_script.py # Stage 2b: UI 脚本生成
-│       ├── export_artifacts.py # Stage 5: 导出
-│       ├── stage1_rescue.py    # Stage 1 Phase C/D/E 补救
-│       ├── feedback_loop.py    # Stage 1↔2 反馈循环
-│       ├── request_interceptor.py # HTTP 拦截 + KB 驱动注入
-│       ├── endpoint_classifier.py # 端点分类去重
-│       ├── stage_validators.py # 质量门禁
-│       ├── pre_api_merger.py   # 跨模块前置 API 合并
-│       ├── nav_discovery.py    # 导航菜单爬取
-│       ├── discover_navigation.py # 导航发现编排
-│       ├── run_parallel.py     # 并行测试执行
-│       └── replay/             # UI 操作回放引擎
-│           ├── replay_engine.py  # Playbook 回放执行器
-│           ├── button_driver.py  # 按钮点击驱动
-│           ├── form_filler.py    # 表单智能填充
-│           ├── locator_helpers.py # 定位器辅助
-│           └── wait_helpers.py   # 事件驱动等待
+│   └── discovery/                  # 主管线引擎（Stage 1-5）
+│       ├── run.py                  # CLI 入口
+│       ├── discover_ui.py          # Stage 1 facade（102 行）
+│       ├── capture_apis.py         # Stage 2: API 捕获 + 回放
+│       ├── analyze_flow.py         # Stage 3 facade（155 行）
+│       ├── gen_test.py             # Stage 4: API 脚本生成
+│       ├── generate_ui_script.py   # Stage 2b: UI 脚本生成
+│       ├── export_artifacts.py     # Stage 5: 导出
+│       ├── stage1_rescue.py        # Stage 1 Phase C/D/E 补救
+│       ├── feedback_loop.py        # Stage 1↔2 反馈循环
+│       ├── request_interceptor.py  # HTTP 拦截 + KB 驱动注入
+│       ├── endpoint_classifier.py  # 端点分类去重
+│       ├── stage_validators.py     # 质量门禁
+│       ├── pre_api_merger.py       # 跨模块前置 API 合并
+│       ├── nav_discovery.py        # 导航菜单爬取
+│       ├── discover_navigation.py  # 导航发现编排
+│       ├── run_parallel.py         # 并行测试执行
+│       │
+│       ├── stage3/                 # Stage 3 分析引擎（模块化）
+│       │   ├── api_classifier.py     # API 分类与基础设施识别
+│       │   ├── field_classifier.py   # 5 角色字段分类系统 + ValueIndex
+│       │   ├── value_chain.py        # 三原则值追踪引擎
+│       │   ├── pre_api_tracer.py     # 前置 API 依赖追踪 + 拓扑排序
+│       │   ├── manifest_builder.py   # Manifest JSON 构建
+│       │   └── kb_loader.py          # 知识库加载
+│       │
+│       ├── ui_scanner/             # Stage 1 DOM 元素扫描（模块化）
+│       │   ├── element_scanner.py    # DOM 元素发现
+│       │   ├── button_detector.py    # 按钮检测与分类
+│       │   └── form_scanner.py       # 表单字段扫描
+│       │
+│       ├── operation_executor/     # Stage 1 操作执行（模块化）
+│       │   ├── base_executor.py      # 通用执行工具（12 个共享函数）
+│       │   ├── crud_executor.py      # CRUD 操作执行
+│       │   ├── navigation_executor.py # 跨页面导航
+│       │   └── result_factory.py     # 标准化错误结果构造
+│       │
+│       ├── playbook_builder/       # Playbook JSON 生成
+│       │   └── builder.py            # 纯数据转换，无 Playwright 依赖
+│       │
+│       └── replay/                 # UI 操作回放引擎
+│           ├── replay_engine.py      # Playbook 回放执行器
+│           ├── button_driver.py      # 按钮点击驱动
+│           ├── form_filler.py        # 表单智能填充
+│           ├── locator_helpers.py    # 定位器辅助
+│           └── wait_helpers.py       # 事件驱动等待
+│
 ├── lib/
-│   ├── auth/                   # 认证模块
-│   │   ├── auth.py             # 鉴权引擎
-│   │   ├── slider.py           # 滑块验证码
-│   │   └── cookie_client.py    # Cookie 管理客户端
-│   ├── runtime/                # 测试运行时
-│   │   ├── test_runtime.py     # Manifest 驱动运行时
-│   │   ├── global_pre_apis.py  # 全局前置 API 执行器
-│   │   ├── run_history.py      # 运行历史记录
-│   │   └── path_utils.py       # 路径工具
-│   ├── report/                 # 报告生成
-│   │   ├── test_report.py      # JSONL → HTML 报告
-│   │   └── ui_report.py        # UI 测试报告
-│   └── utils.py                # 工具函数
-├── config/                     # 全局配置
-│   ├── credentials.yaml        # 全局凭据库
-│   ├── debug_strategies.json   # 调试策略
-│   ├── failure_patterns.yaml   # 失败模式
-│   └── probe_lessons_kb.json   # 探测经验知识库
-├── projects/                   # 项目数据
+│   ├── auth/                       # 认证模块
+│   │   ├── auth.py                 # 鉴权引擎
+│   │   ├── slider.py               # 滑块验证码
+│   │   └── cookie_client.py        # Cookie 管理客户端
+│   ├── browser_launcher.py         # 统一浏览器启动（消除 9 处重复）
+│   ├── runtime/                    # 测试运行时
+│   │   ├── test_runtime.py         # Manifest 驱动运行时
+│   │   ├── global_pre_apis.py      # 全局前置 API 执行器
+│   │   ├── run_history.py          # 运行历史记录
+│   │   └── path_utils.py           # 路径工具
+│   ├── report/                     # 报告生成
+│   │   ├── test_report.py          # JSONL → HTML 报告
+│   │   └── ui_report.py            # UI 测试报告
+│   └── utils.py                    # 通用工具（safe_write/safe_read_json）
+│
+├── tests/                          # 单元测试（633 tests, 0 failed）
+│   ├── test_field_classifier.py      # 155 tests — 5 角色字段分类
+│   ├── test_value_chain.py           # 107 tests — 值追踪引擎
+│   ├── test_api_classifier.py        # 85 tests — API 分类
+│   ├── test_playbook_builder.py      # 71 tests — Playbook 生成
+│   ├── test_module_discovery.py      # 65 tests — 端点分类 + 阶段门控
+│   ├── test_manifest_builder.py      # 50 tests — Manifest 构建
+│   ├── test_pre_api_tracer.py        # 36 tests — 前置 API 追踪
+│   ├── test_auth.py                  # 23 tests — 认证
+│   ├── test_utils.py                 # 18 tests — 工具函数
+│   ├── test_run_history.py           # 17 tests — 运行历史
+│   ├── test_pre_apis_global.py       # 3 tests — 全局前置 API
+│   └── test_stage5_verification.py   # 3 tests — Stage 5 验证
+│
+├── config/                         # 全局配置
+│   ├── credentials.yaml            # 全局凭据库
+│   ├── debug_strategies.json       # 调试策略
+│   ├── failure_patterns.yaml       # 失败模式
+│   └── probe_lessons_kb.json       # 探测经验知识库
+├── projects/                       # 项目数据
 │   └── <project_id>/
-│       ├── modules.yaml        # 模块清单
-│       ├── profile.yaml        # 项目配置
-│       └── v1.0.0/             # 版本化输出
-│           ├── api/            # API 测试脚本 + lib/
-│           ├── ui/             # UI 测试脚本 + lib/
-│           └── export/         # Stage 5 导出文件
-└── workspace/                  # 中间产物
+│       ├── modules.yaml            # 模块清单
+│       ├── profile.yaml            # 项目配置
+│       └── v1.0.0/                 # 版本化输出
+│           ├── api/                # API 测试脚本 + lib/
+│           ├── ui/                 # UI 测试脚本 + lib/
+│           └── export/             # Stage 5 导出文件
+└── workspace/                      # 中间产物
     └── <project_id>/
-        └── kb/module_discovered/ # KB 中间数据
+        └── kb/module_discovered/   # KB 中间数据
 ```
 
 ---

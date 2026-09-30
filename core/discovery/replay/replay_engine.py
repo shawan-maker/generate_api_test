@@ -412,23 +412,6 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
             elif action == "press_key":
                 await _step_press_key(page, step)
 
-            # Legacy step types (backward compat — will be removed)
-            elif action == "hover_dropdown":
-                LOG.warning("    hover_dropdown 已废弃，请重新运行 Stage 1 生成新 playbook")
-                await _step_hover_dropdown_legacy(page, step, button_driver)
-
-            elif action == "click_dropdown_item":
-                LOG.warning("    click_dropdown_item 已废弃，请重新运行 Stage 1 生成新 playbook")
-                await _step_click_dropdown_item_legacy(page, step)
-
-            elif action == "click_confirm_dialog":
-                LOG.warning("    click_confirm_dialog 已废弃，请重新运行 Stage 1 生成新 playbook")
-                # 在确认对话框前等待网络静默并标记提交时刻
-                if interceptor:
-                    await interceptor.wait_for_quiesce()
-                    interceptor.mark_submit()
-                await _step_click_confirm_dialog_legacy(page, step)
-
             else:
                 LOG.warning(f"    未知步骤类型: {action}")
 
@@ -1246,62 +1229,6 @@ async def _step_close_dialog(page, step: dict):
         LOG.debug("    无残留对话框需要关闭")
 
 
-# ============================================================
-# Legacy 步骤执行器（向后兼容，将在后续版本移除）
-# ============================================================
-
-async def _step_hover_dropdown_legacy(page, step: dict, button_driver: ButtonDriver):
-    """步骤：展开下拉菜单（纯执行，不做回退）"""
-    parent_selector = step.get("parent_selector")
-    trigger_method = step.get("trigger_method", "hover")
-    wait_ms = step.get("wait_ms", 600)
-
-    if not parent_selector:
-        raise Exception("hover_dropdown 步骤缺少 parent_selector（Stage 1 未提供）")
-
-    # 找到"更多"按钮
-    more_btn = await page.query_selector(parent_selector)
-    if not more_btn:
-        raise Exception(f"未找到 dropdown 触发器: {parent_selector}")
-
-    # 使用 Stage 1 验证的触发方式
-    if trigger_method == "hover":
-        await more_btn.hover()
-    else:
-        await more_btn.click()
-
-    await page.wait_for_timeout(wait_ms)
-
-    # 不再做 DOM 展开验证或 hover/click 回退
-
-
-async def _step_click_dropdown_item_legacy(page, step: dict):
-    """步骤：点击下拉菜单项"""
-    locator = step.get("playwright_locator")
-    if not locator:
-        raise Exception("click_dropdown_item 步骤缺少 locator")
-
-    from .locator_helpers import safe_css
-    from .wait_helpers import wait_for_loading_complete
-    enhanced = safe_css(locator)
-    await page.click(enhanced, timeout=3000)
-    await wait_for_loading_complete(page, timeout=10000)
-
-
-async def _step_click_confirm_dialog_legacy(page, step: dict):
-    """步骤：点击确认对话框（纯执行，不做回退）"""
-    confirm_locator = step.get("confirm_locator")
-
-    if not confirm_locator:
-        raise Exception("click_confirm_dialog 步骤缺少 confirm_locator（Stage 1 未提供）")
-
-    # 直接使用 Stage 1 提供的已验证 locator（带隐藏过滤）
-    from .locator_helpers import safe_css
-    from .wait_helpers import wait_for_loading_complete
-    enhanced = safe_css(confirm_locator)
-    await page.wait_for_selector(enhanced, state="visible", timeout=3000)
-    await page.click(enhanced)
-    await wait_for_loading_complete(page, timeout=10000)
 
     # 不再调用通用的 confirm_dialog() 回退
 

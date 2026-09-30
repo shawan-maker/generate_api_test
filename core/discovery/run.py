@@ -555,19 +555,10 @@ async def _run_stage4_verify(script_path: str, project_dir: Path, profile: dict,
 
     # 启动浏览器滑块登录
     from playwright.async_api import async_playwright
+    from lib.browser_launcher import launch_browser
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(
-            headless=headless,
-            args=["--ignore-certificate-errors", "--disable-web-security",
-                  "--no-sandbox", "--disable-blink-features=AutomationControlled"],
-        )
-        context = await browser.new_context(
-            viewport={"width": 1600, "height": 1000},
-            locale="zh-CN",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        )
-        page = await context.new_page()
+        browser, context, page = await launch_browser(pw, headless=headless)
 
         try:
             ok = await _login_with_playwright(page, context, login_url, username, password,
@@ -1133,19 +1124,10 @@ async def _run_discover_mode(project_dir: Path, profile: dict, base_url: str, lo
         sys.exit(1)
 
     from playwright.async_api import async_playwright
+    from lib.browser_launcher import launch_browser
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(
-            headless=args.headless,
-            args=["--ignore-certificate-errors", "--disable-web-security",
-                  "--no-sandbox", "--disable-blink-features=AutomationControlled"],
-        )
-        context = await browser.new_context(
-            viewport={"width": 1600, "height": 1000},
-            locale="zh-CN",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        )
-        page = await context.new_page()
+        browser, context, page = await launch_browser(pw, headless=args.headless)
 
         # 复用公共登录逻辑
         workspace_dir = get_workspace_dir(project_dir)
@@ -1298,19 +1280,10 @@ async def _discover_and_cache(project_dir: Path, profile: dict, base_url: str,
         return False, []
 
     from playwright.async_api import async_playwright
+    from lib.browser_launcher import launch_browser
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(
-            headless=args.headless,
-            args=["--ignore-certificate-errors", "--disable-web-security",
-                  "--no-sandbox", "--disable-blink-features=AutomationControlled"],
-        )
-        context = await browser.new_context(
-            viewport={"width": 1600, "height": 1000},
-            locale="zh-CN",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        )
-        page = await context.new_page()
+        browser, context, page = await launch_browser(pw, headless=args.headless)
 
         workspace_dir = get_workspace_dir(project_dir)
         login_ok = await _ensure_login(page, context, profile, login_url, home_url, args, workspace_dir)
@@ -1442,29 +1415,19 @@ async def _execute_selected_modules(project_dir: Path, profile: dict,
         # 离线模式不需要浏览器，直接执行 Stage 34
         LOG.info("离线模式：跳过 Stage 1-2，仅执行 Stage 34")
         from playwright.async_api import async_playwright
+        from lib.browser_launcher import launch_browser
         async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=True)
-            context = await browser.new_context()
-            page = await context.new_page()
+            browser, context, page = await launch_browser(pw, headless=True)
             await _run_discovered_pipeline(page, context, project_dir, profile,
                                             base_url, login_url, selected, args)
             await browser.close()
         return
 
     from playwright.async_api import async_playwright
+    from lib.browser_launcher import launch_browser
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(
-            headless=args.headless,
-            args=["--ignore-certificate-errors", "--disable-web-security",
-                  "--no-sandbox", "--disable-blink-features=AutomationControlled"],
-        )
-        context = await browser.new_context(
-            viewport={"width": 1600, "height": 1000},
-            locale="zh-CN",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        )
-        page = await context.new_page()
+        browser, context, page = await launch_browser(pw, headless=args.headless)
 
         login_ok = await _ensure_login(page, context, profile, login_url, home_url, args, workspace_dir)
         if not login_ok:
@@ -1584,19 +1547,10 @@ async def main():
 
         # 批量模式不需要 --url 和 --module
         from playwright.async_api import async_playwright
+        from lib.browser_launcher import launch_browser
 
         async with async_playwright() as pw:
-            browser = await pw.chromium.launch(
-                headless=args.headless,
-                args=["--ignore-certificate-errors", "--disable-web-security",
-                      "--no-sandbox", "--disable-blink-features=AutomationControlled"],
-            )
-            context = await browser.new_context(
-                viewport={"width": 1600, "height": 1000},
-                locale="zh-CN",
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            )
-            page = await context.new_page()
+            browser, context, page = await launch_browser(pw, headless=args.headless)
 
             # ---- 鉴权（统一登录）----
             login_ok = await _ensure_login(page, context, profile, login_url, base_url, args, workspace_dir)
@@ -1663,19 +1617,10 @@ async def main():
 
     # 在线模式: 启动浏览器
     from playwright.async_api import async_playwright
+    from lib.browser_launcher import launch_browser
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(
-            headless=args.headless,
-            args=["--ignore-certificate-errors", "--disable-web-security",
-                  "--no-sandbox", "--disable-blink-features=AutomationControlled"],
-        )
-        context = await browser.new_context(
-            viewport={"width": 1600, "height": 1000},
-            locale="zh-CN",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        )
-        page = await context.new_page()
+        browser, context, page = await launch_browser(pw, headless=args.headless)
 
         # ---- 鉴权（统一登录）----
         login_ok = await _ensure_login(page, context, profile, login_url, target_url, args, workspace_dir)

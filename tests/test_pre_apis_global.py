@@ -164,10 +164,15 @@ def test_global_pre_apis_executor():
 
 def test_pre_api_merger_dedup():
     """测试跨模块前置 API 去重合并"""
-    # 创建临时项目目录
+    # 创建临时项目目录（需要 projects/<name> 结构以匹配 path_mapper）
     with tempfile.TemporaryDirectory() as tmpdir:
-        project_dir = Path(tmpdir)
-        kb_dir = project_dir / "kb" / "module_discovered"
+        base_dir = Path(tmpdir)
+        project_dir = base_dir / "projects" / "test-project"
+        project_dir.mkdir(parents=True)
+        # workspace 目录由 path_mapper.get_workspace_dir 推导:
+        # projects/test-project → workspace/test-project
+        workspace_dir = base_dir / "workspace" / "test-project"
+        kb_dir = workspace_dir / "kb" / "module_discovered"
         kb_dir.mkdir(parents=True)
 
         # 创建两个模块的 manifest，包含相同的前置 API
@@ -222,9 +227,9 @@ def test_pre_api_merger_dedup():
         assert "tenantId" in extract_names
         assert "adminId" in extract_names
 
-        # 验证文件生成
-        assert (project_dir / "kb" / "pre_apis_discovered.json").exists()
-        assert (project_dir / "scripts" / "v1.0.0" / "api" / "pre_apis_config.json").exists()
+        # 验证文件生成（discovered 写入 workspace/kb/，config 写入 project/<version>/api/）
+        assert (workspace_dir / "kb" / "pre_apis_discovered.json").exists()
+        assert (project_dir / "v1.0.0" / "api" / "pre_apis_config.json").exists()
 
 
 if __name__ == "__main__":

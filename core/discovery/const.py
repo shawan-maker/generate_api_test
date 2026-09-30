@@ -36,7 +36,10 @@ BUTTON_SELECTORS = """
 """
 
 # 统一的选择器字符串（供 _scan_hints / _scan_iframes 使用）
-BUTTON_SELECTORS_STR = "button, a[href], .el-button, .el-button--text, .el-dropdown-menu__item, .el-table__body-wrapper a, .el-table__body-wrapper .el-button, .el-table__body-wrapper span[class*='action'], .el-menu-item, [role='button'], [role='menuitem'], [role='link'], [class*='btn'], [class*='Btn'], [class*='action'], [class*='Action'], .ant-btn, .ant-menu-item, .ant-dropdown-menu-item, span[onclick]"
+# 从 BUTTON_SELECTORS 多行格式派生，去除空白并合并为逗号分隔
+BUTTON_SELECTORS_STR = ", ".join(
+    s.strip().rstrip(",") for s in BUTTON_SELECTORS.split("\n") if s.strip()
+)
 
 # ============================================================
 # 按钮文本常量（去空格归一化匹配）
@@ -232,7 +235,6 @@ DEFAULT_ID_FIELD = "id"
 
 # ============================================================
 # 登录表单选择器默认值（可通过 profile.yaml 的 login_flow 覆盖）
-# 已废弃 — 改为通用选择器，不依赖中文 placeholder
 # ============================================================
 DEFAULT_LOGIN_USERNAME_SELECTOR = 'input[type="text"], input[name*="user"], input[name*="account"]'
 DEFAULT_LOGIN_PASSWORD_SELECTOR = 'input[type="password"]'

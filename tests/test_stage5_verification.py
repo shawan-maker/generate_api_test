@@ -163,15 +163,15 @@ def test_pre_api_tracking():
         }
     ]
 
-    # 模拟核心 API（使用真实 hex_id 格式的值，符合系统 ID 类型）
+    # 模拟核心 API（body 中的值必须与前置 API 响应中的值完全一致，才能被 tracer 匹配）
     core_apis = {
         "create": [
             {
                 "pathname": "/api/users",
                 "method": "POST",
                 "request_body_sample": json.dumps({
-                    "tenantId": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",  # hex_id 格式
-                    "policyIds": ["policy_001", "policy_002"],
+                    "tenantId": "tenant_456",  # 必须与 current_user 响应中的 tenantId 一致
+                    "policyIds": ["policy_001", "policy_002"],  # 必须与 policies 响应中的 id 一致
                     "username": "new_user"
                 })
             }
