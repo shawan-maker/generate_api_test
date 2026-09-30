@@ -46,6 +46,12 @@ except ImportError:
             _p = _p.parent
     from core.discovery import const
 
+# 导入路径提取工具（同目录，兼容独立运行和包导入两种场景）
+_path_utils_dir = str(Path(__file__).resolve().parent)
+if _path_utils_dir not in sys.path:
+    sys.path.insert(0, _path_utils_dir)
+from path_utils import extract_by_path
+
 # 禁用 SSL 警告（自签证书环境）
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -188,15 +194,16 @@ class ResponseParser:
                 for item in entity:
                     if not isinstance(item, dict):
                         continue
-                    # 子项有 errorCode 且不为 null/空 → 失败
-                    item_err = item.get("errorCode")
+                    # 子项有 error_field 且不为 null/空 → 失败
+                    item_err = item.get(self._error_field)
                     if item_err is not None and item_err != "":
                         return False
-                    # 子项有 state 字段且值为 ERROR/FAILED → 失败
-                    item_state = item.get("state", "")
-                    if isinstance(item_state, str) and \
-                       item_state.upper() in ("ERROR", "FAILED", "FAIL"):
-                        return False
+                    # 子项有 state/status 字段且值为 ERROR/FAILED → 失败
+                    for state_key in const.BATCH_ITEM_STATE_FIELDS:
+                        item_state = item.get(state_key, "")
+                        if isinstance(item_state, str) and \
+                           item_state.upper() in const.BATCH_ITEM_FAILURE_STATES:
+                            return False
             return True
         else:
             return 200 <= status_code < 300
@@ -231,7 +238,6 @@ class ResponseParser:
         if not path or obj is None:
             return None
         # 支持数组索引，如 entity[0].poolId
-        import re
         parts = path.split(".")
         current = obj
         for part in parts:
@@ -376,70 +382,8 @@ class StepExecutor:
             return False
 
     def _extract_with_array_index(self, obj, path: str):
-        """从嵌套对象中提取值，支持数组索引路径。
-
-        支持路径格式:
-          - "entity.id" -> obj["entity"]["id"]
-          - "entity.list[0].id" -> obj["entity"]["list"][0]["id"]
-        """
-        if not path or obj is None:
-            return None
-
-        # 分割路径段
-        segments = []
-        current = ""
-
-        i = 0
-        while i < len(path):
-            char = path[i]
-
-            if char == '.':
-                if current:
-                    segments.append(current)
-                    current = ""
-            elif char == '[':
-                if current:
-                    segments.append(current)
-                    current = ""
-                # 解析数组索引
-                j = i + 1
-                while j < len(path) and path[j] != ']':
-                    j += 1
-                if j < len(path):
-                    index_str = path[i+1:j]
-                    segments.append(f"[{index_str}]")
-                    i = j
-            else:
-                current += char
-
-            i += 1
-
-        if current:
-            segments.append(current)
-
-        # 遍历路径段提取值
-        value = obj
-        for segment in segments:
-            if value is None:
-                return None
-
-            # 数组索引段
-            if segment.startswith("[") and segment.endswith("]"):
-                try:
-                    index = int(segment[1:-1])
-                    if isinstance(value, list) and 0 <= index < len(value):
-                        value = value[index]
-                    else:
-                        return None
-                except (ValueError, IndexError):
-                    return None
-            # 字典字段段
-            elif isinstance(value, dict):
-                value = value.get(segment)
-            else:
-                return None
-
-        return value
+        """从嵌套对象中提取值，支持数组索引路径（委托给 path_utils.extract_by_path）。"""
+        return extract_by_path(obj, path)
 
     def _execute_phased_step(self, step_def: dict, phases: list) -> bool:
         """执行多阶段操作步骤。
@@ -502,8 +446,7 @@ class StepExecutor:
                         if not self.parser.is_success(resp.status_code, resp_json):
                             error_msg = ""
                             if isinstance(resp_json, dict):
-                                error_msg = resp_json.get("errorMessage",
-                                            resp_json.get("message", ""))
+                                error_msg = resp_json.get(self.parser._error_field, "")
                             raise AssertionError(
                                 f"phase {phase_id} 业务失败: {error_msg}")
                     except (ValueError, AttributeError):
@@ -1432,77 +1375,8 @@ class TestRunner:
             pass
 
     def _extract_with_array_index(self, obj: Any, path: str) -> Optional[Any]:
-        """从嵌套对象中提取值，支持数组索引路径。
-
-        支持路径格式:
-          - "entity.id" -> obj["entity"]["id"]
-          - "entity.list[0].id" -> obj["entity"]["list"][0]["id"]
-
-        Args:
-            obj: 嵌套字典/列表对象
-            path: 点分隔路径，可包含数组索引 [n]
-
-        Returns:
-            提取的值，失败返回 None
-        """
-        if not path or obj is None:
-            return None
-
-        # 分割路径段
-        segments = []
-        current = ""
-
-        i = 0
-        while i < len(path):
-            char = path[i]
-
-            if char == '.':
-                if current:
-                    segments.append(current)
-                    current = ""
-            elif char == '[':
-                if current:
-                    segments.append(current)
-                    current = ""
-                # 解析数组索引
-                j = i + 1
-                while j < len(path) and path[j] != ']':
-                    j += 1
-                if j < len(path):
-                    index_str = path[i+1:j]
-                    segments.append(f"[{index_str}]")
-                    i = j
-            else:
-                current += char
-
-            i += 1
-
-        if current:
-            segments.append(current)
-
-        # 遍历路径段提取值
-        value = obj
-        for segment in segments:
-            if value is None:
-                return None
-
-            # 数组索引段
-            if segment.startswith("[") and segment.endswith("]"):
-                try:
-                    index = int(segment[1:-1])
-                    if isinstance(value, list) and 0 <= index < len(value):
-                        value = value[index]
-                    else:
-                        return None
-                except (ValueError, IndexError):
-                    return None
-            # 字典字段段
-            elif isinstance(value, dict):
-                value = value.get(segment)
-            else:
-                return None
-
-        return value
+        """从嵌套对象中提取值，支持数组索引路径（委托给 path_utils.extract_by_path）。"""
+        return extract_by_path(obj, path)
 
     def prepare_create_body(self, step_def: dict):
         # 分支：单 API step vs phases step

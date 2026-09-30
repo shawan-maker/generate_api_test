@@ -39,15 +39,6 @@ BUTTON_SELECTORS = """
 BUTTON_SELECTORS_STR = "button, a[href], .el-button, .el-button--text, .el-dropdown-menu__item, .el-table__body-wrapper a, .el-table__body-wrapper .el-button, .el-table__body-wrapper span[class*='action'], .el-menu-item, [role='button'], [role='menuitem'], [role='link'], [class*='btn'], [class*='Btn'], [class*='action'], [class*='Action'], .ant-btn, .ant-menu-item, .ant-dropdown-menu-item, span[onclick]"
 
 # ============================================================
-# Stage 1: 按钮文本→CRUD 类别映射
-# 已废弃 — 不再用于 Stage 1 按钮过滤或 Stage 2 API 分类
-# Stage 1 现采用结构性初筛（DOM 位置判断），按钮文本即操作名（action 字段）
-# Stage 2 现采用行为驱动分类（HTTP method + 请求特征）
-# 保留为空 dict 仅为向后兼容（required_elements._infer_action 兜底）
-# ============================================================
-ACTION_KEYWORDS = {}
-
-# ============================================================
 # 按钮文本常量（去空格归一化匹配）
 # 所有文本均为无空格的标准形式，匹配时统一去空格后比较
 # ============================================================
@@ -200,13 +191,6 @@ SKIP_STATIC_EXTENSIONS = (".js", ".css", ".png", ".jpg", ".svg",
                           ".gif", ".webp", ".mp4", ".pdf")
 
 # ============================================================
-# Stage 3: 状态字段检测
-# 已废弃 — 改为从 KB 读取，通过 kb_loader.get_state_patterns() 获取
-# ============================================================
-STATE_FIELD_NAMES = []
-STATE_LIKE_VALUES = set()
-
-# ============================================================
 # Stage 3: 依赖注入字段名
 # ============================================================
 
@@ -253,22 +237,41 @@ DEFAULT_ID_FIELD = "id"
 DEFAULT_LOGIN_USERNAME_SELECTOR = 'input[type="text"], input[name*="user"], input[name*="account"]'
 DEFAULT_LOGIN_PASSWORD_SELECTOR = 'input[type="password"]'
 
-# ============================================================
-# 测试数据生成 — 默认值
-# 已废弃 — 改为从 profile.yaml 的 test_data 字段读取
-# 保留仅为向后兼容（新代码应使用 profile 配置）
-# ============================================================
-DEFAULT_TEST_PASSWORD = ""
-DEFAULT_TEST_EMAIL_DOMAIN = ""
-DEFAULT_TEST_PHONE_PREFIX = ""
-DEFAULT_TEST_NAME_PREFIX = ""
-
 # 响应成功检查默认值（当 response_contract 未提供时使用）
 SUCCESS_CHECK_DEFAULT = {
     "type": "field_and_absence",
     "success_field": "success",
     "error_field": "errorCode",
 }
+
+# 搜索操作名称关键词（用于验证端点选择）
+# 匹配逻辑：操作名包含这些关键词即视为搜索操作
+SEARCH_ACTION_KEYWORDS = frozenset({
+    "搜索", "查询", "search", "query", "find", "list", "列表"
+})
+
+# 批量响应子项失败状态值（大写匹配）
+# 当 entity 是数组时，检查每个子项的 state 字段是否包含这些值
+BATCH_ITEM_FAILURE_STATES = frozenset({"ERROR", "FAILED", "FAIL"})
+
+# 批量响应子项状态字段候选名（按优先级排列）
+# 用于检查批量操作中每个子项的执行状态
+BATCH_ITEM_STATE_FIELDS = ("state", "status", "resultState")
+
+# 值链提取排除字段（不参与值链匹配的字段名）
+# 精确匹配（非子串），因此 "order" 不会误排除 "orderId"
+EXTRACT_EXCLUDE_KEYS = frozenset({
+    # 分页字段
+    "pageNum", "pageSize", "page", "size", "offset", "limit",
+    "startRow", "endRow", "pages",
+    # 排序字段
+    "sort", "order",
+    # 通用元数据（通常是噪声而非值链候选）
+    "status", "name", "userName", "displayName",
+    "description", "remark", "memo",
+    # 安全字段（不应出现在值链中）
+    "secretKey", "password", "token", "accessToken",
+})
 
 
 # ============================================================

@@ -790,20 +790,11 @@ def _extract_dynamic_values(body=None, query_params: dict = None,
         pathname: URL 路径
         static_segments: 静态路径段集合（数据驱动，由 _compute_static_segments 生成）
     """
-    exclude_keys = {
-        "pageNum", "pageSize", "page", "size", "offset", "limit",
-        "startRow", "endRow", "pages",
-        "isVisible", "flag", "rootId", "sort", "order",
-        "status", "name", "userName", "displayName",
-        "description", "remark", "memo",
-        "secretKey", "password", "token", "accessToken",
-    }
-
     values = {}
 
     if isinstance(body, dict):
         for k, v in body.items():
-            if k in exclude_keys:
+            if k in const.EXTRACT_EXCLUDE_KEYS:
                 continue
             if isinstance(v, str) and _looks_like_identifier(v):
                 values[k] = v
@@ -815,7 +806,7 @@ def _extract_dynamic_values(body=None, query_params: dict = None,
             values["_array_item"] = body[0]
 
     for k, v in (query_params or {}).items():
-        if k in exclude_keys:
+        if k in const.EXTRACT_EXCLUDE_KEYS:
             continue
         if isinstance(v, str) and _looks_like_identifier(v):
             values[f"_query_{k}"] = v
@@ -1366,14 +1357,6 @@ def _discover_list_structure(response_samples: dict, envelope_keys: list) -> tup
     )
 
 
-def _discover_id_field(response_samples: dict, envelope_keys: list) -> str:
-    """
-    全局 ID 字段发现（降级使用）。
-    真正的 ID 字段由 _derive_dependencies 通过数据流反向推导确定。
-    """
-    return "id"  # 默认值，会被 id_field_details 覆盖
-
-
 def _discover_response_contract(response_samples: dict) -> dict:
     """从响应样本自动发现完整的响应约定。
 
@@ -1386,7 +1369,8 @@ def _discover_response_contract(response_samples: dict) -> dict:
     envelope_keys = _discover_envelope_keys(response_samples)
     success_check = _discover_success_check(response_samples)
     list_keys, total_keys = _discover_list_structure(response_samples, envelope_keys)
-    id_field = _discover_id_field(response_samples, envelope_keys)
+    # id_field 默认为 const.DEFAULT_ID_FIELD，后续会被 id_field_details 覆盖
+    id_field = const.DEFAULT_ID_FIELD
 
     return {
         "envelope_keys": envelope_keys,
@@ -1471,9 +1455,8 @@ def build_manifest(analysis: dict, capture_result: dict,
     infra_apis = infra_apis or set()
     pre_api_candidates = capture_result.get("pre_api_candidates", [])
 
-    # 获取 id_producer 和 last_write_op（用于替代硬编码的 "create"/"delete"）
+    # 获取 id_producer（用于替代硬编码的 "create"）
     id_producer = analysis.get("dependencies", {}).get("id_producer")
-    last_write_op = _find_last_write_op(core_apis)
 
     # 1. 发现响应约定
     response_contract = _discover_response_contract(response_samples)
@@ -1602,13 +1585,14 @@ def build_manifest(analysis: dict, capture_result: dict,
     verify_source = None  # 记录来源用于日志
 
     # 优先级 1：从"搜索"操作的核心 API 获取
-    for search_action in ("搜索", "query", "search"):
-        if search_action in core_api_map:
-            candidates = core_api_map[search_action]
+    # 使用关键词匹配而非精确匹配，支持不同项目的操作命名
+    for action_name, candidates in core_api_map.items():
+        action_lower = action_name.lower()
+        if any(kw in action_lower for kw in const.SEARCH_ACTION_KEYWORDS):
             full_ep = _select_core_api(candidates, "step")
             if full_ep and _endpoint_returns_entity_id(full_ep):
                 verify_ep = full_ep
-                verify_source = f"搜索操作 ({search_action})"
+                verify_source = f"搜索操作 ({action_name})"
                 break
 
     # 优先级 2：从 all_endpoints 中找业务阶段触发的列表查询
@@ -2150,17 +2134,23 @@ def build_manifest(analysis: dict, capture_result: dict,
             "body_field_roles": core_roles,
         })
 
-        # 后处理：服务端特殊验证逻辑
-        # 当 isRandomPassword=1 时，服务端仍会验证 newPassword 格式（如 RSA 加密），
-        # 但忽略实际值。因此 newPassword 应保持原始 RSA 模板值（static），
-        # 不替换为 phase_ref 提取的明文或 generate 的 UUID。
+        # 后处理：profile 配置的 static 字段覆盖
+        # 某些场景下服务端会验证字段格式但忽略实际值（如 RSA 加密密码），
+        # 此时应保持原始模板值（static），不替换为动态值。
+        # 配置格式（profile.yaml）:
+        #   static_overrides:
+        #     - trigger_field: "isRandomPassword"  # 触发条件字段
+        #       target_fields: ["newPassword"]      # 需要强制 static 的目标字段
         if isinstance(core_body, dict):
-            is_random = core_body.get("isRandomPassword")
-            if is_random and "newPassword" in core_roles:
-                if core_roles["newPassword"].get("role") != "static":
-                    # 恢复为 static，使用原始 RSA 模板值
-                    core_roles["newPassword"] = {"role": "static"}
-                    LOG.info("  操作链: newPassword 恢复为 static（isRandomPassword=1 时服务端验证格式但忽略值）")
+            static_overrides = profile.get("static_overrides", [])
+            for override in static_overrides:
+                trigger_field = override.get("trigger_field")
+                target_fields = override.get("target_fields", [])
+                if trigger_field and core_body.get(trigger_field):
+                    for target in target_fields:
+                        if target in core_roles and core_roles[target].get("role") != "static":
+                            core_roles[target] = {"role": "static"}
+                            LOG.info(f"  操作链: {target} 恢复为 static（{trigger_field}={core_body.get(trigger_field)} 时服务端验证格式但忽略值）")
 
         # 清理所有 phase 的 body_template 中的 context 字段值
         for phase in phases:
@@ -2442,7 +2432,7 @@ def build_manifest(analysis: dict, capture_result: dict,
                 "body_field_roles": query_roles,
                 "requires": [],
                 "extract": {
-                    "id": "entity.list_0.id" if response_contract["envelope_keys"] else "list_0.id",
+                    "id": f"{response_contract['envelope_keys'][0]}.list_0.id" if response_contract["envelope_keys"] else "list_0.id",
                 },
             }
             steps.append(init_step)

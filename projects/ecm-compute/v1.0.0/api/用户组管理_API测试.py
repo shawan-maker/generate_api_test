@@ -1,6 +1,6 @@
 """
 用户组管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-29 18:53:31
+生成时间: 2026-09-30 10:27:14
 目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/user-group
 
 执行流程:
@@ -142,8 +142,8 @@ MANIFEST = {
           }
         },
         "query_params": {
-          "name": "AT_test_678782",
-          "description": "auto_desc_678782"
+          "name": "AT_test_735151",
+          "description": "auto_desc_735151"
         }
       },
       "body_template": {
@@ -386,7 +386,7 @@ MANIFEST = {
         "query_params": {}
       },
       "body_template": [
-        "27d07abaa79b4e79a7a83ecda91d837c"
+        "0d917ff8969a4f1c9a66bf2ee61d1ce2"
       ],
       "body_field_roles": {
         "__array_items__": {
@@ -459,8 +459,8 @@ MANIFEST = {
           "name": "entity_list_0_tenantId",
           "path": "entity.list[0].tenantId",
           "used_by": [
-            "添加用户",
             "编辑",
+            "添加用户",
             "创建用户组"
           ]
         },
