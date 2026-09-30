@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "4919e189-56e1-4458-95bf-09f541be7c8d",
+    "_postman_id": "0cb55d86-39c6-4329-b25f-f39836d71c1e",
     "name": "用户组管理 API 测试",
     "description": "由 module_discovery Stage 5 自动导出",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -24,10 +24,16 @@
       "description": "由 获取用户列表 提取"
     },
     {
-      "key": "entity_0_userId",
+      "key": "entity_list_0_id",
       "value": "",
       "type": "string",
-      "description": "由 前置 API: access-log 提取"
+      "description": "由 获取用户列表 提取"
+    },
+    {
+      "key": "entity_list_0_policyList_0_id",
+      "value": "",
+      "type": "string",
+      "description": "由 获取用户列表 提取"
     }
   ],
   "item": [
@@ -102,44 +108,11 @@
                   "});",
                   "",
                   "var entity_list_0_tenantId = jsonData.entity.list[0].tenantId;",
-                  "if (entity_list_0_tenantId !== undefined) pm.environment.set('entity_list_0_tenantId', entity_list_0_tenantId);"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "unknown",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}"
-            }
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "var jsonData = pm.response.json();",
-                  "pm.test('Status OK', function() {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
-                  "});",
-                  "",
-                  "var entity_0_userId = jsonData.entity[0].userId;",
-                  "if (entity_0_userId !== undefined) pm.environment.set('entity_0_userId', entity_0_userId);"
+                  "if (entity_list_0_tenantId !== undefined) pm.environment.set('entity_list_0_tenantId', entity_list_0_tenantId);",
+                  "var entity_list_0_id = jsonData.entity.list[0].id;",
+                  "if (entity_list_0_id !== undefined) pm.environment.set('entity_list_0_id', entity_list_0_id);",
+                  "var entity_list_0_policyList_0_id = jsonData.entity.list[0].policyList[0].id;",
+                  "if (entity_list_0_policyList_0_id !== undefined) pm.environment.set('entity_list_0_policyList_0_id', entity_list_0_policyList_0_id);"
                 ]
               }
             }
@@ -199,7 +172,7 @@
                   "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
                   "});",
                   "",
-                  "var createdId = jsonData.entity.list[0].tenantId;",
+                  "var createdId = jsonData.entity.id;",
                   "if (createdId) pm.environment.set('id', createdId);",
                   "",
                   "var nameVal = jsonData.entity && jsonData.entity.name;",
@@ -291,7 +264,7 @@
           "response": []
         },
         {
-          "name": "05.1_添加用户(side-tree)",
+          "name": "05_添加用户",
           "request": {
             "method": "POST",
             "header": [
@@ -305,69 +278,11 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/estack/api/estack/pegasi/v1/menu/side-tree"
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/groups/userGroupAttachList"
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": \"{{entity_0_userId}}\",\n  \"isVisible\": 1\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "05.2_添加用户(side-tree)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/estack/api/estack/pegasi/v1/menu/side-tree"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"userId\": \"{{entity_0_userId}}\",\n  \"isVisible\": 1\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "05.3_添加用户",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/estack/api/estack/pegasi/v1/menu/tree"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"userId\": \"{{entity_0_userId}}\",\n  \"rootId\": \"all-resource\",\n  \"isVisible\": 1\n}",
+              "raw": "{\n  \"groupIds\": \"{{id}}\",\n  \"userIds\": \"{{entity_list_0_id}}\",\n  \"tenantId\": \"{{entity_list_0_tenantId}}\",\n  \"flag\": 1\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -398,7 +313,7 @@
           "response": []
         },
         {
-          "name": "07.1_授权(side-tree)",
+          "name": "07.1_授权(attach-to-group)",
           "request": {
             "method": "POST",
             "header": [
@@ -412,11 +327,11 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/estack/api/estack/pegasi/v1/menu/side-tree"
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/policies/attach-to-group"
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": \"{{entity_0_userId}}\",\n  \"isVisible\": 1\n}",
+              "raw": "{\n  \"policies\": \"{{entity_list_0_policyList_0_id}}\",\n  \"principleIds\": \"{{id}}\",\n  \"statement\": {\n    \"collections\": \"*\",\n    \"pools\": \"*\",\n    \"projects\": \"*\"\n  },\n  \"tenantId\": \"{{entity_list_0_tenantId}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -427,7 +342,7 @@
           "response": []
         },
         {
-          "name": "07.2_授权(side-tree)",
+          "name": "07.2_授权",
           "request": {
             "method": "POST",
             "header": [
@@ -441,40 +356,11 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/estack/api/estack/pegasi/v1/menu/side-tree"
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/policies/attach-to-user"
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": \"{{entity_0_userId}}\",\n  \"isVisible\": 1\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "07.3_授权",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/estack/api/estack/pegasi/v1/menu/tree"
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"userId\": \"{{entity_0_userId}}\",\n  \"rootId\": \"all-resource\",\n  \"isVisible\": 1\n}",
+              "raw": "{\n  \"policies\": \"{{entity_list_0_policyList_0_id}}\",\n  \"principleIds\": \"{{entity_list_0_id}}\",\n  \"statement\": {\n    \"collections\": \"*\",\n    \"pools\": \"*\",\n    \"projects\": \"*\"\n  },\n  \"tenantId\": \"{{entity_list_0_tenantId}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

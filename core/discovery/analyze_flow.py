@@ -175,7 +175,7 @@ def _is_post_list_query(ep) -> bool:
 
 def analyze(core_api_map, all_endpoints, response_samples, ui_result,
             pre_api_candidates=None, profile=None,
-            operation_order=None) -> dict:
+            operation_order=None, all_calls=None) -> dict:
     """
     完整分析流程入口。
 
@@ -184,11 +184,12 @@ def analyze(core_api_map, all_endpoints, response_samples, ui_result,
     Args:
         core_api_map: Stage 2 操作→核心API映射（核心输入）
         all_endpoints: 所有去重端点列表
-        response_samples: 响应样本 {pathname: [{status, body}, ...]}
+        response_samples: 响应样本 {pathname: [{status, body, ts, context, method}, ...]}
         ui_result: discover_ui 的输出
         pre_api_candidates: 前置 API 候选列表（来自 Phase A）
         profile: profile.yaml 配置字典
         operation_order: Stage 2 保存的操作顺序
+        all_calls: 完整调用序列（用于 ValueChain 三原则追溯）
     """
     LOG.info("开始逻辑分析...")
 
@@ -209,8 +210,10 @@ def analyze(core_api_map, all_endpoints, response_samples, ui_result,
     execution_order = _derive_order(core_apis, operation_order)
     LOG.info(f"  Step 3: 执行顺序: {execution_order}")
 
-    # Step 4: 数据依赖链分析（数据驱动：找 ID 生产者）
-    dep_chain = _derive_dependencies(core_apis, response_samples, execution_order)
+    # Step 4: 数据依赖链分析（三原则值匹配驱动）
+    value_chain = build_value_chain(core_apis, response_samples, all_calls)
+    dep_chain = _derive_dependencies(core_apis, response_samples, execution_order,
+                                     value_chain=value_chain)
     LOG.info(f"  Step 4: 依赖字段: {list(dep_chain.get('injections', {}).keys())}")
     id_producer = dep_chain.get("id_producer")
     LOG.info(f"  Step 4: ID 生产者: {id_producer or '未找到'}")
@@ -228,10 +231,18 @@ def analyze(core_api_map, all_endpoints, response_samples, ui_result,
     if id_producer and id_producer in core_apis:
         create_ep = core_apis[id_producer][0]
         create_body_sample = _parse_body(create_ep)
-        create_resp_samples = response_samples.get(create_ep.get("pathname", ""), [])
-        if create_resp_samples:
+        # ★ 从 ValueChain 获取正确的创建响应（按 context 筛选，非盲取第一个）
+        create_pn = create_ep.get("pathname", "")
+        create_resp_samples = response_samples.get(create_pn, [])
+        # 优先按 context 筛选
+        op_context = f"replay:{id_producer}"
+        matched_samples = [s for s in create_resp_samples
+                          if s.get("context") == op_context]
+        if not matched_samples:
+            matched_samples = create_resp_samples
+        if matched_samples:
             try:
-                body_text = create_resp_samples[0].get("body", "{}")
+                body_text = matched_samples[0].get("body", "{}")
                 create_response_sample = json.loads(body_text) if isinstance(body_text, str) else body_text
             except Exception:
                 pass
@@ -264,6 +275,7 @@ def analyze(core_api_map, all_endpoints, response_samples, ui_result,
         "value_index": value_index.to_dict() if value_index else None,
         "pre_api_chain": pre_api_result,
         "core_api_map": core_api_map or {},
+        "value_chain": value_chain,  # ★ 三原则值关联链
     }
 
 
@@ -444,208 +456,541 @@ def _find_last_write_op(core_apis):
     return None
 
 
-def _derive_dependencies(core_apis: dict, response_samples: dict, operation_order: list) -> dict:
-    """
-    Step 4: 从响应样本中分析数据依赖关系。
+# ========== ValueChain: 三原则值匹配引擎 ==========
 
-    核心逻辑：
-    1. 按 operation_order 顺序扫描响应，找到第一个返回 ID 的操作（ID 生产者）
-    2. 检查后续操作的请求体/URL 中是否引用该 ID
-    3. 返回 id_producer（操作名）供后续步骤使用
+def _compute_static_segments(all_calls: list) -> set:
+    """从 all_calls 统计 URL 路径中的静态段（数据驱动，不硬编码）。
+
+    原理：静态段（框架前缀如 v1/api、资源名如 groups/users）在多数请求中重复出现，
+    而动态 ID 每次请求都不同，不可能高频出现。
+
+    Args:
+        all_calls: 完整调用序列
+
+    Returns:
+        set: 静态路径段集合
+    """
+    # 通用框架保留词（兜底，calls 为空时至少能过滤版本号）
+    universal_static = {"api", "v1", "v2", "v3", "v4"}
+
+    if not all_calls:
+        return universal_static
+
+    # 统计每个路径段出现在多少个不同的 pathname 中
+    segment_pathname_count = defaultdict(set)
+    for call in all_calls:
+        pathname = call.get("pathname", "")
+        segments = pathname.strip("/").split("/")
+        for seg in segments:
+            if seg:
+                segment_pathname_count[seg].add(pathname)
+
+    # 出现在 ≥50% 不同 pathname 中的段 → 静态段
+    total_pathnames = len(set(c.get("pathname", "") for c in all_calls))
+    threshold = max(2, total_pathnames * 0.5)
+
+    static = set(universal_static)
+    for seg, pathnames in segment_pathname_count.items():
+        if len(pathnames) >= threshold:
+            static.add(seg)
+
+    LOG.debug(f"  [ValueChain] 静态路径段（数据驱动，共 {len(static)} 个）: "
+              f"{sorted(static)[:15]}...")
+    return static
+
+
+def build_value_chain(core_apis: dict, response_samples: dict,
+                      all_calls: list) -> dict:
+    """
+    构建全量值关联链（三原则驱动）。
+
+    对每个操作的请求（URL路径段 + query参数 + body字段），
+    找出其中的动态值，通过三原则逐级追溯到源头：
+      原则1：根据值匹配 — 匹配前面所有接口响应中值相同的字段
+      原则2：时间最近原则 — 多个响应有相同值时取时间最近的
+      原则3：多级匹配 — 如果那个响应的请求中也有动态值，继续递归追溯
 
     Args:
         core_apis: 核心 API 字典 {操作名: [端点数据]}
-        response_samples: 响应样本 {pathname: [{status, body}, ...]}
-        operation_order: 执行顺序列表
+        response_samples: 响应样本 {pathname: [{status, body, ts, context, method}, ...]}
+        all_calls: 完整调用序列 [{method, pathname, body, context, ts, query_params}, ...]
 
     Returns:
-        dict with:
-        - id_producer: 产生 ID 的操作名（如"创建用户"）
-        - id_field_details: ID 字段详情 {字段名: {source_action, sample_value, path}}
-        - injections: ID 引用模式 {字段名: {source, source_path}}
+        {
+            "chains": {"<action>.<field>": {...}, ...},
+            "id_producer": "创建用户组" | None,
+            "id_field_details": {...},
+            "injections": {...},
+        }
     """
-    id_producer = None  # 产生 ID 的操作名
-    id_field_details = {}  # {字段名: {source_action, sample_value, path}}
-    injections = {}
+    LOG.info("  [ValueChain] 构建全量值关联链...")
 
-    # 1. 按 operation_order 顺序找 ID 生产者（数据流反向推导）
-    for action in operation_order:
-        endpoints = core_apis.get(action, [])
-        if not endpoints:
-            continue
-        ep = endpoints[0]  # 只处理 main endpoint，避免 chain candidate 污染
-        pn = ep["pathname"]
-        samples = response_samples.get(pn, [])
+    # 1. 构建全局时间线：所有响应按时间排序
+    all_responses = _flatten_responses(response_samples)
+    all_responses.sort(key=lambda r: r.get("ts", 0))
 
-        # 收集后续操作的请求和路径（用于值匹配）
-        subsequent_requests = []
-        subsequent_pathnames = []
-        for other_action, other_eps in core_apis.items():
-            if other_action == action:
-                continue
-            for other_ep in other_eps:
-                body_sample = other_ep.get("request_body_sample")
-                if body_sample:
-                    try:
-                        req_body = json.loads(body_sample) if isinstance(body_sample, str) else body_sample
-                        subsequent_requests.append(req_body)
-                    except:
-                        pass
-                subsequent_pathnames.append(other_ep.get("pathname", ""))
+    # 2. 构建全局请求时间线
+    all_requests = sorted(all_calls, key=lambda c: c.get("ts", 0)) if all_calls else []
 
-        # 检查多个样本（最多前 5 个），避免 response_samples 按 pathname 混合存储时
-        # POST 写操作和 GET 列表查询共享同一 key 导致第一个样本恰好是列表响应
-        for s in samples[:5]:
-            try:
-                body = json.loads(s["body"]) if isinstance(s["body"], str) else {}
-            except Exception as e:
-                LOG.debug(f"解析响应样本失败 ({pn}): {e}")
-                continue
+    # 3. 数据驱动：从 all_calls 统计静态路径段（替代硬编码）
+    static_segments = _compute_static_segments(all_calls)
 
-            # 通过数据流反向推导 ID 字段
-            result = _find_id_by_data_flow(body, subsequent_requests, subsequent_pathnames)
+    # 4. 对每个操作，提取请求中的动态值并追溯
+    chains = {}
 
-            if result:
-                field_name, field_path, sample_value = result
-                id_field_details[field_name] = {
-                    "source_action": action,
-                    "sample_value": sample_value,
-                    "path": field_path,
-                }
-                LOG.debug(f"  发现 ID 字段: {field_path} = {sample_value} (来自 {action})")
-
-                # 第一个找到 ID 的操作即为 ID 生产者
-                if id_producer is None:
-                    id_producer = action
-                    LOG.debug(f"  ID 生产者: {action}")
-                break
-
-        # 如果已找到 ID 生产者，停止扫描更多操作
-        if id_producer:
-            break
-
-    # 2. 检查后续操作是否引用了这些 ID 字段
     for action, endpoints in core_apis.items():
-        if action == id_producer:
-            continue  # 跳过 ID 生产者本身
-
         if not endpoints:
             continue
-        ep = endpoints[0]  # 只处理 main endpoint，避免 chain candidate 污染
-        body_sample = ep.get("request_body_sample") or (
-            ep.get("bodies")[0] if ep.get("bodies") else None)
-        if not body_sample:
-            continue
-        try:
-            req_body = json.loads(body_sample) if isinstance(body_sample, str) else body_sample
-        except Exception as e:
-            LOG.debug(f"解析请求体 JSON 失败: {e}")
-            continue
+        ep = endpoints[0]
+        body_sample = _parse_body(ep)
+        pathname = ep.get("pathname", "")
+        query_params = ep.get("query_params", {}) or {}
 
-        if isinstance(req_body, list):
-            # 数组格式（如 batch delete ["id1", "id2"]）
-            if req_body and isinstance(req_body[0], str) and len(req_body[0]) >= 8:
-                injections["__array_items__"] = {
-                    "source": id_producer or "unknown",
-                    "source_path": "entity.id",
+        # 确定该操作的请求时间（用于"只看之前的响应"）
+        op_ts = _get_operation_ts(action, all_requests, response_samples)
+
+        # 从请求中提取动态值
+        dynamic_values = _extract_dynamic_values(
+            body=body_sample,
+            query_params=query_params,
+            pathname=pathname,
+            static_segments=static_segments,
+        )
+
+        # 对每个动态值执行三原则追溯
+        for field_name, value_str in dynamic_values.items():
+            chain_key = f"{action}.{field_name}"
+            trace_path = _trace_value(
+                value_str=value_str,
+                before_ts=op_ts,
+                all_responses=all_responses,
+                all_requests=all_requests,
+                depth=0,
+                max_depth=6,
+                visited=set(),
+                static_segments=static_segments,
+            )
+
+            if trace_path:
+                ultimate = _get_ultimate_source(trace_path)
+                chains[chain_key] = {
+                    "value": value_str,
+                    "field_name": field_name,
+                    "action": action,
+                    "trace_path": trace_path,
+                    "ultimate_source": ultimate,
                 }
-            continue
 
-        if not isinstance(req_body, dict):
-            continue
+    # 4. 从 chains 中提取 id_producer 和 id_field_details
+    id_producer, id_field_details, injections = _extract_id_info_from_chains(
+        chains, core_apis, response_samples
+    )
 
-        # 检查请求体中是否包含 ID 字段（使用动态识别的字段名）
-        for fname in id_field_details.keys():
-            if fname in req_body and fname not in injections:
-                injections[fname] = {
-                    "source": id_field_details.get(fname, {}).get(
-                        "source_action",
-                        id_producer or "unknown"),
-                    "source_path": id_field_details.get(fname, {}).get("path", fname),
-                }
+    LOG.info(f"  [ValueChain] {len(chains)} 条关联链, "
+             f"ID生产者={id_producer or '无'}, "
+             f"ID字段={list(id_field_details.keys())}")
 
-    result = {
+    return {
+        "chains": chains,
         "id_producer": id_producer,
         "id_field_details": id_field_details,
         "injections": injections,
     }
-    return result
 
 
-def _find_id_by_data_flow(create_response: dict,
-                          subsequent_requests: list,
-                          subsequent_pathnames: list):
-    """
-    通过数据流反向推导 ID 字段。
-
-    原理：ID 字段在创建响应中产生，会在后续操作（PUT/DELETE）的请求体或 URL 中被引用。
-
-    Args:
-        create_response: 创建操作的响应体
-        subsequent_requests: 后续操作的请求体列表
-        subsequent_pathnames: 后续操作的 URL 路径列表
-
-    Returns:
-        (field_name, full_path, value) 或 None
-    """
-    exclude_keys = {
-        # 人类可读文本字段 — 值不可能是标识符
-        "status", "name", "userName", "displayName",
-        "createAt", "updateAt", "lastUsedDate", "createdAt", "updatedAt",
-        "description", "remark", "memo", "note", "comment", "content",
-        # 敏感凭据 — 值是标识符但不应作为 API 关联的 ID
-        "secretKey", "password", "token", "accessToken", "secret",
+def _get_ultimate_source(trace_path: list) -> dict:
+    """从追溯链中提取最终来源（递归进入 sub_traces）。"""
+    if not trace_path:
+        return {}
+    node = trace_path[-1]
+    while node.get("sub_traces"):
+        sub = node["sub_traces"]
+        sub_path = sub.get("trace_path", [])
+        if not sub_path:
+            break
+        node = sub_path[-1]
+    return {
+        "step": node.get("step", ""),
+        "pathname": node.get("pathname", ""),
+        "response_path": node.get("response_path", ""),
     }
 
-    response_values = {}
-    _collect_leaf_values(create_response, response_values, exclude_keys)
 
-    # 第一轮：优先检查 URL 路径段（最可靠，排除查询参数）
-    for path, value in response_values.items():
-        if not _looks_like_identifier(value):
-            continue
-        value_str = str(value)
-        for pn in subsequent_pathnames:
-            path_only = pn.split("?")[0]  # ★ 只匹配路径段，不匹配 ?tenantId=xxx
-            if value_str in path_only:
-                return path.split(".")[-1], path, value_str
-
-    # 第二轮：检查请求体
-    for path, value in response_values.items():
-        if not _looks_like_identifier(value):
-            continue
-        value_str = str(value)
-        for req_body in subsequent_requests:
-            try:
-                if value_str in json.dumps(req_body):
-                    return path.split(".")[-1], path, value_str
-            except:
-                pass
-
-    return None
+def _flatten_responses(response_samples: dict) -> list:
+    """将 {pathname: [sample, ...]} 展平为带 pathname 的列表。"""
+    flat = []
+    for pathname, samples in response_samples.items():
+        for s in samples:
+            flat.append({
+                "pathname": pathname,
+                "status": s.get("status"),
+                "body": s.get("body", ""),
+                "ts": s.get("ts", 0),
+                "context": s.get("context", ""),
+                "method": s.get("method", ""),
+            })
+    return flat
 
 
-def _collect_leaf_values(obj: dict, result: dict, exclude_keys: set,
-                         path: str = "", max_depth: int = 4, _depth: int = 0):
-    """递归收集 JSON 对象中的所有叶子值。"""
+def _get_operation_ts(action: str, all_requests: list, response_samples: dict) -> float:
+    """获取操作的近似时间戳。"""
+    op_context = f"replay:{action}"
+    for req in all_requests:
+        if req.get("context") == op_context:
+            return req.get("ts", float("inf"))
+    for pathname, samples in response_samples.items():
+        for s in samples:
+            if s.get("context") == op_context:
+                return s.get("ts", float("inf"))
+    return float("inf")
+
+
+def _trace_value(value_str: str, before_ts: float,
+                 all_responses: list, all_requests: list,
+                 depth: int = 0, max_depth: int = 6,
+                 visited: set = None,
+                 static_segments: set = None) -> list:
+    """
+    递归追溯一个值的来源（三原则核心）。
+
+    原则1：根据值匹配 — 在前面所有响应中搜索该值
+    原则2：时间最近 — 取时间最接近 before_ts 的响应（路径短优先）
+    原则3：多级匹配 — 检查该响应对应的请求中是否有动态值，递归追溯
+
+    Returns:
+        trace_path: [{step, pathname, response_path, ts, sub_traces?}, ...]
+    """
+    if visited is None:
+        visited = set()
+
+    if depth >= max_depth or value_str in visited:
+        return []
+
+    visited.add(value_str)
+
+    # 原则1：在前面所有响应中搜索该值
+    candidates = []
+    for resp in all_responses:
+        if resp.get("ts", 0) >= before_ts:
+            break
+        paths = _find_value_in_response(resp["body"], value_str)
+        if paths:
+            candidates.append({
+                "step": resp.get("context", "").replace("replay:", ""),
+                "pathname": resp["pathname"],
+                "paths": paths,
+                "ts": resp.get("ts", 0),
+                "method": resp.get("method", ""),
+            })
+
+    if not candidates:
+        return []
+
+    # 原则2：时间最早（首次产生者）+ 路径最短
+    # 追溯到值的首次产生源，而非最近出现的位置
+    candidates.sort(key=lambda c: c["ts"])
+    best_candidate = candidates[0]
+    best_path = min(best_candidate["paths"], key=len)
+
+    trace_entry = {
+        "step": best_candidate["step"],
+        "pathname": best_candidate["pathname"],
+        "response_path": best_path,
+        "ts": best_candidate["ts"],
+    }
+
+    # 原则3：检查该响应对应的请求中是否有动态值
+    matching_request = _find_request_for_response(
+        resp_pathname=best_candidate["pathname"],
+        resp_ts=best_candidate["ts"],
+        all_requests=all_requests,
+    )
+
+    if matching_request:
+        req_dynamic = _extract_dynamic_values(
+            body=_parse_request_body(matching_request.get("body", "")),
+            query_params=matching_request.get("query_params", {}),
+            pathname=matching_request.get("pathname", ""),
+            static_segments=static_segments,
+        )
+
+        for dv_name, dv_value in req_dynamic.items():
+            if dv_value != value_str and _looks_like_identifier(dv_value):
+                sub_trace = _trace_value(
+                    value_str=dv_value,
+                    before_ts=matching_request.get("ts", before_ts),
+                    all_responses=all_responses,
+                    all_requests=all_requests,
+                    depth=depth + 1,
+                    max_depth=max_depth,
+                    visited=visited.copy(),
+                    static_segments=static_segments,
+                )
+                if sub_trace:
+                    trace_entry["sub_traces"] = {
+                        "request_field": dv_name,
+                        "request_value": dv_value,
+                        "trace_path": sub_trace,
+                    }
+                    break
+
+    return [trace_entry]
+
+
+def _find_value_in_response(body_text: str, target_value: str) -> list:
+    """在一个响应 body 中查找目标值的所有路径。"""
+    if not body_text:
+        return []
+    try:
+        body = json.loads(body_text) if isinstance(body_text, str) else body_text
+    except Exception:
+        return []
+
+    paths = []
+    _search_value_recursive(body, str(target_value), "", paths, max_depth=5)
+    return paths
+
+
+def _search_value_recursive(obj, target_str: str, path: str,
+                            results: list, max_depth: int, _depth: int = 0):
+    """递归搜索 JSON 中的目标值，收集所有匹配路径。"""
     if _depth >= max_depth:
         return
 
     if isinstance(obj, dict):
         for key, value in obj.items():
             current_path = f"{path}.{key}" if path else key
-
-            if key in exclude_keys:
-                continue
-
             if isinstance(value, (str, int, float)) and value:
-                result[current_path] = value
+                if str(value) == target_str:
+                    results.append(current_path)
             elif isinstance(value, dict):
-                _collect_leaf_values(value, result, exclude_keys, current_path, max_depth, _depth + 1)
-            elif isinstance(value, list) and len(value) > 0:
-                first = value[0]
-                if isinstance(first, dict):
-                    _collect_leaf_values(first, result, exclude_keys, f"{current_path}[0]", max_depth, _depth + 1)
+                _search_value_recursive(value, target_str, current_path,
+                                        results, max_depth, _depth + 1)
+            elif isinstance(value, list):
+                for i, item in enumerate(value):
+                    if isinstance(item, dict):
+                        _search_value_recursive(item, target_str,
+                                                f"{current_path}[{i}]",
+                                                results, max_depth, _depth + 1)
+                    elif isinstance(item, (str, int)) and str(item) == target_str:
+                        results.append(f"{current_path}[{i}]")
+
+
+def _extract_dynamic_values(body=None, query_params: dict = None,
+                            pathname: str = "",
+                            static_segments: set = None) -> dict:
+    """
+    从请求中提取所有动态值（ID 类字段）。
+
+    排除已知的非动态字段（分页、固定值等），只保留看起来像标识符的值。
+
+    Args:
+        body: 请求体（dict 或 list）
+        query_params: URL 查询参数
+        pathname: URL 路径
+        static_segments: 静态路径段集合（数据驱动，由 _compute_static_segments 生成）
+    """
+    exclude_keys = {
+        "pageNum", "pageSize", "page", "size", "offset", "limit",
+        "startRow", "endRow", "pages",
+        "isVisible", "flag", "rootId", "sort", "order",
+        "status", "name", "userName", "displayName",
+        "description", "remark", "memo",
+        "secretKey", "password", "token", "accessToken",
+    }
+
+    values = {}
+
+    if isinstance(body, dict):
+        for k, v in body.items():
+            if k in exclude_keys:
+                continue
+            if isinstance(v, str) and _looks_like_identifier(v):
+                values[k] = v
+            elif isinstance(v, list) and v and isinstance(v[0], str):
+                if _looks_like_identifier(v[0]):
+                    values[k] = v[0]
+    elif isinstance(body, list) and body:
+        if isinstance(body[0], str) and _looks_like_identifier(body[0]):
+            values["_array_item"] = body[0]
+
+    for k, v in (query_params or {}).items():
+        if k in exclude_keys:
+            continue
+        if isinstance(v, str) and _looks_like_identifier(v):
+            values[f"_query_{k}"] = v
+
+    # 使用数据驱动的静态段集合（由 _compute_static_segments 生成）
+    # 若未传入（向后兼容），回退到通用框架保留词
+    if static_segments is None:
+        static_segments = {"api", "v1", "v2", "v3", "v4"}
+    segments = pathname.strip("/").split("/")
+    for seg in segments:
+        if seg and seg not in static_segments and _looks_like_identifier(seg):
+            values[f"_path_{seg[:8]}"] = seg
+
+    return values
+
+
+def _find_request_for_response(resp_pathname: str, resp_ts: float,
+                               all_requests: list) -> dict | None:
+    """找到产生指定响应的请求（同一 pathname + 时间最接近且在响应之前）。"""
+    best = None
+    best_ts_diff = float("inf")
+
+    for req in all_requests:
+        req_ts = req.get("ts", 0)
+        if req_ts >= resp_ts:
+            continue
+        if req.get("pathname") != resp_pathname:
+            continue
+        ts_diff = resp_ts - req_ts
+        if ts_diff < best_ts_diff:
+            best_ts_diff = ts_diff
+            best = req
+
+    return best
+
+
+def _parse_request_body(body_text) -> dict | list | None:
+    """解析请求体 JSON。"""
+    if not body_text:
+        return None
+    if isinstance(body_text, (dict, list)):
+        return body_text
+    try:
+        return json.loads(body_text)
+    except Exception:
+        return None
+
+
+def _extract_id_info_from_chains(chains: dict, core_apis: dict, response_samples: dict = None) -> tuple:
+    """
+    从 ValueChain 中提取 id_producer、id_field_details、injections。
+
+    核心原则：使用 trace_path[0]（值本身的即时来源），而非 ultimate_source
+    （ultimate_source 递归跟踪 sub_traces，会追溯到请求中其他值的来源如 tenantId→init）。
+
+    优先级：
+    1. 识别 POST 操作作为 id_producer（创建操作）
+    2. 在其响应字段中，优先选择名称为 'id' 或 'xxxId' 的字段
+    注：上下文参数（如 tenantId）来自 pre-API，trace_path[0].step 不在 core_apis 中，
+       由 L843 的 source_step not in core_apis 自动过滤，无需额外排除。
+
+    Args:
+        chains: ValueChain 追溯结果
+        core_apis: 核心 API 字典
+        response_samples: 响应样本（用于动态计算回退路径）
+    """
+    id_producer = None
+    id_field_details = {}
+    injections = {}
+
+    # 计算动态回退路径（替代硬编码 "entity.id"）
+    default_extract_path = f"entity.{const.DEFAULT_ID_FIELD}"  # 兜底
+    if response_samples:
+        envelope_keys = _discover_envelope_keys(response_samples)
+        top_key = envelope_keys[0] if envelope_keys else "entity"
+        default_extract_path = f"{top_key}.{const.DEFAULT_ID_FIELD}"
+
+    # 策略 1：从 trace_path[0] 中识别 id_producer（值本身的即时来源）
+    post_candidates = []
+    for chain_key, chain_info in chains.items():
+        tp = chain_info.get("trace_path", [])
+        if not tp:
+            continue
+        first_node = tp[0]  # ★ 值本身被找到的位置（非 sub_traces 最深节点）
+        source_step = first_node.get("step", "")
+        source_path = first_node.get("response_path", "")
+        field_name = source_path.split(".")[-1] if source_path else ""
+
+        # 只考虑来自核心操作的响应（排除 init/前置API）
+        if source_step not in core_apis:
+            continue
+        # 排除包含 "list" 的路径（列表查询响应中的值不是该操作产生的）
+        if "list" in source_path:
+            continue
+        # 检查该操作是否为 POST（创建操作）
+        ep = core_apis[source_step][0]
+        if ep.get("method", "").upper() != "POST":
+            continue
+        # 优先选择名称包含 'id' 的字段
+        if field_name and ("id" in field_name.lower()):
+            post_candidates.append((source_step, field_name, chain_info, source_path))
+
+    # 如果有多个候选，优先选择字段名为 'id' 的
+    if post_candidates:
+        post_candidates.sort(key=lambda x: (
+            0 if x[1].lower() == "id" else
+            1 if x[1].lower().endswith("id") else
+            2
+        ))
+        best_action, best_field, best_chain, best_path = post_candidates[0]
+        id_producer = best_action
+
+        for action, field_name, chain_info, source_path in post_candidates:
+            if action == id_producer and field_name not in id_field_details:
+                id_field_details[field_name] = {
+                    "source_action": id_producer,
+                    "sample_value": chain_info["value"],
+                    "path": source_path,
+                }
+    else:
+        # 策略 2：退回到统计 trace_path[0] 引用次数的逻辑
+        source_counts = {}
+        for chain_key, chain_info in chains.items():
+            tp = chain_info.get("trace_path", [])
+            if not tp:
+                continue
+            first_node = tp[0]
+            source_step = first_node.get("step", "")
+            source_path = first_node.get("response_path", "")
+
+            if source_step in core_apis and "list" not in source_path:
+                source_counts[source_step] = source_counts.get(source_step, 0) + 1
+
+        if source_counts:
+            id_producer = max(source_counts, key=source_counts.get)
+
+        if id_producer:
+            for chain_key, chain_info in chains.items():
+                tp = chain_info.get("trace_path", [])
+                if not tp:
+                    continue
+                first_node = tp[0]
+                if first_node.get("step") == id_producer:
+                    response_path = first_node.get("response_path", "")
+                    field_name = response_path.split(".")[-1] if response_path else ""
+                    if field_name and field_name not in id_field_details:
+                        id_field_details[field_name] = {
+                            "source_action": id_producer,
+                            "sample_value": chain_info["value"],
+                            "path": response_path,
+                        }
+
+    for chain_key, chain_info in chains.items():
+        action = chain_info.get("action", "")
+        field_name = chain_info.get("field_name", "")
+
+        if action == id_producer:
+            continue
+
+        # ★ 使用 trace_path[0]（值的即时来源），而非 ultimate_source
+        tp = chain_info.get("trace_path", [])
+        if tp:
+            first_node = tp[0]
+            if first_node.get("step") == id_producer:
+                injections[field_name] = {
+                    "source": id_producer,
+                    "source_path": first_node.get("response_path", field_name),
+                }
+            elif field_name == "_array_item":
+                injections["__array_items__"] = {
+                    "source": id_producer or "unknown",
+                    "source_path": first_node.get("response_path", default_extract_path),
+                }
+
+    return id_producer, id_field_details, injections
 
 
 def _looks_like_identifier(value) -> bool:
@@ -675,46 +1020,42 @@ def _looks_like_identifier(value) -> bool:
     return False
 
 
-def _extract_ids_recursive(obj, path: str = "", max_depth: int = 4, _depth: int = 0):
+def _derive_dependencies(core_apis: dict, response_samples: dict,
+                         operation_order: list,
+                         value_chain: dict = None) -> dict:
     """
-    递归遍历 JSON 对象，提取所有 ID 字段。
+    Step 4: 从 ValueChain 中提取数据依赖关系。
+
+    ValueChain 已由 build_value_chain 完成三原则追溯，
+    这里只做结果转换。
 
     Args:
-        obj: JSON 对象（dict/list/primitive）
-        path: 当前路径（如 "entity.data"）
-        max_depth: 最大递归深度
-        _depth: 当前深度（内部使用）
+        core_apis: 核心 API 字典
+        response_samples: 响应样本（向后兼容用）
+        operation_order: 执行顺序列表
+        value_chain: build_value_chain 的输出（核心输入）
 
     Returns:
-        list of tuples: (full_path, field_name, sample_value)
-        例如: [("entity.id", "id", "12345"), ("entity.data.userId", "userId", "67890")]
+        dict with:
+        - id_producer: 产生 ID 的操作名
+        - id_field_details: ID 字段详情
+        - injections: ID 引用模式
     """
-    if _depth >= max_depth:
-        return []
+    if value_chain:
+        return {
+            "id_producer": value_chain.get("id_producer"),
+            "id_field_details": value_chain.get("id_field_details", {}),
+            "injections": value_chain.get("injections", {}),
+            "value_chain": value_chain,
+        }
 
-    results = []
-
-    if isinstance(obj, dict):
-        for key, value in obj.items():
-            current_path = f"{path}.{key}" if path else key
-
-            # 检查是否是 ID 字段（使用值特征判断）
-            if isinstance(value, (str, int)) and _looks_like_identifier(value):
-                results.append((current_path, key, str(value)))
-
-            # 递归进入子对象
-            if isinstance(value, (dict, list)):
-                results.extend(_extract_ids_recursive(value, current_path, max_depth, _depth + 1))
-
-    elif isinstance(obj, list):
-        # 只检查列表的第一个元素（避免重复）
-        if len(obj) > 0:
-            first = obj[0]
-            if isinstance(first, (dict, list)):
-                results.extend(_extract_ids_recursive(first, f"{path}[0]", max_depth, _depth + 1))
-
-    return results
-
+    # 向后兼容：无 ValueChain 时返回空结果
+    LOG.warning("  [Step 4] 无 ValueChain，返回空依赖")
+    return {
+        "id_producer": None,
+        "id_field_details": {},
+        "injections": {},
+    }
 
 
 def _derive_state_rules(core_apis: dict, response_samples: dict, id_producer: str = None) -> dict:
@@ -1170,10 +1511,16 @@ def build_manifest(analysis: dict, capture_result: dict,
         create_response_sample = None
         if id_producer and id_producer in core_apis:
             create_eps = core_apis[id_producer]
-            create_resp_samples = response_samples.get(create_eps[0].get("pathname", ""), [])
-            if create_resp_samples:
+            create_pn = create_eps[0].get("pathname", "")
+            create_resp_samples = response_samples.get(create_pn, [])
+            # ★ 按 context 筛选创建响应样本
+            op_context = f"replay:{id_producer}"
+            matched_samples = [s for s in create_resp_samples if s.get("context") == op_context]
+            if not matched_samples:
+                matched_samples = create_resp_samples
+            if matched_samples:
                 try:
-                    body_text = create_resp_samples[0].get("body", "{}")
+                    body_text = matched_samples[0].get("body", "{}")
                     create_response_sample = json.loads(body_text) if isinstance(body_text, str) else body_text
                 except Exception:
                     pass
@@ -1199,8 +1546,14 @@ def build_manifest(analysis: dict, capture_result: dict,
             for ep in create_eps:
                 if create_id_sample:
                     break
-                ep_resp_samples = response_samples.get(ep.get("pathname", ""), [])
-                for s in ep_resp_samples:
+                ep_pn = ep.get("pathname", "")
+                ep_resp_samples = response_samples.get(ep_pn, [])
+                # ★ 按 context 筛选创建响应样本
+                op_context = f"replay:{id_producer}"
+                matched_samples = [s for s in ep_resp_samples if s.get("context") == op_context]
+                if not matched_samples:
+                    matched_samples = ep_resp_samples
+                for s in matched_samples:
                     try:
                         body = json.loads(s["body"]) if isinstance(s["body"], str) else s["body"]
                         if id_field_details:
@@ -2357,10 +2710,16 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
         create_ep = core_apis[id_producer][0]
         create_body_sample = _parse_body(create_ep)
         # 获取 create 响应
-        create_resp_samples = response_samples.get(create_ep.get("pathname", ""), [])
-        if create_resp_samples:
+        create_pn = create_ep.get("pathname", "")
+        create_resp_samples = response_samples.get(create_pn, [])
+        # ★ 按 context 筛选创建响应样本
+        op_context = f"replay:{id_producer}"
+        matched_samples = [s for s in create_resp_samples if s.get("context") == op_context]
+        if not matched_samples:
+            matched_samples = create_resp_samples
+        if matched_samples:
             try:
-                body_text = create_resp_samples[0].get("body", "{}")
+                body_text = matched_samples[0].get("body", "{}")
                 create_response_sample = json.loads(body_text) if isinstance(body_text, str) else body_text
             except Exception:
                 pass

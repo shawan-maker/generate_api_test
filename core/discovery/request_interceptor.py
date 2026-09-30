@@ -375,11 +375,15 @@ class RequestInterceptor:
                              f"(HTTP {status}, 检测来源: {detection_source})")
                 # 响应样本收集（保留所有样本，不做数量限制）
                 # Stage 3 的值匹配需要完整样本集（CRUD 模块可能调用同一端点 5+ 次）
+                # ★ 增加时序信息：支持三原则值匹配（值匹配 + 时间最近 + 多级追溯）
                 if pn not in self.samples:
                     self.samples[pn] = []
                 self.samples[pn].append({
                     "status": resp.status,
-                    "body": b
+                    "body": b,
+                    "ts": time.time(),
+                    "context": self._ctx_holder["v"],
+                    "method": resp.request.method,
                 })
         except Exception as e:
             LOG.debug(f"处理响应样本失败: {e}")

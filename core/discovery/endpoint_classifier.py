@@ -525,6 +525,8 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict,
                           for e in uniq.values()],
         "response_samples": samples,
         "stats": {"total_calls": len(all_calls), "unique_endpoints": len(uniq)},
+        # ★ 传递完整调用序列给 analyze_flow，用于三原则值匹配（多级追溯）
+        "calls": all_calls,
     }
 
 

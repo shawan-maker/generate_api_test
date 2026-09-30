@@ -317,6 +317,7 @@ async def run_stage2(page, project_dir: Path, module_name: str,
             "response_samples": api_capture.get("response_samples", {}),
             "pre_api_candidates": api_capture.get("pre_api_candidates", []),
             "operation_order": api_capture.get("operation_order", []),
+            "calls": api_capture.get("calls", []),  # ★ 完整调用序列（用于 ValueChain 三原则追溯）
         }
         out_path = ws_dir / "kb" / "module_discovered" / f"{module_name}_capture.json"
         _save_json(full_result, out_path)
@@ -389,14 +390,15 @@ def run_stage34(project_dir: Path, module_name: str,
     all_endpoints = capture_result.get("all_endpoints", [])
     response_samples = capture_result.get("response_samples", {})
     pre_api_candidates = capture_result.get("pre_api_candidates", [])
-    # ★ 从 Stage 2 读取操作→核心API映射 + 操作顺序
+    # ★ 从 Stage 2 读取操作→核心API映射 + 操作顺序 + 完整调用序列
     core_api_map = capture_result.get("core_api_map", {})
     operation_order = capture_result.get("operation_order", [])
+    calls = capture_result.get("calls", [])
 
-    # Stage 3: 分析（传入 core_api_map + 操作顺序）
+    # Stage 3: 分析（传入 core_api_map + 操作顺序 + 完整调用序列）
     flow = analyze(core_api_map, all_endpoints, response_samples, ui_result,
                    pre_api_candidates=pre_api_candidates, profile=profile,
-                   operation_order=operation_order)
+                   operation_order=operation_order, all_calls=calls)
 
     # 阶段门控验证
     is_valid, issues = validate_stage3(flow)

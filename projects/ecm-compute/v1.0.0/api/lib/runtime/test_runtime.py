@@ -180,7 +180,24 @@ class ResponseParser:
             error_field = self.success_check.get("error_field", "errorCode")
             success_val = resp_json.get(success_field)
             error_val = resp_json.get(error_field)
-            return bool(success_val) and not error_val
+            if not (bool(success_val) and not error_val):
+                return False
+            # 批量响应检查：entity 是数组，子项有独立状态
+            entity = self.extract_entity(resp_json)
+            if isinstance(entity, list):
+                for item in entity:
+                    if not isinstance(item, dict):
+                        continue
+                    # 子项有 errorCode 且不为 null/空 → 失败
+                    item_err = item.get("errorCode")
+                    if item_err is not None and item_err != "":
+                        return False
+                    # 子项有 state 字段且值为 ERROR/FAILED → 失败
+                    item_state = item.get("state", "")
+                    if isinstance(item_state, str) and \
+                       item_state.upper() in ("ERROR", "FAILED", "FAIL"):
+                        return False
+            return True
         else:
             return 200 <= status_code < 300
 
@@ -476,17 +493,19 @@ class StepExecutor:
 
                 last_resp = resp
 
-                # 非最终 phase：轻量级校验（HTTP 2xx + 业务成功标记）
+                # 非最终 phase：通用校验（复用 parser 的成功判断逻辑）
                 if i < len(phases) - 1:
                     if not (200 <= resp.status_code < 300):
                         raise AssertionError(f"phase {phase_id} HTTP {resp.status_code}")
                     try:
                         resp_json = resp.json()
-                        if isinstance(resp_json, dict):
-                            success_val = resp_json.get("success", resp_json.get("code"))
-                            if success_val is False or (isinstance(success_val, int) and success_val not in (0, 200)):
-                                msg = resp_json.get("message", resp_json.get("msg", ""))
-                                raise AssertionError(f"phase {phase_id} 业务失败: {msg}")
+                        if not self.parser.is_success(resp.status_code, resp_json):
+                            error_msg = ""
+                            if isinstance(resp_json, dict):
+                                error_msg = resp_json.get("errorMessage",
+                                            resp_json.get("message", ""))
+                            raise AssertionError(
+                                f"phase {phase_id} 业务失败: {error_msg}")
                     except (ValueError, AttributeError):
                         pass  # 无法解析 JSON 时不阻塞
 
