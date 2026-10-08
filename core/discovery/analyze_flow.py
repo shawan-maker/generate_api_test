@@ -46,6 +46,35 @@ from core.discovery.stage3.field_classifier import (
 from core.discovery.stage3.pre_api_tracer import trace_pre_api_dependencies
 from core.discovery.stage3.manifest_builder import build_manifest
 
+
+__all__ = [
+    # API Classifier
+    "_identify_infrastructure_apis",
+    "_is_list_query",
+    "_is_post_list_query",
+    "_build_core_apis_from_core_api_map",
+    "_map_buttons_to_apis",
+    "_derive_order",
+    "_select_core_api",
+    "_find_last_write_op",
+    # Value Chain
+    "build_value_chain",
+    "_derive_dependencies",
+    "_derive_state_rules",
+    "_parse_body",
+    # Field Classifier
+    "ValueIndex",
+    "build_value_index",
+    "classify_fields_recursive",
+    "is_noise_value",
+    # Pre-API Tracer
+    "trace_pre_api_dependencies",
+    # Manifest Builder
+    "build_manifest",
+    # Main Entry
+    "analyze",
+]
+
 LOG = logging.getLogger("analyze_flow")
 
 

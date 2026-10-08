@@ -631,7 +631,7 @@ async def _run_ui_script(ui_script_path: str, headless: bool = True) -> bool:
     result = subprocess.run(
         cmd,
         capture_output=True, text=True, encoding="utf-8", errors="replace",
-        cwd=str(script_dir), timeout=180,
+        cwd=str(script_dir),
     )
 
     # 打印脚本输出（关键行）

@@ -120,74 +120,104 @@ def validate_stage1(
 
 
 def validate_stage2(capture_result: dict) -> Tuple[bool, List[str]]:
-    """验证 Stage 2 API 捕获结果质量。
+    """验证 Stage 2 API 捕获结果质量（errors + warnings 分级）。
+
+    分级机制：
+    - errors（阻断级）: 关键操作（创建/删除）缺失或格式错误，core_api_map 整体为空
+    - warnings（非阻断）: 非关键操作缺失、调用量少、响应样本为空等质量指标
+
+    is_valid 仅由 errors 决定，warnings 不阻断管线。
 
     Args:
         capture_result: Stage 2 输出 (api_capture.json)
 
     Returns:
-        (is_valid, issues) — 是否通过验证 + 问题列表
+        (is_valid, issues) — 是否通过验证 + 问题列表（errors + warnings 合并）
     """
-    issues = []
+    errors = []    # 阻断级问题
+    warnings = []  # 非阻断级警告
 
     if not isinstance(capture_result, dict):
         return False, ["capture_result 不是字典"]
+
+    # ★ 关键操作关键词 — 缺失时为 error
+    CRITICAL_KEYWORDS = ("创建", "删除", "create", "delete")
+
+    def _is_critical_action(action: str) -> bool:
+        action_lower = action.lower()
+        return any(k in action_lower for k in CRITICAL_KEYWORDS)
 
     # 1. 检查 core_api_map（核心：操作名 → 端点映射）
     core_api_map = capture_result.get("core_api_map", {})
 
     if not core_api_map:
-        issues.append("core_api_map 为空，时间戳优先法可能失败")
+        errors.append("core_api_map 为空，时间戳优先法可能失败")
 
     # 2. 验证 core_api_map 中的端点格式（数组结构）
     valid_endpoints = 0
     for action, candidates in core_api_map.items():
+        is_critical = _is_critical_action(action)
+
         if not isinstance(candidates, list) or not candidates:
-            issues.append(f"core_api_map['{action}'] 格式错误：应为非空数组")
+            if is_critical:
+                errors.append(f"core_api_map['{action}'] 为空（关键操作缺失）")
+            else:
+                warnings.append(f"core_api_map['{action}'] 为空（非关键操作）")
             continue
 
         first = candidates[0]
         if not isinstance(first, dict):
-            issues.append(f"core_api_map['{action}'][0] 格式错误：应为字典")
+            if is_critical:
+                errors.append(f"core_api_map['{action}'][0] 格式错误：应为字典")
+            else:
+                warnings.append(f"core_api_map['{action}'][0] 格式错误：应为字典（非关键操作）")
             continue
 
         if "method" not in first or "pathname" not in first:
-            issues.append(f"core_api_map['{action}'][0] 缺少 method 或 pathname")
+            if is_critical:
+                errors.append(f"core_api_map['{action}'][0] 缺少 method 或 pathname")
+            else:
+                warnings.append(f"core_api_map['{action}'][0] 缺少 method 或 pathname（非关键操作）")
             continue
 
         valid_endpoints += 1
 
     if valid_endpoints < 3:
-        issues.append(f"core_api_map 中有效端点过少 ({valid_endpoints})，捕获可能不完整")
+        warnings.append(f"core_api_map 中有效端点过少 ({valid_endpoints})，捕获可能不完整")
 
-    # 3. 检查端点数量
+    # 3. 检查端点数量（质量指标，非阻断）
     stats = capture_result.get("stats", {})
     total_calls = stats.get("total_calls", 0)
     unique_endpoints = stats.get("unique_endpoints", 0)
 
     if total_calls < 5:
-        issues.append(f"捕获的 API 调用过少 ({total_calls})，可能拦截不完整")
+        warnings.append(f"捕获的 API 调用过少 ({total_calls})，可能拦截不完整")
 
     if unique_endpoints < 3:
-        issues.append(f"唯一端点过少 ({unique_endpoints})，可能去重过度")
+        warnings.append(f"唯一端点过少 ({unique_endpoints})，可能去重过度")
 
-    # 4. 检查响应样本
+    # 4. 检查响应样本（质量指标，非阻断）
     samples = capture_result.get("response_samples", {})
 
     if not samples:
-        issues.append("响应样本为空（response_samples 为空），响应收集可能失败")
+        warnings.append("响应样本为空（response_samples 为空），响应收集可能失败")
 
-    # 判断是否通过
-    is_valid = len(issues) == 0
+    # ★ is_valid 只看 errors，不看 warnings
+    is_valid = len(errors) == 0
+
+    if warnings:
+        LOG.warning(f"Stage 2 验证警告: {len(warnings)} 个非阻断问题")
+        for w in warnings:
+            LOG.warning(f"  ⚠️ {w}")
 
     if not is_valid:
-        LOG.warning(f"Stage 2 验证失败: {len(issues)} 个问题")
-        for issue in issues:
-            LOG.warning(f"  - {issue}")
+        LOG.error(f"Stage 2 验证失败: {len(errors)} 个阻断问题")
+        for e in errors:
+            LOG.error(f"  ❌ {e}")
     else:
         LOG.info(f"Stage 2 验证通过: {len(core_api_map)} 个操作, {unique_endpoints} 个端点, {total_calls} 次调用")
 
-    return is_valid, issues
+    return is_valid, errors + warnings
 
 
 def validate_stage3(analysis: dict) -> Tuple[bool, List[str]]:

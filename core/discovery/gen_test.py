@@ -183,6 +183,7 @@ def _sync_runtime_lib(api_dir: Path):
         ("runtime/__init__.py", "runtime/__init__.py"),
         ("runtime/test_runtime.py", "runtime/test_runtime.py"),
         ("runtime/global_pre_apis.py", "runtime/global_pre_apis.py"),
+        ("runtime/path_utils.py", "runtime/path_utils.py"),
         # 扁平文件: 从子目录提取到 lib/ 根（test_runtime.py 的懒加载依赖）
         ("auth/cookie_client.py", "cookie_client.py"),
         ("report/test_report.py", "test_report.py"),

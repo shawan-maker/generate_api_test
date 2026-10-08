@@ -1,7 +1,7 @@
-# ecm-compute - 自动化测试脚本包
+# estack - 自动化测试脚本包
 
 > 版本: v1.0.0
-> 生成时间: 2026-09-29 14:57:56
+> 生成时间: 2026-09-30 15:45:49
 > 说明: 本目录包含完整的 API + UI 自动化测试脚本，可直接拷贝到其他机器运行。
 
 ## 📦 目录结构
@@ -93,22 +93,22 @@ for f in *.py; do [[ "$f" != "__"* ]] && python "$f" --headless; done
 cd ..
 
 # 运行所有 API 测试
-python run_suite.py --project ecm-compute --version v1.0.0 --type api
+python run_suite.py --project estack --version v1.0.0 --type api
 
 # 运行所有 UI 测试
-python run_suite.py --project ecm-compute --version v1.0.0 --type ui
+python run_suite.py --project estack --version v1.0.0 --type ui
 
 # 运行所有测试（API + UI）
-python run_suite.py --project ecm-compute --version v1.0.0 --type all
+python run_suite.py --project estack --version v1.0.0 --type all
 ```
 
 ## 📋 已生成的测试脚本
 
 ### API 测试脚本
-  - `用户组管理_API测试.py`
+  - `角色管理_API测试.py`
 
 ### UI 测试脚本
-  - `用户组管理.py`
+  - `角色管理.py`
 
 ## 🔧 常见问题
 
@@ -136,7 +136,7 @@ python run_suite.py --project ecm-compute --version v1.0.0 --type all
 
 ```bash
 # 在原始目录（包含 core/discovery/run.py 的目录）
-python -m core.discovery.run --project ecm-compute --module "新模块名称" --url "/path/to/module"
+python -m core.discovery.run --project estack --module "新模块名称" --url "/path/to/module"
 
 # 然后将生成的脚本拷贝到本目录
 ```
@@ -158,7 +158,7 @@ test_data = {
 
 - **API 报告**: `api/reports/<模块>/` - Postman 风格 HTML 报告
 - **UI 报告**: `ui/reports/` - 包含截图的 HTML 报告
-- **原始日志**: 生成在原始目录的 `projects/ecm-compute/output/` 下
+- **原始日志**: 生成在原始目录的 `projects/estack/output/` 下
 
 ## 🔗 相关资源
 

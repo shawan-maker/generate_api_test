@@ -225,20 +225,57 @@ class TestValidateStage2:
         assert len(issues) == 0
 
     def test_missing_core_apis(self):
-        """缺少核心 CRUD API"""
+        """缺少核心 CRUD API — 关键操作（创建/删除）缺失为 error"""
         result = {
             "core_api_map": {
-                "查询": {"method": "POST", "pathname": "/list"},
+                "创建": [{"method": "POST", "pathname": "/users"}],
+                # 删除缺失 — 但 core_api_map 不为空，所以不触发"为空"error
+                # 创建存在且有效 → valid_endpoints=1
+                "查询": {"method": "POST", "pathname": "/list"},  # 格式错误（dict 而非 list）→ warning
             },
             "stats": {"total_calls": 5, "unique_endpoints": 3},
             "response_samples": {},
         }
         is_valid, issues = validate_stage2(result)
+        # valid_endpoints=1 < 3 → warning; 查询格式错误 → warning; 响应样本为空 → warning
+        # 无 error → is_valid=True
+        assert is_valid is True
+        assert len(issues) >= 1  # warnings 仍然存在
+
+    def test_missing_critical_action(self):
+        """关键操作（创建）候选为空 → error，阻断验证"""
+        result = {
+            "core_api_map": {
+                "创建": [],  # 关键操作候选为空 → error
+                "查询": [{"method": "GET", "pathname": "/list"}],
+                "编辑": [{"method": "PUT", "pathname": "/users/1"}],
+                "删除": [{"method": "DELETE", "pathname": "/users/1"}],
+            },
+            "stats": {"total_calls": 20, "unique_endpoints": 8},
+            "response_samples": {"/users": [{"status": 200}]},
+        }
+        is_valid, issues = validate_stage2(result)
         assert is_valid is False
-        assert any("端点过少" in i or "core_api_map" in i for i in issues)
+        assert any("关键操作缺失" in i for i in issues)
+
+    def test_non_critical_missing_is_warning(self):
+        """非关键操作（如查询）缺失 → warning，不阻断验证"""
+        result = {
+            "core_api_map": {
+                "创建": [{"method": "POST", "pathname": "/users"}],
+                "查询": [],  # 非关键操作缺失 → warning only
+                "编辑": [{"method": "PUT", "pathname": "/users/1"}],
+                "删除": [{"method": "DELETE", "pathname": "/users/1"}],
+            },
+            "stats": {"total_calls": 20, "unique_endpoints": 8},
+            "response_samples": {"/users": [{"status": 200}]},
+        }
+        is_valid, issues = validate_stage2(result)
+        assert is_valid is True  # 非关键缺失不阻断
+        assert any("非关键操作" in i for i in issues)
 
     def test_too_few_calls(self):
-        """API 调用过少"""
+        """API 调用过少 — 质量指标降级为 warning，不阻断"""
         result = {
             "core_api_map": {
                 "create": [{"method": "POST", "pathname": "/create"}],
@@ -250,7 +287,8 @@ class TestValidateStage2:
             "response_samples": {},
         }
         is_valid, issues = validate_stage2(result)
-        assert is_valid is False
+        # 调用过少/端点过少/响应样本为空 → 均为 warning，无 error
+        assert is_valid is True
         assert any("调用过少" in i for i in issues)
 
     def test_not_dict(self):

@@ -30,6 +30,9 @@ from core.discovery.operation_executor.result_factory import (
     submit_failed, no_success_signal, api_error, form_validation,
     no_fields, no_locator, skipped, exception,
 )
+from core.discovery.ui_scanner.button_detector import (
+    _infer_action_role, _find_create_delete_actions,
+)
 
 LOG = logging.getLogger("crud_executor")
 
@@ -51,7 +54,7 @@ async def discover_and_validate(page, username: str = "test") -> dict:
               如果关键操作验证失败，返回 None。
     """
     # Phase A: 标准探测
-    from core.discovery.discover_ui import discover_all
+    from core.discovery.ui_scanner.element_scanner import discover_all
     ui_result = await discover_all(page)
 
     # Phase B: 业务闭环验证
@@ -238,9 +241,6 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
         role = action_roles.get(action, "generic")
         LOG.info(f"  验证操作: {action} (按钮: {btn_text}, 角色: {role})")
 
-        # Lazy import for _do_generic_operation (stays in discover_ui.py)
-        from core.discovery.discover_ui import _do_generic_operation
-
         # 基于角色分发到对应验证函数（不依赖硬编码操作名）
         if role == "create":
             result = await _error_driven_retry(
@@ -407,99 +407,6 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
     return validated
 
 
-def _infer_action_role(action: str, btn: dict, delete_actions: list = None) -> str:
-    """基于按钮 DOM 位置和特征推断语义角色（纯结构性，不写死任何文本）。
-
-    规则：
-    - 搜索输入框 → query
-    - 非 BUTTON/DROPDOWN_ITEM 标签 → navigation（面包屑/导航/分页）
-    - toolbar BUTTON + primary 样式 → create（主操作按钮，触发弹窗创建流程）
-    - toolbar BUTTON + 非 primary → generic（批量操作/辅助按钮）
-    - row_action / dropdown + 破坏性关键词 → delete（行内删除，走专有路径）
-    - row_action / dropdown + 编辑关键词 → update（行内编辑，走专有路径）
-    - row_action / dropdown + 其他 → generic（行内操作，走通用路径）
-
-    Args:
-        action: 按钮文本（作为 action 标识）
-        btn: 按钮元数据字典
-        delete_actions: 破坏性操作列表（来自 _find_create_delete_actions）
-
-    Returns:
-        "create" / "query" / "detail" / "delete" / "update" / "navigation" / "generic"
-    """
-    # 搜索输入框 → query
-    if btn.get("is_search_input"):
-        return "query"
-
-    location = btn.get("location", "toolbar")
-    tag = btn.get("tag", "")
-    cls = (btn.get("className") or "").lower()
-
-    # 非 BUTTON/DROPDOWN_ITEM 标签不参与业务验证
-    if tag not in ("BUTTON", "DROPDOWN_ITEM"):
-        return "navigation"
-
-    # 有 href 的链接 → detail/navigation
-    if tag == "A" and btn.get("href"):
-        return "detail"
-
-    # toolbar BUTTON：区分主操作按钮和辅助按钮
-    if location == "toolbar":
-        # primary 按钮 = 主操作（创建/新增）→ create 角色
-        if "primary" in cls:
-            return "create"
-        # 非 primary 的 toolbar 按钮 = 批量操作/辅助功能 → generic
-        return "generic"
-
-    # row_action / dropdown：区分删除/编辑/其他
-    action_lower = action.lower()
-
-    # 破坏性操作 → delete（使用传入的 delete_actions 列表，避免重复定义关键词）
-    if delete_actions and action in delete_actions:
-        return "delete"
-
-    # 编辑类操作 → update
-    _update_keywords = ["编辑", "修改", "edit", "update", "更改"]
-    if any(kw in action_lower for kw in _update_keywords):
-        return "update"
-
-    return "generic"
-
-
-def _find_create_delete_actions(buttons_by_action: dict) -> tuple:
-    """基于 DOM 位置找出 create-like 和所有 delete-like 操作。
-
-    纯结构性判断：
-    - create: toolbar 中第一个 primary BUTTON（主操作按钮）
-    - delete: 所有破坏性操作（基于按钮文本关键词匹配，不写死具体操作名）
-
-    Args:
-        buttons_by_action: {action: btn_dict} 映射
-
-    Returns:
-        (create_action, delete_actions) — create 名称或 None，delete 名称列表
-    """
-    create_action = None
-    delete_actions = []
-
-    # create: toolbar 中第一个 primary BUTTON
-    for action, btn in buttons_by_action.items():
-        if btn.get("location") == "toolbar" and btn.get("tag") == "BUTTON":
-            cls = (btn.get("className") or "").lower()
-            if "primary" in cls:
-                create_action = action
-                break
-
-    # delete: 基于文本关键词识别破坏性操作（泛化：不写死具体操作名）
-    _destroy_keywords = ["删除", "delete", "remove", "清空", "clear"]
-    for action in buttons_by_action:
-        action_lower = action.lower()
-        if any(kw in action_lower for kw in _destroy_keywords):
-            delete_actions.append(action)
-
-    return create_action, delete_actions
-
-
 # ============================================================
 # 错误驱动重试循环
 # ============================================================
@@ -653,7 +560,7 @@ async def _do_create(page, context: dict) -> dict:
                     "selectors": {"trigger": btn_text, "confirm": confirmed},
                     "trigger_locator_verified": trigger_locator_verified,
                 }
-        from core.discovery.discover_ui import _close_dialog
+        from core.discovery.ui_scanner.button_detector import _close_dialog
         await _close_dialog(page)
         return no_fields("未扫描到表单字段且确认对话框处理失败",
                         trigger_text=btn_text,
@@ -689,7 +596,7 @@ async def _do_create(page, context: dict) -> dict:
         for label, value in context["fill_overrides"].items():
             try:
                 # 深度扫描：识别复合组件结构，精确定位目标 input
-                from core.discovery.discover_ui import _deep_scan_form_item, _resolve_label_selector
+                from core.discovery.ui_scanner.form_scanner import _deep_scan_form_item, _resolve_label_selector
                 deep_info = await _deep_scan_form_item(page, label)
                 if deep_info.get("found"):
                     # 复合组件：取最后一个可见 input（避开 el-select 内部的）
@@ -743,7 +650,7 @@ async def _do_create(page, context: dict) -> dict:
     # 7. 提交
     submit_result = await form_filler.submit_form_v2()
     if not submit_result.get("locator"):
-        from core.discovery.discover_ui import _close_dialog
+        from core.discovery.ui_scanner.button_detector import _close_dialog
         await _close_dialog(page)
         return submit_failed("未找到提交按钮",
                             trigger_text=btn_text,
@@ -1058,7 +965,7 @@ async def _do_detail(page, context: dict) -> dict:
     await wait_for_loading_complete(page)
 
     # 验证详情打开（弹窗或页面跳转）
-    from core.discovery.discover_ui import _check_precondition_state, _close_dialog
+    from core.discovery.ui_scanner.button_detector import _check_precondition_state, _close_dialog
     state = await _check_precondition_state(page, {"type": "dialog"})
     url_changed = "/detail" in page.url or "/view" in page.url
 
@@ -1126,7 +1033,7 @@ async def _do_edit(page, context: dict) -> dict:
     await wait_for_loading_complete(page)
 
     # 验证编辑弹窗打开
-    from core.discovery.discover_ui import _check_precondition_state, _close_dialog
+    from core.discovery.ui_scanner.button_detector import _check_precondition_state, _close_dialog
     state = await _check_precondition_state(page, {"type": "dialog"})
     if not state["success"]:
         return no_dialog("点击编辑后未出现编辑弹窗",
@@ -1518,6 +1425,9 @@ async def _do_generic_operation(page, context: dict) -> dict:
     from core.discovery.operation_executor.navigation_executor import (
         _explore_and_operate_in_new_page, _navigate_back_to_list,
     )
+    from core.discovery.ui_scanner.button_detector import (
+        _close_dialog, _check_precondition_state,
+    )
 
     btn = context["btn"]
     action = context["action"]
@@ -1757,8 +1667,39 @@ async def _do_generic_operation(page, context: dict) -> dict:
         }}""")
 
         if not has_form:
-            # 无表单的容器（纯展示或简单确认）→ 回退到确认框处理
+            # 无表单的容器（纯展示或简单确认）→ 填充空 select + 回退到确认框处理
             LOG.info(f"    {actual_state} 中无表单，回退到确认框处理")
+
+            # 确认前先填充空 select 字段（对齐旧代码行为，迁移等操作需要）
+            pre_fill_diag = await page.evaluate(f"""(() => {{
+                const container = document.querySelector('{_sel_q}');
+                if (!container || container.offsetWidth === 0) return {{ empty_selects: [] }};
+                const emptySelects = [];
+                container.querySelectorAll('.el-select').forEach(sel => {{
+                    const innerInput = sel.querySelector('.el-input__inner');
+                    if (innerInput && innerInput.disabled) return;
+                    const tags = sel.querySelectorAll('.el-tag');
+                    const hasTags = tags && tags.length > 0;
+                    const hasValue = innerInput && innerInput.value;
+                    const selectedLabel = sel.querySelector('.el-select__selected-item, .el-select__tags-text');
+                    const hasSelectedText = selectedLabel && selectedLabel.textContent.trim().length > 0;
+                    if (!hasTags && !hasValue && !hasSelectedText) {{
+                        const label = sel.closest('.el-form-item')
+                            ?.querySelector('.el-form-item__label')
+                            ?.textContent?.trim();
+                        if (label) emptySelects.push(label);
+                    }}
+                }});
+                return {{ empty_selects: emptySelects }};
+            }})()""")
+
+            empty_sels = pre_fill_diag.get("empty_selects", [])
+            if empty_sels:
+                LOG.info(f"    确认前有 {len(empty_sels)} 个空 select 字段，先填充: {empty_sels}")
+                _, fill_details = await _try_fill_empty_selects(page, empty_sels)
+                dialog_fill_details.extend(fill_details)
+                await page.wait_for_timeout(500)
+
             from core.discovery.replay.button_driver import confirm_dialog
             LOG.info(f"    [DIAG-generic-path1] drawer/dialog 无表单，调用 confirm_dialog...")
             confirmed = await confirm_dialog(page)
@@ -1837,10 +1778,49 @@ async def _do_generic_operation(page, context: dict) -> dict:
                                           trigger_text=trigger_text_normalized)
             # 表单已提交，confirmed 留空，直接进入成功验证
         else:
-            LOG.warning(f"    {actual_state} 有表单但无 form_filler，无法处理")
-            await _close_dialog(page)
-            return make_error("no_form_filler", f"{action} {actual_state} 中有表单但缺少 form_filler",
-                             trigger_text=trigger_text_normalized)
+            # 有表单但无 form_filler → 回退到填充空 select + 确认（对齐旧代码行为）
+            LOG.warning(f"    {actual_state} 有表单但无 form_filler，回退到 _try_fill_empty_selects + confirm_dialog")
+
+            pre_fill_diag = await page.evaluate(f"""(() => {{
+                const container = document.querySelector('{_sel_q}');
+                if (!container || container.offsetWidth === 0) return {{ empty_selects: [] }};
+                const emptySelects = [];
+                container.querySelectorAll('.el-select').forEach(sel => {{
+                    const innerInput = sel.querySelector('.el-input__inner');
+                    if (innerInput && innerInput.disabled) return;
+                    const tags = sel.querySelectorAll('.el-tag');
+                    const hasTags = tags && tags.length > 0;
+                    const hasValue = innerInput && innerInput.value;
+                    const selectedLabel = sel.querySelector('.el-select__selected-item, .el-select__tags-text');
+                    const hasSelectedText = selectedLabel && selectedLabel.textContent.trim().length > 0;
+                    if (!hasTags && !hasValue && !hasSelectedText) {{
+                        const label = sel.closest('.el-form-item')
+                            ?.querySelector('.el-form-item__label')
+                            ?.textContent?.trim();
+                        if (label) emptySelects.push(label);
+                    }}
+                }});
+                return {{ empty_selects: emptySelects }};
+            }})()""")
+
+            empty_sels = pre_fill_diag.get("empty_selects", [])
+            if empty_sels:
+                LOG.info(f"    确认前有 {len(empty_sels)} 个空 select 字段，先填充: {empty_sels}")
+                _, fill_details = await _try_fill_empty_selects(page, empty_sels)
+                dialog_fill_details.extend(fill_details)
+                await page.wait_for_timeout(500)
+
+            from core.discovery.replay.button_driver import confirm_dialog
+            confirmed = await confirm_dialog(page)
+            if confirmed:
+                LOG.info(f"    已点击确认按钮: {confirmed}")
+            else:
+                LOG.warning(f"    {actual_state} 中未找到确认按钮")
+                await _close_dialog(page)
+                return make_error("no_confirm_button", f"{action} {actual_state} 中未找到确认按钮",
+                                 trigger_text=trigger_text_normalized)
+            await wait_for_loading_complete(page)
+            await page.wait_for_timeout(1000)
 
     elif _container_type in ("message-box", "popconfirm"):
         # ── 简单确认框：填充空 select → 点确认 ──
@@ -2173,7 +2153,7 @@ async def _do_save_or_confirm(page, context: dict) -> dict:
     await wait_for_loading_complete(page)
 
     # 检查是否有确认弹窗
-    from core.discovery.discover_ui import _check_precondition_state
+    from core.discovery.ui_scanner.button_detector import _check_precondition_state
     state = await _check_precondition_state(page, {"type": "dialog"})
     if state["success"]:
         from core.discovery.replay.button_driver import confirm_dialog

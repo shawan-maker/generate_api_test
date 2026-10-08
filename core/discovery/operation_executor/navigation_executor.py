@@ -83,7 +83,7 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
         LOG.info(f"    [DIAG-msg-capture-install] 消息捕获安装结果: hasCapture={_cap_check}")
 
         # 2. 探测页面（提取表单字段，忽略菜单栏）
-        from core.discovery.discover_ui import discover_all
+        from core.discovery.ui_scanner.element_scanner import discover_all
         page_result = await discover_all(page)
         nav_info["page_title"] = await page.title()
 
@@ -472,7 +472,7 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
                     return nav_info
 
             # 检查是否有确认对话框
-            from core.discovery.discover_ui import _check_precondition_state
+            from core.discovery.ui_scanner.button_detector import _check_precondition_state
             state = await _check_precondition_state(page, {"type": "dialog"})
             if state["success"]:
                 from core.discovery.replay.button_driver import confirm_dialog
@@ -1059,7 +1059,7 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
                 return nav_info
 
         # 检查是否有确认对话框
-        from core.discovery.discover_ui import _check_precondition_state
+        from core.discovery.ui_scanner.button_detector import _check_precondition_state
         state = await _check_precondition_state(page, {"type": "dialog"})
         if state["success"]:
             from core.discovery.replay.button_driver import confirm_dialog

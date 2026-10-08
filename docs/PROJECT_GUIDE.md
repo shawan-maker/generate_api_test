@@ -306,6 +306,28 @@ UI 自动化截图需要捕获 `el-message` / `el-notification` 等瞬态通知�
 
 Stage 1 的所有失败路径（click_failed、no_fields、submit_failed 等）均记录 `trigger_text` 和 `trigger_locator_verified`，确保 `build_playbook()` 能为失败操作生成至少包含 click_button 步骤的 playbook，Stage 2 可以回放并捕获 API 响应。
 
+### 4.7 五角色字段分类系统
+
+Stage 3 (`field_classifier.py`) 将请求体字段分为 5 个角色，驱动 Manifest 中的 `body_field_roles`：
+
+| 角色 | 说明 | 示例 |
+|------|------|------|
+| **name** | 用户可读名称字段 | username, name, label |
+| **mutable** | 可变字段（update 时修改） | description, remark, memo |
+| **context** | 上下文引用（从前置 API 获取） | tenantId, policyIds |
+| **generate** | 动态生成的测试值 | phone, email, uuid |
+| **static** | 系统固定值 | state, isRandomPassword |
+
+**分类优先级**（5 Pass 逐层降级）：
+
+1. **Pass 1: name** — 字段名含 `name`/`title`/`label` + 值是短可读字符串
+2. **Pass 2: mutable** — 字段名含 `description`/`memo`/`remark`/`note`/`content`
+3. **Pass 3: context** — 精确值匹配（在 `value_index` 中找到相同值）
+4. **Pass 4: generate** — 值模式分析（uuid、hex_id、phone、email）
+5. **Pass 5: static** — 兜底
+
+**核心依赖**：`ValueIndex`（`field_classifier.py`）存储前置 API 响应 + 创建体 + 创建响应的值索引，Pass 3 的 context 识别完全依赖值相等匹配，不依赖字段名。
+
 ---
 
 ## 5. 输出规范

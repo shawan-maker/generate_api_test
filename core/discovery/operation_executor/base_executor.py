@@ -777,7 +777,7 @@ async def _ensure_on_list_page(page):
             await wait_for_navigation_complete(page)
 
         # 关闭可能残留的弹窗
-        from core.discovery.discover_ui import _close_dialog
+        from core.discovery.ui_scanner.button_detector import _close_dialog
         await _close_dialog(page)
     except Exception as e:
         # 浏览器可能已关闭（如 Target page, context or browser has been closed）
