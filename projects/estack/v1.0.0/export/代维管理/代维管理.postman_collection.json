@@ -1,0 +1,751 @@
+{
+  "info": {
+    "_postman_id": "a15ca4e2-9c68-4556-977c-83e5700b6189",
+    "name": "代维管理 API 测试",
+    "description": "由 module_discovery Stage 5 自动导出",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://10.151.61.248",
+      "type": "string"
+    },
+    {
+      "key": "entity_countryCode",
+      "value": "",
+      "type": "string",
+      "description": "由 获取当前用户信息 提取"
+    },
+    {
+      "key": "entity_tenantId",
+      "value": "",
+      "type": "string",
+      "description": "由 获取当前用户信息 提取"
+    },
+    {
+      "key": "entity_list_0_id",
+      "value": "",
+      "type": "string",
+      "description": "由 前置 API: root 提取"
+    },
+    {
+      "key": "entity_id",
+      "value": "",
+      "type": "string",
+      "description": "由 前置 API: password-policy 提取"
+    },
+    {
+      "key": "entity_createdAt",
+      "value": "",
+      "type": "string",
+      "description": "由 前置 API: password-policy 提取"
+    },
+    {
+      "key": "entity_updatedAt",
+      "value": "",
+      "type": "string",
+      "description": "由 前置 API: password-policy 提取"
+    }
+  ],
+  "item": [
+    {
+      "name": "00_前置操作",
+      "item": [
+        {
+          "name": "unknown",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Status OK', function() {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "var entity_countryCode = jsonData.entity.countryCode;",
+                  "if (entity_countryCode !== undefined) pm.environment.set('entity_countryCode', entity_countryCode);",
+                  "var entity_tenantId = jsonData.entity.tenantId;",
+                  "if (entity_tenantId !== undefined) pm.environment.set('entity_tenantId', entity_tenantId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "unknown",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Status OK', function() {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "var entity_list_0_id = jsonData.entity.list[0].id;",
+                  "if (entity_list_0_id !== undefined) pm.environment.set('entity_list_0_id', entity_list_0_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "unknown",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Status OK', function() {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "var entity_id = jsonData.entity.id;",
+                  "if (entity_id !== undefined) pm.environment.set('entity_id', entity_id);",
+                  "var entity_createdAt = jsonData.entity.createdAt;",
+                  "if (entity_createdAt !== undefined) pm.environment.set('entity_createdAt', entity_createdAt);",
+                  "var entity_updatedAt = jsonData.entity.updatedAt;",
+                  "if (entity_updatedAt !== undefined) pm.environment.set('entity_updatedAt', entity_updatedAt);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01_业务操作",
+      "item": [
+        {
+          "name": "01_创建代维用户",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/maintain/create"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userName\": \"{{name_userName}}\",\n  \"password\": \"K8XeejS3/NfT1PNlZXf0r+mUmUuLfu+qKJrJr4VRNvS2F9VIqE34updGfs8VaoUiaGprlqcBrLtBAm9KLT2TKPU8D3Fy5zOCtHGN6wYyAT3g8ZWwttOBX3g6YEO82uuDxIIpRwexThs6ZVJ3MK2DFJXAtea2NG+/Q+TGgACUl8Y=\",\n  \"name\": \"{{name_name}}\",\n  \"email\": \"bGhMMjB+Zrugx3VUpWq8xPs7fied3hfFhPa0bRAt8ljhXueYvUa2QGbbchJsDeUbA0DXmRljJqVy1FnQrxN9Z/JLOkX6asWbRIH+sOVzaTxd5dM4fhHtOhST6++FwFq/a13gQhAfCaRauwhnfzeafH6pwIkLqPLbrgpHT9Bv4Pg=\",\n  \"phone\": \"Wms5CbrusKyzOU+fx0qzFEJ5KU+Dhpm6qMy1kvbexlJijN6ygcClnM42bAjfZyL3r0EzME7fH6xYe7Q5KQqGDg4i3g9fxQ3I1um3iw/+UU7v5jKtFH2Vc2besofmL331TUmiIC1G3jMiYOdDd/oJoXNRy+ZBjR2fY57hWmWFLZk=\",\n  \"description\": \"{{mutable_description}}\",\n  \"countryCode\": \"{{entity_countryCode}}\",\n  \"maintainTenantIds\": \"{{entity_list_0_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('name_userName', resolveExpr('${gen_test_name(\"userName\")}'));",
+                  "pm.variables.set('name_name', resolveExpr('${gen_test_name(\"name\")}'));",
+                  "pm.variables.set('mutable_description', resolveExpr('${gen_mutable_value()}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Status OK', function() {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "var createdId = jsonData.entity.id;",
+                  "if (createdId) pm.environment.set('id', createdId);",
+                  "",
+                  "var nameVal = jsonData.entity && jsonData.entity.userName;",
+                  "if (nameVal) pm.environment.set('name_userName', nameVal);",
+                  "var nameVal = jsonData.entity && jsonData.entity.name;",
+                  "if (nameVal) pm.environment.set('name_name', nameVal);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02_搜索验证（创建代维用户后）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/maintain/list"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pageNum\": 1,\n  \"pageSize\": 10,\n  \"name\": \"{{name_name}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('name_name', resolveExpr('${gen_test_name(\"name\")}'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03_编辑",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/{{id}}"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{id}}\",\n  \"name\": \"{{name_name}}\",\n  \"description\": \"{{mutable_description}}\",\n  \"tenantId\": \"{{entity_tenantId}}\",\n  \"countryCode\": \"{{entity_countryCode}}\",\n  \"phone\": \"X9Nvc6y8aUdkx5e1orBJfONbI+5FziOOMjm7XFL87bSAwvMokX9eL5EG2yYqCc5hsYgUSqqctCgyJcXVmWZtdFWgqRwxazpRXxPAyEnuogd5ZROJy15UWTpltjuHHJt6Ad2sIVjtWokqDopjKL7yWYDEk+t92PMLYprb6ctA7c4=\",\n  \"email\": \"gJRyT06NMul+BsY3KqQn/V45PIbOctzhdYbQwlcNnkLU/yYOa+hrZWO2eo+nT9KkoTdTm8rA03tLlVBYa4hH48xaea/m77J/j4Og+w7iRBppGpjP+Uoae+nCykvsfHzQKJxMEexZSo7ak/MP4bPM/9iPFOvVt2C6tu/JSVE8W2I=\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('name_name', resolveExpr('${gen_test_name(\"name\")}'));",
+                  "pm.variables.set('mutable_description', resolveExpr('${gen_mutable_value()}'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04_搜索验证（编辑后）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/maintain/list"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pageNum\": 1,\n  \"pageSize\": 10,\n  \"name\": \"{{name_name}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('name_name', resolveExpr('${gen_test_name(\"name\")}'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05_冻结",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/{{id}}/suspend"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06_搜索验证（冻结后）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/maintain/list"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pageNum\": 1,\n  \"pageSize\": 10,\n  \"name\": \"{{name_name}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('name_name', resolveExpr('${gen_test_name(\"name\")}'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "07_启用",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/{{id}}/enable"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "08_搜索验证（启用后）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/maintain/list"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pageNum\": 1,\n  \"pageSize\": 10,\n  \"name\": \"{{name_name}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('name_name', resolveExpr('${gen_test_name(\"name\")}'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "09_锁定",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/users/lock/{{id}}"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "10_搜索验证（锁定后）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/maintain/list"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pageNum\": 1,\n  \"pageSize\": 10,\n  \"name\": \"{{name_name}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('name_name', resolveExpr('${gen_test_name(\"name\")}'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "11_重置密码",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/password-reset/reset"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"forceChangePassword\": 1,\n  \"isRandomPassword\": 1,\n  \"newPassword\": \"LPDqxCeJBWf0J0WSgG9RLxgQq7mdAnGK+x+CatbiRpImAHap86PVQ5J9wNLet4x6AtkM4TZxrw1U8DFvOpF41kQMn5KA+VOCC4YY4qH672en81B0Z8T62pAeq5P5jRSCY7/hadOIZlLxtRGQjq3f52tQPAPp50YZ7hlY7TvwkSA=\",\n  \"passwordPolicy\": {\n    \"id\": \"{{entity_id}}\",\n    \"tenantId\": \"{{entity_tenantId}}\",\n    \"minPasswordLength\": 8,\n    \"requireLowercaseCharacters\": false,\n    \"requireUppercaseCharacters\": true,\n    \"requireNumbers\": true,\n    \"requireSymbols\": true,\n    \"minPasswordDifferentCharacter\": 0,\n    \"createdAt\": \"{{entity_createdAt}}\",\n    \"updatedAt\": \"{{entity_updatedAt}}\",\n    \"deleted\": false,\n    \"userName\": null\n  },\n  \"userId\": \"{{id}}\",\n  \"noticeType\": [\n    \"email\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "12_搜索验证（重置密码后）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/maintain/list"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pageNum\": 1,\n  \"pageSize\": 10,\n  \"name\": \"{{name_name}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('name_name', resolveExpr('${gen_test_name(\"name\")}'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "13_删除",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/maintain/delete"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  \"{{id}}\"\n]",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "14_搜索验证（删除后）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/estack/api/estack/draco/v1/maintain/list"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pageNum\": 1,\n  \"pageSize\": 10,\n  \"name\": \"{{name_name}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('name_name', resolveExpr('${gen_test_name(\"name\")}'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// helpers.js — 由 module_discovery Stage 5 自动导出",
+          "// Postman Pre-request Script 版本的测试数据生成函数",
+          "",
+          "function _ts6() {",
+          "    return Date.now().toString(16).slice(-6);",
+          "}",
+          "",
+          "function gen_test_name() {",
+          "    return 'AT_' + _ts6();",
+          "}",
+          "",
+          "function gen_mutable_value() {",
+          "    return 'auto_modified_' + _ts6();",
+          "}",
+          "",
+          "function gen_email() {",
+          "    return 'at_' + _ts6() + '@test.com';",
+          "}",
+          "",
+          "function gen_phone() {",
+          "    return '138' + Math.floor(Math.random() * 100000000);",
+          "}",
+          "",
+          "function gen_text() {",
+          "    return 'auto_' + _ts6();",
+          "}",
+          "",
+          "// 表达式解析: ${function(args)} → 调用对应函数",
+          "var _fnMap = {",
+          "    gen_test_name: gen_test_name,",
+          "    gen_mutable_value: gen_mutable_value,",
+          "    gen_email: gen_email,",
+          "    gen_phone: gen_phone,",
+          "    gen_text: gen_text",
+          "};",
+          "",
+          "function resolveExpr(expr) {",
+          "    var m = expr.match(/^\\$\\{(\\w+)\\([^)]*\\)\\}$/);",
+          "    if (!m) return expr;",
+          "    var fn = _fnMap[m[1]];",
+          "    return fn ? fn() : expr;",
+          "}"
+        ]
+      }
+    }
+  ]
+}

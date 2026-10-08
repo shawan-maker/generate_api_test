@@ -1,0 +1,335 @@
+{
+  "version": "1.0",
+  "pre_apis": [
+    {
+      "id": "current_user",
+      "name": "获取当前用户信息",
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/users/current-user",
+      "extracts": [
+        {
+          "name": "entity_countryCode",
+          "path": "entity.countryCode",
+          "used_by": [
+            "创建单位"
+          ]
+        },
+        {
+          "name": "entity_tenantId",
+          "path": "entity.tenantId",
+          "used_by": [
+            "编辑"
+          ]
+        },
+        {
+          "name": "entity_adminId",
+          "path": "entity.adminId",
+          "used_by": [
+            "创建用户"
+          ]
+        },
+        {
+          "name": "entity_policyList_0_policyType",
+          "path": "entity.policyList[0].policyType",
+          "used_by": [
+            "用户"
+          ]
+        },
+        {
+          "name": "entity_policyList_0_policyCategory",
+          "path": "entity.policyList[0].policyCategory",
+          "used_by": [
+            "用户"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {},
+      "depends_on": []
+    },
+    {
+      "id": "root",
+      "name": "前置 API: root",
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/tenants/root",
+      "extracts": [
+        {
+          "name": "entity_list_0_id",
+          "path": "entity.list[0].id",
+          "used_by": [
+            "创建代维用户"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {},
+      "depends_on": []
+    },
+    {
+      "id": "password_policy",
+      "name": "前置 API: password-policy",
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/password-policy",
+      "extracts": [
+        {
+          "name": "entity_id",
+          "path": "entity.id",
+          "used_by": [
+            "重置密码"
+          ]
+        },
+        {
+          "name": "entity_createdAt",
+          "path": "entity.createdAt",
+          "used_by": [
+            "重置密码"
+          ]
+        },
+        {
+          "name": "entity_updatedAt",
+          "path": "entity.updatedAt",
+          "used_by": [
+            "重置密码"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {},
+      "depends_on": []
+    },
+    {
+      "id": "display_by_role",
+      "name": "前置 API: display-by-role",
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/tenants/display-by-role",
+      "extracts": [
+        {
+          "name": "entity_0_id",
+          "path": "entity[0].id",
+          "used_by": [
+            "创建部门"
+          ]
+        },
+        {
+          "name": "entity_0_tenantType",
+          "path": "entity[0].tenantType",
+          "used_by": [
+            "创建部门"
+          ]
+        },
+        {
+          "name": "entity_0_name",
+          "path": "entity[0].name",
+          "used_by": [
+            "创建用户组"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {},
+      "depends_on": []
+    },
+    {
+      "id": "root",
+      "name": "前置 API: root",
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/tenants/158222ee87484790ae9651a459e82d0a/root",
+      "extracts": [
+        {
+          "name": "entity",
+          "path": "entity",
+          "used_by": [
+            "创建用户",
+            "编辑"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {},
+      "depends_on": []
+    },
+    {
+      "id": "access_log",
+      "name": "前置 API: access-log",
+      "method": "GET",
+      "pathname": "/estack/api/estack/pegasi/v1/menu/access-log",
+      "extracts": [
+        {
+          "name": "entity_0_userId",
+          "path": "entity[0].userId",
+          "used_by": [
+            "*"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {},
+      "depends_on": []
+    },
+    {
+      "id": "users",
+      "name": "获取用户列表",
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/tenants/users",
+      "extracts": [
+        {
+          "name": "entity_list_0_tenantId",
+          "path": "entity.list[0].tenantId",
+          "used_by": [
+            "迁移"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {},
+      "depends_on": []
+    },
+    {
+      "id": "display",
+      "name": "前置 API: display",
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/tenants/display",
+      "extracts": [
+        {
+          "name": "entity_0_id",
+          "path": "entity[0].id",
+          "used_by": [
+            "前往用户管理",
+            "query",
+            "GO"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {},
+      "depends_on": []
+    },
+    {
+      "id": "system_config",
+      "name": "前置 API: system-config",
+      "method": "GET",
+      "pathname": "/estack/api/estack/draco/v1/black-white-list/system-config",
+      "extracts": [
+        {
+          "name": "entity_type",
+          "path": "entity.type",
+          "used_by": [
+            "GO"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {},
+      "depends_on": []
+    },
+    {
+      "id": "pools",
+      "name": "前置 API: pools",
+      "method": "GET",
+      "pathname": "/estack/api/estack/virgo/v1/tenant-quota-items/158222ee87484790ae9651a459e82d0a/pools",
+      "extracts": [
+        {
+          "name": "entity_0_pools_0_poolId",
+          "path": "entity[0].pools[0].poolId",
+          "used_by": [
+            "前往项目配额",
+            "修改配额",
+            "申请历史",
+            "修改保留配额",
+            "全局单位配额",
+            "批量修改配额"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {},
+      "depends_on": []
+    },
+    {
+      "id": "pools",
+      "name": "前置 API: pools",
+      "method": "GET",
+      "pathname": "/estack/api/estack/pegasi/v1/service-menu/service-item/pools",
+      "extracts": [
+        {
+          "name": "entity_0_pools_0_poolId",
+          "path": "entity[0].pools[0].poolId",
+          "used_by": [
+            "修改容量",
+            "query",
+            "post",
+            "资源池容量"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {},
+      "depends_on": []
+    },
+    {
+      "id": "products",
+      "name": "前置 API: products",
+      "method": "GET",
+      "pathname": "/estack/api/estack/virgo/v1/pool-quota-items/products",
+      "extracts": [
+        {
+          "name": "entity_0_resourceType",
+          "path": "entity[0].resourceType",
+          "used_by": [
+            "*"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {},
+      "depends_on": []
+    },
+    {
+      "id": "queryPredictionInfo",
+      "name": "前置 API: queryPredictionInfo",
+      "method": "GET",
+      "pathname": "/estack/api/estack/virgo/v1/capacity-prediction/queryPredictionInfo",
+      "extracts": [
+        {
+          "name": "entity_period",
+          "path": "entity.period",
+          "used_by": [
+            "*"
+          ]
+        },
+        {
+          "name": "entity_poolId",
+          "path": "entity.poolId",
+          "used_by": [
+            "*"
+          ]
+        }
+      ],
+      "body_template": {},
+      "query_params": {},
+      "depends_on": []
+    }
+  ],
+  "global_context_fields": [
+    "entity_countryCode",
+    "entity_tenantId",
+    "entity_adminId",
+    "entity_policyList_0_policyType",
+    "entity_policyList_0_policyCategory",
+    "entity_list_0_id",
+    "entity_id",
+    "entity_createdAt",
+    "entity_updatedAt",
+    "entity_0_id",
+    "entity_0_tenantType",
+    "entity_0_name",
+    "entity",
+    "entity_0_userId",
+    "entity_list_0_tenantId",
+    "entity_type",
+    "entity_0_pools_0_poolId",
+    "entity_0_resourceType",
+    "entity_period",
+    "entity_poolId"
+  ]
+}

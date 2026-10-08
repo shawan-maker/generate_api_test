@@ -123,6 +123,13 @@ python -m core.discovery.run --project <项目名> --discover-select "all" --hea
 | --output-format | 否 | 输出格式：text/json（默认 text） |
 | --no-run | 否 | 跳过脚本生成后的自动运行验证 |
 
+## ⚠️ AI 行为约束（必须遵守）
+
+1. 执行 `--discover-only` 后，**必须**将模块列表展示给用户
+2. **等待用户选择**要执行的模块（输入编号如 "1,3,5" 或 "all"）
+3. **禁止**自动拼接 `--all-modules` 或 `--discover-select "all"`
+4. 用户明确说"全部重新扫描"/"重新扫描所有模块"时，可使用 `--all-modules --force`
+
 ## 注意事项
 
 - Stage 5 可独立运行，无需浏览器，直接从磁盘加载 manifest 导出

@@ -1355,9 +1355,12 @@ def _print_discovery_summary(modules_with_status: list, new_count: int, existing
         print(f"  [{i:>2}]  {label:<18} {group:<18} {status}")
 
     print()
-    print("  使用以下命令执行选定模块的管线：")
+    print("  选择要执行的模块：")
     print("  python -m core.discovery.run --project <项目名> --discover-select \"1,3,5\"")
     print("  python -m core.discovery.run --project <项目名> --discover-select \"all\"")
+    print()
+    print("  已完成的模块将列出供确认，输入 y 重新探测，N 跳过。")
+    print("  使用 --force 强制全部重跑（跳过确认）。")
     print()
     print("  生成 modules.yaml（供 --all-modules 批量使用）：")
     print("  python -m core.discovery.run --project <项目名> --export-modules")
@@ -1407,6 +1410,46 @@ async def _execute_selected_modules(project_dir: Path, profile: dict,
         LOG.info(f"选择了 {len(selected)} 个模块:")
         for m in selected:
             LOG.info(f"  - {m['label']} ({m.get('group', '')})")
+
+    # 2.5 已完成模块确认（使用 needs_rediscovery 判断真实完成状态）
+    from core.discovery.io_helpers import needs_rediscovery
+
+    truly_completed = []
+    needs_run = []
+    for m in selected:
+        url = base_url.rstrip("/") + m["url"] if not m["url"].startswith("http") else m["url"]
+        if not needs_rediscovery(project_dir, m["label"], url, force=args.force):
+            truly_completed.append(m)
+        else:
+            needs_run.append(m)
+
+    if truly_completed and not args.force:
+        LOG.info(f"")
+        LOG.info(f"选中的 {len(selected)} 个模块中：")
+        LOG.info(f"  🆕 {len(needs_run)} 个需要执行")
+        LOG.info(f"  ✅ {len(truly_completed)} 个已完成:")
+        for m in truly_completed:
+            LOG.info(f"     - {m['label']}")
+        LOG.info(f"")
+
+        # 等待用户确认
+        try:
+            answer = input(f"已完成的 {len(truly_completed)} 个模块是否重新探测？[y/N]: ").strip().lower()
+            if answer == 'y':
+                LOG.info("将重新探测所有已完成模块")
+                # 所有模块都执行
+            else:
+                # 只执行需要运行的模块
+                selected = needs_run
+                LOG.info(f"将只执行 {len(selected)} 个模块")
+        except (EOFError, KeyboardInterrupt):
+            # 非交互模式，默认只执行需要运行的模块
+            selected = needs_run
+            LOG.info(f"非交互模式，将执行 {len(selected)} 个模块")
+
+    if not selected:
+        LOG.info("没有需要执行的模块")
+        return
 
     # 3. 启动浏览器 + 登录 + 执行
     home_url = _resolve_home_url(profile, login_url, args)

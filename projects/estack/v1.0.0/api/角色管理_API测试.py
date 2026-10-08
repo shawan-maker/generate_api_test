@@ -1,6 +1,6 @@
 """
 角色管理_API测试.py — 由 module_discovery 自动生成 (manifest 模式)
-生成时间: 2026-09-30 15:43:44
+生成时间: 2026-10-08 10:28:09
 目标URL: https://10.151.61.248/estack/web/estack/user-center/user-manage/role
 
 执行流程:
@@ -313,7 +313,7 @@ MANIFEST = {
           }
         },
         "query_params": {
-          "tenantId": "42ffdba38c58484f9be2bc1adf1672e6"
+          "tenantId": "158222ee87484790ae9651a459e82d0a"
         }
       },
       "body_template": {
