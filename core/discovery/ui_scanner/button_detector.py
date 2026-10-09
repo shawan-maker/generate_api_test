@@ -173,27 +173,88 @@ async def _prewarm_table_data(page, form_fields: list, toolbar_buttons: list,
 
 
 async def _close_dialog(page):
-    """关闭弹窗（尝试点击关闭按钮和按 ESC）。
+    """关闭弹窗或页面级表单（尝试点击关闭按钮、取消按钮和按 ESC）。
+
+    处理两种情况：
+    1. 弹窗模式：点击弹窗的关闭按钮
+    2. 页面级表单：点击表单中的取消/重置按钮
 
     如果页面已导航回（非弹窗模式），跳过此步骤。
     """
-    # 检查是否有可见的对话框
-    has_dialog = await page.evaluate("""() => {
-        const wrappers = document.querySelectorAll('.el-dialog__wrapper, .ant-modal-wrap, .el-drawer');
-        return Array.from(wrappers).some(w => w.style.display !== 'none' && w.offsetWidth > 0);
-    }""")
-    if not has_dialog:
-        return  # 非弹窗模式，已在 _scan_create_dialog 中导航回
-
     try:
-        await page.evaluate("""() => {
-            const btns = document.querySelectorAll('.el-dialog__headerbtn, .el-drawer__close-btn, .ant-modal-close, [class*="close"]');
-            for (const b of btns) { if (b.offsetWidth > 0) { b.click(); return; } }
+        # 1. 检查是否有可见的对话框
+        has_dialog = await page.evaluate("""() => {
+            const wrappers = document.querySelectorAll('.el-dialog__wrapper, .ant-modal-wrap, .el-drawer');
+            return Array.from(wrappers).some(w => w.style.display !== 'none' && w.offsetWidth > 0);
         }""")
-        await page.wait_for_timeout(500)
-        await page.keyboard.press("Escape")
+
+        if has_dialog:
+            # 尝试点击弹窗关闭按钮
+            await page.evaluate("""() => {
+                const btns = document.querySelectorAll('.el-dialog__headerbtn, .el-drawer__close-btn, .ant-modal-close, [class*="close"]');
+                for (const b of btns) { if (b.offsetWidth > 0) { b.click(); return; } }
+            }""")
+            await page.wait_for_timeout(500)
+            await page.keyboard.press("Escape")
+
+        # 2. 检查是否有页面级表单（非弹窗内的表单）
+        has_page_form = await page.evaluate("""() => {
+            // 查找所有表单
+            const forms = document.querySelectorAll('.el-form, .ant-form, form');
+            for (const form of forms) {
+                // 跳过弹窗内的表单
+                const wrapper = form.closest('.el-dialog__wrapper, .ant-modal-wrap, .el-drawer');
+                if (wrapper && wrapper.style.display !== 'none') {
+                    continue;  // 弹窗内的表单，不处理
+                }
+
+                // 检查表单是否可见
+                if (form.offsetWidth > 0 && form.offsetHeight > 0) {
+                    return true;
+                }
+            }
+            return false;
+        }""")
+
+        if has_page_form:
+            # 尝试点击页面级表单中的取消/重置按钮
+            clicked_cancel = await page.evaluate("""() => {
+                const forms = document.querySelectorAll('.el-form, .ant-form, form');
+                const cancelKeywords = ['取消', '重置', '关闭', 'cancel', 'reset', 'close'];
+
+                for (const form of forms) {
+                    // 跳过弹窗内的表单
+                    const wrapper = form.closest('.el-dialog__wrapper, .ant-modal-wrap, .el-drawer');
+                    if (wrapper && wrapper.style.display !== 'none') {
+                        continue;
+                    }
+
+                    if (form.offsetWidth > 0 && form.offsetHeight > 0) {
+                        // 查找取消/重置按钮
+                        const buttons = form.querySelectorAll('button, .el-button, .ant-btn, [role="button"]');
+                        for (const btn of buttons) {
+                            if (btn.offsetWidth === 0 || btn.offsetHeight === 0) continue;
+
+                            const text = (btn.textContent || '').trim().toLowerCase();
+                            if (cancelKeywords.some(kw => text.includes(kw))) {
+                                btn.click();
+                                return true;
+                            }
+                        }
+                    }
+                }
+                return false;
+            }""")
+
+            if clicked_cancel:
+                await page.wait_for_timeout(500)
+            else:
+                # 如果没找到取消按钮，尝试按 ESC
+                await page.keyboard.press("Escape")
+                await page.wait_for_timeout(300)
+
     except Exception as e:
-        LOG.debug(f"关闭弹窗失败: {e}")
+        LOG.debug(f"关闭弹窗/表单失败: {e}")
 
 
 def _classify_button_location(btn: dict) -> str:

@@ -105,21 +105,24 @@ def validate_stage1(
                 fill_count = len(info.get("fill_data", {}))
                 LOG.debug(f"  {action}: fill_data={fill_count} fields")
 
-    # 判断是否通过（只检查 critical 元素）
+    # 判断是否通过：只看 critical 元素，issues 仅作日志参考
+    # ★ 放宽逻辑：issues 包含"未发现创建功能"等非 critical 问题，对只读页面是正常的
     critical_missing = [m for m in all_missing if m.get("critical")]
-    is_valid = len(critical_missing) == 0 and len(issues) == 0
+    is_valid = len(critical_missing) == 0
 
     if not is_valid:
-        LOG.warning(f"Stage 1 验证失败: {len(issues)} 个问题")
-        for issue in issues:
-            LOG.warning(f"  - {issue}")
+        LOG.warning(f"Stage 1 验证失败: {len(critical_missing)} 个关键元素缺失")
+        for m in critical_missing:
+            LOG.warning(f"  ❌ {m['desc']}")
     else:
         LOG.info(f"Stage 1 验证通过: 发现 {total} 个按钮，{len(validated_ops)} 个操作已验证")
+        if issues:
+            LOG.info(f"  ℹ️ {len(issues)} 个非阻断问题（仅供参考）")
 
     return is_valid, issues, all_missing
 
 
-def validate_stage2(capture_result: dict) -> Tuple[bool, List[str]]:
+def validate_stage2(capture_result: dict, page_type: str = "") -> Tuple[bool, List[str]]:
     """验证 Stage 2 API 捕获结果质量（errors + warnings 分级）。
 
     分级机制：
@@ -128,8 +131,12 @@ def validate_stage2(capture_result: dict) -> Tuple[bool, List[str]]:
 
     is_valid 仅由 errors 决定，warnings 不阻断管线。
 
+    页面类型感知：
+    - read_only / form_page 页面只有 init API 是正常的，不报 error
+
     Args:
         capture_result: Stage 2 输出 (api_capture.json)
+        page_type: 页面类型（crud / read_only / form_page / 空字符串）
 
     Returns:
         (is_valid, issues) — 是否通过验证 + 问题列表（errors + warnings 合并）
@@ -152,6 +159,21 @@ def validate_stage2(capture_result: dict) -> Tuple[bool, List[str]]:
 
     if not core_api_map:
         errors.append("core_api_map 为空，时间戳优先法可能失败")
+    else:
+        # ★ 检查是否有非 init 操作
+        non_init_ops = {k: v for k, v in core_api_map.items() if k != "init"}
+        init_ops = core_api_map.get("init", [])
+
+        if not non_init_ops:
+            # 只有 init API，根据页面类型判断
+            if page_type in ("read_only", "form_page"):
+                if init_ops:
+                    warnings.append(
+                        f"只读/配置页面：仅有 {len(init_ops)} 个初始化 API（无 CRUD 操作，符合预期）")
+                else:
+                    errors.append("core_api_map 仅有 init 键但 init 列表为空")
+            else:
+                errors.append("core_api_map 无业务操作（仅有 init）")
 
     # 2. 验证 core_api_map 中的端点格式（数组结构）
     valid_endpoints = 0

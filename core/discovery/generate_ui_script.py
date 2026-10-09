@@ -259,6 +259,9 @@ def _render_script(playbook: dict, module_name: str, version: str, in_group: boo
     if not login_url and base_url:
         login_url = f"{base_url}/estack/web/estack/login"
 
+    # 提取页面类型（crud / read_only / form_page）
+    page_type = meta.get("page_type", "crud")
+
     # 提取鉴权配置
     auth_config = meta.get("auth_config", {})
     token_key = auth_config.get("token_key", "estackToken")
@@ -343,6 +346,9 @@ CONFIG = {{
 
 AVAILABLE_OPERATIONS = {repr(op_names)}
 
+# 页面类型（crud / read_only / form_page），用于选择等待策略
+PAGE_TYPE = "{page_type}"
+
 # Playbook 数据内嵌到脚本中（不依赖外部 JSON 文件）
 _PLAYBOOK_JSON = {playbook_json_str}
 
@@ -414,10 +420,13 @@ async def _cleanup_dialogs(page):
     except Exception:
         pass
 
-    # --- Phase 2: 等待表格恢复就绪 ---
+    # --- Phase 2: 等待页面恢复就绪（按页面类型区分） ---
     try:
-        from lib.wait_helpers import wait_for_table_ready
-        await wait_for_table_ready(page, timeout=8000)
+        from lib.wait_helpers import wait_for_table_ready, wait_for_loading_complete
+        if PAGE_TYPE in ("crud", "read_only"):
+            await wait_for_table_ready(page, timeout=8000)
+        else:
+            await wait_for_loading_complete(page, timeout=8000)
     except Exception:
         try:
             await page.wait_for_load_state("networkidle", timeout=5000)
@@ -449,6 +458,32 @@ async def run_operation(page, operation_name, operations_data, marker=None):
     print(f"\\n▶ 执行: {{op.get('display_name', op.get('description', operation_name))}}")
 
     steps = op.get("steps", [])
+
+    # ---- 空步骤检查：无可执行步骤时直接返回，标记为 skipped ----
+    # ★ Stage 1 探测失败的操作（如只读页面的非 CRUD 按钮）不应计入 failed
+    if not steps:
+        op_status = "skipped"
+        if expected_status == "failed":
+            op_note = "Stage 1 探测失败，无可执行步骤（预期行为）"
+        else:
+            op_note = "无可执行步骤"
+        print(f"  ⏭️ {{op_note}}")
+        op_result = {{
+            "operation": operation_name,
+            "display_name": op.get("display_name", operation_name),
+            "status": op_status,
+            "note": op_note,
+            "expected_status": expected_status,
+            "failure_type": "no_steps_expected",
+            "failure_reason": op_note,
+            "matched_method": "",
+            "error": "",
+            "steps": [],
+            "duration": 0,
+            "screenshot": None,
+        }}
+        return marker, op_result
+
     button_driver = ButtonDriver(page)
     op_start = time.time()
 
@@ -632,17 +667,43 @@ async def main():
         await page.goto(CONFIG["target_url"], wait_until="networkidle")
         await page.wait_for_timeout(2000)
 
-        # 等待表格渲染完成（与 Stage 1 发现环境一致）
-        from lib.wait_helpers import wait_for_table_ready
+        # 等待页面渲染完成（按页面类型区分等待策略）
+        from lib.wait_helpers import wait_for_table_ready, wait_for_loading_complete
         try:
-            await wait_for_table_ready(page, timeout=15000)
-            print("  ✅ 表格已就绪")
+            if PAGE_TYPE in ("crud", "read_only"):
+                # 有表格的页面：等待 loading 消失 + 表格行出现
+                await wait_for_table_ready(page, timeout=15000)
+                print("  ✅ 表格已就绪")
+            else:
+                # form_page 等无表格页面：只等 loading 消失 + DOM 稳定
+                await wait_for_loading_complete(page, timeout=15000)
+                print("  ✅ 页面已就绪")
         except Exception as e:
-            print(f"  \\u26a0\\ufe0f \\u7b49\\u5f85\\u8868\\u683c\\u8d85\\u65f6: {{e}}")
+            print(f"  ⚠️ 等待页面就绪超时: {{e}}")
 
         marker = None
         results = []
-        for op_name in ops:
+        for i, op_name in enumerate(ops):
+            # ★ 除第一个操作外，每个操作前导航回初始页面并刷新
+            # 确保每个操作都在干净的初始状态下执行
+            if i > 0:
+                try:
+                    print(f"\\n  \U0001f504 导航回初始页面...")
+                    # goto + networkidle 等效于导航+刷新（浏览器重新请求所有资源）
+                    await page.goto(CONFIG["target_url"], wait_until="networkidle", timeout=45000)
+                    await page.wait_for_timeout(2000)
+                    # 按页面类型区分等待策略
+                    try:
+                        if PAGE_TYPE in ("crud", "read_only"):
+                            await wait_for_table_ready(page, timeout=10000)
+                        else:
+                            await wait_for_loading_complete(page, timeout=10000)
+                    except Exception:
+                        pass
+                    print(f"  ✅ 页面已就绪")
+                except Exception as e:
+                    print(f"  ⚠️ 导航失败: {{e}}，继续执行")
+
             marker, op_result = await run_operation(page, op_name, operations_data, marker)
             results.append(op_result)
 

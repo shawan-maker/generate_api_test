@@ -206,6 +206,11 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
     """
     result = {"success": True}
 
+    # ---- 空步骤标记（供调用方判断） ----
+    if not steps:
+        result["empty_replay"] = True
+        return result
+
     # 注入 MutationObserver 捕获并钉住瞬态消息
     await _inject_notification_observer(page)
 
@@ -411,6 +416,24 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
 
             elif action == "press_key":
                 await _step_press_key(page, step)
+
+            elif action == "click_tab":
+                await _step_click_tab(page, step)
+
+            elif action == "assert_table_has_data":
+                await _step_assert_table_has_data(page)
+
+            elif action == "assert_content_visible":
+                await _step_assert_content_visible(page, step)
+
+            elif action == "close_or_go_back":
+                await _step_close_or_go_back(page, ctx)
+
+            elif action == "wait_for_dialog_or_form":
+                await _step_wait_for_dialog_or_form(page, step)
+
+            elif action == "confirm_dialog_if_present":
+                await _step_confirm_dialog_if_present(page, step, result)
 
             else:
                 LOG.warning(f"    未知步骤类型: {action}")
@@ -1568,6 +1591,179 @@ async def _step_wait_for_table_ready(page, step: dict):
     timeout = step.get("timeout_ms", 10000)
     await wait_for_table_ready(page, timeout=timeout)
     LOG.debug("    表格数据已刷新")
+
+
+async def _step_click_tab(page, step: dict):
+    """步骤：切换到指定 tab。
+
+    使用 playwright_locator（优先）或 tab_name（回退）定位 tab 元素。
+    """
+    tab_name = step.get("tab_name", "")
+    locator = step.get("playwright_locator", "")
+
+    try:
+        if locator:
+            await page.click(locator, timeout=5000)
+        elif tab_name:
+            await page.click(
+                f'[role="tab"]:has-text("{tab_name}"), '
+                f'.el-tabs__item:has-text("{tab_name}"), '
+                f'.ant-tabs-tab:has-text("{tab_name}")',
+                timeout=5000,
+            )
+        else:
+            LOG.warning("    click_tab: 无 tab_name 和 playwright_locator")
+            return
+        await page.wait_for_timeout(1500)  # 等待 tab panel 切换和数据加载
+        LOG.debug(f"    ✓ 已切换到 tab: {tab_name}")
+    except Exception as e:
+        LOG.warning(f"    ⚠️ tab 切换失败 ({tab_name}): {e}")
+        raise
+
+
+async def _step_assert_table_has_data(page):
+    """步骤：断言表格有数据行。"""
+    has_data = await page.evaluate("""() => {
+        const rows = document.querySelectorAll(
+            '.el-table__body-wrapper tbody tr:not(.el-table__empty-text)'
+        );
+        return rows.length > 0;
+    }""")
+    if not has_data:
+        raise AssertionError("表格无数据")
+    LOG.debug("    ✓ 表格有数据")
+
+
+async def _step_assert_content_visible(page, step: dict):
+    """步骤：断言页面/弹窗中有可见内容（用于详情页验证）。"""
+    visible = await page.evaluate("""() => {
+        // 检查对话框中有可见文本内容
+        const dialog = document.querySelector(
+            '.el-dialog__wrapper:not([style*="display: none"]), '
+            + '.ant-modal-wrap:not([style*="display: none"]), '
+            + '.el-drawer:not([style*="display: none"])'
+        );
+        if (dialog) {
+            const body = dialog.querySelector('.el-dialog__body, .ant-modal-body, .el-drawer__body');
+            return body ? body.textContent.trim().length > 10 : false;
+        }
+        // 检查主区域有内容
+        const main = document.querySelector('.app-main, .main-content, #app');
+        return main ? main.textContent.trim().length > 10 : false;
+    }""")
+    if not visible:
+        raise AssertionError("页面无可见内容")
+    LOG.debug("    ✓ 页面有可见内容")
+    await _take_assert_screenshot(page, step)
+
+
+async def _step_close_or_go_back(page, ctx: dict):
+    """步骤：关闭当前弹窗或导航回原页面。"""
+    # 先尝试关闭弹窗
+    has_dialog = await page.evaluate("""() => {
+        const wrappers = document.querySelectorAll(
+            '.el-dialog__wrapper, .ant-modal-wrap, .el-drawer'
+        );
+        return Array.from(wrappers).some(
+            w => w.style.display !== 'none' && w.offsetWidth > 0
+        );
+    }""")
+    if has_dialog:
+        try:
+            await page.evaluate("""() => {
+                const btns = document.querySelectorAll(
+                    '.el-dialog__headerbtn, .el-drawer__close-btn, .ant-modal-close'
+                );
+                for (const b of btns) { if (b.offsetWidth > 0) { b.click(); return; } }
+            }""")
+            await page.wait_for_timeout(500)
+            LOG.debug("    ✓ 已关闭弹窗")
+            return
+        except Exception:
+            pass
+        await page.keyboard.press("Escape")
+        await page.wait_for_timeout(500)
+        LOG.debug("    ✓ 已按 ESC 关闭")
+        return
+
+    # 无弹窗：检查是否导航到了新页面，如果是则导航回
+    original_url = ctx.get("original_url", "")
+    if original_url and page.url != original_url:
+        await page.goto(original_url, wait_until="load", timeout=30000)
+        await page.wait_for_timeout(1000)
+        LOG.debug("    ✓ 已导航回原页面")
+
+
+async def _step_wait_for_dialog_or_form(page, step: dict):
+    """步骤：等待弹窗或页面级表单就绪（软等待，不强制要求弹窗出现）。
+
+    用于 form_page 类型的操作：点击按钮后可能弹出对话框，也可能只是让页面表单变为可编辑状态。
+    两种情况都接受，不做失败判定。
+    """
+    timeout = step.get("timeout_ms", 5000)
+
+    # 等待一段时间，检查是否有弹窗/抽屉出现
+    has_overlay = await page.evaluate(f"""() => {{
+        // 检查 el-dialog / el-drawer / ant-modal
+        const overlays = document.querySelectorAll(
+            '.el-dialog__wrapper:not([style*="display: none"]), '
+            + '.el-drawer:not([style*="display: none"]), '
+            + '.ant-modal:not(.ant-modal-hidden), '
+            + '.ant-drawer:not(.ant-drawer-hidden)'
+        );
+        return Array.from(overlays).some(o => o.offsetWidth > 0);
+    }}""")
+
+    if has_overlay:
+        LOG.debug("    ✓ 检测到弹窗/抽屉，等待稳定")
+        await page.wait_for_timeout(1000)
+        return
+
+    # 无弹窗：等待页面级表单变化（如 disabled 变为 enabled）
+    try:
+        await page.wait_for_function("""() => {
+            // 检查是否有可编辑的 input（非 disabled）
+            const inputs = document.querySelectorAll('input:not([disabled]), textarea:not([disabled])');
+            return inputs.length > 0;
+        }""", timeout=timeout)
+        LOG.debug("    ✓ 检测到可编辑表单")
+    except Exception:
+        # 超时也不报错 — 可能页面变化较慢或按钮本身不触发变化
+        LOG.debug(f"    ⚠️ wait_for_dialog_or_form 超时（{timeout}ms），继续执行")
+
+
+async def _step_confirm_dialog_if_present(page, step: dict, result: dict = None):
+    """步骤：如果有确认弹窗则点击确认（软步骤，无弹窗则跳过）。
+
+    用于 form_page 操作：有些操作会弹出确认框（如"确认保存？"），有些不会。
+    不报错，无弹窗时静默跳过。
+    """
+    from .button_driver import confirm_dialog
+
+    # 检查是否有可见的确认弹窗
+    has_confirm_dialog = await page.evaluate("""() => {
+        // MessageBox / Popconfirm / 通用对话框
+        const wrappers = document.querySelectorAll(
+            '.el-message-box__wrapper:not([style*="display: none"]), '
+            + '.el-popconfirm:not([style*="display: none"])'
+        );
+        return Array.from(wrappers).some(w => w.offsetWidth > 0);
+    }""")
+
+    if not has_confirm_dialog:
+        LOG.debug("    ✓ 无确认弹窗，跳过")
+        return
+
+    # 有确认弹窗，尝试点击确认
+    try:
+        confirmed = await confirm_dialog(page, screenshot_holder=result)
+        if confirmed:
+            LOG.debug(f"    ✓ 已点击确认按钮: '{confirmed}'")
+            await page.wait_for_timeout(1000)
+        else:
+            LOG.debug("    ⚠️ 确认弹窗存在但未能点击确认按钮")
+    except Exception as e:
+        LOG.debug(f"    ⚠️ 确认弹窗点击失败: {e}")
 
 
 async def _step_select_row_checkbox(page, step: dict, button_driver: ButtonDriver, marker: str):

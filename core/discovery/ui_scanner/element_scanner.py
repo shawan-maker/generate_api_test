@@ -35,8 +35,48 @@ def _get_kb() -> ProbeKB:
     return _kb
 
 
+# 导航/面包屑等非业务元素的 className 关键词
+_NAVIGATION_CLASS_PATTERNS = {
+    "breadcrumb",    # el-breadcrumb, ant-breadcrumb
+    "pagination",    # el-pagination, ant-pagination
+    "page-header",   # 页头标题
+    "nav-link",      # 导航链接
+    "nav-item",      # 导航项
+}
+
+
+def _is_navigation_element(btn: dict) -> bool:
+    """判断是否为导航/面包屑等非业务元素（应排除出 toolbar_buttons）。
+
+    规则：
+    - className 包含导航类关键词（breadcrumb, pagination 等）
+    - toolbar 位置的 SPAN 标签（通常是面包屑文本，不是可交互按钮）
+
+    Args:
+        btn: 按钮候选元素字典
+
+    Returns:
+        True 表示是导航元素，应被过滤
+    """
+    cls = (btn.get("className") or "").lower()
+    tag = btn.get("tag", "")
+
+    # 面包屑/分页等 class 关键词
+    if any(kw in cls for kw in _NAVIGATION_CLASS_PATTERNS):
+        return True
+
+    # 非 BUTTON/A 标签 + toolbar 位置 → 大概率是导航文本（如面包屑 SPAN）
+    if tag not in ("BUTTON", "A") and btn.get("location") == "toolbar":
+        return True
+
+    return False
+
+
 async def discover_all(page) -> dict:
     """完整探测入口：扫描按钮 + 位置分类 + 下拉菜单 + 表单字段 + 页面结构快照。
+
+    支持多 tab 页面：检测到多个 tab 时，逐一切换并扫描每个 tab 下的元素，
+    合并到统一结果中（标记 tab 来源）。
 
     Args:
         page: Playwright Page 对象
@@ -46,7 +86,7 @@ async def discover_all(page) -> dict:
 
     result = await _discover_once(page, kb, framework)
 
-    # 页面结构快照
+    # 页面结构快照（含 tab 检测）
     page_structure = await _snapshot_page_structure(page)
     result["page_structure"] = page_structure
     result["framework"] = framework
@@ -56,7 +96,88 @@ async def discover_all(page) -> dict:
                  f"fixed_right={page_structure.get('hasFixedRight')}, "
                  f"rows={page_structure.get('mainBodyRows', 0)}")
 
+    # ---- Tab 迭代扫描：检测到多个 tab 时，逐一扫描 ----
+    tabs = page_structure.get("tabs", [])
+    if len(tabs) > 1:
+        tab_names = [t["name"] for t in tabs]
+        LOG.info(f"  📑 检测到 {len(tabs)} 个 tab: {tab_names}")
+        for tab in tabs:
+            if tab.get("active"):
+                continue  # 当前 tab 已扫描
+            tab_name = tab["name"]
+            LOG.info(f"  📑 切换到 tab: {tab_name}")
+            try:
+                # 切换前清理可能的弹窗残留
+                from core.discovery.ui_scanner.button_detector import _close_dialog
+                await _close_dialog(page)
+
+                # 点击 tab
+                tab_locator = tab.get("locator", "")
+                if tab_locator:
+                    await page.click(tab_locator, timeout=5000)
+                else:
+                    await page.click(
+                        f'[role="tab"]:has-text("{tab_name}"), .el-tabs__item:has-text("{tab_name}")',
+                        timeout=5000,
+                    )
+                await page.wait_for_timeout(2000)  # 等待 tab 切换和数据加载
+
+                # 在该 tab 下扫描
+                tab_result = await _discover_once(page, kb, framework)
+                _merge_tab_results(result, tab_result, tab_name)
+            except Exception as e:
+                LOG.warning(f"  ⚠️ tab [{tab_name}] 扫描失败: {e}")
+
     return result
+
+
+def _merge_tab_results(base: dict, tab_result: dict, tab_name: str):
+    """将 tab 扫描结果合并到主结果中，标记 tab 来源。
+
+    Args:
+        base: 主结果字典（会被原地修改）
+        tab_result: 当前 tab 的扫描结果
+        tab_name: tab 名称
+    """
+    # toolbar_buttons 合并
+    for btn in tab_result.get("toolbar_buttons", []):
+        btn["tab"] = tab_name
+        base.setdefault("toolbar_buttons", []).append(btn)
+
+    # row_actions 合并
+    for ra in tab_result.get("row_actions", []):
+        ra["tab"] = tab_name
+        base.setdefault("row_actions", []).append(ra)
+
+    # form_actions 合并（不标记 tab，表单按钮通常跨 tab 共享）
+    for fa in tab_result.get("form_actions", []):
+        if not any(b["text"] == fa["text"] for b in base.setdefault("form_actions", [])):
+            base["form_actions"].append(fa)
+
+    # validated_operations 合并（加 tab 前缀避免重名）
+    for action, op_data in tab_result.get("validated_operations", {}).items():
+        op_data["tab"] = tab_name
+        existing = base.setdefault("validated_operations", {})
+        if action in existing:
+            keyed_name = f"{tab_name}/{action}"
+        else:
+            keyed_name = action
+        existing[keyed_name] = op_data
+
+    # search_inputs 合并
+    for si in tab_result.get("search_inputs", []):
+        si["tab"] = tab_name
+        base.setdefault("search_inputs", []).append(si)
+
+    # dropdowns 合并
+    for dd in tab_result.get("dropdowns", []):
+        dd["tab"] = tab_name
+        base.setdefault("dropdowns", []).append(dd)
+
+    # dialog_buttons 合并
+    for db in tab_result.get("dialog_buttons", []):
+        db["tab"] = tab_name
+        base.setdefault("dialog_buttons", []).append(db)
 
 
 async def _discover_once(page, kb: ProbeKB, framework: str) -> dict:
@@ -75,7 +196,7 @@ async def _discover_once(page, kb: ProbeKB, framework: str) -> dict:
 
     result = {
         "toolbar_buttons": [], "row_actions": [], "dialog_buttons": [],
-        "menu_items": [], "dropdowns": [], "form_fields": [], "summary": {},
+        "form_actions": [], "menu_items": [], "dropdowns": [], "form_fields": [], "summary": {},
     }
 
     # 1. CSS 地毯扫描
@@ -88,12 +209,27 @@ async def _discover_once(page, kb: ProbeKB, framework: str) -> dict:
         candidates.extend(kb_extra)
         LOG.info(f"  KB 增强扫描发现 {len(kb_extra)} 个额外元素")
 
-    result["toolbar_buttons"] = [c for c in candidates if c.get("location") == "toolbar"]
+    # 过滤 toolbar_buttons：排除面包屑/导航等非业务元素
+    result["toolbar_buttons"] = [
+        c for c in candidates
+        if c.get("location") == "toolbar" and not _is_navigation_element(c)
+    ]
     result["row_actions"] = [c for c in candidates if c.get("location") == "row_action"]
     result["dialog_buttons"] = [c for c in candidates if c.get("location") == "dialog"]
+    result["form_actions"] = [c for c in candidates if c.get("location") == "form_action"]
     result["menu_items"] = [c for c in candidates if c.get("location") == "menu"]
+
+    # 统计被过滤的导航元素
+    _filtered_nav = [
+        c for c in candidates
+        if c.get("location") == "toolbar" and _is_navigation_element(c)
+    ]
+    if _filtered_nav:
+        LOG.debug(f"  过滤导航元素: {[_f.get('text', '') for _f in _filtered_nav]}")
+
     LOG.info(f"  工具栏: {len(result['toolbar_buttons'])}  行操作: {len(result['row_actions'])}  "
-             f"弹窗: {len(result['dialog_buttons'])}  菜单: {len(result['menu_items'])}")
+             f"弹窗: {len(result['dialog_buttons'])}  表单: {len(result['form_actions'])}  "
+             f"菜单: {len(result['menu_items'])}")
 
     # 2.5 iframe 扫描（标准步骤）
     iframe_results = await _scan_iframes(page)
@@ -164,6 +300,85 @@ async def _discover_once(page, kb: ProbeKB, framework: str) -> dict:
                 LOG.info(f"  数据预热完成: {len(prewarm_result.get('row_actions', []))} 个行操作, "
                          f"{len(prewarm_result.get('dropdowns', []))} 个下拉子项")
 
+    # 4.2 form_page 交互扫描：点击编辑类按钮后扫描完整的表单交互状态
+    # 条件：有 form_action 按钮 + 不是 CRUD 页面（无 create_like 按钮）
+    # 类似 _scan_create_dialog()，但针对 form_page 的编辑模式
+    if result["form_actions"] and not has_create:
+        _SUBMIT_KEYWORDS = ["保存", "提交", "确定", "确认", "save", "submit", "confirm"]
+
+        # 找出编辑类按钮（非提交类）
+        edit_btns = [
+            btn for btn in result["form_actions"]
+            if not any(kw in btn.get("text", "").lower() for kw in _SUBMIT_KEYWORDS)
+        ]
+
+        if edit_btns:
+            edit_btn = edit_btns[0]
+            btn_text = edit_btn.get("text", "")
+            LOG.info(f"  form_page 交互扫描: 点击 '{btn_text}' 以发现表单字段和隐藏按钮...")
+
+            try:
+                from core.discovery.operation_executor.base_executor import _click_button_escalating
+                click_result = await _click_button_escalating(page, btn_text)
+
+                if click_result.get("clicked"):
+                    await page.wait_for_timeout(1000)
+                    from core.discovery.replay.wait_helpers import wait_for_loading_complete
+                    await wait_for_loading_complete(page, timeout=5000)
+
+                    # 1. 扫描表单字段（使用 form_filler 的公共方法）
+                    if not result["form_fields"]:
+                        from core.discovery.replay.form_filler import scan_form_fields
+                        form_fields = await scan_form_fields(page, framework)
+                        if form_fields:
+                            result["form_fields"] = form_fields
+                            LOG.info(f"    表单字段: {len(form_fields)} 个")
+
+                    # 2. 重新扫描按钮
+                    new_candidates = await _scan_candidates(page)
+                    existing_texts = {btn.get("text", "") for btn in result["form_actions"]}
+
+                    # 找出新出现的 form_action 或 dialog 按钮
+                    for c in new_candidates:
+                        if c.get("location") in ("form_action", "dialog"):
+                            text = c.get("text", "")
+                            if text and text not in existing_texts:
+                                result["form_actions"].append(c)
+                                existing_texts.add(text)
+                                LOG.info(f"    发现新按钮: {c.get('location')} '{text}'")
+
+                    # 3. 恢复初始状态：点击"取消"或按 Escape
+                    cancel_clicked = await page.evaluate("""() => {
+                        const all = document.querySelectorAll('button, .el-button, .ant-btn');
+                        for (const el of all) {
+                            const text = (el.textContent || '').trim();
+                            if (['取消', '关闭', 'cancel', 'close'].some(kw =>
+                                text.toLowerCase().includes(kw)) && el.offsetWidth > 0) {
+                                el.click();
+                                return true;
+                            }
+                        }
+                        return false;
+                    }""")
+
+                    if cancel_clicked:
+                        await page.wait_for_timeout(500)
+                    else:
+                        await page.keyboard.press("Escape")
+                        await page.wait_for_timeout(300)
+
+                    LOG.info(f"  form_page 交互扫描完成: "
+                             f"{len(result['form_actions'])} 个按钮, "
+                             f"{len(result['form_fields'])} 个字段")
+                else:
+                    LOG.warning(f"  form_page 交互扫描: 点击 '{btn_text}' 失败")
+
+            except Exception as e:
+                LOG.warning(f"  form_page 交互扫描异常: {e}")
+                # 尝试恢复
+                await page.keyboard.press("Escape")
+                await page.wait_for_timeout(500)
+
     # 4.5 为所有按钮赋值 action 字段（使用按钮文本原文，不做分类）
     for key in ["toolbar_buttons", "row_actions", "dialog_buttons"]:
         for btn in result[key]:
@@ -200,10 +415,31 @@ async def _scan_candidates(page) -> list:
         const results = [];
         const seen = new Set();
         const table = document.querySelector('.el-table, table, .ant-table');
-        const dialog = document.querySelector('.el-dialog, .ant-modal, .el-drawer');
         const menu = document.querySelector('.el-menu, .ant-menu, .sidebar-menu');
         const fixedRight = table?.querySelector('.el-table__fixed-right');
         const fixedLeft = table?.querySelector('.el-table__fixed');
+
+        // ★ 查找可见的弹窗/抽屉（排除 display:none 的隐藏弹窗）
+        const dialogWrappers = document.querySelectorAll(
+            '.el-dialog__wrapper, .ant-modal-wrap, .el-drawer__wrapper, [role="dialog"]'
+        );
+        let visibleDialog = null;
+        for (const w of dialogWrappers) {{
+            if (w.style.display !== 'none' && w.offsetWidth > 0) {{
+                visibleDialog = w.querySelector('.el-dialog, .ant-modal, .el-drawer') || w;
+                break;
+            }}
+        }}
+
+        // ★ 查找页面内表单（非弹窗内的 el-form）
+        const allForms = document.querySelectorAll('.el-form, .ant-form, form');
+        let pageForm = null;
+        for (const f of allForms) {{
+            if (f.offsetWidth > 0 && !visibleDialog?.contains(f)) {{
+                pageForm = f;
+                break;
+            }}
+        }}
 
         all.forEach(el => {{
             const r = el.getBoundingClientRect();
@@ -212,6 +448,11 @@ async def _scan_candidates(page) -> list:
             if (!text || text.length > 40 || text.length < 1) return;
             const key = text + '|' + el.tagName;
             if (seen.has(key)) return;
+
+            // ★ 跳过隐藏弹窗内的按钮（display:none 的弹窗内按钮不应参与扫描）
+            const wrapper = el.closest('.el-dialog__wrapper, .ant-modal-wrap, .el-drawer__wrapper');
+            if (wrapper && wrapper.style.display === 'none') return;
+
             seen.add(key);
             let location = 'toolbar';
             let source = 'main';
@@ -220,8 +461,9 @@ async def _scan_candidates(page) -> list:
                 if (fixedRight && fixedRight.contains(el)) source = 'fixed-right';
                 else if (fixedLeft && fixedLeft.contains(el)) source = 'fixed-left';
             }}
-            else if (dialog && dialog.contains(el)) location = 'dialog';
+            else if (visibleDialog && visibleDialog.contains(el)) location = 'dialog';
             else if (menu && menu.contains(el)) location = 'menu';
+            else if (pageForm && pageForm.contains(el) && !table?.contains(el)) location = 'form_action';
             results.push({{
                 text, tag: el.tagName, className: (el.className || '').slice(0, 60),
                 rect: Math.round(r.width) + 'x' + Math.round(r.height), location, source,
@@ -1031,47 +1273,71 @@ async def _scan_page_buttons_for_create(page) -> list:
 
 
 async def _snapshot_page_structure(page) -> dict:
-    """获取页面 DOM 骨架，识别表格结构（含固定列位置、操作列索引）。
+    """获取页面 DOM 骨架，识别表格结构（含固定列位置、操作列索引）和 tab 结构。
 
     输出供 Stage 2 选择正确的 wrapper 进行行操作。
+    新增: tab 检测（el-tabs/ant-tabs），用于多 tab 页面的迭代扫描。
     """
     try:
-        return await page.evaluate("""() => {
+        result = await page.evaluate("""() => {
+            const result = {};
+
+            // ---- Tab 检测 ----
+            const tablist = document.querySelector(
+                '.el-tabs__header, .ant-tabs-nav, [role="tablist"]'
+            );
+            if (tablist) {
+                const tabs = tablist.querySelectorAll(
+                    '[role="tab"], .el-tabs__item, .ant-tabs-tab'
+                );
+                result.tabs = Array.from(tabs).map((t, i) => ({
+                    name: t.textContent.trim(),
+                    active: t.classList.contains('is-active')
+                        || t.classList.contains('ant-tabs-tab-active')
+                        || t.getAttribute('aria-selected') === 'true',
+                    index: i,
+                    id: t.id || '',
+                    locator: t.id
+                        ? '#' + t.id
+                        : '[role="tab"]:nth-child(' + (i + 1) + ')',
+                }));
+            }
+
+            // ---- 表格结构 ----
             const table = document.querySelector('.el-table');
-            if (!table) return {};
-
-            // 查找操作列索引
-            let operationColumnIndex = -1;
-            const headerCells = table.querySelectorAll('.el-table__header-wrapper th');
-            headerCells.forEach((cell, idx) => {
-                const text = cell.textContent.trim();
-                if (text.includes('操作') || text.includes('Action')) {
-                    operationColumnIndex = idx;
-                }
-            });
-
-            // 枚举表格 wrapper
-            const wrappers = [];
-            table.querySelectorAll('[class*="wrapper"]').forEach(w => {
-                wrappers.push({
-                    cls: w.className.slice(0, 80),
-                    rowCount: w.querySelectorAll('tbody tr').length,
+            if (table) {
+                let operationColumnIndex = -1;
+                const headerCells = table.querySelectorAll('.el-table__header-wrapper th');
+                headerCells.forEach((cell, idx) => {
+                    const text = cell.textContent.trim();
+                    if (text.includes('操作') || text.includes('Action')) {
+                        operationColumnIndex = idx;
+                    }
                 });
-            });
 
-            return {
-                hasFixedLeft: !!table.querySelector('.el-table__fixed'),
-                hasFixedRight: !!table.querySelector('.el-table__fixed-right'),
-                mainBodyRows: table.querySelectorAll('.el-table__body-wrapper tbody tr').length,
-                fixedRightRows: table.querySelectorAll('.el-table__fixed-right .el-table__fixed-body-wrapper tbody tr').length,
-                fixedLeftRows: table.querySelectorAll('.el-table__fixed .el-table__fixed-body-wrapper tbody tr').length,
-                columnCount: headerCells.length,
-                operationColumnIndex: operationColumnIndex,
-                operationColumnLocation: operationColumnIndex === headerCells.length - 1 ? 'last' :
-                    operationColumnIndex === 0 ? 'first' : operationColumnIndex >= 0 ? 'middle' : 'none',
-                tableWrappers: wrappers.slice(0, 10),
-            };
+                const wrappers = [];
+                table.querySelectorAll('[class*="wrapper"]').forEach(w => {
+                    wrappers.push({
+                        cls: w.className.slice(0, 80),
+                        rowCount: w.querySelectorAll('tbody tr').length,
+                    });
+                });
+
+                result.hasFixedLeft = !!table.querySelector('.el-table__fixed');
+                result.hasFixedRight = !!table.querySelector('.el-table__fixed-right');
+                result.mainBodyRows = table.querySelectorAll('.el-table__body-wrapper tbody tr').length;
+                result.fixedRightRows = table.querySelectorAll('.el-table__fixed-right .el-table__fixed-body-wrapper tbody tr').length;
+                result.fixedLeftRows = table.querySelectorAll('.el-table__fixed .el-table__fixed-body-wrapper tbody tr').length;
+                result.columnCount = headerCells.length;
+                result.operationColumnIndex = operationColumnIndex;
+                result.operationColumnLocation = operationColumnIndex === headerCells.length - 1 ? 'last' :
+                    operationColumnIndex === 0 ? 'first' : operationColumnIndex >= 0 ? 'middle' : 'none';
+                result.tableWrappers = wrappers.slice(0, 10);
+            }
+
+            return result;
         }""")
+        return result if result else {}
     except Exception as e:
         LOG.debug(f"页面结构快照失败: {e}")
         return {}

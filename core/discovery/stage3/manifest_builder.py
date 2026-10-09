@@ -1136,6 +1136,30 @@ def build_manifest(analysis: dict, capture_result: dict,
             if verify:
                 steps.append(verify)
 
+    # ---- 只读模块回退：如果 steps 为空，尝试用只读 API 生成验证步骤 ----
+    # ---- 只读模块回退：如果 steps 为空，尝试用只读 API 生成验证步骤 ----
+    is_read_only_module = False
+    if not steps:
+        # 收集每个 action 的只读 API（支持多 tab 场景）
+        read_only_steps = []
+        for action, eps in core_apis.items():
+            for ep in eps:
+                if ep.get("method") == "GET" or _is_post_list_query(ep):
+                    read_only_steps.append({
+                        "action": "list_verify",
+                        "description": f"验证列表数据加载 ({action})",
+                        "api": {
+                            "method": ep.get("method", "GET"),
+                            "pathname": ep.get("pathname", ""),
+                        },
+                        "assert": "response.success == true",
+                    })
+                    break  # 每个 action 只取第一个只读 API
+        if read_only_steps:
+            LOG.info(f"  📖 只读模块回退：生成 {len(read_only_steps)} 个列表验证步骤")
+            steps.extend(read_only_steps)
+            is_read_only_module = True
+
     # 5. 组装 manifest（增强版：包含前置 API）
     manifest_version = "1.0"
     pre_apis_list = []
@@ -1303,6 +1327,10 @@ def build_manifest(analysis: dict, capture_result: dict,
         "steps": steps,
         "state_assertions": analysis.get("state_assertions", {}),
     }
+
+    # 标记只读模块
+    if is_read_only_module:
+        manifest["module_type"] = "read_only"
 
     # 添加 pre_apis（如果有）
     if pre_apis_list:

@@ -193,6 +193,14 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
     init_start = time.time()
     interceptor.set_context("init")
     await page.goto(target_url, wait_until="networkidle", timeout=60000)
+
+    # ---- 重定向检测：如果被重定向到登录页，立即返回错误 ----
+    from core.discovery.run import _is_login_redirect
+    if _is_login_redirect(page):
+        LOG.warning(f"  ⚠️ Stage 2 捕获时被重定向到登录页: {page.url}")
+        return {"redirected": True, "error": "redirected_to_login",
+                "core_api_map": {}, "stats": {"total_calls": 0, "unique_endpoints": 0}}
+
     await wait_for_table_ready(page, timeout=15000)
     init_end = time.time()
 
@@ -223,6 +231,7 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
 
         # ★ 记录操作开始时间
         op_start = time.time()
+        result = {}
 
         try:
             # 执行 playbook 中的步骤序列

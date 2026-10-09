@@ -56,6 +56,423 @@ def _classify_op_steps_type(op_data: dict) -> str:
     return "generic"
 
 
+def _classify_page_type(validated_ops: dict, toolbar_buttons: list, row_actions: list,
+                        form_actions: list = None) -> str:
+    """分类页面类型：crud / read_only / form_page。
+
+    判断逻辑：
+    - 有 validated_operations（无论成功失败）→ crud（Stage 1 尝试过验证）
+    - toolbar/row 按钮包含 CRUD 关键词（创建/删除等）→ crud
+    - toolbar/row 按钮包含非详情类操作按钮（导出/导入/冻结等）→ crud
+    - toolbar/row 按钮全部是详情类按钮（操作详情/查看）→ read_only
+    - 只有 form_actions（无 toolbar/row）→ form_page（表单配置页面）
+    - 其他情况 → read_only（只读/日志页面）
+
+    Returns:
+        "crud" | "read_only" | "form_page"
+    """
+    # ★ CRUD 关键词（与 required_elements.py 对齐）
+    _CRUD_KEYWORDS = ["创建", "新增", "添加", "新建", "删除", "移除",
+                      "add", "create", "new", "delete", "remove"]
+
+    # ★ 详情/查看类关键词（这些按钮不算 CRUD 操作）
+    _DETAIL_KEYWORDS = ["详情", "查看", "detail", "view"]
+
+    all_buttons = toolbar_buttons + row_actions
+
+    # ★ 检查 toolbar/row 按钮是否包含 CRUD 关键词
+    has_crud_button = any(
+        any(kw in btn.get("text", "").lower() for kw in _CRUD_KEYWORDS)
+        for btn in all_buttons
+    )
+
+    # ★ 检查 validated_operations 中是否有 CRUD 操作名或成功验证的操作
+    has_crud_validated = False
+    if validated_ops:
+        # 有成功验证的操作 → crud
+        if any(op.get("success") for op in validated_ops.values()):
+            has_crud_validated = True
+        # 操作名包含 CRUD 关键词（即使失败也算 CRUD 页面尝试过）
+        if not has_crud_validated:
+            for action in validated_ops.keys():
+                if any(kw in action.lower() for kw in _CRUD_KEYWORDS):
+                    has_crud_validated = True
+                    break
+
+    # CRUD 页面：按钮有关键词 或 validated 中有 CRUD 操作
+    if has_crud_button or has_crud_validated:
+        return "crud"
+
+    # ★ 检查是否有非详情类的操作按钮（如导出/导入/冻结/刷新等）
+    # 如果所有按钮都是详情类 → read_only；否则 → crud（fallback 会处理）
+    has_non_detail_button = any(
+        not any(kw in btn.get("text", "").lower() for kw in _DETAIL_KEYWORDS)
+        for btn in all_buttons
+    )
+
+    if has_non_detail_button:
+        return "crud"
+
+    # 只有 form_actions（表单配置页面，如日志设置）
+    if form_actions:
+        return "form_page"
+
+    # 其他情况：只读页面（toolbar 只有详情类按钮，如"操作详情"）
+    return "read_only"
+
+
+def _is_detail_action(action: str) -> bool:
+    """判断是否为查看详情操作。"""
+    detail_keywords = ["详情", "查看", "detail", "view", "操作详情"]
+    action_lower = action.lower()
+    return any(kw in action_lower for kw in detail_keywords)
+
+
+def _build_detail_steps(op_data: dict) -> list:
+    """构建查看详情步骤。
+
+    查看详情操作通常：点击按钮 → 弹出对话框/导航 → 验证内容 → 关闭/返回。
+    """
+    steps = []
+    if op_data.get("is_row_action"):
+        steps.append({"action": "find_row", "marker": "$marker"})
+
+    trigger = op_data.get("trigger_text") or op_data.get("text", "")
+    trigger_locator = op_data.get("trigger_locator_verified") or op_data.get("playwright_locator", "")
+    if trigger_locator:
+        steps.append({
+            "action": "click_button",
+            "playwright_locator": trigger_locator,
+            "description": f"点击{trigger}",
+        })
+    elif trigger:
+        steps.append({
+            "action": "click_button",
+            "playwright_locator": f'button:has-text("{trigger}"), a:has-text("{trigger}"), span:has-text("{trigger}")',
+            "description": f"点击{trigger}",
+        })
+
+    steps.append({"action": "assert_content_visible", "description": "验证详情页/弹窗有内容"})
+    steps.append({"action": "close_or_go_back", "description": "关闭弹窗或返回"})
+    return steps
+
+
+def _build_read_only_playbook(ui_result: dict, tabs: list) -> dict:
+    """为只读页面生成测试流程。
+
+    只读页面（如日志查询）没有 CRUD 操作，生成：
+    - 列表加载验证（每个 tab 一个）
+    - 搜索操作（如果有搜索框）
+    - 查看详情操作（如果有行级详情按钮）
+
+    Args:
+        ui_result: Stage 1 的 ui_result
+        tabs: page_structure.tabs 列表
+
+    Returns:
+        dict: 只读页面的 playbook 结构
+    """
+    # 检查是否有可测试的元素
+    has_tabs = tabs and len(tabs) > 0
+    has_search = any(op_data.get("search_input") for op_data in ui_result.get("validated_operations", {}).values())
+    has_detail = any(_is_detail_action(ra.get("text", "")) for ra in ui_result.get("row_actions", []))
+
+    # 如果完全没有可测试元素，返回空字典
+    if not (has_tabs or has_search or has_detail):
+        return {}
+
+    operations = {}
+
+    # ---- 如果有多个 tab，每个 tab 生成独立的操作 ----
+    if has_tabs and len(tabs) > 1:
+        for tab in tabs:
+            tab_name = tab["name"]
+            tab_locator = tab.get("locator", "")
+
+            # 切换 tab + 验证列表加载
+            steps = []
+            if tab_locator:
+                steps.append({"action": "click_tab", "tab_name": tab_name,
+                              "playwright_locator": tab_locator})
+            else:
+                steps.append({"action": "click_tab", "tab_name": tab_name})
+            steps.append({"action": "wait_for_table_ready", "description": f"等待 {tab_name} 表格加载"})
+            steps.append({"action": "assert_table_has_data", "description": f"验证 {tab_name} 有数据"})
+
+            operations[f"{tab_name}_列表加载"] = {
+                "display_name": f"{tab_name} — 列表加载",
+                "description": f"切换到 {tab_name} 并验证列表加载",
+                "role": "verify",
+                "steps": steps,
+                "marker": None,
+                "detection_status": "success",
+                "replayable": True,
+                "tab": tab_name,
+            }
+
+        # 搜索操作：从 validated_operations 中提取 tab 下的搜索
+        for action, op_data in ui_result.get("validated_operations", {}).items():
+            tab = op_data.get("tab", "")
+            if op_data.get("search_input"):
+                tab_name = tab or "默认"
+                steps = []
+                if tab:
+                    # 找到该 tab 的 locator
+                    tab_locator = ""
+                    for t in tabs:
+                        if t["name"] == tab:
+                            tab_locator = t.get("locator", "")
+                            break
+                    steps.append({"action": "click_tab", "tab_name": tab,
+                                  "playwright_locator": tab_locator})
+                steps.extend(_build_query_steps(op_data))
+                display = f"{tab_name} — 搜索" if tab else "搜索"
+                operations[f"{tab_name}_搜索" if tab else "搜索"] = {
+                    "display_name": display,
+                    "description": op_data.get("description", action),
+                    "role": "query",
+                    "steps": steps,
+                    "marker": None,
+                    "detection_status": "unvalidated",
+                    "replayable": True,
+                    "tab": tab,
+                }
+    else:
+        # ---- 单 tab 或无 tab ----
+        operations["列表加载验证"] = {
+            "display_name": "列表加载验证",
+            "description": "验证列表数据加载",
+            "role": "verify",
+            "steps": [
+                {"action": "wait_for_table_ready", "description": "等待表格加载"},
+                {"action": "assert_table_has_data", "description": "验证表格有数据"},
+            ],
+            "marker": None,
+            "detection_status": "success",
+            "replayable": True,
+        }
+
+        # 搜索操作
+        for action, op_data in ui_result.get("validated_operations", {}).items():
+            if op_data.get("search_input"):
+                steps = _build_query_steps(op_data)
+                operations[f"搜索_{action}"] = {
+                    "display_name": f"搜索 — {op_data.get('description', action)}",
+                    "description": op_data.get("description", action),
+                    "role": "query",
+                    "steps": steps,
+                    "marker": None,
+                    "detection_status": "unvalidated",
+                    "replayable": True,
+                }
+
+    # ---- 行操作（查看详情）----
+    for ra in ui_result.get("row_actions", []):
+        action = ra.get("text", "")
+        if _is_detail_action(action):
+            steps = _build_detail_steps(ra)
+            operations[f"查看_{action}"] = {
+                "display_name": f"查看{action}",
+                "description": f"查看{action}详情",
+                "role": "detail",
+                "steps": steps,
+                "marker": None,
+                "detection_status": ra.get("validation_status", "unvalidated"),
+                "replayable": bool(steps),
+            }
+
+    # ---- toolbar 中的查看详情按钮（如"操作详情"）----
+    # ★ 按 tab 分组：每个 tab 当作独立页面处理
+    # 日志查询页面：登录日志 tab 有"操作详情"，运营告警日志 tab 没有
+    # 为每个有该按钮的 tab 生成独立操作（含 click_tab 前置步骤）
+    toolbar_details = [tb for tb in ui_result.get("toolbar_buttons", [])
+                       if _is_detail_action(tb.get("text", ""))]
+
+    # 构建 tab_name → tab_locator 映射
+    tab_map = {t["name"]: t.get("locator", "") for t in tabs} if tabs else {}
+
+    # 按 tab 分组
+    # ★ 多 tab 页面：只处理有明确 tab 字段的按钮（无 tab 字段的按钮在 tab 迭代前扫描，归属不确定）
+    details_by_tab = {}
+    for tb in toolbar_details:
+        tab_name = tb.get("tab", "")
+        if has_tabs and len(tabs) > 1 and not tab_name:
+            # 多 tab 页面上无 tab 字段的按钮归属不确定，跳过
+            LOG.debug(f"  跳过无 tab 字段的 toolbar 详情按钮: '{tb.get('text', '')}'")
+            continue
+        details_by_tab.setdefault(tab_name, []).append(tb)
+
+    for tab_name, btns in details_by_tab.items():
+        for tb in btns:
+            action = tb.get("text", "")
+            btn_locator = tb.get("selector", "")
+            if not btn_locator:
+                btn_locator = f"button:has-text('{action}')"
+
+            steps = []
+
+            # ★ 如果有 tab 且 tab 有 locator，先切换到该 tab
+            if tab_name and tab_name in tab_map:
+                tab_locator = tab_map[tab_name]
+                if tab_locator:
+                    steps.append({"action": "click_tab", "tab_name": tab_name,
+                                  "playwright_locator": tab_locator})
+                else:
+                    steps.append({"action": "click_tab", "tab_name": tab_name})
+                steps.append({"action": "wait_for_table_ready",
+                              "description": f"等待 {tab_name} 表格加载"})
+
+            steps.extend([
+                {"action": "click_button", "playwright_locator": btn_locator,
+                 "description": f"点击{action}"},
+                {"action": "assert_content_visible", "description": "验证详情弹窗有内容"},
+                {"action": "close_or_go_back", "description": "关闭弹窗"},
+            ])
+
+            # 操作名包含 tab 信息以区分不同 tab 的同名按钮
+            if tab_name:
+                op_key = f"查看_{tab_name}_{action}"
+                display = f"查看{tab_name} — {action}"
+            else:
+                op_key = f"查看_{action}"
+                display = f"查看{action}"
+
+            operations[op_key] = {
+                "display_name": display,
+                "description": f"查看{tab_name + ' ' if tab_name else ''}{action}详情",
+                "role": "detail",
+                "steps": steps,
+                "marker": None,
+                "detection_status": "unvalidated",
+                "replayable": True,
+                "tab": tab_name,
+            }
+
+    return operations
+
+
+def _build_form_page_playbook(ui_result: dict, form_actions: list) -> dict:
+    """为表单配置页面生成 playbook。
+
+    表单配置页面（如日志设置）：页面本身是表单，按钮在表单内而非工具栏。
+    为每个 form_action 生成完整的操作步骤序列：
+      click_button → wait_for_dialog_or_form → fill_form → click_button(保存)
+        → confirm_dialog_if_present → assert_success
+
+    Args:
+        ui_result: Stage 1 的 ui_result
+        form_actions: 表单内按钮列表
+
+    Returns:
+        dict: {action_name: operation_dict}
+    """
+    operations = {}
+
+    # ★ 识别"提交/保存"类按钮（用于后续 assert_success 前的确认步骤）
+    _SUBMIT_KEYWORDS = ["保存", "提交", "确定", "确认", "save", "submit", "confirm"]
+    submit_buttons = [btn for btn in form_actions
+                      if any(kw in btn.get("text", "").lower() for kw in _SUBMIT_KEYWORDS)]
+
+    # ★ 提取表单字段（来自 Stage 1 交互扫描）
+    form_fields = ui_result.get("form_fields", [])
+
+    for btn in form_actions:
+        btn_text = btn.get("text", "").strip()
+        if not btn_text:
+            continue
+
+        # ★ 跳过"保存/提交/取消"类按钮 — 它们作为其他操作的子步骤使用，不作为独立操作
+        _CANCEL_KEYWORDS = ["取消", "关闭", "cancel", "close", "reset", "重置"]
+        if any(kw in btn_text.lower() for kw in _SUBMIT_KEYWORDS + _CANCEL_KEYWORDS):
+            continue
+
+        # 生成 locator
+        btn_locator = btn.get("selector", "")
+        if not btn_locator:
+            btn_locator = f"button:has-text('{btn_text}')"
+
+        # ★ 生成完整步骤序列
+        steps = [
+            # Step 1: 点击操作按钮（如"编辑"）
+            {"action": "click_button", "playwright_locator": btn_locator,
+             "description": f"点击 {btn_text} 按钮"},
+
+            # Step 2: 等待页面变化（弹窗出现或表单变为可编辑状态）
+            {"action": "wait_for_dialog_or_form", "timeout_ms": 5000,
+             "description": f"等待 {btn_text} 弹窗或表单就绪"},
+        ]
+
+        # Step 3: 填充表单字段（如果有）
+        if form_fields:
+            fields_info = []
+            for field in form_fields:
+                label = field.get("label", "")
+                selector = field.get("selector", "")
+                field_type = field.get("type", "input")
+                kb_category = field.get("kb_category", "")
+
+                if not selector:
+                    continue
+
+                # 根据字段类型生成基础 fill_rule
+                fill_rule = {}
+                if field_type in ("input", "textarea"):
+                    fill_rule = {"rule": "suffix", "params": {"prefix": "", "suffix": "_test"}}
+                elif kb_category == "el-select":
+                    fill_rule = {"rule": "select_option", "params": {}}
+                elif kb_category == "radio":
+                    fill_rule = {"rule": "select_radio", "params": {}}
+
+                fields_info.append({
+                    "label": label,
+                    "playwright_locator": selector,
+                    "type": field_type,
+                    "kb_category": kb_category,
+                    "fill_rule": fill_rule,
+                })
+
+            if fields_info:
+                steps.append({
+                    "action": "fill_form",
+                    "fields": fields_info,
+                    "description": "填充表单字段",
+                })
+
+        # Step 4: 如果有"保存/提交"类按钮，点击它（如编辑后点保存）
+        if submit_buttons:
+            submit_btn = submit_buttons[0]  # 通常只有一个保存按钮
+            submit_text = submit_btn.get("text", "").strip()
+            submit_locator = submit_btn.get("selector", "")
+            if not submit_locator:
+                submit_locator = f"button:has-text('{submit_text}')"
+            steps.append({
+                "action": "click_button",
+                "playwright_locator": submit_locator,
+                "description": f"点击 {submit_text} 按钮",
+            })
+
+        # Step 5: 如果有确认弹窗，点击确认（软步骤，无弹窗则跳过）
+        steps.append({"action": "confirm_dialog_if_present",
+                       "description": "点击确认按钮（如有弹窗）"})
+
+        # Step 6: 验证操作成功（检查成功通知）
+        steps.append({"action": "assert_success",
+                       "playwright_locator": ".el-message--success, .el-notification__content:has-text('成功'), [role='alert']:has-text('成功')",
+                       "description": f"验证 {btn_text} 操作成功"})
+
+        operations[btn_text] = {
+            "display_name": btn_text,
+            "description": f"表单操作: {btn_text}",
+            "role": "generic",
+            "steps": steps,
+            "marker": None,
+            "detection_status": "unvalidated",
+            "replayable": True,
+        }
+
+    return operations
+
+
 def build_playbook(ui_result: dict) -> dict:
     """从 Stage 1 的 ui_result 构建完整的 playbook.json
 
@@ -87,6 +504,34 @@ def build_playbook(ui_result: dict) -> dict:
 
     # 构建操作列表
     validated_operations = ui_result.get("validated_operations", {})
+    toolbar_buttons = ui_result.get("toolbar_buttons", [])
+    row_actions = ui_result.get("row_actions", [])
+    form_actions = ui_result.get("form_actions", [])
+
+    # ---- 只读页面检测 ----
+    tabs = page_structure.get("tabs", [])
+    page_type = _classify_page_type(validated_operations, toolbar_buttons, row_actions, form_actions)
+    if page_type == "read_only":
+        LOG.info(f"  📖 检测到只读页面，生成只读测试流程（tabs={len(tabs)}）")
+        operations = _build_read_only_playbook(ui_result, tabs)
+        meta["page_type"] = "read_only"
+        meta["tabs"] = [t["name"] for t in tabs] if tabs else []
+        return {
+            "meta": meta,
+            "page_structure": page_structure,
+            "operations": operations,
+        }
+    elif page_type == "form_page":
+        LOG.info(f"  📝 检测到表单配置页面，为 form_actions 生成操作")
+        operations = _build_form_page_playbook(ui_result, form_actions)
+        meta["page_type"] = "form_page"
+        return {
+            "meta": meta,
+            "page_structure": page_structure,
+            "operations": operations,
+        }
+    meta["page_type"] = "crud"
+
     operations = {}
 
     for action, op_data in validated_operations.items():
@@ -170,6 +615,12 @@ def build_playbook(ui_result: dict) -> dict:
             # 跳过已作为 action key 存在的按钮
             action_key = btn_text
             if action_key in operations:
+                continue
+            # ★ 兜底守卫：toolbar 中明确标记为非 BUTTON/A 标签 → 跳过（面包屑/导航文本漏网）
+            # 注意：只在 tag 字段明确存在且不是 BUTTON/A 时才过滤，缺失 tag 时不过滤（兼容旧数据）
+            btn_tag = btn.get("tag")
+            if btn_list_key == "toolbar_buttons" and btn_tag and btn_tag not in ("BUTTON", "A"):
+                LOG.debug(f"  跳过非按钮 toolbar 元素: '{btn_text}' (tag={btn_tag})")
                 continue
             # 生成最基本的 click 步骤
             btn_locator = btn.get("selector", "")

@@ -57,6 +57,50 @@ logging.basicConfig(
 LOG = logging.getLogger("run")
 
 
+# ---- 重定向检测辅助函数 ----
+
+def _is_login_redirect(page) -> bool:
+    """检测当前页面是否被重定向到登录页。
+
+    在 Stage 1/2 导航到目标 URL 后调用，防止 cookie 过期时
+    在登录页上采集数据（而非目标模块页面）。
+    """
+    current_url = page.url
+    login_indicators = ["/login", "/sso", "/cas/", "/oauth2/authorize"]
+    return any(ind in current_url for ind in login_indicators)
+
+
+async def _refresh_cookie_mid_discovery(page, context, project_dir, base_url, login_url, profile):
+    """发现流程中途刷新 cookie（Stage 1/2 检测到登录页重定向时调用）。
+
+    使用 shared_runner.refresh_cookies 执行滑块登录刷新 cookie，
+    刷新成功后将新 cookie 注入 context。
+
+    Returns:
+        bool: 是否刷新成功
+    """
+    from core.discovery.shared_runner import refresh_cookies
+    workspace_dir = get_workspace_dir(project_dir)
+    result = await refresh_cookies(project_dir, workspace_dir, base_url, login_url)
+    if result:
+        cookie_file = workspace_dir / "output" / "config" / "cookies.json"
+        if cookie_file.exists():
+            try:
+                cookies = json.loads(cookie_file.read_text(encoding="utf-8"))
+                await context.add_cookies(cookies)
+                # 注入 token 到 localStorage
+                token_key = profile.get("auth", {}).get("token_key", "accessToken")
+                token_cookie = next((c["value"] for c in cookies if c["name"] == token_key), None)
+                if token_cookie:
+                    await context.add_init_script(f"""
+                        localStorage.setItem('{token_key}', '{token_cookie}');
+                    """)
+            except Exception as e:
+                LOG.warning(f"  cookie 注入失败: {e}")
+                return False
+    return result
+
+
 def _normalize_url(url: str, base_url: str) -> str:
     """规范化 URL 路径，修复 MSYS2/Git Bash 路径转换问题。
 
@@ -130,7 +174,8 @@ def parse_args():
     return ap.parse_args()
 
 
-async def run_stage1(page, project_dir: Path, module_name: str, target_url: str):
+async def run_stage1(page, project_dir: Path, module_name: str, target_url: str,
+                     context=None, profile=None, base_url: str = "", login_url: str = ""):
     """Stage 1: 前端按钮探测 + 业务闭环验证。
 
     流程（6 Phase）：
@@ -141,6 +186,12 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str)
       Phase E: Vision 截图分析兜底 (ai_assisted_analysis)
       Phase F: 终止判定 (critical 缺失 → None)
 
+    Args:
+        context: Playwright context（用于 cookie 刷新）
+        profile: 项目 profile.yaml（用于 cookie 刷新）
+        base_url: 基础 URL（用于 cookie 刷新）
+        login_url: 登录页 URL（用于 cookie 刷新）
+
     Returns:
         dict: ui_result（含 validated_operations）或 None（关键验证失败）
     """
@@ -150,6 +201,21 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str)
 
     # 导航到目标页
     await page.goto(target_url, wait_until="load", timeout=45000)
+
+    # ---- 重定向检测：如果被重定向到登录页，刷新 cookie 后重试 ----
+    if _is_login_redirect(page) and context and profile:
+        LOG.warning(f"  ⚠️ 页面被重定向到登录页 ({page.url})，尝试刷新 cookie")
+        refreshed = await _refresh_cookie_mid_discovery(
+            page, context, project_dir, base_url, login_url, profile)
+        if not refreshed:
+            LOG.error("  ❌ Cookie 刷新失败，无法进入目标页面")
+            return None
+        # 刷新后重新导航
+        await page.goto(target_url, wait_until="load", timeout=45000)
+        if _is_login_redirect(page):
+            LOG.error("  ❌ Cookie 刷新后仍被重定向到登录页")
+            return None
+        LOG.info("  ✅ Cookie 刷新成功，已进入目标页面")
 
     # 等待 SPA 渲染就绪
     ready = await wait_for_spa_ready(page)
@@ -171,6 +237,9 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str)
 
     # Phase B: 质量门控验证（required_elements）
     is_valid, issues, missing = validate_stage1(ui_result, required_flows=None)
+
+    # ★ 初始化 stage1_critical_fail（is_valid=True 时不进入 else 分支，但 line 309 需要读取）
+    stage1_critical_fail = False
 
     if is_valid:
         LOG.info("  Phase B: 质量门控通过 ✅")
@@ -199,13 +268,7 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str)
                 LOG.error(f"  Phase F: ❌ {len(critical)} 个关键元素缺失，终止")
                 for m in critical:
                     LOG.error(f"    - {m['desc']}")
-                # 保存部分结果供诊断和后续分析
-                ws_dir = get_workspace_dir(project_dir)
-                ws_dir.mkdir(parents=True, exist_ok=True)
-                out_path = ws_dir / "kb" / "module_discovered" / f"{module_name}_ui.json"
-                _save_json(ui_result, out_path)
-                LOG.info(f"部分结果已保存（供诊断）: {out_path}")
-                return None
+                stage1_critical_fail = True
             else:
                 LOG.warning(f"  Phase F: 仅非关键元素缺失（{len(missing)} 个），继续")
 
@@ -237,12 +300,17 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str)
         "cookie_token_key": profile_auth.get("cookie_token_key", ""),
     }
 
-    # 生成并保存 playbook
+    # 生成并保存 playbook（即使 Stage 1 验证失败也要生成，确保旧 playbook 被覆盖）
     from core.discovery.discover_ui import build_playbook
     playbook = build_playbook(ui_result)
     playbook_path = ws_dir / "kb" / "module_discovered" / f"{module_name}_playbook.json"
     _save_json(playbook, playbook_path)
     LOG.info(f"Playbook 已保存: {playbook_path}")
+
+    # Stage 1 关键元素缺失 → 终止
+    if stage1_critical_fail:
+        LOG.info(f"部分结果已保存（含 playbook，供 Stage 2 使用）")
+        return None
 
     # 打印摘要
     s = ui_result.get("summary", {})
@@ -316,7 +384,18 @@ async def run_stage2(page, project_dir: Path, module_name: str,
             api_path_prefix=api_path_prefix
         )
 
-        is_valid, issues = validate_stage2(api_capture)
+        # ★ 从 playbook 读取 page_type，传给 Stage 2 验证（只读/配置页面放宽标准）
+        playbook_path = ws_dir / "kb" / "module_discovered" / f"{module_name}_playbook.json"
+        page_type = ""
+        if playbook_path.exists():
+            try:
+                with open(playbook_path, 'r', encoding='utf-8') as f:
+                    pb = json.load(f)
+                page_type = pb.get("meta", {}).get("page_type", "")
+            except Exception:
+                pass
+
+        is_valid, issues = validate_stage2(api_capture, page_type=page_type)
 
         # 构建结果（无论验证是否通过）
         full_result = {
@@ -1537,23 +1616,13 @@ async def main():
 
         # Stage 1
         if stage in ("1", "all"):
-            ui_result = await run_stage1(page, project_dir, args.module, target_url)
-
-            # Stage 1 完成后生成 UI 脚本（基于 playbook）
-            playbook_path = workspace_dir / "kb" / "module_discovered" / f"{args.module}_playbook.json"
-            if playbook_path.exists():
-                try:
-                    from core.discovery.generate_ui_script import generate_ui_script
-                    with open(playbook_path, 'r', encoding='utf-8') as f:
-                        playbook_data = json.load(f)
-                    ver = args.version or ver_mod.resolve_version(project_dir)
-                    ui_script_path = generate_ui_script(
-                        playbook_data, args.module, project_dir, version=ver,
-                        group=module_group, group_index="01"
-                    )
-                    LOG.info(f"  UI 脚本已生成: {ui_script_path}")
-                except Exception as e:
-                    LOG.warning(f"  UI 脚本生成失败: {e}")
+            ui_result = await run_stage1(
+                page, project_dir, args.module, target_url,
+                context=context, profile=profile,
+                base_url=base_url, login_url=login_url,
+            )
+            # UI 脚本统一在 Stage 2 验证通过后生成（run_stage2 内部已有门控）
+            # 不再在 Stage 1 后提前生成，避免 Stage 2 失败时残留错误脚本
         else:
             ui_result = _load_ui_result(project_dir, args.module)
 

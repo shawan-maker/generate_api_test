@@ -111,6 +111,16 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
         for idx, (name, target_url, url_raw) in enumerate(items, 1):
             group_index = f"{idx:02d}"
 
+            # ---- Cookie 中期检查：每 5 个模块检查一次 ----
+            if idx > 1 and idx % 5 == 0:
+                LOG.info("  🔄 模块间 cookie 中期检查 ...")
+                try:
+                    from core.discovery.shared_runner import ensure_cookie_valid
+                    if not ensure_cookie_valid(project_dir, workspace_dir, base_url, login_url):
+                        LOG.warning("  ⚠️ cookie 刷新失败，继续执行（可能导致后续模块失败）")
+                except Exception as e:
+                    LOG.warning(f"  ⚠️ cookie 检查异常: {e}")
+
             LOG.info(f"\n  [{group} {group_index}] {name}")
             LOG.info(f"  URL: {url_raw}")
 
@@ -151,7 +161,11 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
 
                 # Stage 1
                 if stage in ("1", "all"):
-                    ui_result = await run_stage1(page, project_dir, name, target_url)
+                    ui_result = await run_stage1(
+                        page, project_dir, name, target_url,
+                        context=context, profile=profile,
+                        base_url=base_url, login_url=login_url,
+                    )
                 else:
                     ui_result = load_ui_result(project_dir, name)
 
@@ -178,6 +192,8 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
                                   "（使用 --force-gen 强制覆盖）")
                         result_entry["status"] = "blocked"
                         result_entry["reason"] = "Stage 2 验证失败"
+                        # 清理可能残留的旧 UI 脚本（防止错误脚本被误用）
+                        _cleanup_stale_ui_script(project_dir, version, group, group_index, name)
                         results.append({"name": name, "status": "blocked"})
                         all_results.append(result_entry)
                         continue
@@ -192,6 +208,8 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
                             LOG.warning(f"  ⏭️ {name}: 跳过脚本生成")
                             result_entry["status"] = "skipped"
                             result_entry["reason"] = skip_info["reason"]
+                            # 清理 Stage 2 已生成的 UI 脚本（无有效业务操作）
+                            _cleanup_stale_ui_script(project_dir, version, group, group_index, name)
                             results.append({"name": name, "status": "skipped"})
                             all_results.append(result_entry)
                             continue
@@ -260,6 +278,18 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
         if r.get("reason"):
             msg += f" — {r['reason'][:60]}"
         LOG.info(msg)
+
+
+def _cleanup_stale_ui_script(project_dir: Path, version: str, group: str,
+                             group_index: str, module_name: str):
+    """清理残留的 UI 脚本（当模块被 blocked/skipped 时调用）。"""
+    if group and group != "未分类":
+        ui_script = project_dir / version / "ui" / group / f"{group_index}_{module_name}.py"
+    else:
+        ui_script = project_dir / version / "ui" / f"{module_name}.py"
+    if ui_script.exists():
+        ui_script.unlink()
+        LOG.info(f"  🗑️ 已清理残留 UI 脚本: {ui_script}")
 
 
 def _save_module_status(project_dir: Path, version: str, results: list):
