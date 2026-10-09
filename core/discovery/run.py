@@ -125,6 +125,8 @@ def parse_args():
                     help="Stage 5: 导出 Postman Collection / helpers.py / Excel 参数文件")
     ap.add_argument("--no-run", action="store_true", default=False,
                     help="跳过脚本生成后的自动运行验证（默认自动运行 API+UI 脚本并生成报告）")
+    ap.add_argument("--group", default=None,
+                    help="单模块模式下的所属一级菜单分组（用于目录归类，默认 '未分类'）")
     return ap.parse_args()
 
 
@@ -266,7 +268,8 @@ async def run_stage2(page, project_dir: Path, module_name: str,
                      max_recapture: int = 2,
                      capture_all_mode: bool = False,
                      version: str = "",
-                     api_path_prefix: str = None) -> tuple:
+                     api_path_prefix: str = None,
+                     group: str = None, group_index: str = None) -> tuple:
     """Stage 2: API 捕获。
 
     Stage 1 已验证所有操作可成功，Stage 2 只做 API 捕获。
@@ -347,12 +350,18 @@ async def run_stage2(page, project_dir: Path, module_name: str,
                     with open(playbook_path, 'r', encoding='utf-8') as f:
                         playbook_data = json.load(f)
                     ver = version or ver_mod.resolve_version(project_dir)
-                    script_path = generate_ui_script(playbook_data, module_name, project_dir, version=ver)
+                    script_path = generate_ui_script(
+                        playbook_data, module_name, project_dir, version=ver,
+                        group=group, group_index=group_index
+                    )
                     LOG.info(f"  UI 脚本已生成: {script_path}")
 
-                    # 同步最新 cookie 到脚本目录（Stage 2 刚刷新过 token）
+                    # 同步最新 cookie 到脚本 config 目录（Stage 2 刚刷新过 token）
+                    # config 始终在 ui/config/（回溯到 ui/ 层）
                     framework_cookie = ws_dir / "output" / "config" / "cookies.json"
-                    script_config = Path(script_path).parent / "config"
+                    script_file = Path(script_path)
+                    ui_dir = script_file.parent.parent if script_file.parent.name != "ui" else script_file.parent
+                    script_config = ui_dir / "config"
                     script_config.mkdir(parents=True, exist_ok=True)
                     script_cookie = script_config / "cookies.json"
                     if framework_cookie.exists():
@@ -380,8 +389,18 @@ async def run_stage2(page, project_dir: Path, module_name: str,
 
 
 def run_stage34(project_dir: Path, module_name: str,
-                profile: dict, target_url: str, version: str = ""):
-    """Stage 3 (分析) + Stage 4 (生成)。"""
+                profile: dict, target_url: str, version: str = "",
+                group: str = None, group_index: str = None):
+    """Stage 3 (分析) + Stage 4 (生成)。
+
+    Args:
+        group: 一级菜单分组名（用于目录归类）
+        group_index: 组内编号（如 "01"）
+
+    Returns:
+        (flow, script_path, manifest, skip_info) 四元组
+        skip_info = None（正常生成）或 {"skipped": True, "reason": "..."}（跳过）
+    """
     LOG.info("=" * 50)
     LOG.info("Stage 3 & 4: 逻辑分析 + 脚本生成")
     LOG.info("=" * 50)
@@ -440,12 +459,21 @@ def run_stage34(project_dir: Path, module_name: str,
     # 构建 manifest（泛化架构）
     manifest = build_manifest(flow, capture_result, profile,
                               module_name, target_url, ui_result)
-    # 保存 manifest
+    # 保存 manifest（无论是否有 steps，都保存以供调试）
     manifest_path = ws_dir / "kb" / "module_discovered" / f"{module_name}_manifest.json"
     _save_json(manifest, manifest_path)
     LOG.info(f"  Manifest 已保存: {manifest_path}")
 
-    script = generate_script(manifest, module_name)
+    # 0 步骤检查：无有效业务操作 → 不生成脚本
+    steps = manifest.get("steps", [])
+    if not steps:
+        from core.discovery.skip_reason import classify_skip_reason
+        skip_reason = classify_skip_reason(manifest, capture_result)
+        LOG.warning(f"  ⏭️ {module_name}: 无有效业务操作，跳过脚本生成")
+        LOG.warning(f"    原因: {skip_reason}")
+        return flow, None, manifest, {"skipped": True, "reason": skip_reason}
+
+    script = generate_script(manifest, module_name, group=group, group_index=group_index)
 
     # 阶段门控验证
     is_valid, issues = validate_stage4(script, None)
@@ -456,209 +484,15 @@ def run_stage34(project_dir: Path, module_name: str,
         LOG.warning("生成的脚本可能不完整或存在质量问题")
 
     script_path = save_script_to_file(
-        script, str(project_dir), module_name, version=version, manifest=manifest
+        script, str(project_dir), module_name, version=version, manifest=manifest,
+        group=group, group_index=group_index
     )
 
-    return flow, script_path, manifest
+    return flow, script_path, manifest, None
 
 
-async def _run_stage4_verify(script_path: str, project_dir: Path, profile: dict,
-                             login_url: str, username: str, password: str,
-                             headless: bool = True) -> bool:
-    """运行 Stage 4 生成的脚本，Token 过期时自动刷新 cookie 并重试。
-
-    流程：
-    1. 运行脚本，检查退出码
-    2. 如果失败且检测到 Token 过期（HTTP 401），启动浏览器滑块登录刷新 cookie
-    3. 将新 cookie 复制到脚本的 config/cookies.json
-    4. 重新运行脚本
-
-    Returns:
-        True 如果脚本运行成功，False 如果失败
-    """
-    import subprocess
-
-    script = Path(script_path)
-    script_dir = script.parent
-
-    # 脚本的 config 目录（cookie 存放位置）
-    script_config = script_dir / "config"
-    script_config.mkdir(parents=True, exist_ok=True)
-
-    # 框架级的 cookie 目录
-    framework_config = get_workspace_dir(project_dir) / "output" / "config"
-    framework_config.mkdir(parents=True, exist_ok=True)
-
-    # 预复制: 框架 cookies → 脚本 config（始终用最新 cookie 覆盖，避免使用过期旧 cookie）
-    fw_cookie = framework_config / "cookies.json"
-    sc_cookie = script_config / "cookies.json"
-    if fw_cookie.exists():
-        import shutil
-        shutil.copy2(str(fw_cookie), str(sc_cookie))
-        LOG.info(f"  Cookie 同步: {fw_cookie.name} → {script_config}")
-
-    def _run_script() -> subprocess.CompletedProcess:
-        """运行脚本并返回结果。"""
-        LOG.info(f"  运行脚本: {script.name}")
-        result = subprocess.run(
-            [sys.executable, str(script)],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-            cwd=str(script_dir), timeout=120,
-        )
-        # 打印脚本输出（关键行）
-        for line in result.stdout.splitlines():
-            if any(k in line for k in ("✅", "❌", "⚠️", "HTTP", "401", "Token", "Cookie", "assertion")):
-                LOG.info(f"    {line.strip()}")
-        return result
-
-    def _is_token_expired(result: subprocess.CompletedProcess) -> bool:
-        """检测脚本输出是否表明 Token 过期。"""
-        output = result.stdout + result.stderr
-        return any(k in output for k in ("HTTP 401", "401", "Token 已过期", "probe_url 返回 HTTP 401",
-                                         "Cookie/Token 可能已过期"))
-
-    # 第一次运行
-    result = _run_script()
-
-    # 即使退出码为 0，也要检查输出中的失败标记
-    if result.returncode == 0:
-        output = result.stdout + result.stderr
-        # 检查是否有失败标记（但不包括 Token 过期相关的 401）
-        if "❌" in output:
-            # 统计失败次数
-            fail_count = output.count("❌")
-            # 检查是否是业务 API 失败（非 Token 过期）
-            if "HTTP 401" in output or "HTTP 403" in output or "HTTP 5" in output:
-                LOG.warning(f"  ⚠️ 脚本退出码为 0，但检测到 {fail_count} 个失败标记")
-                LOG.warning(f"  ❌ 脚本运行失败 (业务 API 调用失败)")
-                return False
-        LOG.info("  ✅ 脚本运行成功")
-        return True
-
-    if not _is_token_expired(result):
-        LOG.warning(f"  ❌ 脚本运行失败 (非 Token 问题，退出码={result.returncode})")
-        if result.stderr.strip():
-            LOG.warning(f"    stderr: {result.stderr[:500]}")
-        return False
-
-    # Token 过期 → 自动刷新
-    LOG.info("  🔄 检测到 Token 过期，启动浏览器刷新 cookie...")
-
-    if not username or not password:
-        creds = profile.get("credentials", {}) or {}
-        username = username or creds.get("username") or os.environ.get(creds.get("username_env", ""), "")
-        password = password or creds.get("password") or os.environ.get(creds.get("password_env", ""), "")
-
-    if not username or not password:
-        LOG.error("  ❌ 无法自动刷新: 缺少登录凭据 (--user/--pass 或 profile.yaml)")
-        return False
-
-    # 启动浏览器滑块登录
-    from playwright.async_api import async_playwright
-    from lib.browser_launcher import launch_browser
-
-    async with async_playwright() as pw:
-        browser, context, page = await launch_browser(pw, headless=headless)
-
-        try:
-            ok = await _login_with_playwright(page, context, login_url, username, password,
-                                              project_profile=profile)
-            if not ok:
-                LOG.error("  ❌ 滑块登录失败")
-                return False
-
-            # 保存新 cookie 到框架目录
-            cookies = await context.cookies()
-            framework_cookie = framework_config / "cookies.json"
-            framework_cookie.write_text(json.dumps(cookies, ensure_ascii=False, indent=2), encoding="utf-8")
-            LOG.info(f"  ✅ 新 cookie 已保存: {framework_cookie} ({len(cookies)} 条)")
-
-            # 同步到脚本的 config/cookies.json
-            script_cookie = script_config / "cookies.json"
-            script_cookie.write_text(json.dumps(cookies, ensure_ascii=False, indent=2), encoding="utf-8")
-            LOG.info(f"  ✅ 已同步到脚本目录: {script_cookie}")
-
-        finally:
-            await browser.close()
-
-    # 第二次运行（用新 cookie）
-    LOG.info("  🔄 使用新 cookie 重新运行...")
-    result = _run_script()
-
-    if result.returncode == 0:
-        # 同样检查输出中的失败标记
-        output = result.stdout + result.stderr
-        if "❌" in output:
-            if "HTTP 401" in output or "HTTP 403" in output or "HTTP 5" in output:
-                LOG.warning(f"  ⚠️ 脚本退出码为 0，但检测到业务 API 调用失败")
-                LOG.error(f"  ❌ 脚本运行失败（刷新 Token 后业务 API 仍失败）")
-                return False
-        LOG.info("  ✅ 脚本运行成功（Token 已刷新）")
-        return True
-
-    LOG.error(f"  ❌ 脚本运行失败（即使刷新 Token 后仍失败，退出码={result.returncode})")
-    if result.stderr.strip():
-        LOG.error(f"    stderr: {result.stderr[:500]}")
-    return False
-
-
-async def _run_ui_script(ui_script_path: str, headless: bool = True) -> bool:
-    """运行 UI 测试脚本并生成报告。
-
-    Args:
-        ui_script_path: UI 脚本路径
-        headless: 是否使用无头模式
-
-    Returns:
-        True 如果脚本运行成功，False 如果失败
-    """
-    import subprocess
-
-    script = Path(ui_script_path)
-    if not script.exists():
-        LOG.warning(f"  ⚠️ UI 脚本不存在: {script.name}")
-        return False
-
-    script_dir = script.parent
-
-    LOG.info(f"  运行 UI 脚本: {script.name}")
-
-    # 构建命令
-    cmd = [sys.executable, str(script)]
-    if headless:
-        cmd.append("--headless")
-
-    result = subprocess.run(
-        cmd,
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-        cwd=str(script_dir),
-    )
-
-    # 打印脚本输出（关键行）
-    for line in result.stdout.splitlines():
-        if any(k in line for k in ("✅", "❌", "⚠️", "报告", "report", "通过", "失败", "完成")):
-            LOG.info(f"    {line.strip()}")
-
-    if result.returncode == 0:
-        output = result.stdout + result.stderr
-        # 检查是否有失败标记
-        fail_count = output.count("❌")
-        pass_count = output.count("✅")
-
-        if fail_count > 0 and pass_count == 0:
-            LOG.warning(f"  ⚠️ UI 脚本退出码为 0，但检测到 {fail_count} 个失败标记")
-            return False
-
-        LOG.info("  ✅ UI 脚本运行成功")
-        return True
-
-    LOG.warning(f"  ⚠️ UI 脚本运行失败（退出码={result.returncode}）")
-    if result.stderr.strip():
-        LOG.warning(f"    stderr: {result.stderr[:300]}")
-    return False
-
-
-def run_stage5(manifest: dict, project_dir: Path, module_name: str, version: str = ""):
+def run_stage5(manifest: dict, project_dir: Path, module_name: str, version: str = "",
+               group: str = None, group_index: str = None):
     """Stage 5: 导出 Postman Collection / helpers.py / Excel 参数文件。
 
     Args:
@@ -666,6 +500,8 @@ def run_stage5(manifest: dict, project_dir: Path, module_name: str, version: str
         project_dir: 项目目录
         module_name: 模块名称
         version: 版本号
+        group: 一级菜单分组名（如 "访问控制"），用于子目录
+        group_index: 组内编号（如 "01"），用于目录名前缀
     """
     LOG.info("=" * 50)
     LOG.info("Stage 5: 导出 Artifacts (Postman / helpers / Excel)")
@@ -681,9 +517,12 @@ def run_stage5(manifest: dict, project_dir: Path, module_name: str, version: str
         LOG.error(f"无法导入 export_artifacts 模块: {e}")
         return
 
-    # 导出目录 — 输出到 projects/<project>/<version>/export/<module>
+    # 导出目录 — 按 group 分组: export/{group}/{index}_{module}/
     version = version or ver_mod.resolve_version(project_dir)
-    export_dir = project_dir / version / "export" / module_name
+    if group and group_index:
+        export_dir = project_dir / version / "export" / group / f"{group_index}_{module_name}"
+    else:
+        export_dir = project_dir / version / "export" / module_name
     export_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. Postman Collection
@@ -1215,8 +1054,13 @@ async def _run_discover_mode(project_dir: Path, profile: dict, base_url: str, lo
         LOG.info("-" * 70)
 
         # 格式适配：discover 输出 {"label": ...} → run_all_modules 期望 {"name": ...}
+        from core.discovery.discover_navigation import _extract_top_group, sanitize_group_name
         modules_for_pipeline = [
-            {"name": m["label"], "url": m["url"]}
+            {
+                "name": m["label"],
+                "url": m["url"],
+                "group": sanitize_group_name(_extract_top_group(m.get("group", ""))),
+            }
             for m in selected
         ]
 
@@ -1225,10 +1069,8 @@ async def _run_discover_mode(project_dir: Path, profile: dict, base_url: str, lo
             run_stage1=run_stage1,
             run_stage2=run_stage2,
             run_stage34=run_stage34,
-            _run_stage4_verify=_run_stage4_verify,
             run_stage5=run_stage5,
             modules_override=modules_for_pipeline,
-            _run_ui_script=_run_ui_script
         )
 
         await browser.close()
@@ -1492,8 +1334,13 @@ async def _run_discovered_pipeline(page, context, project_dir, profile,
     LOG.info("Phase 1-5: 批量执行")
     LOG.info("-" * 70)
 
+    from core.discovery.discover_navigation import _extract_top_group, sanitize_group_name
     modules_for_pipeline = [
-        {"name": m["label"], "url": m["url"]}
+        {
+            "name": m["label"],
+            "url": m["url"],
+            "group": sanitize_group_name(_extract_top_group(m.get("group", ""))),
+        }
         for m in selected
     ]
 
@@ -1502,10 +1349,8 @@ async def _run_discovered_pipeline(page, context, project_dir, profile,
         run_stage1=run_stage1,
         run_stage2=run_stage2,
         run_stage34=run_stage34,
-        _run_stage4_verify=_run_stage4_verify,
         run_stage5=run_stage5,
-        modules_override=modules_for_pipeline,
-        _run_ui_script=_run_ui_script
+        modules_override=modules_for_pipeline
     )
 
 
@@ -1607,7 +1452,6 @@ async def main():
                 run_stage1=run_stage1,
                 run_stage2=run_stage2,
                 run_stage34=run_stage34,
-                _run_stage4_verify=_run_stage4_verify,
                 run_stage5=run_stage5
             )
 
@@ -1636,26 +1480,30 @@ async def main():
 
     target_url = _normalize_url(args.url, base_url)
 
-    # 离线模式: Stage 3+4 → 运行脚本 → Stage 5（如果脚本成功）
+    # 单模块模式的 group：从 args.group 读取，或从 modules.yaml 查找，默认 "未分类"
+    module_group = args.group or "未分类"
+    if not args.group:
+        from core.discovery.io_helpers import load_modules_yaml as _load_mod_yaml
+        for m in _load_mod_yaml(project_dir):
+            if m.get("name") == args.module:
+                module_group = m.get("group", "未分类")
+                break
+
+    # 离线模式: Stage 3+4 → Stage 5（如果 --export）
     if args.offline:
         result = run_stage34(project_dir, args.module, profile, target_url,
-                    version=args.version or ver_mod.resolve_version(project_dir))
+                    version=args.version or ver_mod.resolve_version(project_dir),
+                    group=module_group, group_index="01")
         if result:
-            flow, script_path, manifest = result
+            flow, script_path, manifest, skip_info = result
+            if skip_info:
+                LOG.warning(f"⏭️ 跳过脚本生成: {skip_info['reason']}")
+                return
 
-            # 运行生成的脚本（如果失败且 Token 过期，自动刷新）
-            script_ok = await _run_stage4_verify(
-                script_path, project_dir, profile, login_url,
-                username=(args.user or ""), password=(args.password or ""),
-                headless=args.headless
-            )
-
-            # 只有脚本成功才执行 Stage 5
-            if script_ok and args.export:
+            # Stage 5 导出（仅当指定 --export 时）
+            if args.export:
                 run_stage5(manifest, project_dir, args.module,
                            version=args.version or ver_mod.resolve_version(project_dir))
-            elif not script_ok:
-                LOG.warning("⚠️ 脚本运行失败，跳过 Stage 5 导出")
         return
 
     # 在线模式: 启动浏览器
@@ -1699,7 +1547,10 @@ async def main():
                     with open(playbook_path, 'r', encoding='utf-8') as f:
                         playbook_data = json.load(f)
                     ver = args.version or ver_mod.resolve_version(project_dir)
-                    ui_script_path = generate_ui_script(playbook_data, args.module, project_dir, version=ver)
+                    ui_script_path = generate_ui_script(
+                        playbook_data, args.module, project_dir, version=ver,
+                        group=module_group, group_index="01"
+                    )
                     LOG.info(f"  UI 脚本已生成: {ui_script_path}")
                 except Exception as e:
                     LOG.warning(f"  UI 脚本生成失败: {e}")
@@ -1734,38 +1585,14 @@ async def main():
                 if not stage2_valid and args.force_gen:
                     LOG.warning("⚠️ --force-gen: 强制生成脚本（Stage 2 验证未通过）")
                 result = run_stage34(project_dir, args.module, profile, target_url,
-                                     version=args.version or ver_mod.resolve_version(project_dir))
+                                     version=args.version or ver_mod.resolve_version(project_dir),
+                                     group=module_group, group_index="01")
                 if result:
-                    _, script_path, manifest = result
-                    LOG.info(f"\n✅ Stage 3+4 完成! 测试脚本: {script_path}")
-
-        # Stage 4.5: 只在 Stage 3+4 生成了脚本后才运行（默认执行，--no-run 跳过）
-        script_ok = False
-        ui_script_ok = False
-        if not args.no_run and script_path:
-            LOG.info("\n" + "=" * 60)
-            LOG.info("Stage 4.5: 自动运行验证 + 生成报告")
-            LOG.info("=" * 60)
-
-            # 4.5.1: 运行 API 脚本
-            if script_path:
-                script_ok = await _run_stage4_verify(
-                    str(script_path), project_dir, profile, login_url,
-                    username=(args.user or ""), password=(args.password or ""),
-                    headless=args.headless
-                )
-                if not script_ok:
-                    LOG.warning("⚠️ API 脚本运行失败，但仍继续后续阶段")
-
-            # 4.5.2: 运行 UI 脚本
-            version = args.version or ver_mod.resolve_version(project_dir)
-            ui_script_path = project_dir / version / "ui" / f"{args.module}.py"
-            if ui_script_path.exists():
-                ui_script_ok = await _run_ui_script(str(ui_script_path), headless=args.headless)
-                if not ui_script_ok:
-                    LOG.warning("⚠️ UI 脚本运行失败，但仍继续后续阶段")
-            else:
-                LOG.info(f"  ⏭️  UI 脚本不存在: {ui_script_path.name}")
+                    _, script_path, manifest, skip_info = result
+                    if skip_info:
+                        LOG.warning(f"⏭️ 跳过脚本生成: {skip_info['reason']}")
+                    elif script_path:
+                        LOG.info(f"\n✅ Stage 3+4 完成! 测试脚本: {script_path}")
 
         # Stage 5（导出 artifacts）- 默认执行
         if manifest is None:

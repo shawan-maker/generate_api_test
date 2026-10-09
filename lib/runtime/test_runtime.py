@@ -1049,9 +1049,12 @@ class StepExecutor:
 class TestRunner:
     """编排完整测试流程。"""
 
-    def __init__(self, manifest: dict, shared_context: dict = None):
+    def __init__(self, manifest: dict, shared_context: dict = None,
+                 group: str = None, group_index: str = None):
         self.manifest = manifest
         self.module_name = manifest.get("module", {}).get("name", "模块")
+        self.group = group
+        self.group_index = group_index
         self.base_url = manifest.get("module", {}).get("base_url", "")
         self.parser = ResponseParser(manifest.get("response_contract", {}))
         self.state = {}
@@ -1504,7 +1507,10 @@ class TestRunner:
             from lib.test_report import parse_jsonl_log, generate_postman_report
             api_calls, events = parse_jsonl_log(self.log_file)
             if api_calls:
-                report_path = generate_postman_report(api_calls, events, self.module_name)
+                report_path = generate_postman_report(
+                    api_calls, events, self.module_name,
+                    group=self.group, group_index=self.group_index
+                )
                 print(f"  📊 报告已生成: {report_path}")
         except Exception as e:
             print(f"  ⚠️ 报告生成失败: {e}")

@@ -4,10 +4,16 @@
 运行 API 自动化发现主管线（Stage 1-5）。
 
 ## 阶段说明
+
+### 发现流程（run.py）
 - **Stage 1**：UI 元素探测（discover_ui）— 需要浏览器
 - **Stage 2**：API 捕获（capture_apis）+ UI 脚本生成 — 需要浏览器
 - **Stage 3+4**：流程分析 + 测试脚本生成（analyze_flow + gen_test）— 离线可运行
+
+### 执行测试（run_parallel.py）
+- **运行脚本**：批量执行 API/UI 测试脚本（支持并行）
 - **Stage 5**：导出 Postman Collection / helpers.py / Excel 参数文件 — 离线可运行
+- **报告生成**：自动生成汇总报告（API/UI 各一份）
 
 ## 典型工作流
 
@@ -40,15 +46,30 @@ python -m core.discovery.run --project <项目名> --all-modules --force --headl
 
 ### 运行生成的测试
 ```bash
-# 并行运行所有已生成的测试脚本
+# 并行运行所有已生成的 API 测试脚本（默认）
 python -m core.discovery.run_parallel --project <项目名>
+
+# 并行运行所有已生成的 UI 测试脚本
+python -m core.discovery.run_parallel --project <项目名> --type ui
 
 # 指定版本和并发数
 python -m core.discovery.run_parallel --project <项目名> --version v1.0.0 --parallel 6
 
 # 只运行指定模块
 python -m core.discovery.run_parallel --project <项目名> --module "用户管理"
+
+# 无头模式运行（不打开浏览器）
+python -m core.discovery.run_parallel --project <项目名> --type ui --headless
+
+# 运行测试并导出 artifacts
+python -m core.discovery.run_parallel --project <项目名> --type api --export
 ```
+
+**说明：**
+- 默认运行 API 测试，使用 `--type ui` 切换为 UI 测试
+- 默认打开浏览器，使用 `--headless` 切换为无头模式
+- 运行完成后自动生成汇总报告（API/UI 各一份）
+- 汇总报告包含所有模块，按 group → module 两级结构组织
 
 ## 常用命令
 
@@ -97,6 +118,8 @@ python -m core.discovery.run --project <项目名> --discover-select "all" --hea
 
 ## 参数说明
 
+### run.py（发现流程）
+
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | --project | ✅ | 项目 ID（projects/ 下的目录名） |
@@ -123,6 +146,19 @@ python -m core.discovery.run --project <项目名> --discover-select "all" --hea
 | --output-format | 否 | 输出格式：text/json（默认 text） |
 | --no-run | 否 | 跳过脚本生成后的自动运行验证 |
 
+### run_parallel.py（执行测试）
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| --project | ✅ | 项目 ID（projects/ 下的目录名） |
+| --type | 否 | 脚本类型：api（默认）或 ui |
+| --parallel | 否 | 并发数（默认 1，顺序执行） |
+| --module | 否 | 只运行指定模块（模糊匹配文件名） |
+| --version | 否 | 脚本版本号（默认 v1.0.0） |
+| --headless | 否 | 无头模式（默认打开浏览器） |
+| --export | 否 | 运行完成后执行 Stage 5 导出 artifacts |
+| --scripts-dir | 否 | 自定义脚本目录（默认 projects/<project>/v1.0.0/） |
+
 ## ⚠️ AI 行为约束（必须遵守）
 
 1. 执行 `--discover-only` 后，**必须**将模块列表展示给用户
@@ -130,9 +166,36 @@ python -m core.discovery.run --project <项目名> --discover-select "all" --hea
 3. **禁止**自动拼接 `--all-modules` 或 `--discover-select "all"`
 4. 用户明确说"全部重新扫描"/"重新扫描所有模块"时，可使用 `--all-modules --force`
 
+## 报告生成
+
+### 汇总报告
+- **API 汇总报告**：包含所有模块的 API 测试结果，按 group → module 两级结构组织
+- **UI 汇总报告**：包含所有模块的 UI 测试结果，按 group → module 两级结构组织
+- **报告位置**：`projects/<项目名>/v1.0.0/reports/_summary/`
+- **生成时机**：`run_parallel.py` 运行完成后自动生成
+
+### 单模块报告
+- 每个模块脚本运行时也会生成独立报告
+- **API 报告位置**：`workspace/<项目名>/output/logs/{module}_API测试.jsonl`
+- **UI 报告位置**：`projects/<项目名>/v1.0.0/ui/reports/{module}/`
+
+### 调试单个模块
+用户可以直接运行单个模块脚本进行调试：
+```bash
+# 运行单个 API 测试脚本
+python projects/<项目名>/v1.0.0/api/{group}/{index}_{module}_API测试.py
+
+# 运行单个 UI 测试脚本（打开浏览器）
+python projects/<项目名>/v1.0.0/ui/{group}/{index}_{module}.py
+
+# 运行单个 UI 测试脚本（无头模式）
+python projects/<项目名>/v1.0.0/ui/{group}/{index}_{module}.py --headless
+```
+
 ## 注意事项
 
-- Stage 5 可独立运行，无需浏览器，直接从磁盘加载 manifest 导出
-- `--stage all` 会执行全部阶段（含 Stage 5 导出）
+- `run.py` 负责发现流程（Stage 1-4），生成测试脚本
+- `run_parallel.py` 负责执行测试（运行脚本 + 生成报告 + 可选 Stage 5 导出）
 - 增量发现：7 天内已发现的模块自动跳过（除非 --force）
 - 生成的脚本包在 `projects/<项目名>/v1.0.0/` 下，可拷贝独立运行
+- 运行脚本时会自动检测并刷新过期的 cookie（如果配置了登录凭据）

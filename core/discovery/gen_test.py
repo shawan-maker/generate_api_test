@@ -12,20 +12,24 @@ from pathlib import Path
 LOG = logging.getLogger("gen_test")
 
 
-def generate_script(manifest: dict, module_name: str) -> str:
+def generate_script(manifest: dict, module_name: str,
+                    group: str = None, group_index: str = None) -> str:
     """生成 manifest 驱动的薄脚本。
 
     Args:
         manifest: 完整的测试清单 dict（由 analyze_flow.build_manifest 生成）
         module_name: 模块名称
+        group: 一级菜单分组名（如 "访问控制"），用于脚本元数据和报告路径
+        group_index: 组内编号（如 "01"）
 
     Returns:
         Python 脚本字符串
     """
-    return generate_manifest_script(manifest, module_name)
+    return generate_manifest_script(manifest, module_name, group=group, group_index=group_index)
 
 
-def generate_manifest_script(manifest: dict, module_name: str) -> str:
+def generate_manifest_script(manifest: dict, module_name: str,
+                             group: str = None, group_index: str = None) -> str:
     """生成嵌入 manifest 的薄脚本（泛化架构）。
 
     新架构下生成的脚本只有 ~50 行：manifest JSON + import runtime + main()。
@@ -34,6 +38,8 @@ def generate_manifest_script(manifest: dict, module_name: str) -> str:
     Args:
         manifest: 完整的测试清单 dict（由 analyze_flow.build_manifest 生成）
         module_name: 模块名称
+        group: 一级菜单分组名
+        group_index: 组内编号
 
     Returns:
         Python 脚本字符串
@@ -59,13 +65,13 @@ def generate_manifest_script(manifest: dict, module_name: str) -> str:
     L.append('"""')
     L.append('')
 
-    # 导入：bootstrap 找到同目录的 lib/
+    # 导入：bootstrap 找到 api/lib/（脚本在 api/{group}/ 下，需回溯一层）
     L.append('import sys, json')
     L.append('from pathlib import Path')
     L.append('')
-    L.append('# 找到同目录的 lib/（脚本独立运行时使用）')
-    L.append('_lib = Path(__file__).resolve().parent / "lib"')
-    L.append('sys.path.insert(0, str(_lib.parent))')
+    L.append('# 找到 api/lib/（脚本在 api/{group}/ 子目录下）')
+    L.append('_api_dir = Path(__file__).resolve().parent.parent')
+    L.append('sys.path.insert(0, str(_api_dir))')
     L.append('from lib.runtime.test_runtime import TestRunner')
     L.append('')
 
@@ -87,6 +93,8 @@ def generate_manifest_script(manifest: dict, module_name: str) -> str:
     # 全局前置 API 支持
     L.append('# --- 全局前置 API 支持 ---')
     L.append('_shared_ctx_file = Path(__file__).resolve().parent / ".shared_context.json"')
+    L.append('if not _shared_ctx_file.exists():')
+    L.append('    _shared_ctx_file = Path(__file__).resolve().parent.parent / ".shared_context.json"')
     L.append('SHARED_CONTEXT = {}')
     L.append('if _shared_ctx_file.exists():')
     L.append('    try:')
@@ -103,15 +111,20 @@ def generate_manifest_script(manifest: dict, module_name: str) -> str:
     L.append('    import io')
     L.append("    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')")
     L.append("    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')")
-    L.append('    runner = TestRunner(MANIFEST, shared_context=SHARED_CONTEXT)')
+    # 传递 group 信息给 TestRunner
+    group_repr = repr(group) if group else "None"
+    index_repr = repr(group_index) if group_index else "None"
+    L.append(f'    runner = TestRunner(MANIFEST, shared_context=SHARED_CONTEXT, group={group_repr}, group_index={index_repr})')
     L.append('    steps = sys.argv[1:] if len(sys.argv) > 1 else None')
     L.append('    runner.run(steps_filter=steps)')
 
     return '\n'.join(L)
 
 
-def save_script_to_file(script: str, project_dir: str, module_name: str, version: str = "", manifest: dict = None):
-    """将生成的脚本保存到文件。version 非空时写入 <version>/api/。
+def save_script_to_file(script: str, project_dir: str, module_name: str,
+                        version: str = "", manifest: dict = None,
+                        group: str = None, group_index: str = None):
+    """将生成的脚本保存到文件。
 
     Args:
         script: 生成的脚本字符串
@@ -119,24 +132,34 @@ def save_script_to_file(script: str, project_dir: str, module_name: str, version
         module_name: 模块名称
         version: 版本号（可选）
         manifest: 完整的 manifest dict（用于生成 helpers.py）
+        group: 一级菜单分组名（如 "访问控制"），用于子目录
+        group_index: 组内编号（如 "01"），用于文件名前缀
     """
     from . import version as _ver
+    project_dir = Path(project_dir)
     if version:
-        scripts_dir = _ver.scripts_dir_for(project_dir, version) / "api"
+        api_dir = _ver.scripts_dir_for(project_dir, version) / "api"
     else:
-        scripts_dir = Path(project_dir) / "v1.0.0" / "api"
-        scripts_dir.mkdir(parents=True, exist_ok=True)
+        api_dir = project_dir / "v1.0.0" / "api"
+        api_dir.mkdir(parents=True, exist_ok=True)
 
-    # 同步运行时 lib/ 到 api/lib/
-    _sync_runtime_lib(scripts_dir)
+    # 同步运行时 lib/ 到 api/lib/（始终在 api/ 顶层）
+    _sync_runtime_lib(api_dir)
 
-    output_path = scripts_dir / f"{module_name}_API测试.py"
+    # 确定输出路径：有 group 时放入子目录
+    if group and group_index:
+        group_dir = api_dir / group
+        group_dir.mkdir(parents=True, exist_ok=True)
+        output_path = group_dir / f"{group_index}_{module_name}_API测试.py"
+    else:
+        output_path = api_dir / f"{module_name}_API测试.py"
+
     output_path.write_text(script, encoding="utf-8")
     LOG.info(f"  脚本已生成: {output_path}")
 
-    # 生成 helpers.py（测试数据生成函数集）
+    # 生成 helpers.py（共享，始终在 api/ 顶层）
     if manifest:
-        _generate_helpers(manifest, scripts_dir, module_name)
+        _generate_helpers(manifest, api_dir, module_name)
 
     return str(output_path)
 

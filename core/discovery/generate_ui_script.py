@@ -19,7 +19,9 @@ from datetime import datetime
 LOG = logging.getLogger("generate_ui_script")
 
 
-def generate_ui_script(playbook: dict, module_name: str, project_dir: Path, version: str = "v1.0.0") -> Path:
+def generate_ui_script(playbook: dict, module_name: str, project_dir: Path,
+                       version: str = "v1.0.0",
+                       group: str = None, group_index: str = None) -> Path:
     """生成 UI 自动化脚本包
 
     Args:
@@ -27,20 +29,33 @@ def generate_ui_script(playbook: dict, module_name: str, project_dir: Path, vers
         module_name: 模块名称
         project_dir: 项目目录
         version: 版本号
+        group: 一级菜单分组名（如 "访问控制"），用于子目录
+        group_index: 组内编号（如 "01"），用于文件名前缀
 
     Returns:
         script_path
     """
-    # 1. 确定输出目录
+    project_dir = Path(project_dir)
+
+    # 1. 确定输出目录（lib/ 始终在 ui/ 顶层共享）
     ui_dir = project_dir / version / "ui"
     ui_dir.mkdir(parents=True, exist_ok=True)
 
-    # 2. 同步运行时 lib/
+    # 2. 同步运行时 lib/（共享，在 ui/ 顶层）
     _sync_ui_runtime_lib(ui_dir, project_dir)
 
     # 3. 生成薄主脚本（playbook 内嵌到脚本中，不生成独立 JSON 文件）
-    script_content = _render_script(playbook, module_name, version)
-    script_path = ui_dir / f"{module_name}.py"
+    # 告知模板是否在 group 子目录下（影响 bootstrap 路径）
+    in_group = bool(group and group_index)
+    script_content = _render_script(playbook, module_name, version, in_group=in_group)
+
+    if group and group_index:
+        group_dir = ui_dir / group
+        group_dir.mkdir(parents=True, exist_ok=True)
+        script_path = group_dir / f"{group_index}_{module_name}.py"
+    else:
+        script_path = ui_dir / f"{module_name}.py"
+
     script_path.write_text(script_content, encoding="utf-8")
     LOG.info(f"UI 脚本已生成: {script_path}")
 
@@ -230,7 +245,7 @@ def _sync_ui_runtime_lib(ui_dir: Path, project_dir: Path):
     LOG.info(f"  UI 运行时同步完成: {len(synced)} 个文件")
 
 
-def _render_script(playbook: dict, module_name: str, version: str) -> str:
+def _render_script(playbook: dict, module_name: str, version: str, in_group: bool = False) -> str:
     """渲染薄主脚本（playbook 内嵌到脚本中）"""
     meta = playbook.get("meta", {})
     target_url = meta.get("target_url", "")
@@ -269,6 +284,10 @@ def _render_script(playbook: dict, module_name: str, version: str) -> str:
     # repr() 产出带引号的字符串（含转义），直接作为 Python 赋值右侧使用
     playbook_json_str = repr(json.dumps(playbook, ensure_ascii=False))
 
+    # Bootstrap 路径：group 子目录下需要多回溯一层（parent.parent → ui/）
+    _lib_parent = "parent.parent" if in_group else "parent"
+    _config_parent = "parent.parent" if in_group else "parent"
+
     return f'''#!/usr/bin/env python3
 """
 {module_name} - UI 自动化测试脚本
@@ -300,7 +319,7 @@ from playwright.async_api import async_playwright
 
 # ==================== Bootstrap ====================
 
-_lib = Path(__file__).resolve().parent / "lib"
+_lib = Path(__file__).resolve().{_lib_parent} / "lib"
 sys.path.insert(0, str(_lib.parent))
 
 from lib.replay_engine import replay_from_playbook
@@ -337,7 +356,7 @@ async def require_cookie_auth(context, page):
     from lib.cookie_client import require_auth_for_ui, apply_auth_to_playwright
 
     cookies, token = await require_auth_for_ui(
-        config_dir=Path(__file__).parent / "config",
+        config_dir=Path(__file__).resolve().{_config_parent} / "config",
         auth_config=full_auth_cfg,
     )
 

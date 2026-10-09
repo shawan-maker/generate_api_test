@@ -1,6 +1,17 @@
-"""UI 测试报告生成模块"""
+"""UI 测试报告生成模块
+
+功能：
+  - generate_ui_report(): 生成单模块 UI 测试 HTML 报告（自包含，可直接分享）
+  - write_ui_jsonl_log(): 写 JSONL 结构化日志（供汇总报告读取，与 API JSONL 对齐）
+"""
 import base64
+import json
+import logging
+import os
 from datetime import datetime
+from pathlib import Path
+
+LOG = logging.getLogger("ui_report")
 
 
 def _to_base64_str(data):
@@ -14,6 +25,144 @@ def _to_base64_str(data):
         return base64.b64encode(bytes(data)).decode("ascii")
     # 已经是字符串
     return str(data)
+
+
+def _resolve_ui_log_dir(module_name: str) -> Path:
+    """计算 UI JSONL 日志目录: workspace/{project}/output/ui_logs/
+
+    与 generate_ui_report() 的 report_dir 计算逻辑对齐。
+    """
+    self_path = Path(__file__).resolve()
+    parent_dir = self_path.parent.parent  # ui/ 或 report/
+    if parent_dir.name == "ui":
+        # 生成脚本场景：ui/lib/ui_report.py → 向上找到项目目录 → workspace
+        # ui/lib/ → ui/ → {version}/ → {project}/
+        project_dir = parent_dir.parent.parent
+        framework_root = project_dir.parent.parent  # API_AI_test/
+        project_name = project_dir.name
+    else:
+        # 框架内场景：lib/report/ui_report.py
+        framework_root = self_path.parent.parent.parent  # API_AI_test/
+        project_name = os.environ.get("PROJECT_NAME")
+        if not project_name:
+            cwd = Path.cwd()
+            if "projects" in cwd.parts:
+                idx = cwd.parts.index("projects")
+                if idx + 1 < len(cwd.parts):
+                    project_name = cwd.parts[idx + 1]
+            if not project_name:
+                project_name = "_default"
+    return framework_root / "workspace" / project_name / "output" / "ui_logs"
+
+
+def _save_screenshot(data, module_name: str, seq: int, ui_log_dir: Path) -> str:
+    """保存截图为 PNG 文件，返回相对于 ui_logs 的路径。
+
+    Args:
+        data: 截图数据（bytes / base64 str / None）
+        module_name: 模块名
+        seq: 序号
+        ui_log_dir: UI 日志目录
+
+    Returns:
+        相对路径如 "screenshots/用户管理_1.png"，无数据时返回 ""
+    """
+    if not data:
+        return ""
+
+    screenshot_dir = ui_log_dir / "screenshots"
+    screenshot_dir.mkdir(parents=True, exist_ok=True)
+
+    # 转为 bytes
+    if isinstance(data, str):
+        try:
+            png_bytes = base64.b64decode(data)
+        except Exception:
+            return ""
+    elif isinstance(data, (bytes, bytearray)):
+        png_bytes = bytes(data)
+    else:
+        return ""
+
+    filename = f"{module_name}_{seq}.png"
+    filepath = screenshot_dir / filename
+    filepath.write_bytes(png_bytes)
+    return f"screenshots/{filename}"
+
+
+def write_ui_jsonl_log(results: list, module_name: str) -> str:
+    """将 UI 测试结果写入 JSONL 文件（与 API JSONL 日志对齐）。
+
+    每条记录:
+    {
+        "type": "ui_operation",
+        "seq": 1,
+        "operation": "create",
+        "display_name": "创建用户",
+        "status": "passed",
+        "duration": 3.2,
+        "screenshot": "screenshots/用户管理_1.png",
+        "steps": [...],
+        "error": "",
+        "failure_type": "",
+        "failure_reason": "",
+        "expected_status": "",
+        "note": ""
+    }
+
+    Args:
+        results: UI 测试结果列表
+        module_name: 模块名称
+
+    Returns:
+        JSONL 文件路径
+    """
+    ui_log_dir = _resolve_ui_log_dir(module_name)
+    ui_log_dir.mkdir(parents=True, exist_ok=True)
+
+    log_file = ui_log_dir / f"{module_name}_UI测试.jsonl"
+
+    # 每次写入时清空旧文件（与 API JSONL 一致）
+    log_file.write_text("", encoding="utf-8")
+
+    entries = []
+    for seq, r in enumerate(results, 1):
+        screenshot_path = _save_screenshot(r.get("screenshot"), module_name, seq, ui_log_dir)
+
+        # 清理 steps 中的不可序列化数据
+        steps = r.get("steps", [])
+        clean_steps = []
+        for s in (steps or []):
+            clean_steps.append({
+                "action": s.get("action", ""),
+                "status": s.get("status", ""),
+                "locator": s.get("locator", ""),
+                "description": s.get("description", ""),
+                "fields": s.get("fields", []),
+            })
+
+        entry = {
+            "type": "ui_operation",
+            "seq": seq,
+            "operation": r.get("operation", ""),
+            "display_name": r.get("display_name", ""),
+            "status": r.get("status", "unknown"),
+            "duration": round(r.get("duration", 0), 2),
+            "screenshot": screenshot_path,
+            "steps": clean_steps,
+            "error": r.get("error", ""),
+            "failure_type": r.get("failure_type", ""),
+            "failure_reason": r.get("failure_reason", ""),
+            "expected_status": r.get("expected_status", ""),
+            "note": r.get("note", ""),
+        }
+        entries.append(json.dumps(entry, ensure_ascii=False, default=str))
+
+    with open(log_file, "w", encoding="utf-8") as f:
+        f.write("\n".join(entries) + "\n")
+
+    LOG.info(f"  📝 UI JSONL 日志已写入: {log_file} ({len(entries)} 条)")
+    return str(log_file)
 
 
 def generate_ui_report(results, module_name):
@@ -313,5 +462,11 @@ document.addEventListener('keydown', function(e) {{
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     report_file = report_dir / f"{module_name}_ui_report_{ts}.html"
     report_file.write_text(html, encoding="utf-8")
+
+    # 写 JSONL 日志（side effect，供汇总报告读取，不影响 HTML 报告）
+    try:
+        write_ui_jsonl_log(results, module_name)
+    except Exception as e:
+        LOG.warning(f"  ⚠️ UI JSONL 日志写入失败: {e}")
 
     return str(report_file)

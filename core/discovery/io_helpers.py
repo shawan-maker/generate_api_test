@@ -128,7 +128,10 @@ def save_json(data: dict, path: Path):
 
 
 def load_modules_yaml(project_dir: Path) -> list:
-    """加载 modules.yaml 模块清单。返回模块列表，按 priority 排序。"""
+    """加载 modules.yaml 模块清单。返回模块列表，按 priority 排序。
+
+    每个模块保证包含 group 字段（兼容旧格式：从 tags 提取或默认 "未分类"）。
+    """
     modules_file = project_dir / "modules.yaml"
     if not modules_file.exists():
         LOG.error(f"模块清单不存在: {modules_file}")
@@ -144,6 +147,17 @@ def load_modules_yaml(project_dir: Path) -> list:
 
         # 过滤 enabled=false 的模块
         modules = [m for m in modules if m.get("enabled", True)]
+
+        # 确保每个模块有 group 字段（兼容旧格式）
+        for m in modules:
+            if "group" not in m or not m["group"]:
+                # 从 tags 中提取一级菜单，或默认 "未分类"
+                tags = m.get("tags", [])
+                if tags and isinstance(tags[0], str):
+                    raw = tags[0]
+                    m["group"] = raw.split(" > ")[0].strip() if raw else "未分类"
+                else:
+                    m["group"] = "未分类"
 
         # 按 priority 排序（默认 100）
         modules.sort(key=lambda m: m.get("priority", 100))

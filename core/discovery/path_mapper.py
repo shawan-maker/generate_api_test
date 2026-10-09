@@ -34,6 +34,9 @@ def ensure_workspace(workspace_dir: Path):
         "exports",
         "output/config",
         "output/debug",
+        "output/logs",
+        "output/ui_logs",
+        "output/ui_logs/screenshots",
         "reports/api",
         "reports/ui",
     ]:

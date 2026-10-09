@@ -80,10 +80,36 @@ def run_script_and_capture(script_path: str) -> tuple:
         script_path: 测试脚本路径
 
     Returns:
-        (log_file_path, module_name) 元组
+        (log_file_path, module_name, group, group_index) 元组
+        group 和 group_index 可能为 None（脚本不在 group 子目录时）
     """
     script_path = Path(script_path)
-    module_name = script_path.stem.replace("_API测试", "")
+
+    # 解析模块名和 group 信息
+    # 新格式：api/{group}/{index}_{module}_API测试.py
+    # 旧格式：api/{module}_API测试.py
+    stem = script_path.stem  # e.g. "01_用户管理_API测试" 或 "用户管理_API测试"
+    script_dir = script_path.parent
+
+    group = None
+    group_index = None
+
+    # 检测是否在 group 子目录中（parent.name 应该是 "api"）
+    if script_dir.parent.name == "api":
+        # 在 group 子目录中
+        group = script_dir.name
+        # 从文件名提取 index：匹配 "^\d{2}_" 前缀
+        import re
+        idx_match = re.match(r'^(\d{2})_(.+)_API测试$', stem)
+        if idx_match:
+            group_index = idx_match.group(1)
+            module_name = idx_match.group(2)
+        else:
+            # 无编号前缀，直接用整个 stem
+            module_name = stem.replace("_API测试", "")
+    else:
+        # 旧格式，直接在 api/ 下
+        module_name = stem.replace("_API测试", "")
 
     # 运行脚本
     result = subprocess.run(
@@ -94,10 +120,15 @@ def run_script_and_capture(script_path: str) -> tuple:
     )
 
     # 日志文件路径：workspace/<project>/output/logs/（与 test_runtime.py 的 _log_dir 对齐）
-    # script_path: projects/<project>/<version>/api/{module}_API测试.py
+    # script_path: projects/<project>/<version>/api/{group}/{index}_{module}_API测试.py
     # log: workspace/<project>/output/logs/{module}_API测试.jsonl
-    api_dir = script_path.parent  # api/
-    project_name = api_dir.parent.parent.name  # ecm-compute/
+    # 向上找 api/ 目录
+    api_dir = script_dir
+    while api_dir.name != "api" and api_dir.parent != api_dir:
+        api_dir = api_dir.parent
+
+    # api/ -> version -> project_name
+    project_name = api_dir.parent.parent.name
     # 向上找 projects/ 目录，其 parent 是框架根
     framework_root = None
     for p in api_dir.parents:
@@ -109,23 +140,31 @@ def run_script_and_capture(script_path: str) -> tuple:
     log_dir = framework_root / "workspace" / project_name / "output" / "logs"
     log_file = log_dir / f"{module_name}_API测试.jsonl"
 
-    return str(log_file), module_name
+    return str(log_file), module_name, group, group_index
 
 
-def generate_postman_report(api_calls: list, events: list, module_name: str) -> str:
+def generate_postman_report(api_calls: list, events: list, module_name: str,
+                            group: str = None, group_index: str = None) -> str:
     """生成 Postman/Newman 风格 HTML 报告。
 
     Args:
         api_calls: API 调用记录列表
         events: 事件记录列表
         module_name: 模块名称
+        group: 一级菜单分组名（如 "访问控制"），用于子目录
+        group_index: 组内编号（如 "01"），用于目录名前缀
 
     Returns:
         报告文件路径
     """
     report_root = _get_report_root()
     report_root.mkdir(parents=True, exist_ok=True)
-    report_dir = report_root / module_name
+
+    # 按 group 分组: reports/{group}/{index}_{module}/
+    if group and group_index:
+        report_dir = report_root / group / f"{group_index}_{module_name}"
+    else:
+        report_dir = report_root / module_name
     report_dir.mkdir(parents=True, exist_ok=True)
 
     # 统计
@@ -341,13 +380,13 @@ def main():
 
     if len(sys.argv) < 2:
         print("用法: python test_report.py <script_path>")
-        print("示例: python test_report.py projects/ecm-compute/scripts/v1.0.0/api/角色管理_API测试.py")
+        print("示例: python test_report.py projects/estack/v1.0.0/api/访问控制/01_角色管理_API测试.py")
         sys.exit(1)
 
     script_path = sys.argv[1]
 
     # 运行脚本并获取日志路径
-    log_file, module_name = run_script_and_capture(script_path)
+    log_file, module_name, group, group_index = run_script_and_capture(script_path)
 
     # 解析日志
     api_calls, events = parse_jsonl_log(log_file)
@@ -357,10 +396,13 @@ def main():
         sys.exit(1)
 
     # 生成报告
-    report_file = generate_postman_report(api_calls, events, module_name)
+    report_file = generate_postman_report(api_calls, events, module_name,
+                                          group=group, group_index=group_index)
 
     print(f"✅ 报告已生成: {report_file}")
     print(f"   模块: {module_name}")
+    if group:
+        print(f"   分组: {group} ({group_index})")
     print(f"   API 调用数: {len(api_calls)}")
 
 

@@ -1,8 +1,8 @@
 """
-run_parallel.py — 分模块并行执行生成的 API 测试脚本（复用 EcsCloud run_all24_parallel.js 思路）。
+run_parallel.py — 分模块并行执行生成的 API/UI 测试脚本（复用 EcsCloud run_all24_parallel.js 思路）。
 
 设计（与 EcsCloud 对齐）：
-  * 按 scripts/<version>/api/ 下「每个模块一个脚本」作为最小执行单元（模块级并行，组内即单脚本）。
+  * 按 scripts/<version>/{api|ui}/ 下「每个模块一个脚本」作为最小执行单元（模块级并行，组内即单脚本）。
   * 主进程先确保 cookie 有效（失效则单线程滑块登录一次），再 fan-out 给 Worker 子进程。
   * 每个 Worker 是独立子进程，并发数受 --parallel 控制；Worker 设 AUTO_LOGIN=0（只读 cookie，
     避免多进程并发抢登覆盖同一份 cookies.json）。
@@ -19,6 +19,8 @@ run_parallel.py — 分模块并行执行生成的 API 测试脚本（复用 Ecs
   python -m module_discovery.run_parallel --project ecm-compute
   python -m module_discovery.run_parallel --project ecm-compute --version v2.1.0 --parallel 6
   python -m module_discovery.run_parallel --project ecm-compute --module 用户管理
+  python -m module_discovery.run_parallel --project ecm-compute --type ui --parallel 3
+  python -m module_discovery.run_parallel --project ecm-compute --type api --export
 """
 import os
 import sys
@@ -27,7 +29,6 @@ import time
 import asyncio
 import argparse
 import shutil
-import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -36,120 +37,30 @@ sys.path.insert(0, str(ROOT))
 from core.discovery import version as ver_mod
 from core.discovery.io_helpers import load_profile as _load_profile
 from core.discovery.path_mapper import get_workspace_dir
+from core.discovery.shared_runner import (
+    scan_scripts,
+    ensure_cookie_valid,
+    refresh_cookies,
+    run_one,
+    generate_summary_report,
+)
 from lib.utils import safe_write, generate_session_id
 
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "5"))
-MAX_RETRIES = int(os.environ.get("MAX_RETRIES", "2"))
 COOKIE_REFRESH_INTERVAL = int(os.environ.get("COOKIE_REFRESH_INTERVAL", "1800"))  # 30分钟
 
 
 def parse_args():
-    ap = argparse.ArgumentParser(description="分模块顺序执行 API 测试脚本")
+    ap = argparse.ArgumentParser(description="分模块并行执行 API/UI 测试脚本")
     ap.add_argument("--project", required=True, help="项目 ID (projects/<id>/)")
     ap.add_argument("--version", default=None, help="脚本版本（默认读 .api_version）")
     ap.add_argument("--parallel", type=int, default=1, help="并发 Worker 数（默认 1，顺序执行）")
     ap.add_argument("--module", default=None, help="只运行指定模块（模糊匹配文件名）")
     ap.add_argument("--scripts-dir", default=None, help="覆盖 scripts 目录（绝对/相对）")
+    ap.add_argument("--type", choices=["api", "ui"], default="api", help="脚本类型：api 或 ui（默认 api）")
+    ap.add_argument("--headless", action="store_true", default=False, help="无头模式运行（默认打开浏览器）")
+    ap.add_argument("--export", action="store_true", default=False, help="执行 Stage 5 导出 artifacts")
     return ap.parse_args()
-
-
-
-def ensure_cookie_valid(project_dir: Path, workspace_dir: Path, base_url: str, login_url: str) -> bool:
-    """主进程先确保 cookie 有效（失效则单线程登录一次）。返回是否可用。"""
-    from lib.auth import AuthSession
-    creds = _load_profile(project_dir).get("credentials", {}) or {}
-    username = creds.get("username") or os.environ.get(creds.get("username_env", ""), "")
-    password = creds.get("password") or os.environ.get(creds.get("password_env", ""), "")
-    profile = {
-        "base_url": base_url,
-        "login_url": login_url,
-        "auth": {"header_name": "Authorization", "header_prefix": "Bearer ",
-                 "freshness_ttl_seconds": 300, "fixed_headers": {"Estack-Language": "zh-CN"}},
-        "captcha": {"auth_button_text": "点击完成认证", "login_button_text": "登录"},
-        "credentials": {},
-        "probe_url": "/estack/api/estack/draco/v1/users/current-user",
-    }
-    sess = AuthSession(profile, username, password)
-    ctx_dir = workspace_dir / "output" / "config"
-    ctx_dir.mkdir(parents=True, exist_ok=True)
-    sess.context_path = str(ctx_dir / "context.json")
-    client = sess.ensure_client(base_url)
-    if client is not None:
-        try:
-            client.close()
-        except Exception:
-            pass
-        return True
-    return False
-
-
-async def refresh_cookies(project_dir: Path, workspace_dir: Path, base_url: str, login_url: str) -> bool:
-    """刷新 cookies：检测过期后调用 auth_runner 重新登录。
-
-    使用非 headless 模式启动浏览器滑块登录，刷新后保存新 cookie。
-
-    Returns:
-        True 如果刷新成功
-    """
-    from core.discovery.io_helpers import load_profile as _load_profile
-    from core.discovery.auth_runner import login_with_playwright
-
-    profile = _load_profile(project_dir)
-    creds = profile.get("credentials", {}) or {}
-    username = creds.get("username") or os.environ.get(creds.get("username_env", ""), "")
-    password = creds.get("password") or os.environ.get(creds.get("password_env", ""), "")
-
-    if not username or not password:
-        print("  ❌ 无法刷新 cookie: 缺少登录凭据")
-        return False
-
-    try:
-        from playwright.async_api import async_playwright
-        from lib.browser_launcher import launch_browser
-
-        async with async_playwright() as pw:
-            browser, context, page = await launch_browser(pw, headless=False)
-
-            try:
-                ok = await login_with_playwright(page, context, login_url, username, password,
-                                                 project_profile=profile)
-                if not ok:
-                    print("  ❌ 滑块登录失败")
-                    return False
-
-                # 保存新 cookie
-                cookies = await context.cookies()
-                cookie_file = workspace_dir / "output" / "config" / "cookies.json"
-                cookie_file.parent.mkdir(parents=True, exist_ok=True)
-                cookie_file.write_text(json.dumps(cookies, ensure_ascii=False, indent=2), encoding="utf-8")
-                print(f"  ✅ 新 cookie 已保存: {cookie_file} ({len(cookies)} 条)")
-                return True
-            finally:
-                await browser.close()
-    except Exception as e:
-        print(f"  ⚠️ cookie 刷新异常: {e}")
-        return False
-
-
-def scan_scripts(scripts_dir: Path, module_filter: str = None) -> list:
-    scripts = sorted(scripts_dir.glob("*_API测试.py"))
-    out = []
-    for s in scripts:
-        name = s.stem.replace("_API测试", "")
-        if module_filter and module_filter not in name:
-            continue
-        out.append((name, s))
-    return out
-
-
-def write_result(runs_dir: Path, session_id: str, module_name: str, result: dict):
-    """将单个模块结果写入 runs/<sessionId>/<module>.json。"""
-    session_dir = runs_dir / session_id
-    session_dir.mkdir(parents=True, exist_ok=True)
-    safe_write(
-        session_dir / f"{module_name}.json",
-        json.dumps(result, ensure_ascii=False, indent=2),
-    )
 
 
 def write_latest(runs_dir: Path, session_id: str):
@@ -157,23 +68,9 @@ def write_latest(runs_dir: Path, session_id: str):
     safe_write(runs_dir / "latest", session_id)
 
 
-def read_session_results(runs_dir: Path, session_id: str) -> dict:
-    """从 session 目录读取所有结果。"""
-    session_dir = runs_dir / session_id
-    if not session_dir.exists():
-        return {}
-    results = {}
-    for f in session_dir.glob("*.json"):
-        try:
-            data = json.loads(f.read_text(encoding="utf-8"))
-            results[f.stem] = data
-        except Exception:
-            pass
-    return results
-
-
 def clean_old_sessions(runs_dir: Path, max_sessions: int = MAX_SESSIONS):
     """保留最近 max_sessions 次运行，删除更早的 session 目录。"""
+    import re
     if not runs_dir.exists():
         return
     session_dirs = []
@@ -192,83 +89,12 @@ def clean_old_sessions(runs_dir: Path, max_sessions: int = MAX_SESSIONS):
             print(f"[清理] 删除失败 {d.name}: {e}")
 
 
-async def run_one(script_path: Path, module_name: str, runs_dir: Path,
-                  session_id: str, version: str, project_dir: Path,
-                  workspace_dir: Path, base_url: str, login_url: str):
-    """运行单个模块脚本，失败时重试（最多 MAX_RETRIES 次），重试前刷新 cookie。"""
-    env = dict(os.environ)
-    env["PYTHONPATH"] = str(ROOT)
-    env["AUTO_LOGIN"] = "0"          # Worker 只读 cookie，不自动登录
-    env["API_VERSION"] = version or ""
-
-    last_result = None
-    for attempt in range(1, MAX_RETRIES + 2):  # 1次正常 + MAX_RETRIES次重试
-        t0 = time.time()
-        result = {"module": module_name, "script": str(script_path), "ok": False,
-                  "returncode": -1, "durationSec": 0, "output": "", "attempt": attempt}
-
-        # 每次运行前检查 cookie 是否过期
-        if attempt == 1:  # 只在第一次运行时检查
-            cookie_file = workspace_dir / "output" / "config" / "cookies.json"
-            if cookie_file.exists():
-                try:
-                    import json
-                    with open(cookie_file, 'r', encoding='utf-8') as f:
-                        cookies_data = json.load(f)
-                    # 检查 cookies 是否过期（简单检查时间戳）
-                    current_time = int(time.time())
-                    is_expired = False
-                    for cookie in cookies_data:
-                        if 'expires' in cookie and cookie['expires'] > 0:
-                            if cookie['expires'] < current_time:
-                                is_expired = True
-                                break
-
-                    if is_expired:
-                        print(f"⏰ [{module_name}] Cookie 已过期，刷新中...")
-                        if not refresh_cookies(project_dir, workspace_dir, base_url, login_url):
-                            print(f"  ⚠️ cookie 刷新失败，使用现有 cookie")
-                except Exception as e:
-                    print(f"  ⚠️ 检查 cookie 失败：{e}")
-
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                sys.executable, str(script_path),
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-                env=env, cwd=str(ROOT),
-            )
-            stdout, _ = await proc.communicate()
-            dur = round(time.time() - t0, 1)
-            text = stdout.decode("utf-8", errors="replace") if stdout else ""
-            ok = proc.returncode == 0
-            result = {"module": module_name, "script": str(script_path), "ok": ok,
-                      "returncode": proc.returncode, "durationSec": dur, "output": text,
-                      "attempt": attempt}
-        except Exception as e:
-            dur = round(time.time() - t0, 1)
-            result = {"module": module_name, "script": str(script_path), "ok": False,
-                      "returncode": -1, "durationSec": dur, "output": f"启动失败: {e}",
-                      "attempt": attempt}
-
-        # 立即持久化（进程崩溃不丢结果）
-        write_result(runs_dir, session_id, module_name, result)
-        last_result = result
-
-        # 成功或已达重试上限，返回
-        if result["ok"] or attempt > MAX_RETRIES:
-            return result
-
-        # 失败且还有重试机会：刷新 cookie 后再试
-        print(f"  ⚠️ {module_name} 失败（attempt {attempt}/{MAX_RETRIES + 1}），刷新 cookie 后重试...")
-        try:
-            if not ensure_cookie_valid(project_dir, workspace_dir, base_url, login_url):
-                print(f"  ❌ cookie 刷新失败，跳过重试")
-                return result
-        except Exception as e:
-            print(f"  ⚠️ cookie 刷新异常: {e}")
-            return result
-
-    return last_result
+def _run_stage5(manifest: dict, project_dir: Path, module_name: str,
+                version: str = None, group: str = None, group_index: str = None):
+    """Stage 5 导出回调（供 run_all_modules 调用）"""
+    from core.discovery.export_artifacts import export_all
+    export_all(manifest, project_dir, module_name, version=version,
+               group=group, group_index=group_index)
 
 
 async def main_async():
@@ -304,15 +130,24 @@ async def main_async():
     print(f"  分模块并行执行（版本 {version}，session: {session_id}）")
     print("=" * 60)
     print("▶ 预校验 cookie 有效性 ...")
-    if not ensure_cookie_valid(project_dir, workspace_dir, base_url, login_url):
-        print("❌ cookie 无效且无法自动登录（请先运行发现流程或设置 AUTO_LOGIN=1 + 凭据）")
-        sys.exit(2)
-    print("✅ cookie 有效，开始并行执行\n")
+    if args.type == "ui":
+        # UI 脚本只需 cookie 文件存在，Playwright 会注入
+        cookie_file = workspace_dir / "output" / "config" / "cookies.json"
+        if not cookie_file.exists() or not json.loads(cookie_file.read_text("utf-8")):
+            print("❌ cookies.json 不存在或为空（请先运行发现流程获取 cookie）")
+            sys.exit(2)
+        cookie_count = len(json.loads(cookie_file.read_text("utf-8")))
+        print(f"✅ cookie 文件存在（{cookie_count} 条），开始执行 UI 脚本\n")
+    else:
+        if not ensure_cookie_valid(project_dir, workspace_dir, base_url, login_url):
+            print("❌ cookie 无效且无法自动登录（请先运行发现流程或设置 AUTO_LOGIN=1 + 凭据）")
+            sys.exit(2)
+        print("✅ cookie 有效，开始并行执行\n")
 
     # ---- 2. 扫描脚本 ----
-    scripts = scan_scripts(scripts_dir, args.module)
+    scripts = scan_scripts(scripts_dir, args.module, args.type)
     if not scripts:
-        print(f"⚠️ 未找到可执行的测试脚本（{scripts_dir}）")
+        print(f"⚠️ 未找到可执行的 {args.type.upper()} 测试脚本（{scripts_dir}）")
         sys.exit(0)
     print(f"共 {len(scripts)} 个模块脚本，并行 Worker = {args.parallel}\n")
 
@@ -321,7 +156,7 @@ async def main_async():
     start_time = time.time()
     last_cookie_refresh = start_time
 
-    async def _run_with_sem(name, path):
+    async def _run_with_sem(name, path, group, group_index):
         nonlocal last_cookie_refresh
         async with sem:
             # Cookie 中期刷新：每 COOKIE_REFRESH_INTERVAL 秒检查一次
@@ -335,25 +170,28 @@ async def main_async():
                     print(f"  ⚠️ cookie 刷新异常: {e}")
                 last_cookie_refresh = now
             return await run_one(path, name, runs_dir, session_id, version,
-                                 project_dir, workspace_dir, base_url, login_url)
+                                 project_dir, workspace_dir, base_url, login_url,
+                                 script_type=args.type, headless=args.headless)
 
-    tasks = [_run_with_sem(name, path) for name, path in scripts]
+    tasks = [_run_with_sem(name, path, group, group_index) for name, path, group, group_index in scripts]
     results = await asyncio.gather(*tasks)
 
     # ---- 4. 聚合 ----
     records = []
     total_retries = 0
-    for (name, s), r in zip(scripts, results):
+    for (name, s, group, group_index), r in zip(scripts, results):
         retries = r.get("attempt", 1) - 1
         total_retries += retries
         status = "✅" if r["ok"] else "❌"
         retry_tag = f" (重试{retries}次)" if retries else ""
-        print(f"{status} {name}{retry_tag} ({r['durationSec']}s)")
+        # 显示 group 信息
+        group_prefix = f"[{group} {group_index}] " if group and group_index else ""
+        print(f"{status} {group_prefix}{name}{retry_tag} ({r['durationSec']}s)")
         if not r["ok"]:
             # 打印尾部错误便于定位
             tail = "\n".join(r["output"].strip().splitlines()[-15:])
             print("   └─ " + tail.replace("\n", "\n      "))
-        records.append({"module": name, "script": str(s), **r})
+        records.append({"module": name, "group": group, "index": group_index, "script": str(s), **r})
 
     passed = sum(1 for r in records if r["ok"])
     failed = len(records) - passed
@@ -410,6 +248,37 @@ async def main_async():
         print("\n✅ 已记录到失败归因台账")
     except Exception as e:
         print(f"\n⚠️  记录失败归因台账失败: {e}")
+
+    # ---- 9. 执行 Stage 5 导出（如果指定 --export）----
+    if args.export and args.type == "api":
+        print("\n▶ 执行 Stage 5: 导出 artifacts ...")
+        try:
+            from core.discovery.batch_runner import run_all_modules
+            # Stage 5 只需要 manifest 路径，不需要 page/context
+            await run_all_modules(
+                page=None,
+                context=None,
+                project_dir=project_dir,
+                profile=profile,
+                base_url=base_url,
+                login_url=login_url,
+                args=args,
+                run_stage1=None,
+                run_stage2=None,
+                run_stage34=None,
+                _run_stage4_verify=None,
+                run_stage5=_run_stage5,
+                modules_override=None,
+                _run_ui_script=None,
+            )
+            print("✅ Stage 5 导出完成")
+        except Exception as e:
+            print(f"⚠️  Stage 5 导出失败: {e}")
+
+    # ---- 10. 生成汇总报告 ----
+    report_path = generate_summary_report(project_dir, version, args.type)
+    if report_path:
+        print(f"\n✅ {args.type.upper()} 汇总报告已生成: {report_path}")
 
     print("\n" + "=" * 60)
     print(f"  并行执行完成：通过 {passed} / 失败 {failed} / 共 {len(records)}")

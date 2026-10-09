@@ -191,6 +191,31 @@ def interactive_select(modules_with_status: list) -> list:
 
 
 
+def _extract_top_group(raw_group: str) -> str:
+    """从 group 面包屑字符串提取一级菜单名称。
+
+    Examples:
+        "项目管理 > 配额管理" → "项目管理"
+        "访问控制" → "访问控制"
+        "" → "未分类"
+    """
+    if not raw_group:
+        return "未分类"
+    return raw_group.split(" > ")[0].strip() or "未分类"
+
+
+def sanitize_group_name(name: str) -> str:
+    """清理分组名称，确保可安全用作目录名。
+
+    替换文件系统不允许的字符为下划线。
+    """
+    import re
+    # 替换 Windows/Linux 文件系统非法字符
+    sanitized = re.sub(r'[/\\:*?"<>|]', '_', name)
+    # 去除首尾空白
+    return sanitized.strip() or "未分类"
+
+
 def _generate_modules_yaml(discovered: list, project_dir: Path, base_url: str):
     """从导航发现结果自动生成 modules.yaml。
 
@@ -227,14 +252,18 @@ def _generate_modules_yaml(discovered: list, project_dir: Path, base_url: str):
         else:
             relative_url = full_url
 
-        # group 转为 tags
-        group = item.get("group", "")
-        tags = [group] if group else []
+        # 提取一级菜单作为 group
+        raw_group = item.get("group", "")
+        top_group = sanitize_group_name(_extract_top_group(raw_group))
+
+        # group 原始值转为 tags（保留完整面包屑）
+        tags = [raw_group] if raw_group else []
 
         modules.append({
             "name": item["label"],
             "url": relative_url,
             "enabled": True,
+            "group": top_group,
             "tags": tags,
         })
 
