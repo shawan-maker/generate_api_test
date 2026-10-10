@@ -95,7 +95,7 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
     )
     buttons_by_action = {}
     _DROPDOWN_TRIGGER_TEXTS = {"更多", "操作", "Actions", "More", "批量操作"}
-    _NON_BUSINESS_BUTTONS = {"GO", "Go", "go"}  # 分页跳转等非业务按钮
+    _NON_BUSINESS_BUTTONS = {"GO", "Go", "go", "跳转", "跳转至"}  # 分页跳转等非业务按钮
 
     # 收集行级操作文本，用于去重批量操作
     _row_action_texts = {

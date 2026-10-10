@@ -169,6 +169,43 @@ def load_modules_yaml(project_dir: Path) -> list:
         return []
 
 
+def get_module_group_index(project_dir: Path, module_name: str) -> str:
+    """获取模块在其分组内的编号（01, 02, 03...）。
+
+    根据模块在同 group 内的顺序计算编号。
+
+    Args:
+        project_dir: 项目目录
+        module_name: 模块名称
+
+    Returns:
+        两位数字编号（如 "01", "02"），找不到时返回 "01"
+    """
+    modules = load_modules_yaml(project_dir)
+    if not modules:
+        return "01"
+
+    # 找到目标模块的 group
+    target_group = None
+    for m in modules:
+        if m.get("name") == module_name:
+            target_group = m.get("group")
+            break
+
+    if not target_group:
+        return "01"
+
+    # 统计同 group 内的模块顺序
+    idx = 1
+    for m in modules:
+        if m.get("group") == target_group:
+            if m.get("name") == module_name:
+                return f"{idx:02d}"
+            idx += 1
+
+    return "01"
+
+
 def needs_rediscovery(project_dir: Path, module_name: str, module_url: str,
                       force: bool = False) -> bool:
     """检查模块是否需要重新发现（增量逻辑）。

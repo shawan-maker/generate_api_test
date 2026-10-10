@@ -165,7 +165,7 @@ def write_ui_jsonl_log(results: list, module_name: str) -> str:
     return str(log_file)
 
 
-def generate_ui_report(results, module_name):
+def generate_ui_report(results, module_name, group=None, group_index=None):
     """生成 UI 测试报告（HTML 格式）
 
     Args:
@@ -178,6 +178,8 @@ def generate_ui_report(results, module_name):
             - error: 错误信息 (可选)
             - screenshot: 截图数据 (bytes 或 base64 str)
         module_name: 模块名称
+        group: 一级菜单分组名（如 "访问控制"），用于子目录
+        group_index: 组内编号（如 "01"），用于目录名前缀
 
     Returns:
         报告文件路径
@@ -439,8 +441,11 @@ document.addEventListener('keydown', function(e) {{
     self_path = Path(__file__).resolve()
     parent_dir = self_path.parent.parent  # ui/ 或 report/
     if parent_dir.name == "ui":
-        # 生成脚本场景：ui/lib/ui_report.py → ui/reports/{module_name}/
-        report_dir = parent_dir / "reports" / module_name
+        # 生成脚本场景：ui/lib/ui_report.py → ui/reports/{group}/{idx}_{module}/ 或 ui/reports/{module}/
+        if group and group_index:
+            report_dir = parent_dir / "reports" / group / f"{group_index}_{module_name}"
+        else:
+            report_dir = parent_dir / "reports" / module_name
     else:
         # 框架内场景：lib/report/ui_report.py
         # 从环境变量获取项目名，避免硬编码

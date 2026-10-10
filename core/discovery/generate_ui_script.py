@@ -47,7 +47,9 @@ def generate_ui_script(playbook: dict, module_name: str, project_dir: Path,
     # 3. 生成薄主脚本（playbook 内嵌到脚本中，不生成独立 JSON 文件）
     # 告知模板是否在 group 子目录下（影响 bootstrap 路径）
     in_group = bool(group and group_index)
-    script_content = _render_script(playbook, module_name, version, in_group=in_group)
+    script_content = _render_script(playbook, module_name, version,
+                                     in_group=in_group,
+                                     group=group, group_index=group_index)
 
     if group and group_index:
         group_dir = ui_dir / group
@@ -245,7 +247,9 @@ def _sync_ui_runtime_lib(ui_dir: Path, project_dir: Path):
     LOG.info(f"  UI 运行时同步完成: {len(synced)} 个文件")
 
 
-def _render_script(playbook: dict, module_name: str, version: str, in_group: bool = False) -> str:
+def _render_script(playbook: dict, module_name: str, version: str,
+                   in_group: bool = False,
+                   group: str = None, group_index: str = None) -> str:
     """渲染薄主脚本（playbook 内嵌到脚本中）"""
     meta = playbook.get("meta", {})
     target_url = meta.get("target_url", "")
@@ -290,6 +294,12 @@ def _render_script(playbook: dict, module_name: str, version: str, in_group: boo
     # Bootstrap 路径：group 子目录下需要多回溯一层（parent.parent → ui/）
     _lib_parent = "parent.parent" if in_group else "parent"
     _config_parent = "parent.parent" if in_group else "parent"
+
+    # 报告 group 参数：注入到 generate_html_report 调用中
+    if group and group_index:
+        _report_group_args = f', group={group!r}, group_index={group_index!r}'
+    else:
+        _report_group_args = ''
 
     return f'''#!/usr/bin/env python3
 """
@@ -707,7 +717,7 @@ async def main():
             marker, op_result = await run_operation(page, op_name, operations_data, marker)
             results.append(op_result)
 
-        report_path = generate_html_report(results, "{module_name}")
+        report_path = generate_html_report(results, "{module_name}"{_report_group_args})
         print(f"\\n{{'='*60}}")
         print(f"  ✅ 测试完成")
         print(f"{{'='*60}}")

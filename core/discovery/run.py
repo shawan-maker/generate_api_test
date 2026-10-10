@@ -1549,7 +1549,17 @@ async def main():
             sys.exit(1)
         manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
         LOG.info(f"已从文件加载 manifest: {manifest_path}")
-        run_stage5(manifest, project_dir, args.module, version=version)
+        # 从 modules.yaml 读取 group 信息
+        from core.discovery.io_helpers import load_modules_yaml as _load_mod_yaml
+        from core.discovery.io_helpers import get_module_group_index
+        _s5_group = None
+        for m in _load_mod_yaml(project_dir):
+            if m.get("name") == args.module:
+                _s5_group = m.get("group")
+                break
+        _s5_group_index = get_module_group_index(project_dir, args.module)
+        run_stage5(manifest, project_dir, args.module, version=version,
+                   group=_s5_group, group_index=_s5_group_index)
         return
 
     # 单模块模式（原有逻辑）
@@ -1582,7 +1592,8 @@ async def main():
             # Stage 5 导出（仅当指定 --export 时）
             if args.export:
                 run_stage5(manifest, project_dir, args.module,
-                           version=args.version or ver_mod.resolve_version(project_dir))
+                           version=args.version or ver_mod.resolve_version(project_dir),
+                           group=module_group, group_index="01")
         return
 
     # 在线模式: 启动浏览器
@@ -1611,7 +1622,8 @@ async def main():
                 return
             manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
             LOG.info(f"已从文件加载 manifest: {manifest_path}")
-            run_stage5(manifest, project_dir, args.module, version=version)
+            run_stage5(manifest, project_dir, args.module, version=version,
+                       group=module_group, group_index="01")
             return
 
         # Stage 1
@@ -1637,7 +1649,8 @@ async def main():
                 max_recapture=args.max_recapture,
                 capture_all_mode=args.capture_all,
                 version=args.version or ver_mod.resolve_version(project_dir),
-                api_path_prefix=profile.get("api_base", ""))
+                api_path_prefix=profile.get("api_base", ""),
+                group=module_group, group_index="01")
         else:
             capture_result = _load_capture_result(project_dir, args.module)
             stage2_valid = bool(capture_result and capture_result.get("core_api_map"))
@@ -1673,11 +1686,23 @@ async def main():
                 LOG.info(f"已从文件加载 manifest: {manifest_path}")
 
         if manifest:
+            # 从 modules.yaml 读取 group 信息
+            from core.discovery.io_helpers import load_modules_yaml, get_module_group_index
+            modules = load_modules_yaml(project_dir)
+            group = None
+            for m in modules:
+                if m.get("name") == args.module:
+                    group = m.get("group")
+                    break
+            group_index = get_module_group_index(project_dir, args.module)
+
             run_stage5(
                 manifest=manifest,
                 project_dir=project_dir,
                 module_name=args.module,
-                version=args.version or ver_mod.resolve_version(project_dir)
+                version=args.version or ver_mod.resolve_version(project_dir),
+                group=group,
+                group_index=group_index
             )
 
 

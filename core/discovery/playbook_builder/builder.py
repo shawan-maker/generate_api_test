@@ -545,6 +545,16 @@ def build_playbook(ui_result: dict) -> dict:
     }
     fallback_count = 0
 
+    # --- fallback 去重常量（与 crud_executor._validate_business_flow 对齐）---
+    _DROPDOWN_TRIGGER_TEXTS = {"更多", "操作", "Actions", "More", "批量操作"}
+    _BATCH_PREFIXES = ["批量", "batch", "bulk"]
+    _NON_BUSINESS_BUTTONS = {"GO", "Go", "go", "跳转", "跳转至"}
+    # 收集行级操作文本，用于"批量XX"↔"XX"去重
+    _fb_row_action_texts = {
+        btn.get("text", "") for btn in ui_result.get("row_actions", [])
+        if btn.get("text") not in _DROPDOWN_TRIGGER_TEXTS
+    }
+
     for btn_list_key in ("toolbar_buttons", "row_actions"):
         for btn in ui_result.get(btn_list_key, []):
             btn_text = btn.get("text", "").strip()
@@ -560,6 +570,26 @@ def build_playbook(ui_result: dict) -> dict:
             if btn_list_key == "toolbar_buttons" and btn_tag and btn_tag not in ("BUTTON", "A"):
                 LOG.debug(f"  跳过非按钮 toolbar 元素: '{btn_text}' (tag={btn_tag})")
                 continue
+            # ★ 跳过下拉菜单触发器（"更多"/"操作"），子操作已有独立脚本
+            if btn_text in _DROPDOWN_TRIGGER_TEXTS and btn.get("tag") != "DROPDOWN_ITEM":
+                LOG.debug(f"  跳过下拉触发器 fallback: '{btn_text}'")
+                continue
+            # ★ 跳过分页跳转等非业务按钮
+            if btn_text in _NON_BUSINESS_BUTTONS:
+                LOG.debug(f"  跳过分页按钮 fallback: '{btn_text}'")
+                continue
+            # ★ toolbar "批量XX" 去重：行级已有 "XX" 操作时跳过
+            if btn_list_key == "toolbar_buttons":
+                _fb_skip = False
+                for _prefix in _BATCH_PREFIXES:
+                    if btn_text.startswith(_prefix):
+                        _core = btn_text[len(_prefix):]
+                        if _core in _fb_row_action_texts:
+                            LOG.debug(f"  跳过批量操作 fallback: '{btn_text}'（行级已有 '{_core}'）")
+                            _fb_skip = True
+                            break
+                if _fb_skip:
+                    continue
             # 生成最基本的 click 步骤
             btn_locator = btn.get("selector", "")
             if not btn_locator:
