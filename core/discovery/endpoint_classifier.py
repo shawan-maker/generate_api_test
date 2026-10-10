@@ -521,7 +521,8 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict,
     return {
         "core_api_map": core_api_map,
         "all_endpoints": [{"method": e["method"], "pathname": e["pathname"],
-                           "contexts": sorted(e["contexts"]), "bodies": e["bodies"]}
+                           "contexts": sorted(e["contexts"]), "bodies": e["bodies"],
+                           "query_params_list": e.get("query_params_list", [])}
                           for e in uniq.values()],
         "response_samples": samples,
         "stats": {"total_calls": len(all_calls), "unique_endpoints": len(uniq)},

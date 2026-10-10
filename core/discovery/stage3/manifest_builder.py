@@ -85,6 +85,59 @@ def _build_auth_profile(profile: dict) -> dict:
 
 # ========== Manifest 构建 ==========
 
+
+def _find_pre_api_body(api_info: dict, all_endpoints: list) -> dict:
+    """从 all_endpoints 中查找前置 API 的请求体。
+
+    pre_api_candidates 只保留了响应数据（response_sample, extracted_fields），
+    没有保留请求体。但 all_endpoints 中有完整的捕获请求体（bodies 数组）。
+
+    Args:
+        api_info: 前置 API 信息（来自 pre_api_chain）
+        all_endpoints: Stage 2 捕获的所有端点列表
+
+    Returns:
+        请求体 dict，找不到或 GET 请求返回 {}
+    """
+    method = api_info.get("method", "GET")
+    pathname = api_info.get("pathname", "")
+    if method == "GET":
+        return {}  # GET 请求无 body
+
+    for ep in all_endpoints:
+        if ep.get("method") == method and ep.get("pathname") == pathname:
+            bodies = ep.get("bodies", [])
+            if bodies:
+                try:
+                    body_text = bodies[0]
+                    return json.loads(body_text) if isinstance(body_text, str) else body_text
+                except (json.JSONDecodeError, TypeError) as e:
+                    LOG.warning(f"  ⚠️ 解析前置 API body 失败 ({pathname}): {e}")
+                    return {}
+    return {}
+
+
+def _find_pre_api_query_params(api_info: dict, all_endpoints: list) -> dict:
+    """从 all_endpoints 中查找前置 API 的 query_params。
+
+    Args:
+        api_info: 前置 API 信息（来自 pre_api_chain）
+        all_endpoints: Stage 2 捕获的所有端点列表
+
+    Returns:
+        query_params dict，找不到返回 {}
+    """
+    method = api_info.get("method", "GET")
+    pathname = api_info.get("pathname", "")
+
+    for ep in all_endpoints:
+        if ep.get("method") == method and ep.get("pathname") == pathname:
+            qp_list = ep.get("query_params_list", [])
+            if qp_list:
+                return qp_list[0]  # 返回第一个 query_params 样本
+    return {}
+
+
 def build_manifest(analysis: dict, capture_result: dict,
                    profile: dict, module_name: str, target_url: str,
                    ui_result: dict = None, infra_apis: set = None) -> dict:
@@ -766,7 +819,7 @@ def build_manifest(analysis: dict, capture_result: dict,
                     "path_params": _strip_path_params_original(path_result["path_params"]),
                     "query_params": pep.get("query_params", {}),
                 },
-                "body_template": pbody or {},
+                "body_template": pbody if isinstance(pbody, (dict, list)) else {},
                 "body_field_roles": proles,
                 "extract": extracts,
             })
@@ -1145,6 +1198,22 @@ def build_manifest(analysis: dict, capture_result: dict,
         for action, eps in core_apis.items():
             for ep in eps:
                 if ep.get("method") == "GET" or _is_post_list_query(ep):
+                    # ★ 解析请求体并构建完整的 body_template 和 body_field_roles
+                    # 避免只读模块的测试步骤发送空 body 导致 Invalid.Parameter 错误
+                    body_sample = _parse_body(ep)
+                    if isinstance(body_sample, dict) and body_sample:
+                        field_roles = classify_fields_recursive(
+                            body_sample, value_index, create_body_sample,
+                            current_action=action
+                        )
+                        body_template = _clean_body_template(
+                            body_sample, field_roles, value_index,
+                            action, collected_pre_api_ids
+                        )
+                    else:
+                        field_roles = {}
+                        body_template = {}
+
                     read_only_steps.append({
                         "action": "list_verify",
                         "description": f"验证列表数据加载 ({action})",
@@ -1152,6 +1221,9 @@ def build_manifest(analysis: dict, capture_result: dict,
                             "method": ep.get("method", "GET"),
                             "pathname": ep.get("pathname", ""),
                         },
+                        "body_template": body_template,
+                        "body_field_roles": field_roles,
+                        "query_params": ep.get("query_params", {}),
                         "assert": "response.success == true",
                     })
                     break  # 每个 action 只取第一个只读 API
@@ -1169,7 +1241,12 @@ def build_manifest(analysis: dict, capture_result: dict,
         manifest_version = "1.1"
 
         # 构建 pre_apis 数组（带 extracts 信息）
+        all_endpoints = capture_result.get("all_endpoints", [])
         for api_info in pre_api_chain["pre_apis"]:
+            # ★ 从 all_endpoints 填充前置 API 的请求体和 query_params
+            # pre_api_candidates 只保留了响应数据，请求体需要从 all_endpoints 查找
+            pre_body = _find_pre_api_body(api_info, all_endpoints)
+            pre_query_params = _find_pre_api_query_params(api_info, all_endpoints)
             pre_api_entry = {
                 "name": api_info.get("name", ""),
                 "id": api_info.get("id", ""),
@@ -1177,8 +1254,8 @@ def build_manifest(analysis: dict, capture_result: dict,
                 "pathname": api_info.get("pathname", ""),
                 "depends_on": api_info.get("depends_on", []),
                 "extracts": [],
-                "body_template": {},
-                "query_params": {}
+                "body_template": pre_body,
+                "query_params": pre_query_params
             }
 
             # 从 field_resolutions 找出哪些字段是从这个 API 提取的
