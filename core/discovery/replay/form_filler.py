@@ -2347,6 +2347,71 @@ class MultiStepExecutor:
         )
         if transfer_left:
             LOG.info(f"    检测到自定义穿梭框左侧面板，搜索可点击元素...")
+
+            # === DIAG-DEEP: dump 左侧面板完整 DOM（含 table/tree 元素），用于分析实际结构 ===
+            _left_dom = await self.page.evaluate("""(container) => {
+                function dumpNode(el, depth) {
+                    if (depth > 5) return null;
+                    const r = el.getBoundingClientRect();
+                    if (r.width <= 0 && r.height <= 0 && el.tagName !== 'TBODY' && el.tagName !== 'THEAD') return null;
+                    const node = {
+                        tag: el.tagName,
+                        cls: (el.className || '').substring(0, 60),
+                        w: Math.round(r.width), h: Math.round(r.height),
+                    };
+                    // 文本节点（仅叶子元素）
+                    if (el.children.length === 0) {
+                        node.text = (el.textContent || '').trim().substring(0, 40);
+                    } else {
+                        node.children = [];
+                        for (const child of el.children) {
+                            const c = dumpNode(child, depth + 1);
+                            if (c) node.children.push(c);
+                        }
+                    }
+                    return node;
+                }
+                return dumpNode(container, 0);
+            }""", transfer_left)
+            LOG.info(f"    [DIAG-DEEP] transfer-box-left DOM:\n{json.dumps(_left_dom, ensure_ascii=False, indent=2)}")
+
+            # === DIAG-EXTRA: 检查左侧面板内是否有 el-table / el-tree ===
+            _extra_check = await self.page.evaluate("""(container) => {
+                const hasTable = !!container.querySelector('.el-table, table, [class*="el-table"]');
+                const hasTree = !!container.querySelector('.el-tree, [class*="el-tree"], [role="tree"]');
+                const tableRows = container.querySelectorAll('tr, .el-table__row, .el-tree-node');
+                const tableCells = container.querySelectorAll('td, .el-table__cell');
+                const rowInfo = [];
+                tableRows.forEach((row, i) => {
+                    if (i >= 10) return;
+                    const r = row.getBoundingClientRect();
+                    rowInfo.push({
+                        tag: row.tagName, cls: (row.className || '').substring(0, 50),
+                        text: (row.textContent || '').trim().substring(0, 50),
+                        w: Math.round(r.width), h: Math.round(r.height),
+                        visible: r.width > 0 && r.height > 0
+                    });
+                });
+                const cellInfo = [];
+                tableCells.forEach((cell, i) => {
+                    if (i >= 20) return;
+                    const r = cell.getBoundingClientRect();
+                    cellInfo.push({
+                        cls: (cell.className || '').substring(0, 50),
+                        text: (cell.textContent || '').trim().substring(0, 30),
+                        w: Math.round(r.width), h: Math.round(r.height),
+                        visible: r.width > 0 && r.height > 0
+                    });
+                });
+                return { hasTable, hasTree, rowCount: tableRows.length, cellCount: tableCells.length, rows: rowInfo, cells: cellInfo };
+            }""", transfer_left)
+            LOG.info(f"    [DIAG-EXTRA] hasTable={_extra_check.get('hasTable')}, hasTree={_extra_check.get('hasTree')}, rows={_extra_check.get('rowCount')}, cells={_extra_check.get('cellCount')}")
+            if _extra_check.get('rows'):
+                LOG.info(f"    [DIAG-EXTRA] rows: {json.dumps(_extra_check['rows'], ensure_ascii=False)}")
+            if _extra_check.get('cells'):
+                LOG.info(f"    [DIAG-EXTRA] cells: {json.dumps(_extra_check['cells'], ensure_ascii=False)}")
+            # === END DIAG-DEEP ===
+
             # 在左侧面板内找到可见、可点击的叶子元素
             click_result = await self.page.evaluate("""(container) => {
                 const items = container.querySelectorAll('div, span, p, label, a');

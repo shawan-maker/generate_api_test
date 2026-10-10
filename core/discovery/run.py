@@ -623,7 +623,7 @@ def run_stage5(manifest: dict, project_dir: Path, module_name: str, version: str
     # 3. Excel 参数文件
     excel_path = export_dir / f"{module_name}_params.xlsx"
     try:
-        export_excel_params(manifest, excel_path)
+        export_excel_params(manifest, excel_path, project_dir)
         LOG.info(f"  ✅ Excel 参数文件: {excel_path}")
     except Exception as e:
         LOG.error(f"  ❌ Excel 参数文件导出失败: {e}")

@@ -182,10 +182,18 @@ def _build_postman_request_item(step_def: dict, base_url: str,
                                 is_pre_api: bool = False,
                                 step_index: int = 0) -> dict:
     """构建单个 Postman 请求项。"""
-    api = step_def.get("api", {})
-    method = api.get("method", "GET")
-    pathname = api.get("pathname", "")
-    label = step_def.get("label", step_def.get("action", "unknown"))
+    if is_pre_api:
+        # pre_api 的 method/pathname 是顶层键，name 用 'name' 或 'id'
+        method = step_def.get("method", "GET")
+        pathname = step_def.get("pathname", "")
+        label = step_def.get("name", step_def.get("id", "unknown"))
+        path_params = step_def.get("path_params", {})
+    else:
+        api = step_def.get("api", {})
+        method = api.get("method", "GET")
+        pathname = api.get("pathname", "")
+        label = step_def.get("label", step_def.get("action", "unknown"))
+        path_params = api.get("path_params", {})
     body_template = step_def.get("body_template", {})
     field_roles = step_def.get("body_field_roles", {})
 
@@ -193,7 +201,6 @@ def _build_postman_request_item(step_def: dict, base_url: str,
     name = f"{step_index:02d}_{label}" if step_index else label
 
     # URL: {{base_url}} + pathname，path_params 用 {{variable}} 替换
-    path_params = api.get("path_params", {})
     if path_params:
         for placeholder, mapping in path_params.items():
             source = mapping.get("source", "")
@@ -614,7 +621,7 @@ def gen_text() -> str:
     LOG.info(f"helpers.py 已导出: {output_path}")
 
 
-def export_excel_params(manifest: dict, output_path: Path):
+def export_excel_params(manifest: dict, output_path: Path, project_dir: Path = None):
     """导出 Excel 参数文件。
 
     格式：单 sheet "变量配置"，列：变量名称 | 是否敏感类型 | 变量值 | 备注
@@ -640,7 +647,7 @@ def export_excel_params(manifest: dict, output_path: Path):
         cell.alignment = Alignment(horizontal="center")
 
     # 收集参数
-    params = _collect_excel_params(manifest)
+    params = _collect_excel_params(manifest, project_dir)
 
     for param in params:
         ws.append([
@@ -661,14 +668,17 @@ def export_excel_params(manifest: dict, output_path: Path):
     LOG.info(f"Excel 参数文件已导出: {output_path} ({len(params)} 个参数)")
 
 
-def _collect_excel_params(manifest: dict) -> list:
+def _collect_excel_params(manifest: dict, project_dir: Path = None) -> list:
     """收集导出到 Excel 的参数列表。
 
-    规则：
+    仅导出需要人工配置的外部参数：
     - 基础连接信息（base_url, login_url）
-    - 认证信息（username, password, token）
-    - 前置 API 提取的上下文字段
-    - 业务步骤中出现的 name/mutable 字段
+    - 实际 token 值（从 cookies.json 读取）
+
+    以下数据不导出（脚本运行时自动处理）：
+    - 前置 API 提取的上下文字段 — 运行时由 pre_apis 自动提取
+    - name/mutable 生成值 — 运行时由 helpers 函数自动生成
+    - username/password — 脚本不包含登录逻辑，仅依赖 cookies.json
     """
     params = []
     module = manifest.get("module", {})
@@ -688,78 +698,67 @@ def _collect_excel_params(manifest: dict) -> list:
         "note": "登录页地址"
     })
 
-    # 认证参数
-    creds_env = auth_profile.get("credentials_env", {})
-    params.append({
-        "name": "e_username",
-        "value": "${" + creds_env.get("username", "APP_USER") + "}",
-        "sensitive": False,
-        "note": f"环境变量: {creds_env.get('username', 'APP_USER')}"
-    })
-    params.append({
-        "name": "e_password",
-        "value": "${" + creds_env.get("password", "APP_PASS") + "}",
-        "sensitive": True,
-        "note": f"环境变量: {creds_env.get('password', 'APP_PASS')}"
-    })
-    params.append({
-        "name": "e_token",
-        "value": "${get_token_by_cookie('cookies.json')}",
-        "sensitive": True,
-        "note": f"从 Cookie 提取 (key={auth_profile.get('cookie_token_key', 'accessToken')})"
-    })
-
-    # 前置 API 提取的变量
-    for pre_api in manifest.get("pre_apis", []):
-        for extract in pre_api.get("extracts", []):
-            params.append({
-                "name": f"e_{extract['name']}",
-                "value": f"${{{extract['name']}}}",
-                "sensitive": False,
-                "note": f"由 {pre_api.get('name', pre_api.get('id', ''))} 提取 (path: {extract.get('path', '')})"
-            })
-
-    # 业务步骤中的 name 字段
-    seen_names = set()
-    for step in manifest.get("steps", []):
-        # 分支：单 API step vs phases step
-        phases = step.get("phases")
-        if phases:
-            # phases step：从所有 phases 中收集字段
-            roles_list = [phase.get("body_field_roles", {}) for phase in phases]
-        else:
-            # 单 API step（原有逻辑）
-            roles_list = [step.get("body_field_roles", {})]
-
-        for body_roles in roles_list:
-            for field_name, role_config in body_roles.items():
-                if role_config.get("role") == "name" and field_name not in seen_names:
-                    seen_names.add(field_name)
-                    params.append({
-                        "name": f"e_name_{field_name}",
-                        "value": "${gen_test_name('" + field_name + "')}",
-                        "sensitive": False,
-                        "note": f"步骤 {step.get('label', step.get('action', ''))} 的名称字段"
-                    })
-                elif role_config.get("role") == "mutable" and field_name not in seen_names:
-                    seen_names.add(field_name)
-                    params.append({
-                        "name": f"e_mutable_{field_name}",
-                        "value": "${gen_mutable_value()}",
-                        "sensitive": False,
-                        "note": f"步骤 {step.get('label', step.get('action', ''))} 的可变字段"
-                    })
+    # 从 cookies.json 读取实际 token 值
+    token_key = auth_profile.get("cookie_token_key", "accessToken")
+    token_value = _read_token_from_cookies(project_dir, token_key)
+    if token_value:
+        params.append({
+            "name": "e_token",
+            "value": token_value,
+            "sensitive": True,
+            "note": f"从 cookies.json 读取 (key={token_key})，过期后需重新运行 Stage 1-2 刷新"
+        })
 
     return params
 
 
-def export_all(manifest: dict, output_dir: Path, module_name: str = None):
+def _read_token_from_cookies(project_dir, token_key: str) -> str:
+    """从 cookies.json 读取实际的 token 值。
+
+    搜索路径：
+    1. projects/<project>/output/config/cookies.json
+    2. projects/<project>/<version>/api/config/cookies.json
+    """
+    if not project_dir:
+        return ""
+
+    search_paths = []
+    # output/config/cookies.json（运行时输出目录）
+    output_path = project_dir / "output" / "config" / "cookies.json"
+    if output_path.exists():
+        search_paths.append(output_path)
+
+    # 遍历版本目录查找 api/config/cookies.json
+    for version_dir in sorted(project_dir.iterdir(), reverse=True):
+        if version_dir.is_dir() and not version_dir.name.startswith("."):
+            api_cookies = version_dir / "api" / "config" / "cookies.json"
+            if api_cookies.exists():
+                search_paths.append(api_cookies)
+                break
+
+    for cookies_path in search_paths:
+        try:
+            with open(cookies_path, "r", encoding="utf-8") as f:
+                cookies = json.load(f)
+            for cookie in cookies:
+                if cookie.get("name") == token_key:
+                    value = cookie.get("value", "")
+                    if value:
+                        return value
+        except (IOError, json.JSONDecodeError):
+            continue
+
+    return ""
+
+
+def export_all(manifest: dict, output_dir: Path, module_name: str = None, project_dir: Path = None):
     """导出所有 artifacts（便捷入口）。
 
     Args:
         manifest: 完整 manifest 字典
         output_dir: 输出目录
         module_name: 模块名（默认从 manifest 取）
+        project_dir: 项目目录（用于读取 cookies.json）
     """
     if not module_name:
         module_name = manifest.get("module", {}).get("name", "module")
@@ -777,7 +776,7 @@ def export_all(manifest: dict, output_dir: Path, module_name: str = None):
 
     # 3. Excel 参数文件
     excel_path = output_dir / f"{module_name}_params.xlsx"
-    export_excel_params(manifest, excel_path)
+    export_excel_params(manifest, excel_path, project_dir)
 
     return {
         "postman": str(postman_path),
