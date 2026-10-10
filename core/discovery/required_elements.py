@@ -13,76 +13,8 @@ Stage 1 验证分为两层：
 
 from typing import Dict, List, Tuple, Optional
 
-
-# 常见创建/新增操作关键词（中英文）
-_CREATE_KEYWORDS = [
-    "创建", "新增", "添加", "新建", "add", "create", "new",
-    "插入", "insert", "录入", "登记"
-]
-
-# 常见删除操作关键词
-_DELETE_KEYWORDS = [
-    "删除", "移除", "delete", "remove", "清除", "clear"
-]
-
-
-def _detect_page_type(ui_result: Dict) -> str:
-    """检测页面类型：crud / read_only / config_page / form_page
-
-    通过检查按钮文本中的创建/删除关键词和按钮位置来判断页面类型。
-
-    Args:
-        ui_result: Stage 1 探测结果
-
-    Returns:
-        页面类型字符串：
-        - "crud": 有创建或删除操作的页面
-        - "read_only": 纯列表页面，无操作按钮
-        - "config_page": 配置页面（有工具栏按钮但无表格）
-        - "form_page": 表单配置页面（页面本身是表单，只有 form_actions）
-        - "unknown": 无法判断
-    """
-    toolbar = ui_result.get("toolbar_buttons", [])
-    row_actions = ui_result.get("row_actions", [])
-    form_actions = ui_result.get("form_actions", [])
-    page_structure = ui_result.get("page_structure", {})
-    has_table = page_structure.get("mainBodyRows", 0) > 0
-
-    # 检查是否有创建/删除操作
-    has_create = False
-    has_delete = False
-
-    all_buttons = toolbar + row_actions
-    for btn in all_buttons:
-        btn_text = btn.get("text", "").lower()
-
-        # 检查创建关键词
-        if any(kw in btn_text for kw in _CREATE_KEYWORDS):
-            has_create = True
-
-        # 检查删除关键词
-        if any(kw in btn_text for kw in _DELETE_KEYWORDS):
-            has_delete = True
-
-    # 判断页面类型
-    if has_create or has_delete:
-        return "crud"
-
-    if has_table and not toolbar and not row_actions:
-        return "read_only"
-
-    if toolbar and not has_table:
-        return "config_page"
-
-    # 表单配置页面：只有 form_actions，无工具栏和表格
-    if form_actions and not toolbar and not row_actions and not has_table:
-        return "form_page"
-
-    if has_table:
-        # 有表格但无创建/删除，可能是查询/日志页面
-        return "read_only"
-
-    return "unknown"
+# 导入统一分类函数（单一事实来源）
+from core.discovery.page_classifier import classify_page_type
 
 
 def check_required_elements(ui_result: Dict, flow_name: str) -> Tuple[bool, List[Dict]]:
@@ -96,7 +28,7 @@ def check_required_elements(ui_result: Dict, flow_name: str) -> Tuple[bool, List
     根据页面类型调整验证标准：
     - crud 页面：要求至少一个操作成功
     - read_only 页面：不要求操作成功，只要求检测到表格数据
-    - config_page：要求至少一个工具栏按钮可点击
+    - form_page：要求至少一个表单按钮可点击
 
     Args:
         ui_result: Stage 1 输出
@@ -109,8 +41,8 @@ def check_required_elements(ui_result: Dict, flow_name: str) -> Tuple[bool, List
     """
     missing = []
 
-    # 0. 检测页面类型
-    page_type = _detect_page_type(ui_result)
+    # 0. 检测页面类型（使用统一分类函数）
+    page_type = classify_page_type(ui_result)
 
     # 1. 检查是否有业务操作按钮（工具栏或行操作）
     toolbar = ui_result.get("toolbar_buttons", [])
@@ -171,23 +103,6 @@ def check_required_elements(ui_result: Dict, flow_name: str) -> Tuple[bool, List
             })
         # 即使 validated_operations 全部失败也不标记为 critical
 
-    elif page_type == "config_page":
-        # 配置页面：要求至少一个工具栏按钮可点击
-        if not validated_ops:
-            missing.append({
-                "type": "structure",
-                "desc": "配置页面未检测到可点击的工具栏按钮",
-                "critical": True,
-            })
-        else:
-            success_count = sum(1 for op in validated_ops.values() if op.get("success"))
-            if success_count == 0:
-                missing.append({
-                    "type": "structure",
-                    "desc": f"配置页面：{len(validated_ops)} 个工具栏按钮均无法点击",
-                    "critical": True,
-                })
-
     elif page_type == "form_page":
         # 表单配置页面：要求至少一个表单按钮可点击
         if not form_actions:
@@ -200,15 +115,6 @@ def check_required_elements(ui_result: Dict, flow_name: str) -> Tuple[bool, List
             # form_page 允许 validated_operations 为空（因为 form_actions 可能不触发 CRUD 流程）
             # 只检查是否有 form_action 按钮存在
             pass
-
-    else:
-        # unknown 页面：宽松验证
-        if not validated_ops:
-            missing.append({
-                "type": "structure",
-                "desc": "未执行业务闭环验证（validated_operations 为空）",
-                "critical": False,
-            })
 
     # 4. 检查 form_actions（如果有表单按钮，应该被正确分类）
     if form_actions:

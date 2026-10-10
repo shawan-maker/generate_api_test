@@ -3,6 +3,7 @@
 import logging
 import time
 from core.discovery import const
+from core.discovery.page_classifier import classify_page_type
 
 LOG = logging.getLogger("playbook_builder")
 
@@ -56,69 +57,6 @@ def _classify_op_steps_type(op_data: dict) -> str:
     return "generic"
 
 
-def _classify_page_type(validated_ops: dict, toolbar_buttons: list, row_actions: list,
-                        form_actions: list = None) -> str:
-    """分类页面类型：crud / read_only / form_page。
-
-    判断逻辑：
-    - 有 validated_operations（无论成功失败）→ crud（Stage 1 尝试过验证）
-    - toolbar/row 按钮包含 CRUD 关键词（创建/删除等）→ crud
-    - toolbar/row 按钮包含非详情类操作按钮（导出/导入/冻结等）→ crud
-    - toolbar/row 按钮全部是详情类按钮（操作详情/查看）→ read_only
-    - 只有 form_actions（无 toolbar/row）→ form_page（表单配置页面）
-    - 其他情况 → read_only（只读/日志页面）
-
-    Returns:
-        "crud" | "read_only" | "form_page"
-    """
-    # ★ CRUD 关键词（与 required_elements.py 对齐）
-    _CRUD_KEYWORDS = ["创建", "新增", "添加", "新建", "删除", "移除",
-                      "add", "create", "new", "delete", "remove"]
-
-    # ★ 详情/查看类关键词（这些按钮不算 CRUD 操作）
-    _DETAIL_KEYWORDS = ["详情", "查看", "detail", "view"]
-
-    all_buttons = toolbar_buttons + row_actions
-
-    # ★ 检查 toolbar/row 按钮是否包含 CRUD 关键词
-    has_crud_button = any(
-        any(kw in btn.get("text", "").lower() for kw in _CRUD_KEYWORDS)
-        for btn in all_buttons
-    )
-
-    # ★ 检查 validated_operations 中是否有 CRUD 操作名或成功验证的操作
-    has_crud_validated = False
-    if validated_ops:
-        # 有成功验证的操作 → crud
-        if any(op.get("success") for op in validated_ops.values()):
-            has_crud_validated = True
-        # 操作名包含 CRUD 关键词（即使失败也算 CRUD 页面尝试过）
-        if not has_crud_validated:
-            for action in validated_ops.keys():
-                if any(kw in action.lower() for kw in _CRUD_KEYWORDS):
-                    has_crud_validated = True
-                    break
-
-    # CRUD 页面：按钮有关键词 或 validated 中有 CRUD 操作
-    if has_crud_button or has_crud_validated:
-        return "crud"
-
-    # ★ 检查是否有非详情类的操作按钮（如导出/导入/冻结/刷新等）
-    # 如果所有按钮都是详情类 → read_only；否则 → crud（fallback 会处理）
-    has_non_detail_button = any(
-        not any(kw in btn.get("text", "").lower() for kw in _DETAIL_KEYWORDS)
-        for btn in all_buttons
-    )
-
-    if has_non_detail_button:
-        return "crud"
-
-    # 只有 form_actions（表单配置页面，如日志设置）
-    if form_actions:
-        return "form_page"
-
-    # 其他情况：只读页面（toolbar 只有详情类按钮，如"操作详情"）
-    return "read_only"
 
 
 def _is_detail_action(action: str) -> bool:
@@ -510,7 +448,7 @@ def build_playbook(ui_result: dict) -> dict:
 
     # ---- 只读页面检测 ----
     tabs = page_structure.get("tabs", [])
-    page_type = _classify_page_type(validated_operations, toolbar_buttons, row_actions, form_actions)
+    page_type = classify_page_type(ui_result)
     if page_type == "read_only":
         LOG.info(f"  📖 检测到只读页面，生成只读测试流程（tabs={len(tabs)}）")
         operations = _build_read_only_playbook(ui_result, tabs)
