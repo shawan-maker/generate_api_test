@@ -59,6 +59,11 @@ def scan_scripts(scripts_dir: Path, module_filter: str = None, script_type: str 
             continue
         if group_dir.name in ("lib", "config", "reports", "__pycache__"):
             continue
+
+        # 解析 group 目录名：支持 "{idx}_{name}" 和纯 "{name}" 两种格式
+        grp_match = re.match(r'^(\d{2})_(.+)$', group_dir.name)
+        group_name = grp_match.group(2) if grp_match else group_dir.name
+
         # 扫描 group 目录下的脚本
         for s in sorted(group_dir.glob(suffix_pattern)):
             stem = s.stem
@@ -77,7 +82,7 @@ def scan_scripts(scripts_dir: Path, module_filter: str = None, script_type: str 
 
             if module_filter and module_filter not in name:
                 continue
-            out.append((name, s, group_dir.name, group_index))
+            out.append((name, s, group_name, group_index))
 
     return out
 

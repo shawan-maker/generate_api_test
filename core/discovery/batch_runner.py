@@ -15,7 +15,7 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
-from .io_helpers import load_modules_yaml, needs_rediscovery, load_ui_result, load_capture_result
+from .io_helpers import load_modules_yaml, needs_rediscovery, load_ui_result, load_capture_result, get_or_assign_module_index, get_or_assign_group_index
 from .path_mapper import get_workspace_dir
 from . import version as ver_mod
 
@@ -85,14 +85,10 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
         LOG.info("所有模块均已发现，无需重新执行")
         return
 
-    # ---- 按 group 分组，组内排序并编号 ----
+    # ---- 按 group 分组 ----
     grouped = defaultdict(list)
     for name, target_url, url_raw, group in to_discover:
         grouped[group].append((name, target_url, url_raw))
-
-    # 组内按名称排序，确保编号稳定
-    for group in grouped:
-        grouped[group].sort(key=lambda x: x[0])
 
     LOG.info(f"\n{'='*60}")
     LOG.info(f"  批量发现: {len(to_discover)} / {len(modules)} 个模块（{len(grouped)} 个分组）")
@@ -108,18 +104,12 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
         LOG.info(f"  📂 {group}（{len(items)} 个模块）")
         LOG.info(f"{'─'*60}")
 
-        for idx, (name, target_url, url_raw) in enumerate(items, 1):
-            group_index = f"{idx:02d}"
+        # ★ 计算 group 目录编号（稳定）
+        group_dir_name = f"{get_or_assign_group_index(project_dir, version, group)}_{group}"
 
-            # ---- Cookie 中期检查：每 5 个模块检查一次 ----
-            if idx > 1 and idx % 5 == 0:
-                LOG.info("  🔄 模块间 cookie 中期检查 ...")
-                try:
-                    from core.discovery.shared_runner import ensure_cookie_valid
-                    if not ensure_cookie_valid(project_dir, workspace_dir, base_url, login_url):
-                        LOG.warning("  ⚠️ cookie 刷新失败，继续执行（可能导致后续模块失败）")
-                except Exception as e:
-                    LOG.warning(f"  ⚠️ cookie 检查异常: {e}")
+        for name, target_url, url_raw in items:
+            # ★ 使用稳定编号函数（基于文件系统已有编号）
+            group_index = get_or_assign_module_index(project_dir, version, group, name)
 
             LOG.info(f"\n  [{group} {group_index}] {name}")
             LOG.info(f"  URL: {url_raw}")
@@ -136,7 +126,7 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
 
             # 计算 UI 脚本路径（用于记录到 result_entry，无论脚本是否存在）
             if group and group_index:
-                ui_script_path = project_dir / version / "ui" / group / f"{group_index}_{name}.py"
+                ui_script_path = project_dir / version / "ui" / group_dir_name / f"{group_index}_{name}.py"
             else:
                 ui_script_path = project_dir / version / "ui" / f"{name}.py"
             if ui_script_path.exists():
@@ -153,7 +143,7 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
                         continue
                     manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
                     run_stage5(manifest, project_dir, name, version=version,
-                               group=group, group_index=group_index)
+                               group=group_dir_name, group_index=group_index)
                     result_entry["status"] = "ok"
                     all_results.append(result_entry)
                     results.append({"name": name, "status": "ok"})
@@ -178,7 +168,7 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
                         capture_all_mode=args.capture_all,
                         version=version,
                         api_path_prefix=profile.get("api_base", ""),
-                        group=group, group_index=group_index)
+                        group=group_dir_name, group_index=group_index)
                 else:
                     capture_result = load_capture_result(project_dir, name)
                     stage2_valid = bool(capture_result and capture_result.get("core_api_map"))
@@ -193,7 +183,7 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
                         result_entry["status"] = "blocked"
                         result_entry["reason"] = "Stage 2 验证失败"
                         # 清理可能残留的旧 UI 脚本（防止错误脚本被误用）
-                        _cleanup_stale_ui_script(project_dir, version, group, group_index, name)
+                        _cleanup_stale_ui_script(project_dir, version, group_dir_name, group_index, name)
                         results.append({"name": name, "status": "blocked"})
                         all_results.append(result_entry)
                         continue
@@ -201,7 +191,7 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
                         LOG.warning(f"  ⚠️ --force-gen: 强制生成 {name} 的脚本")
                     result = run_stage34(project_dir, name, profile, target_url,
                                          version=version,
-                                         group=group, group_index=group_index)
+                                         group=group_dir_name, group_index=group_index)
                     if result:
                         _, script_path, manifest, skip_info = result
                         if skip_info:
@@ -209,7 +199,7 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
                             result_entry["status"] = "skipped"
                             result_entry["reason"] = skip_info["reason"]
                             # 清理 Stage 2 已生成的 UI 脚本（无有效业务操作）
-                            _cleanup_stale_ui_script(project_dir, version, group, group_index, name)
+                            _cleanup_stale_ui_script(project_dir, version, group_dir_name, group_index, name)
                             results.append({"name": name, "status": "skipped"})
                             all_results.append(result_entry)
                             continue
@@ -227,7 +217,7 @@ async def run_all_modules(page, context, project_dir: Path, profile: dict,
 
                 if manifest:
                     run_stage5(manifest, project_dir, name, version=version,
-                               group=group, group_index=group_index)
+                               group=group_dir_name, group_index=group_index)
 
                 result_entry["status"] = "ok"
                 if script_path:

@@ -41,6 +41,8 @@ from core.discovery.io_helpers import (
     load_capture_result as _load_capture_result,
     save_json as _save_json,
     needs_rediscovery as _needs_rediscovery,
+    get_or_assign_module_index,
+    get_or_assign_group_index,
 )
 from core.discovery.auth_runner import login_with_playwright as _login_with_playwright
 from core.discovery.stage1_rescue import hints_rescan as _hints_rescan
@@ -1578,11 +1580,16 @@ async def main():
                 module_group = m.get("group", "未分类")
                 break
 
+    # ★ 计算稳定的模块编号和 group 目录编号
+    _ver = args.version or ver_mod.resolve_version(project_dir)
+    module_group_index = get_or_assign_module_index(project_dir, _ver, module_group, args.module)
+    module_group_dir_name = f"{get_or_assign_group_index(project_dir, _ver, module_group)}_{module_group}"
+
     # 离线模式: Stage 3+4 → Stage 5（如果 --export）
     if args.offline:
         result = run_stage34(project_dir, args.module, profile, target_url,
-                    version=args.version or ver_mod.resolve_version(project_dir),
-                    group=module_group, group_index="01")
+                    version=_ver,
+                    group=module_group_dir_name, group_index=module_group_index)
         if result:
             flow, script_path, manifest, skip_info = result
             if skip_info:
@@ -1592,8 +1599,8 @@ async def main():
             # Stage 5 导出（仅当指定 --export 时）
             if args.export:
                 run_stage5(manifest, project_dir, args.module,
-                           version=args.version or ver_mod.resolve_version(project_dir),
-                           group=module_group, group_index="01")
+                           version=_ver,
+                           group=module_group_dir_name, group_index=module_group_index)
         return
 
     # 在线模式: 启动浏览器
@@ -1614,7 +1621,6 @@ async def main():
 
         # Stage 5 独立运行：跳过 1/2/34，直接加载 manifest 并导出
         if stage == "5":
-            version = args.version or ver_mod.resolve_version(project_dir)
             manifest_path = workspace_dir / "kb" / "module_discovered" / f"{args.module}_manifest.json"
             if not manifest_path.exists():
                 LOG.error(f"❌ manifest 不存在: {manifest_path}")
@@ -1622,8 +1628,8 @@ async def main():
                 return
             manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
             LOG.info(f"已从文件加载 manifest: {manifest_path}")
-            run_stage5(manifest, project_dir, args.module, version=version,
-                       group=module_group, group_index="01")
+            run_stage5(manifest, project_dir, args.module, version=_ver,
+                       group=module_group_dir_name, group_index=module_group_index)
             return
 
         # Stage 1
@@ -1648,9 +1654,9 @@ async def main():
                 page, project_dir, args.module, ui_result or {}, base_url, target_url,
                 max_recapture=args.max_recapture,
                 capture_all_mode=args.capture_all,
-                version=args.version or ver_mod.resolve_version(project_dir),
+                version=_ver,
                 api_path_prefix=profile.get("api_base", ""),
-                group=module_group, group_index="01")
+                group=module_group_dir_name, group_index=module_group_index)
         else:
             capture_result = _load_capture_result(project_dir, args.module)
             stage2_valid = bool(capture_result and capture_result.get("core_api_map"))
@@ -1667,8 +1673,8 @@ async def main():
                 if not stage2_valid and args.force_gen:
                     LOG.warning("⚠️ --force-gen: 强制生成脚本（Stage 2 验证未通过）")
                 result = run_stage34(project_dir, args.module, profile, target_url,
-                                     version=args.version or ver_mod.resolve_version(project_dir),
-                                     group=module_group, group_index="01")
+                                     version=_ver,
+                                     group=module_group_dir_name, group_index=module_group_index)
                 if result:
                     _, script_path, manifest, skip_info = result
                     if skip_info:
@@ -1679,30 +1685,19 @@ async def main():
         # Stage 5（导出 artifacts）- 默认执行
         if manifest is None:
             # 尝试从文件加载 manifest
-            version = args.version or ver_mod.resolve_version(project_dir)
             manifest_path = workspace_dir / "kb" / "module_discovered" / f"{args.module}_manifest.json"
             if manifest_path.exists():
                 manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
                 LOG.info(f"已从文件加载 manifest: {manifest_path}")
 
         if manifest:
-            # 从 modules.yaml 读取 group 信息
-            from core.discovery.io_helpers import load_modules_yaml, get_module_group_index
-            modules = load_modules_yaml(project_dir)
-            group = None
-            for m in modules:
-                if m.get("name") == args.module:
-                    group = m.get("group")
-                    break
-            group_index = get_module_group_index(project_dir, args.module)
-
             run_stage5(
                 manifest=manifest,
                 project_dir=project_dir,
                 module_name=args.module,
-                version=args.version or ver_mod.resolve_version(project_dir),
-                group=group,
-                group_index=group_index
+                version=_ver,
+                group=module_group_dir_name,
+                group_index=module_group_index
             )
 
 

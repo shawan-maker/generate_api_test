@@ -5,6 +5,7 @@ io_helpers.py — 项目 I/O 辅助函数
 """
 
 import json
+import re
 import time
 import logging
 from pathlib import Path
@@ -169,10 +170,184 @@ def load_modules_yaml(project_dir: Path) -> list:
         return []
 
 
+def _scan_indexed_dirs(base_dir: Path) -> dict:
+    """扫描目录下已编号的子目录/文件，返回 {name: index} 映射。
+
+    支持两种格式：
+    - 目录: {idx}_{name}/
+    - 文件: {idx}_{name}_API测试.py 或 {idx}_{name}.py
+
+    Args:
+        base_dir: 要扫描的目录（如 api/访问控制/ 或 api/）
+
+    Returns:
+        {name: index_str} 映射，如 {"用户管理": "03", "角色管理": "05"}
+    """
+    mapping = {}
+    if not base_dir.exists():
+        return mapping
+
+    for item in base_dir.iterdir():
+        name_part = item.stem if item.is_file() else item.name
+        m = re.match(r'^(\d{2})_(.+?)(?:_API测试)?$', name_part)
+        if m:
+            idx_str = m.group(1)
+            item_name = m.group(2)
+            # 后出现的覆盖先出现的（取最新）
+            mapping[item_name] = idx_str
+
+    return mapping
+
+
+def _find_group_dirs(base_dir: Path, group: str) -> list:
+    """查找 group 对应的所有目录（新旧格式都查）。
+
+    新格式: {idx}_{group}/  (如 01_访问控制/)
+    旧格式: {group}/        (如 访问控制/)
+
+    Returns:
+        匹配的目录路径列表
+    """
+    dirs = []
+    if not base_dir.exists():
+        return dirs
+
+    for d in base_dir.iterdir():
+        if not d.is_dir():
+            continue
+        # 精确匹配：新格式 "{idx}_{group}" 或 旧格式 "{group}"
+        if d.name == group:
+            dirs.append(d)
+        else:
+            m = re.match(r'^\d{2}_(.+)$', d.name)
+            if m and m.group(1) == group:
+                dirs.append(d)
+
+    return dirs
+
+
+def get_or_assign_module_index(project_dir: Path, version: str, group: str,
+                                module_name: str, side: str = "api") -> str:
+    """获取或分配模块的稳定编号。
+
+    策略：
+    1. 扫描 {project_dir}/{version}/{side}/ 下所有匹配 group 的目录
+       （同时查找新格式 "{idx}_{group}" 和旧格式 "{group}"）
+    2. 如果该模块已有编号 → 返回已有编号（稳定）
+    3. 如果是新模块 → 取当前最大编号 + 1
+    4. 如果目录不存在 → 返回 "01"
+
+    优先从 api 侧读取编号（api 脚本总是先生成），
+    确保 API 和 UI 编号一致。
+
+    Args:
+        project_dir: 项目目录
+        version: 版本号（如 "v1.0.0"）
+        group: 分组名（如 "访问控制"，不含编号前缀）
+        module_name: 模块名（如 "用户管理"）
+        side: "api" 或 "ui"，指定从哪侧扫描
+
+    Returns:
+        两位数字编号（如 "01", "02"）
+    """
+    version = version or "v1.0.0"
+
+    def _scan_all_sides(base_side: str) -> dict:
+        """扫描指定 side 下所有匹配 group 的目录"""
+        type_dir = project_dir / version / base_side
+        result = {}
+        for d in _find_group_dirs(type_dir, group):
+            scanned = _scan_indexed_dirs(d)
+            for k, v in scanned.items():
+                if k not in result:
+                    result[k] = v
+        return result
+
+    # 优先从 api 侧读取
+    existing = _scan_all_sides("api")
+
+    # 补充 ui 侧
+    if module_name not in existing:
+        for k, v in _scan_all_sides("ui").items():
+            if k not in existing:
+                existing[k] = v
+
+    # 补充 export 侧
+    for k, v in _scan_all_sides("export").items():
+        if k not in existing:
+            existing[k] = v
+
+    # 1. 已有编号 → 直接返回
+    if module_name in existing:
+        return existing[module_name]
+
+    # 2. 新模块 → 取最大编号 + 1
+    if existing:
+        max_idx = max(int(v) for v in existing.values())
+        return f"{max_idx + 1:02d}"
+
+    return "01"
+
+
+def get_or_assign_group_index(project_dir: Path, version: str,
+                               group: str, side: str = "api") -> str:
+    """获取或分配 group（一级目录）的稳定编号。
+
+    扫描 {project_dir}/{version}/ 下所有 side（api/ui/export）的子目录，
+    已有编号则返回，否则取最大编号 + 1。
+    同时检查新格式 "{idx}_{group}" 和旧格式 "{group}"。
+
+    Args:
+        project_dir: 项目目录
+        version: 版本号
+        group: 分组名（如 "访问控制"）
+        side: "api" 或 "ui"（作为主要扫描方向）
+
+    Returns:
+        两位数字编号（如 "01", "02"）
+    """
+    version = version or "v1.0.0"
+    _RESERVED = {"lib", "config", "reports", "__pycache__", "_summary"}
+
+    group_mapping = {}  # {group_name: index_str or None}
+
+    # 扫描所有 side 目录（api, ui, export）取并集
+    for scan_side in ["api", "ui", "export"]:
+        type_dir = project_dir / version / scan_side
+        if not type_dir.exists():
+            continue
+
+        for d in type_dir.iterdir():
+            if not d.is_dir() or d.name in _RESERVED:
+                continue
+            m = re.match(r'^(\d{2})_(.+)$', d.name)
+            if m:
+                g_name = m.group(2)
+                g_idx = m.group(1)
+                # 已有编号的优先
+                if g_name not in group_mapping or group_mapping[g_name] is None:
+                    group_mapping[g_name] = g_idx
+            else:
+                if d.name not in _RESERVED:
+                    group_mapping.setdefault(d.name, None)
+
+    # 已有编号 → 返回
+    if group in group_mapping and group_mapping[group] is not None:
+        return group_mapping[group]
+
+    # 新 group → 取最大编号 + 1
+    numbered = [int(v) for v in group_mapping.values() if v is not None]
+    if numbered:
+        return f"{max(numbered) + 1:02d}"
+
+    return "01"
+
+
 def get_module_group_index(project_dir: Path, module_name: str) -> str:
     """获取模块在其分组内的编号（01, 02, 03...）。
 
-    根据模块在同 group 内的顺序计算编号。
+    已废弃：请优先使用 get_or_assign_module_index()。
+    此函数保留向后兼容，内部代理到新函数。
 
     Args:
         project_dir: 项目目录
@@ -195,15 +370,10 @@ def get_module_group_index(project_dir: Path, module_name: str) -> str:
     if not target_group:
         return "01"
 
-    # 统计同 group 内的模块顺序
-    idx = 1
-    for m in modules:
-        if m.get("group") == target_group:
-            if m.get("name") == module_name:
-                return f"{idx:02d}"
-            idx += 1
-
-    return "01"
+    # 尝试从文件系统获取稳定编号
+    from core.discovery import version as ver_mod
+    version = ver_mod.resolve_version(project_dir)
+    return get_or_assign_module_index(project_dir, version, target_group, module_name)
 
 
 def needs_rediscovery(project_dir: Path, module_name: str, module_url: str,
