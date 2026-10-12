@@ -91,6 +91,10 @@ def export_postman_collection(manifest: dict, output_path: Path):
         "item": []
     }
 
+    # 提取全局配置
+    response_contract = manifest.get("response_contract", {})
+    state_assertions = manifest.get("state_assertions", {})
+
     # 00_前置操作 文件夹
     pre_apis = manifest.get("pre_apis", [])
     if pre_apis:
@@ -99,7 +103,8 @@ def export_postman_collection(manifest: dict, output_path: Path):
             "item": []
         }
         for pre_api in pre_apis:
-            item = _build_postman_request_item(pre_api, base_url, is_pre_api=True)
+            item = _build_postman_request_item(pre_api, base_url, is_pre_api=True,
+                                                response_contract=response_contract)
             pre_folder["item"].append(item)
         collection["item"].append(pre_folder)
 
@@ -124,14 +129,30 @@ def export_postman_collection(manifest: dict, output_path: Path):
                         "body_template": phase.get("body_template", {}),
                         "body_field_roles": phase.get("body_field_roles", {}),
                         "extract": phase.get("extract", []),
+                        "assertion": step.get("assertion", ""),
+                        "search_param": step.get("search_param", ""),
+                        "search_param_source": step.get("search_param_source", ""),
                     }
-                    item = _build_postman_request_item(phase_step, base_url, step_index=i)
+                    item = _build_postman_request_item(
+                        phase_step, base_url, step_index=i,
+                        response_contract=response_contract,
+                        state_assertions=state_assertions)
                     # 重命名为 "序号.子序号_标签"
                     item["name"] = f"{i:02d}.{j+1}_{phase.get('label', phase.get('id', ''))}"
                     biz_folder["item"].append(item)
             else:
                 # 单 API step（原有逻辑不变）
-                item = _build_postman_request_item(step, base_url, step_index=i)
+                # 如果是 search_verify，获取前一个步骤的 action 用于状态断言
+                prev_action = ""
+                if step.get("assertion") in ("search_verify", "search_not_found") and i > 1:
+                    prev_step = steps[i - 2]
+                    prev_action = prev_step.get("action", prev_step.get("label", ""))
+
+                item = _build_postman_request_item(
+                    step, base_url, step_index=i,
+                    response_contract=response_contract,
+                    state_assertions=state_assertions,
+                    prev_action=prev_action)
                 biz_folder["item"].append(item)
         collection["item"].append(biz_folder)
 
@@ -180,8 +201,13 @@ def _build_postman_variables(manifest: dict) -> list:
 
 def _build_postman_request_item(step_def: dict, base_url: str,
                                 is_pre_api: bool = False,
-                                step_index: int = 0) -> dict:
+                                step_index: int = 0,
+                                response_contract: dict = None,
+                                state_assertions: dict = None,
+                                prev_action: str = "") -> dict:
     """构建单个 Postman 请求项。"""
+    response_contract = response_contract or {}
+    state_assertions = state_assertions or {}
     if is_pre_api:
         # pre_api 的 method/pathname 是顶层键，name 用 'name' 或 'id'
         method = step_def.get("method", "GET")
@@ -249,27 +275,28 @@ def _build_postman_request_item(step_def: dict, base_url: str,
                 }
             })
 
-    # Test script: 提取响应值到环境变量
+    # Test script: 提取响应值 + 断言
     extracts = step_def.get("extract", {}) or step_def.get("extracts", [])
-    if isinstance(extracts, dict) and extracts:
-        test_lines = _build_postman_test_script(extracts, step_def.get("action", ""))
+    if is_pre_api:
+        # 前置 API：保持原有提取逻辑
+        if isinstance(extracts, list) and extracts:
+            test_lines = _build_postman_test_script_from_list(extracts)
+            if test_lines:
+                events.append({
+                    "listen": "test",
+                    "script": {"type": "text/javascript", "exec": test_lines}
+                })
+    else:
+        # 业务步骤：根据 assertion 类型生成完整测试脚本
+        assertion = step_def.get("assertion", "")
+        action = step_def.get("action", label)
+        test_lines = _build_biz_test_script(
+            extracts, assertion, action, step_def,
+            response_contract, state_assertions, prev_action)
         if test_lines:
             events.append({
                 "listen": "test",
-                "script": {
-                    "type": "text/javascript",
-                    "exec": test_lines
-                }
-            })
-    elif isinstance(extracts, list) and extracts:
-        test_lines = _build_postman_test_script_from_list(extracts)
-        if test_lines:
-            events.append({
-                "listen": "test",
-                "script": {
-                    "type": "text/javascript",
-                    "exec": test_lines
-                }
+                "script": {"type": "text/javascript", "exec": test_lines}
             })
 
     item = {
@@ -420,6 +447,137 @@ def _build_postman_test_script_from_list(extracts: list) -> list:
             js_path = _json_path_to_js(path)
             lines.append(f"var {name} = jsonData{js_path};")
             lines.append(f"if ({name} !== undefined) pm.environment.set('{name}', {name});")
+    return lines
+
+
+def _build_biz_test_script(extracts, assertion: str, action: str,
+                            step_def: dict, response_contract: dict,
+                            state_assertions: dict, prev_action: str = "") -> list:
+    """构建业务步骤的完整测试脚本（提取 + 断言）。
+
+    Args:
+        extracts: 提取配置（dict 或 list 格式）
+        assertion: 断言类型（search_verify / search_not_found / 空）
+        action: 步骤动作名
+        step_def: 步骤定义
+        response_contract: 响应契约
+        state_assertions: 状态断言配置
+        prev_action: 前一个业务步骤的动作名（用于 search_verify 查找期望状态）
+    """
+    lines = ["var jsonData = pm.response.json();", ""]
+
+    # 1. 基础成功断言（所有业务步骤）
+    success_check = response_contract.get("success_check", {})
+    success_field = success_check.get("success_field", "success")
+    error_field = success_check.get("error_field", "errorCode")
+
+    lines.extend([
+        "// 基础成功断言",
+        "pm.test('Response success', function() {",
+        f"    pm.expect(jsonData.{success_field}).to.be.true;",
+        f"    pm.expect(jsonData.{error_field}).to.be.undefined;",
+        "});",
+        ""
+    ])
+
+    # 2. 数据提取（如果有）
+    if isinstance(extracts, dict) and extracts:
+        id_path = extracts.get("id", "")
+        if id_path:
+            js_path = _json_path_to_js(id_path)
+            lines.append(f"var createdId = jsonData{js_path};")
+            lines.append(f"if (createdId) pm.environment.set('id', createdId);")
+            lines.append("")
+
+        names = extracts.get("names", [])
+        for name_key in names:
+            lines.append(f"var nameVal = jsonData.entity && jsonData.entity.{name_key};")
+            lines.append(f"if (nameVal) pm.environment.set('name_{name_key}', nameVal);")
+        if names:
+            lines.append("")
+
+    # 3. 搜索验证断言
+    list_keys = response_contract.get("list_keys", ["list"])
+    total_keys = response_contract.get("total_keys", ["total"])
+    list_key = list_keys[0] if list_keys else "list"
+    total_key = total_keys[0] if total_keys else "total"
+
+    if assertion == "search_verify":
+        search_param = step_def.get("search_param", "name")
+        search_source = step_def.get("search_param_source", "userName")
+        env_var = f"name_{search_source}"
+
+        # 获取期望的 state（如果配置了）
+        # 对于 search_verify，使用前一个业务步骤的 action 来查找期望状态
+        values_by_crud = state_assertions.get("values_by_crud", {})
+        lookup_action = prev_action if prev_action else action
+        expected_state = values_by_crud.get(lookup_action, "")
+        state_field = state_assertions.get("state_field", "state")
+
+        lines.extend([
+            "// 搜索验证：应找到匹配记录",
+            f"pm.test('Found in search results', function() {{",
+            f"    var list = jsonData.entity.{list_key} || [];",
+            f"    var found = list.some(function(item) {{",
+            f"        return item.{search_param} === pm.environment.get('{env_var}');",
+            f"    }});",
+            f"    pm.expect(found).to.be.true;",
+            f"}});",
+            ""
+        ])
+
+        # 断言 total > 0
+        lines.extend([
+            f"pm.test('Total > 0', function() {{",
+            f"    pm.expect(jsonData.{total_key}).to.be.above(0);",
+            f"}});",
+            ""
+        ])
+
+        # 断言 state（如果有配置）
+        if expected_state:
+            lines.extend([
+                f"pm.test('State is {expected_state}', function() {{",
+                f"    var list = jsonData.entity.{list_key} || [];",
+                f"    var matched = list.find(function(item) {{",
+                f"        return item.{search_param} === pm.environment.get('{env_var}');",
+                f"    }});",
+                f"    if (matched) {{",
+                f"        pm.expect(matched.{state_field}).to.equal('{expected_state}');",
+                f"    }}",
+                f"}});",
+                ""
+            ])
+
+    elif assertion == "search_not_found":
+        search_param = step_def.get("search_param", "name")
+        search_source = step_def.get("search_param_source", "userName")
+        env_var = f"name_{search_source}"
+
+        lines.extend([
+            "// 搜索验证：不应找到记录",
+            f"pm.test('Not found in search results', function() {{",
+            f"    var list = jsonData.entity.{list_key} || [];",
+            f"    var found = list.some(function(item) {{",
+            f"        return item.{search_param} === pm.environment.get('{env_var}');",
+            f"    }});",
+            f"    pm.expect(found).to.be.false;",
+            f"}});",
+            ""
+        ])
+
+        # 断言 total == 0
+        lines.extend([
+            f"pm.test('Total is 0', function() {{",
+            f"    pm.expect(jsonData.{total_key}).to.equal(0);",
+            f"}});",
+            ""
+        ])
+
+    # 清理末尾空行
+    while lines and lines[-1] == "":
+        lines.pop()
+
     return lines
 
 

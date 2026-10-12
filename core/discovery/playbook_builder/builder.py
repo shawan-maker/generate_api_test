@@ -550,10 +550,13 @@ def build_playbook(ui_result: dict) -> dict:
     _BATCH_PREFIXES = ["批量", "batch", "bulk"]
     _NON_BUSINESS_BUTTONS = {"GO", "Go", "go", "跳转", "跳转至"}
     # 收集行级操作文本，用于"批量XX"↔"XX"去重
+    # 包括：1) row_actions 中的直接操作 2) 已验证的操作（可能来自"更多"下拉菜单）
     _fb_row_action_texts = {
         btn.get("text", "") for btn in ui_result.get("row_actions", [])
         if btn.get("text") not in _DROPDOWN_TRIGGER_TEXTS
     }
+    # 添加已验证的操作文本（这些操作已从"更多"下拉菜单或其他来源验证）
+    _fb_row_action_texts.update(operations.keys())
 
     for btn_list_key in ("toolbar_buttons", "row_actions"):
         for btn in ui_result.get(btn_list_key, []):

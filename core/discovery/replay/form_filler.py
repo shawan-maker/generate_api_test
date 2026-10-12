@@ -2348,69 +2348,54 @@ class MultiStepExecutor:
         if transfer_left:
             LOG.info(f"    检测到自定义穿梭框左侧面板，搜索可点击元素...")
 
-            # === DIAG-DEEP: dump 左侧面板完整 DOM（含 table/tree 元素），用于分析实际结构 ===
-            _left_dom = await self.page.evaluate("""(container) => {
-                function dumpNode(el, depth) {
-                    if (depth > 5) return null;
-                    const r = el.getBoundingClientRect();
-                    if (r.width <= 0 && r.height <= 0 && el.tagName !== 'TBODY' && el.tagName !== 'THEAD') return null;
-                    const node = {
-                        tag: el.tagName,
-                        cls: (el.className || '').substring(0, 60),
-                        w: Math.round(r.width), h: Math.round(r.height),
+            # === STEP 1: 优先使用 xpath 点击（用户验证的路径）===
+            # //tbody//tr[@class="el-table__row"]//span[1]
+            LOG.info(f"    [transfer-box] 尝试 xpath 点击: //tbody//tr[@class='el-table__row']//span[1]")
+            xpath_click_result = await self.page.evaluate("""(container) => {
+                const xpath = '//tbody//tr[@class="el-table__row"]//span[1]';
+                const result = document.evaluate(xpath, container, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                const span = result.singleNodeValue;
+                if (span) {
+                    const text = (span.textContent || '').trim();
+                    const r = span.getBoundingClientRect();
+                    console.log('[transfer-box] xpath 点击 span:', text);
+                    span.click();
+                    return {
+                        clicked: true,
+                        text: text,
+                        tag: span.tagName,
+                        cls: (span.className || '').substring(0, 50),
+                        w: Math.round(r.width),
+                        h: Math.round(r.height)
                     };
-                    // 文本节点（仅叶子元素）
-                    if (el.children.length === 0) {
-                        node.text = (el.textContent || '').trim().substring(0, 40);
-                    } else {
-                        node.children = [];
-                        for (const child of el.children) {
-                            const c = dumpNode(child, depth + 1);
-                            if (c) node.children.push(c);
-                        }
-                    }
-                    return node;
                 }
-                return dumpNode(container, 0);
+                return { clicked: false, reason: 'xpath not found' };
             }""", transfer_left)
-            LOG.info(f"    [DIAG-DEEP] transfer-box-left DOM:\n{json.dumps(_left_dom, ensure_ascii=False, indent=2)}")
+            LOG.info(f"    [transfer-box] xpath 点击结果: {json.dumps(xpath_click_result, ensure_ascii=False)}")
 
-            # === DIAG-EXTRA: 检查左侧面板内是否有 el-table / el-tree ===
-            _extra_check = await self.page.evaluate("""(container) => {
-                const hasTable = !!container.querySelector('.el-table, table, [class*="el-table"]');
-                const hasTree = !!container.querySelector('.el-tree, [class*="el-tree"], [role="tree"]');
-                const tableRows = container.querySelectorAll('tr, .el-table__row, .el-tree-node');
-                const tableCells = container.querySelectorAll('td, .el-table__cell');
-                const rowInfo = [];
-                tableRows.forEach((row, i) => {
-                    if (i >= 10) return;
-                    const r = row.getBoundingClientRect();
-                    rowInfo.push({
-                        tag: row.tagName, cls: (row.className || '').substring(0, 50),
-                        text: (row.textContent || '').trim().substring(0, 50),
-                        w: Math.round(r.width), h: Math.round(r.height),
-                        visible: r.width > 0 && r.height > 0
-                    });
-                });
-                const cellInfo = [];
-                tableCells.forEach((cell, i) => {
-                    if (i >= 20) return;
-                    const r = cell.getBoundingClientRect();
-                    cellInfo.push({
-                        cls: (cell.className || '').substring(0, 50),
-                        text: (cell.textContent || '').trim().substring(0, 30),
-                        w: Math.round(r.width), h: Math.round(r.height),
-                        visible: r.width > 0 && r.height > 0
-                    });
-                });
-                return { hasTable, hasTree, rowCount: tableRows.length, cellCount: tableCells.length, rows: rowInfo, cells: cellInfo };
-            }""", transfer_left)
-            LOG.info(f"    [DIAG-EXTRA] hasTable={_extra_check.get('hasTable')}, hasTree={_extra_check.get('hasTree')}, rows={_extra_check.get('rowCount')}, cells={_extra_check.get('cellCount')}")
-            if _extra_check.get('rows'):
-                LOG.info(f"    [DIAG-EXTRA] rows: {json.dumps(_extra_check['rows'], ensure_ascii=False)}")
-            if _extra_check.get('cells'):
-                LOG.info(f"    [DIAG-EXTRA] cells: {json.dumps(_extra_check['cells'], ensure_ascii=False)}")
-            # === END DIAG-DEEP ===
+            if xpath_click_result.get('clicked'):
+                target_text = xpath_click_result.get('text', '')
+                await self.page.wait_for_timeout(500)
+                LOG.info(f"    穿梭框 xpath 点击成功: '{target_text}'")
+
+                # === DIAG: 检查右侧面板是否更新 ===
+                right_panel = await self.page.evaluate("""() => {
+                    const right = document.querySelector('[class*="transfer-box-right"]');
+                    if (!right) return { found: false };
+                    const items = right.querySelectorAll('div, span, p');
+                    const texts = [];
+                    for (const el of items) {
+                        const t = (el.textContent || '').trim();
+                        if (t && t.length < 80) texts.push(t);
+                    }
+                    return { found: true, itemCount: items.length, texts: texts.slice(0, 10) };
+                }""")
+                LOG.info(f"    [DIAG-transfer] 右侧面板: {json.dumps(right_panel, ensure_ascii=False)}")
+
+                return True, {"option_text": target_text, "selected_count": 1}
+
+            # === STEP 2: xpath 失败时，回退到 querySelectorAll + 筛选 ===
+            LOG.info(f"    [transfer-box] xpath 未找到，回退到 querySelectorAll 方式")
 
             # 在左侧面板内找到可见、可点击的叶子元素
             click_result = await self.page.evaluate("""(container) => {
@@ -2442,44 +2427,55 @@ class MultiStepExecutor:
 
             if click_result and len(click_result) > 0:
                 LOG.info(f"    穿梭框左侧面板找到 {len(click_result)} 个候选项: {[c['text'][:20] for c in click_result[:5]]}")
-                # === DIAG: 输出候选项详细信息 ===
+                # === DIAG-STEP2: 输出每个候选项的详细信息 ===
                 for i, c in enumerate(click_result[:10]):
-                    LOG.info(f"    [DIAG-transfer] candidate[{i}]: text='{c['text']}', "
-                             f"childCount={c.get('childCount')}, isLeaf={c.get('isLeaf')}, "
-                             f"hasAlphanumeric={c.get('hasAlphanumeric')}, cls='{c.get('cls', '')}'")
-                # 结构性筛选：叶子元素 + 字母数字 + 非标题容器
-                # 基于诊断数据确定的特征：
-                #   - 用户名单元格: isLeaf=True, hasAlphanumeric=True, cls='cell el-tooltip'
-                #   - 标题包装器: isLeaf=False, cls='box-left-text' (必须排除)
-                #   - 计数文本: isLeaf=True, text='(5)个' (纯数字+单位，排除)
+                    LOG.info(f"    [DIAG-STEP2] candidate[{i}]: text='{c['text']}', tag={c.get('tag')}, "
+                             f"isLeaf={c.get('isLeaf')}, hasAlphanumeric={c.get('hasAlphanumeric')}, "
+                             f"cls='{c.get('cls', '')[:40]}'")
+                # 结构性筛选：叶子元素 + 非标题容器
+                # ★ 修改：移除 hasAlphanumeric 要求，支持纯中文文本（如"普通用户"）
                 valid_candidates = [
                     c for c in click_result
                     if c.get('isLeaf')                           # 必须是叶子元素
-                    and c.get('hasAlphanumeric')                 # 必须包含字母或数字
                     and len(c.get('text', '')) > 2               # 文本长度 > 2
                     and 'box-left-text' not in c.get('cls', '')  # 排除标题容器
                     and 'text-po' not in c.get('cls', '')        # 排除标题子容器
+                    and c.get('text', '') not in ['全选', '可选项']  # 排除常见 header 文本
                 ]
+                LOG.info(f"    [DIAG-STEP2] 筛选后有效候选: {len(valid_candidates)} 个")
                 if valid_candidates:
                     target_text = valid_candidates[0]["text"]
                     LOG.info(f"    穿梭框候选项筛选: 选择 '{target_text}' (从 {len(valid_candidates)} 个有效候选中)")
                 else:
                     target_text = click_result[0]["text"]
                     LOG.warning(f"    穿梭框候选项筛选: 未找到有效候选项，使用默认 '{target_text}'")
-                # 用文本精确点击目标元素（将文本嵌入 JS 避免多参数问题）
+                # 用文本精确点击目标元素
                 import json as _json_ls
                 _escaped_text = _json_ls.dumps(target_text)
+                LOG.info(f"    [DIAG-STEP3] 准备点击文本: '{target_text}'")
                 clicked = await self.page.evaluate(f"""(container) => {{
                     const targetText = {_escaped_text};
                     const items = container.querySelectorAll('div, span, p, label, a');
+                    let foundEl = null;
                     for (const el of items) {{
                         if ((el.textContent || '').trim() === targetText) {{
-                            el.click();
-                            return true;
+                            foundEl = el;
+                            break;
                         }}
                     }}
-                    return false;
+                    if (foundEl) {{
+                        const r = foundEl.getBoundingClientRect();
+                        foundEl.click();
+                        return {{
+                            clicked: true,
+                            tag: foundEl.tagName,
+                            cls: (foundEl.className || '').substring(0, 50),
+                            w: Math.round(r.width), h: Math.round(r.height)
+                        }};
+                    }}
+                    return {{ clicked: false, reason: 'not found' }};
                 }}""", transfer_left)
+                LOG.info(f"    [DIAG-STEP3] 点击结果: {json.dumps(clicked, ensure_ascii=False)}")
 
                 if clicked:
                     await self.page.wait_for_timeout(500)
