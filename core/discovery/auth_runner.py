@@ -1,90 +1,57 @@
 """
-auth_runner.py — 浏览器登录 + cookie 管理
+auth_runner.py — 浏览器登录适配层（委托给 LoginSession）
 
-从 run.py 提取的登录相关逻辑，供单模块和批量模式复用。
+薄包装器，将旧的调用接口适配到新的 LoginSession 架构。
 """
 
-import os
-import json
 import logging
 from pathlib import Path
+
+from lib.auth import LoginSession, LoginConfig, LoginResult
+from lib.auth.strategies.registry import get_strategy
 
 LOG = logging.getLogger("auth_runner")
 
 
 async def login_with_playwright(page, context, login_url, username, password,
                                 project_profile: dict = None):
-    """登录：cookie 优先 → 失效后走滑块自动登录（复用 lib/auth.py）。
+    """登录：委托给 LoginSession + EcsCloud 策略。
 
     从 project_profile 读取 auth/captcha 配置，不硬编码。
 
     注意：cookie 保存由调用方（run.py）负责，保存到 workspace/<project>/output/config/
     """
-    from lib import auth
-
     p = project_profile or {}
     profile = {
+        "strategy": p.get("strategy", "ecscloud"),
         "login_url": login_url,
         "auth": p.get("auth", {}),
         "captcha": p.get("captcha", {}),
+        "selectors": p.get("selectors", {}),
     }
 
-    sess = auth.AuthSession(profile, username, password)
-    LOG.info("  执行滑块登录（复用 login_with_browser）...")
-    ok = await sess.login_with_browser(page, context)
+    config = LoginConfig.from_profile(profile, login_url=login_url)
+    config.username = username
+    config.password = password
 
-    return ok
+    strategy_name = profile.get("strategy", "ecscloud")
+    strategy = get_strategy(strategy_name)
 
+    # 使用临时目录（cookie 由调用方保存）
+    import tempfile
+    temp_dir = Path(tempfile.mkdtemp())
+    session = LoginSession(temp_dir, config)
 
-async def ensure_browser_login(page, context, profile: dict, base_url: str,
-                               login_url: str, username: str, password: str):
-    """确保浏览器已登录：先尝试 cookie，失败则滑块登录。
+    result = await strategy.login(page, context, config)
 
-    Args:
-        page: Playwright page 对象
-        context: Playwright context 对象
-        profile: 项目 profile.yaml 内容
-        base_url: 基础 URL
-        login_url: 登录页 URL
-        username: 用户名
-        password: 密码
+    # 清理临时目录
+    try:
+        import shutil
+        shutil.rmtree(temp_dir, ignore_errors=True)
+    except Exception:
+        pass
 
-    Returns:
-        True 如果登录成功
-    """
-    cookie_file = Path(__file__).resolve().parents[1] / "projects" / "output" / "config" / "cookies.json"
-
-    # 尝试从 output/config 加载已有 cookie
-    logged_in = False
-    project_dir = None
-    # 从 profile 推断 project_dir
-    # cookie_file 应由调用方提供，这里用通用逻辑
-    if cookie_file.exists():
-        try:
-            cookies = json.loads(cookie_file.read_text(encoding="utf-8"))
-            if cookies:
-                await context.add_cookies(cookies)
-                try:
-                    await page.goto(base_url, wait_until="load", timeout=30000)
-                except Exception:
-                    pass
-                await page.wait_for_timeout(5000)
-                if "/login" not in page.url:
-                    LOG.info("  ✅ Cookie 有效，直接进入系统")
-                    logged_in = True
-        except Exception:
-            pass
-
-    if not logged_in:
-        LOG.info("  执行滑块登录...")
-        ok = await login_with_playwright(page, context, login_url, username, password,
-                                        project_profile=profile)
-        if not ok:
-            LOG.error("❌ 登录失败")
-            return False
-        LOG.info("  ✅ 登录成功")
-
-    return True
+    return result == LoginResult.SUCCESS
 
 
 def resolve_credentials(profile: dict, user_arg: str = None, pass_arg: str = None):
@@ -98,6 +65,7 @@ def resolve_credentials(profile: dict, user_arg: str = None, pass_arg: str = Non
     Returns:
         (username, password) 元组
     """
+    import os
     creds = profile.get("credentials", {}) or {}
     username = (user_arg
                 or creds.get("username")

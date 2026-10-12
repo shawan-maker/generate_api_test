@@ -23,7 +23,7 @@ from core.discovery.operation_executor.base_executor import (
     _click_button_escalating, _install_message_capture, _get_captured_messages,
     _verify_operation_success, _check_data_changed, _ensure_on_list_page,
     _extract_fallback_marker, _ensure_row_selected, _try_fill_empty_selects,
-    _check_create_api_triggered_simple,
+    _check_create_api_triggered_simple, _ensure_switch_enabled,
 )
 from core.discovery.operation_executor.result_factory import (
     make_error, make_success, click_failed, row_not_found, no_dialog,
@@ -521,6 +521,9 @@ async def _do_create(page, context: dict) -> dict:
     username = context.get("username", "test")
 
     btn_text = btn.get("text", "")
+
+    # 0. 前置条件：确保 switch 开启（某些页面的 switch 控制按钮可用性）
+    await _ensure_switch_enabled(page)
 
     # 1. 点击创建按钮
     btn_click_result = await _click_button_escalating(page, btn_text)

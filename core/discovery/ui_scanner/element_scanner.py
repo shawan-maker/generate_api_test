@@ -134,20 +134,40 @@ async def discover_all(page) -> dict:
 def _merge_tab_results(base: dict, tab_result: dict, tab_name: str):
     """将 tab 扫描结果合并到主结果中，标记 tab 来源。
 
+    同名按钮替换策略：当后扫描的 tab 出现与先扫描 tab 同名的 toolbar_buttons
+    或 row_actions 时，替换为先扫描的（因为页面当前停留在后扫描的 tab 上，
+    后续 CRUD 验证需要操作当前可见 tab 的按钮）。
+
     Args:
         base: 主结果字典（会被原地修改）
         tab_result: 当前 tab 的扫描结果
         tab_name: tab 名称
     """
-    # toolbar_buttons 合并
+    # toolbar_buttons 合并：同名按钮替换（保留当前 tab 的可见按钮）
     for btn in tab_result.get("toolbar_buttons", []):
         btn["tab"] = tab_name
-        base.setdefault("toolbar_buttons", []).append(btn)
+        existing_list = base.setdefault("toolbar_buttons", [])
+        existing_idx = next(
+            (i for i, b in enumerate(existing_list) if b.get("text") == btn.get("text")),
+            None
+        )
+        if existing_idx is not None:
+            existing_list[existing_idx] = btn  # 替换为当前 tab 的按钮
+        else:
+            existing_list.append(btn)
 
-    # row_actions 合并
+    # row_actions 合并：同名替换（同理）
     for ra in tab_result.get("row_actions", []):
         ra["tab"] = tab_name
-        base.setdefault("row_actions", []).append(ra)
+        existing_list = base.setdefault("row_actions", [])
+        existing_idx = next(
+            (i for i, b in enumerate(existing_list) if b.get("text") == ra.get("text")),
+            None
+        )
+        if existing_idx is not None:
+            existing_list[existing_idx] = ra
+        else:
+            existing_list.append(ra)
 
     # form_actions 合并（不标记 tab，表单按钮通常跨 tab 共享）
     for fa in tab_result.get("form_actions", []):

@@ -13,7 +13,7 @@ API_AI_test/
 │   └── discovery/                 五阶段模块级发现引擎（主管线）
 │       ├── run.py                   CLI 入口
 │       ├── io_helpers.py            I/O 辅助（profile/manifest/modules 加载）
-│       ├── auth_runner.py           浏览器登录 + cookie 管理
+│       ├── auth_runner.py           登录适配层（委托给 LoginSession）
 │       ├── batch_runner.py          批量模块发现
 │       ├── stage1_rescue.py         Stage 1 Phase C/D/E 补救子例程
 │       ├── discover_ui.py           Stage 1: UI 元素探测 + Playbook 生成
@@ -45,10 +45,21 @@ API_AI_test/
 │           └── wait_helpers.py        事件驱动等待（表格就绪/弹窗/loading）
 │
 ├── lib/                         共享运行时库
-│   ├── auth/                      鉴权相关
-│   │   ├── auth.py                  鉴权引擎（Cookie 优先 + 滑块兜底）
-│   │   ├── slider.py                滑块验证码（多算法投票）
-│   │   └── cookie_client.py         Cookie 管理客户端
+│   ├── auth/                      统一登录模块（策略模式）
+│   │   ├── session.py               LoginSession 主控制器
+│   │   ├── strategy_base.py         策略基类与注册表
+│   │   ├── cookie_store.py          CookieStore 持久化存储
+│   │   ├── strategies/              4 个登录策略实现
+│   │   │   ├── ecscloud.py            EcsCloud 滑块验证码
+│   │   │   ├── bcov.py                BCov 拼图验证码
+│   │   │   ├── ecso.py                ECSO 算术验证码
+│   │   │   └── tianshu.py             Tianshu 字符验证码
+│   │   ├── captcha/                 验证码识别引擎
+│   │   │   ├── slider.py              滑块缺口检测（OpenCV）
+│   │   │   ├── puzzle.py              拼图槽位检测（泛洪填充）
+│   │   │   ├── arithmetic.py          算术表达式 OCR（ddddocr）
+│   │   │   └── ocr.py                 字符 OCR（ddddocr）
+│   │   └── cookie_client.py         Cookie 读取客户端（生成脚本使用）
 │   ├── report/                    报告生成
 │   │   ├── test_report.py           JSONL → HTML 报告
 │   │   └── ui_report.py             UI 测试报告
@@ -262,10 +273,19 @@ python projects/ecm-compute/v1.0.0/ui/用户管理.py --operation "创建用户"
 
 ## 4. 关键设计
 
-### 4.1 Cookie-only 认证
+### 4.1 统一登录模块（策略模式）
 
-生成的脚本**不包含登录逻辑**，仅依赖 `cookies.json`：
-- 运行 Stage 1-2 时自动登录并刷新 cookie
+**框架内部登录**：采用策略模式统一不同项目的登录流程
+- `LoginSession` 主控制器：Cookie 优先 → 新鲜度检查 → 服务端探测 → 按需登录
+- 4 种登录策略：
+  - `ecscloud`: 滑块验证码（OpenCV 缺口检测 + 人类化拖拽）
+  - `bcov`: 拼图验证码（泛洪填充槽位检测）
+  - `ecso`: 算术验证码（ddddocr OCR 识别）
+  - `tianshu`: 字符验证码（ddddocr OCR 识别）
+- `CookieStore`: 统一 Cookie 持久化（cookies.json + meta.json + localStorage）
+
+**生成脚本认证**：仅依赖 `cookies.json`，不包含登录逻辑
+- 运行 Stage 1-2 时自动调用 `LoginSession` 完成登录并刷新 cookie
 - 或手动编辑 `config/cookies.json`（Playwright cookie 格式）
 - 脚本运行时从 `config/cookies.json` 读取 token 注入浏览器
 

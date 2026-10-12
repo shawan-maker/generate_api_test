@@ -75,7 +75,7 @@ def _is_login_redirect(page) -> bool:
 async def _refresh_cookie_mid_discovery(page, context, project_dir, base_url, login_url, profile):
     """发现流程中途刷新 cookie（Stage 1/2 检测到登录页重定向时调用）。
 
-    使用 shared_runner.refresh_cookies 执行滑块登录刷新 cookie，
+    使用 shared_runner.refresh_cookies 执行登录刷新 cookie，
     刷新成功后将新 cookie 注入 context。
 
     Returns:
@@ -858,7 +858,13 @@ test_data = {{
 
 
 async def _ensure_login(page, context, profile, login_url, target_url, args, workspace_dir):
-    """公共登录逻辑：尝试 cookie 复用，失败则完整登录。
+    """公共登录逻辑：委托给 LoginSession 处理 cookie 复用和登录。
+
+    流程：
+    1. 解析凭据和配置
+    2. 通过 LoginSession.ensure_auth() 完成：cookie 检查 → 探测 → 登录
+    3. 保存 cookie 并注入 token 到 localStorage
+    4. 导航到目标 URL
 
     Args:
         page: Playwright page
@@ -872,7 +878,12 @@ async def _ensure_login(page, context, profile, login_url, target_url, args, wor
     Returns:
         bool: 是否登录成功
     """
+    from lib.auth import LoginSession, LoginConfig
+    from lib.auth.strategies.registry import get_strategy
+
     LOG.info("登录...")
+
+    # 解析凭据
     creds = profile.get("credentials", {}) or {}
     username = (args.user
                 or creds.get("username")
@@ -887,114 +898,69 @@ async def _ensure_login(page, context, profile, login_url, target_url, args, wor
         LOG.error("缺少登录凭据，请通过 --user/--pass 提供")
         return False
 
-    # 尝试从 workspace 加载已有 cookie
+    # 构建配置
+    base_url = profile.get("base_url", "")
+    config_profile = {
+        "strategy": profile.get("strategy", "ecscloud"),
+        "base_url": base_url,
+        "login_url": login_url,
+        "probe_url": profile.get("probe_url", ""),
+        "auth": profile.get("auth", {}),
+        "captcha": profile.get("captcha", {}),
+        "selectors": profile.get("selectors", {}),
+        "session": profile.get("session", {}),
+    }
+    config = LoginConfig.from_profile(config_profile, base_url=base_url, login_url=login_url)
+    config.username = username
+    config.password = password
+
+    strategy_name = config_profile.get("strategy", "ecscloud")
+    strategy = get_strategy(strategy_name)
+    session = LoginSession(workspace_dir, config)
+
+    # 通过 LoginSession 完成登录（cookie 检查 → 探测 → 登录）
+    success = await session.ensure_auth(page, context, strategy)
+    if not success:
+        LOG.error("❌ 登录失败")
+        return False
+
+    LOG.info("  ✅ 登录成功")
+
+    # 保存凭据到全局凭据库
+    from core.discovery.io_helpers import save_credentials
+    credentials_to_save = {
+        "username": username,
+        "password": password,
+        "base_url": base_url,
+        "login_url": login_url,
+    }
+    if "auth" in profile:
+        credentials_to_save["auth"] = profile["auth"]
+    save_credentials(args.project, credentials_to_save)
+
+    # 确保 cookie 文件存在
     cookie_file = workspace_dir / "output" / "config" / "cookies.json"
-    logged_in = False
     if cookie_file.exists():
-        try:
-            cookies = json.loads(cookie_file.read_text(encoding="utf-8"))
-            if cookies:
-                await context.add_cookies(cookies)
-                # 注入 token 到 localStorage
-                token_key = profile.get("auth", {}).get("token_key", "accessToken")
-                token_cookie = next((c["value"] for c in cookies if c["name"] == token_key), None)
-                if token_cookie:
-                    await context.add_init_script(f"""
-                        localStorage.setItem('{token_key}', '{token_cookie}');
-                    """)
-                try:
-                    await page.goto(target_url, wait_until="load", timeout=30000)
-                except Exception:
-                    pass
-                await page.wait_for_timeout(5000)
-                if "/login" not in page.url:
-                    LOG.info("  ✅ Cookie 有效，直接进入目标页")
-                    logged_in = True
-                    # Cookie 路径：刷新页面确保 SPA 组件完整渲染（解决 DOM 未渲染问题）
-                    try:
-                        await page.reload(wait_until="networkidle", timeout=30000)
-                    except Exception:
-                        pass
-                    await page.wait_for_timeout(3000)
-                    # 重新保存 cookie（页面加载可能刷新了 cookie）
-                    fresh_cookies = await context.cookies()
-                    cookie_file.parent.mkdir(parents=True, exist_ok=True)
-                    cookie_file.write_text(json.dumps(fresh_cookies, ensure_ascii=False, indent=2), encoding="utf-8")
-                else:
-                    LOG.info("  ⚠️ Cookie 已过期，将执行完整登录")
-        except Exception:
-            pass
-
-    if not logged_in:
-        LOG.info("  执行滑块登录...")
-        ok = await _login_with_playwright(page, context, login_url, username, password,
-                                          project_profile=profile)
-        if not ok:
-            LOG.error("❌ 登录失败")
-            return False
-        LOG.info("  ✅ 登录成功")
-
-        # 保存凭据到全局凭据库
-        from core.discovery.io_helpers import save_credentials
-        credentials_to_save = {
-            "username": username,
-            "password": password,
-            "base_url": profile.get("base_url", ""),
-            "login_url": login_url,
-        }
-        if "auth" in profile:
-            credentials_to_save["auth"] = profile["auth"]
-        save_credentials(args.project, credentials_to_save)
-
-        # 保存 cookie
+        # 注入 token 到 localStorage（如果策略没有做）
         token_key = profile.get("auth", {}).get("token_key", "accessToken")
-        cookies = await context.cookies()
+        cookies = json.loads(cookie_file.read_text(encoding="utf-8"))
         token_cookie = next((c["value"] for c in cookies if c["name"] == token_key), None)
 
-        # 如果 cookie 中没有 token，从 localStorage 获取并添加为 cookie
-        if not token_cookie:
-            try:
-                ls_token = await page.evaluate(f"() => localStorage.getItem('{token_key}')")
-                if ls_token:
-                    base_url = profile.get("base_url", "")
-                    # 提取 domain（去掉协议和端口）
-                    import re as _re
-                    domain_match = _re.search(r'https?://([^/:]+)', base_url)
-                    domain = domain_match.group(1) if domain_match else ""
-                    if domain:
-                        token_cookie_obj = {
-                            "name": token_key,
-                            "value": ls_token,
-                            "domain": domain,
-                            "path": "/",
-                            "expires": -1,
-                            "httpOnly": False,
-                            "secure": False,
-                            "sameSite": "Lax",
-                        }
-                        await context.add_cookies([token_cookie_obj])
-                        cookies = await context.cookies()
-                        token_cookie = ls_token
-                        LOG.info(f"  ✅ 已从 localStorage 注入 {token_key} 到 cookie")
-            except Exception as e:
-                LOG.warning(f"  ⚠️ 从 localStorage 获取 token 失败: {e}")
-
-        cookie_file.parent.mkdir(parents=True, exist_ok=True)
-        cookie_file.write_text(json.dumps(cookies, ensure_ascii=False, indent=2), encoding="utf-8")
-
-        # 用 addInitScript 注入 token 到 localStorage（所有后续页面）
         if token_cookie:
-            await context.add_init_script(f"""
-                localStorage.setItem('{token_key}', '{token_cookie}');
-            """)
-            LOG.info("  ✅ 已通过 addInitScript 注入 token 到 localStorage")
+            try:
+                await context.add_init_script(f"""
+                    localStorage.setItem('{token_key}', '{token_cookie}');
+                """)
+                LOG.info(f"  ✅ 已通过 addInitScript 注入 token 到 localStorage.{token_key}")
+            except Exception:
+                pass
 
-        # 跳转到目标 URL
-        try:
-            await page.goto(target_url, wait_until="load", timeout=45000)
-        except Exception:
-            pass
-        await page.wait_for_timeout(5000)
+    # 导航到目标 URL
+    try:
+        await page.goto(target_url, wait_until="load", timeout=45000)
+    except Exception:
+        pass
+    await page.wait_for_timeout(3000)
 
     return True
 

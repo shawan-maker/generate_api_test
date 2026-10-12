@@ -591,7 +591,7 @@ config/
                                    │
                     ┌──────────────▼──────────────────────────────┐
                     │         登录 + Cookie 获取                  │
-                    │  auth_runner.py → cookies.json              │
+                    │  LoginSession → cookies.json                │
                     └──────────────┬──────────────────────────────┘
                                    │
          ┌─────────────────────────▼─────────────────────────┐
@@ -828,7 +828,7 @@ build_manifest()
 TestRunner(MANIFEST, shared_context)
     │
     ▼
-初始化 AuthSession
+初始化 cookie_client
     │  从 cookies.json 加载 Cookie
     │  提取 token → 构建 Authorization header
     ▼

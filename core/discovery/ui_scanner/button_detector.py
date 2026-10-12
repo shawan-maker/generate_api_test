@@ -80,7 +80,7 @@ async def _prewarm_table_data(page, form_fields: list, toolbar_buttons: list,
 
         # Step 2: 点击创建按钮
         click_result = await _click_button_escalating(page, btn_text)
-        if not click_result.get("success"):
+        if not click_result.get("clicked"):
             LOG.warning(f"    预热: 点击创建按钮失败")
             return result
 

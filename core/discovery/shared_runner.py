@@ -88,47 +88,78 @@ def scan_scripts(scripts_dir: Path, module_filter: str = None, script_type: str 
 
 
 def ensure_cookie_valid(project_dir: Path, workspace_dir: Path, base_url: str, login_url: str) -> bool:
-    """主进程先确保 cookie 有效（失效则单线程登录一次）。返回是否可用。"""
-    from lib.auth import AuthSession
+    """主进程先确保 cookie 有效（失效则单线程登录一次）。返回是否可用。
+
+    委托给 LoginSession：检查 cookie 新鲜度 → 服务端探测 → 自动登录。
+    """
+    from lib.auth import LoginSession, LoginConfig
+    from lib.auth.strategies.registry import get_strategy
+    from lib.auth.cookie_store import CookieStore
+
     project_profile = _load_profile(project_dir)
     creds = project_profile.get("credentials", {}) or {}
     username = creds.get("username") or os.environ.get(creds.get("username_env", ""), "")
     password = creds.get("password") or os.environ.get(creds.get("password_env", ""), "")
-    # 从 profile.yaml 读取 auth 配置（不再硬编码）
-    auth_cfg = project_profile.get("auth", {})
-    auth_cfg.setdefault("freshness_ttl_seconds", 300)
+
+    if not username or not password:
+        print("  ❌ 缺少登录凭据")
+        return False
+
+    # 构建配置
     profile = {
+        "strategy": project_profile.get("strategy", "ecscloud"),
         "base_url": base_url,
         "login_url": login_url,
-        "auth": auth_cfg,
+        "probe_url": project_profile.get("probe_url", ""),
+        "auth": project_profile.get("auth", {}),
         "captcha": project_profile.get("captcha", {}),
-        "credentials": {},
-        "probe_url": "/estack/api/estack/draco/v1/users/current-user",
+        "selectors": project_profile.get("selectors", {}),
+        "session": project_profile.get("session", {}),
     }
-    sess = AuthSession(profile, username, password)
-    ctx_dir = workspace_dir / "output" / "config"
-    ctx_dir.mkdir(parents=True, exist_ok=True)
-    sess.context_path = str(ctx_dir / "context.json")
-    client = sess.ensure_client(base_url)
-    if client is not None:
-        try:
-            client.close()
-        except Exception:
-            pass
+    config = LoginConfig.from_profile(profile, base_url=base_url, login_url=login_url)
+    config.username = username
+    config.password = password
+
+    strategy_name = profile.get("strategy", "ecscloud")
+    strategy = get_strategy(strategy_name)
+    session = LoginSession(workspace_dir, config)
+
+    # 同步检查：cookie 新鲜度 → 服务端探测
+    store = CookieStore()
+    if store.is_fresh(workspace_dir, config.fresh_ttl_seconds):
         return True
-    return False
+
+    # 需要浏览器登录
+    try:
+        import asyncio
+        from playwright.async_api import async_playwright
+        from lib.browser_launcher import launch_browser
+
+        async def _do_login():
+            async with async_playwright() as pw:
+                browser, context, page = await launch_browser(pw, headless=False)
+                try:
+                    success = await session.ensure_auth(page, context, strategy)
+                    return success
+                finally:
+                    await browser.close()
+
+        return asyncio.run(_do_login())
+    except Exception as e:
+        print(f"  ⚠️ 登录异常: {e}")
+        return False
 
 
 async def refresh_cookies(project_dir: Path, workspace_dir: Path, base_url: str, login_url: str) -> bool:
-    """刷新 cookies：检测过期后调用 auth_runner 重新登录。
+    """刷新 cookies：委托给 LoginSession 执行登录并保存 cookie。
 
-    使用非 headless 模式启动浏览器滑块登录，刷新后保存新 cookie。
+    使用非 headless 模式启动浏览器，支持多策略登录。
 
     Returns:
         True 如果刷新成功
     """
-    from core.discovery.io_helpers import load_profile as _load_profile
-    from core.discovery.auth_runner import login_with_playwright
+    from lib.auth import LoginSession, LoginConfig
+    from lib.auth.strategies.registry import get_strategy
 
     profile = _load_profile(project_dir)
     creds = profile.get("credentials", {}) or {}
@@ -143,23 +174,36 @@ async def refresh_cookies(project_dir: Path, workspace_dir: Path, base_url: str,
         from playwright.async_api import async_playwright
         from lib.browser_launcher import launch_browser
 
+        # 构建配置
+        config_profile = {
+            "strategy": profile.get("strategy", "ecscloud"),
+            "base_url": base_url,
+            "login_url": login_url,
+            "probe_url": profile.get("probe_url", ""),
+            "auth": profile.get("auth", {}),
+            "captcha": profile.get("captcha", {}),
+            "selectors": profile.get("selectors", {}),
+            "session": profile.get("session", {}),
+        }
+        config = LoginConfig.from_profile(config_profile, base_url=base_url, login_url=login_url)
+        config.username = username
+        config.password = password
+
+        strategy_name = config_profile.get("strategy", "ecscloud")
+        strategy = get_strategy(strategy_name)
+        session = LoginSession(workspace_dir, config)
+
         async with async_playwright() as pw:
             browser, context, page = await launch_browser(pw, headless=False)
-
             try:
-                ok = await login_with_playwright(page, context, login_url, username, password,
-                                                 project_profile=profile)
-                if not ok:
-                    print("  ❌ 滑块登录失败")
+                success = await session.ensure_auth(page, context, strategy)
+                if success:
+                    cookies = await context.cookies()
+                    print(f"  ✅ 新 cookie 已保存 ({len(cookies)} 条)")
+                    return True
+                else:
+                    print("  ❌ 登录失败")
                     return False
-
-                # 保存新 cookie
-                cookies = await context.cookies()
-                cookie_file = workspace_dir / "output" / "config" / "cookies.json"
-                cookie_file.parent.mkdir(parents=True, exist_ok=True)
-                cookie_file.write_text(json.dumps(cookies, ensure_ascii=False, indent=2), encoding="utf-8")
-                print(f"  ✅ 新 cookie 已保存: {cookie_file} ({len(cookies)} 条)")
-                return True
             finally:
                 await browser.close()
     except Exception as e:

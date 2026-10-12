@@ -1,0 +1,106 @@
+# sites.yaml — 多站点配置
+# 定义所有支持的项目的登录配置
+
+sites:
+  estack:
+    label: "EcsCloud 移动云控制台"
+    strategy: "ecscloud"
+    base_url: "https://10.151.61.248"
+    login_url: "/estack/web/estack/login"
+    probe_url: "/estack/web/estack/portal"
+
+    auth:
+      header_name: "Authorization"
+      header_prefix: "Bearer "
+      token_key: "estackToken"
+      token_storage: "localStorage"
+      cookie_token_key: "accessToken"
+      cookie_keys: ["estack_lang", "accessToken"]
+
+    captcha:
+      type: "slider"
+      material_url_regex: "pictures-verification"
+      auth_button_text: "点击完成认证"
+
+    selectors:
+      username: 'input[placeholder="用户名"]'
+      password: 'input[placeholder="登录密码"]'
+      login_button: 'button:has-text("登录")'
+
+    session:
+      fresh_ttl_seconds: 1800
+      max_login_retries: 2
+      persist_localStorage: true
+      persist_sessionStorage: true
+
+  bcov:
+    label: "BCov 移动云运维平台"
+    strategy: "bcov"
+    base_url: "https://10.251.132.52:30105"
+    login_url: "/bcov/login"
+    probe_url: "/bcov/overview/index"
+
+    auth:
+      cookie_token_key: "BCOV-Token"
+      cookie_keys: ["bcov_lang", "BCOV-Token", "bcov_Salt"]
+
+    captcha:
+      type: "puzzle"
+
+    selectors:
+      username: 'input[placeholder="用户名"]'
+      password: 'input[placeholder="登录密码"]'
+      login_button: 'button:has-text("登录")'
+
+    session:
+      fresh_ttl_seconds: 1800
+      max_login_retries: 2
+
+  ecso:
+    label: "ECSO 全栈专属云"
+    strategy: "ecso"
+    base_url: "https://console.ecso.example.com"
+    login_url: "/ecso/login/ecso-login-static/login"
+    probe_url: "/ecso/operation/ecso-operation-admin-static/"
+
+    auth:
+      cookie_token_key: "ECSOTOKEN"
+      cookie_keys: ["ECSOTOKEN", "CMECSTOKEN"]
+
+    captcha:
+      type: "arithmetic"
+
+    selectors:
+      username: 'input[placeholder="用户名 / 手机号"]'
+      password: 'input[placeholder="密码"]'
+      login_button: 'button:has-text("登录")'
+
+    session:
+      fresh_ttl_seconds: 1800
+      max_login_retries: 3
+      detect_lock: true
+
+  tianshu:
+    label: "天枢运维平台"
+    strategy: "tianshu"
+    base_url: "https://tianshu.example.com"
+    login_url: "/#/login"
+    probe_url: "/#/"
+
+    auth:
+      cookie_token_key: "ud_token"
+      cookie_keys: ["ud_token"]
+
+    captcha:
+      type: "ocr"
+
+    selectors:
+      username: 'input[placeholder="请输入用户名"]'
+      password: 'input[placeholder="请输入密码"]'
+      login_button: 'button:has-text("登录")'
+
+    session:
+      fresh_ttl_seconds: 1800
+      max_login_retries: 3
+      persist_localStorage: true
+      detect_lock: true

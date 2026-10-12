@@ -184,7 +184,13 @@ python projects/<项目名>/v1.0.0/ui/<模块名>.py --operation "创建用户"
 ## 常见问题
 
 ### Q: 认证失败怎么办？
-重新运行 Stage 1-2 会自动登录并刷新 cookie。或手动编辑 `config/cookies.json`。
+重新运行 Stage 1-2 会自动登录并刷新 cookie。框架支持多项目登录策略：
+- **EcsCloud/estack**: 滑块验证码（OpenCV 缺口检测）
+- **BCov**: 拼图验证码（泛洪填充算法）
+- **ECSO**: 算术验证码（ddddocr OCR）
+- **天枢**: 字符验证码（ddddocr OCR）
+
+或手动编辑 `config/cookies.json`。
 
 ### Q: 如何跳过浏览器阶段？
 使用 `--stage 34 --offline`（需已有缓存数据）。

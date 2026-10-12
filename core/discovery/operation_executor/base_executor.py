@@ -305,6 +305,84 @@ async def _try_fill_empty_selects(page, empty_field_labels: list):
         return False, []
 
 
+async def _ensure_switch_enabled(page) -> None:
+    """检测页面中的 el-switch，确保其处于开启状态。
+
+    某些页面（如黑白名单）的状态开关控制着操作按钮的可用性：
+    switch=OFF → 新增等按钮 disabled。此函数在点击操作按钮前调用，
+    自动开启关闭的 switch 并处理可能的确认弹框。
+
+    仅处理当前可见 tab-pane 中的 switch，不影响隐藏 tab。
+
+    Args:
+        page: Playwright Page 对象
+    """
+    try:
+        switch_info = await page.evaluate("""() => {
+            // 优先找当前可见 tab-pane 中的 switch
+            const panes = document.querySelectorAll('.el-tab-pane');
+            if (panes.length > 0) {
+                for (const p of panes) {
+                    if (window.getComputedStyle(p).display === 'none') continue;
+                    const sw = p.querySelector('.el-switch');
+                    if (sw) {
+                        return {
+                            found: true,
+                            isChecked: sw.classList.contains('is-checked'),
+                            inTabPane: true
+                        };
+                    }
+                }
+                return { found: false };
+            }
+            // 没有 tab-pane 时，找全局可见 switch
+            const sw = document.querySelector('.el-switch');
+            if (sw && sw.offsetWidth > 0) {
+                return {
+                    found: true,
+                    isChecked: sw.classList.contains('is-checked'),
+                    inTabPane: false
+                };
+            }
+            return { found: false };
+        }""")
+
+        if not switch_info.get("found") or switch_info.get("isChecked"):
+            return  # 无 switch 或已开启，跳过
+
+        LOG.info("  检测到 switch 处于关闭状态，尝试开启...")
+
+        # 点击开启 switch（使用 force 避免被 tooltip 遮挡）
+        if switch_info.get("inTabPane"):
+            sw = await page.query_selector(
+                '.el-tab-pane:not([style*="display: none"]) .el-switch:not(.is-checked), '
+                '.el-tab-pane .el-switch:not(.is-checked)'
+            )
+        else:
+            sw = await page.query_selector('.el-switch:not(.is-checked)')
+
+        if not sw:
+            return
+
+        await sw.click(force=True)
+        await page.wait_for_timeout(1000)
+
+        # 处理可能的确认弹框（关闭 switch 时可能弹出确认框）
+        confirm_btn = await page.query_selector(
+            '.el-message-box__wrapper:not([style*="display: none"]) '
+            '.el-message-box__btns .el-button--primary'
+        )
+        if confirm_btn:
+            await confirm_btn.click()
+            await page.wait_for_timeout(1500)
+            LOG.info("  switch 开启确认弹框已处理")
+        else:
+            LOG.info("  switch 已开启（无确认弹框）")
+
+    except Exception as e:
+        LOG.debug(f"  _ensure_switch_enabled 异常: {e}")
+
+
 async def _click_button_escalating(page, btn_text: str) -> dict:
     """降级策略点击按钮：Playwright CSS → XPath 拆字符 → JS 去空格 → force → 坐标。
 
@@ -343,6 +421,8 @@ async def _click_button_escalating(page, btn_text: str) -> dict:
                     if (el.offsetWidth === 0 || el.offsetHeight === 0) continue;
                     if (el.disabled || el.classList.contains('is-disabled')) continue;
                     if (el.closest('.is-hidden') || el.closest('[style*="display: none"]')) continue;
+                    const tabPane = el.closest('.el-tab-pane');
+                    if (tabPane && window.getComputedStyle(tabPane).display === 'none') continue;
                     if ((el.textContent || '').includes({json.dumps(btn_text)})) {{
                         return el.tagName.toLowerCase();
                     }}
@@ -400,6 +480,8 @@ async def _click_button_escalating(page, btn_text: str) -> dict:
                 if (el.offsetWidth === 0 || el.offsetHeight === 0) continue;
                 if (el.disabled || el.classList.contains('is-disabled')) continue;
                 if (el.closest('.is-hidden') || el.closest('[style*="display: none"]')) continue;
+                const tabPane = el.closest('.el-tab-pane');
+                if (tabPane && window.getComputedStyle(tabPane).display === 'none') continue;
                 const elText = el.textContent.trim().replace(/\\s+/g, '');
                 if (elText.includes(target)) {
                     el.click();
@@ -438,6 +520,8 @@ async def _click_button_escalating(page, btn_text: str) -> dict:
             const els = document.querySelectorAll('button, span, a');
             for (const el of els) {{
                 if (el.closest('.is-hidden') || el.closest('[style*="display: none"]')) continue;
+                const tabPane = el.closest('.el-tab-pane');
+                if (tabPane && window.getComputedStyle(tabPane).display === 'none') continue;
                 if ((el.textContent || '').includes({json.dumps(btn_text)})) {{
                     let directText = '';
                     for (const node of el.childNodes) {{
@@ -471,6 +555,8 @@ async def _click_button_escalating(page, btn_text: str) -> dict:
                 if (el.offsetWidth === 0 || el.offsetHeight === 0) continue;
                 if (el.disabled || el.classList.contains('is-disabled')) continue;
                 if (el.closest('.is-hidden') || el.closest('[style*="display: none"]')) continue;
+                const tabPane = el.closest('.el-tab-pane');
+                if (tabPane && window.getComputedStyle(tabPane).display === 'none') continue;
                 const elText = el.textContent.trim().replace(/\\s+/g, '');
                 if (elText.includes(target)) {
                     const r = el.getBoundingClientRect();
