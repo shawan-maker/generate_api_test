@@ -24,6 +24,7 @@ from core.discovery.operation_executor.base_executor import (
     _verify_operation_success, _check_data_changed, _ensure_on_list_page,
     _extract_fallback_marker, _ensure_row_selected, _try_fill_empty_selects,
     _check_create_api_triggered_simple, _ensure_switch_enabled,
+    _extract_business_failure,
 )
 from core.discovery.operation_executor.result_factory import (
     make_error, make_success, click_failed, row_not_found, no_dialog,
@@ -104,7 +105,7 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
         and btn.get("text") not in _DROPDOWN_TRIGGER_TEXTS  # 排除下拉触发器
     }
     _BATCH_PREFIXES = ["批量", "batch", "bulk"]
-    _DESTROY_KEYWORDS = ["删除", "delete", "remove", "清空", "clear"]
+    _DESTROY_KEYWORDS = ["删除", "移除", "delete", "remove", "清空", "clear"]
 
     # 检查是否有行级删除操作（用于语义级去重）
     has_row_destroy = any(
@@ -128,6 +129,12 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
         btn_cls = (btn.get("className") or "").lower()
         if any(kw in btn_cls for kw in _NAVIGATION_CLASS_KEYWORDS):
             LOG.debug(f"  跳过非业务元素: '{btn.get('text', '')}' (cls={btn_cls[:40]})")
+            continue
+
+        # 跳过导航跳转按钮（"前往xxxx"类按钮是页面跳转，不是业务操作）
+        btn_text_val = btn.get("text", "")
+        if any(kw in btn_text_val for kw in ("前往", "跳转至")):
+            LOG.info(f"  跳过导航按钮: '{btn_text_val}'")
             continue
 
         # 去重：如果 toolbar 按钮是"批量 X"，且有对应的行级操作"X"，则跳过
@@ -401,7 +408,11 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
 
     if failed_critical:
         LOG.error(f"  Stage 1 关键操作验证失败: {failed_critical}")
-        return None
+        # 即使有关键操作失败，也返回已验证的操作（用于 Stage 2 回放）
+        # 失败的操作会标记 detection_status="failed"，builder.py 生成完整步骤
+        # 这样 Stage 2 可以完整回放并捕获 API，不会退化为 fallback 模式
+        LOG.info(f"  返回 {len(validated)} 个已验证操作（含失败操作）供 Stage 2 使用")
+        return validated
 
     LOG.info(f"  Stage 1 验证完成: {len(validated)}/{len(buttons_by_action)} 个操作通过")
     return validated
@@ -418,6 +429,7 @@ TERMINAL_ERRORS = {
     "resource_not_found",       # 资源不存在
     "required_field_empty",     # 必填字段为空（无选项数据，重试无法自愈）
     "confirm_button_disabled",  # 确认按钮被禁用
+    "api_error",                # 后端返回明确业务错误，重试无意义
 }
 
 # P2: 委托专用处理器
@@ -511,6 +523,78 @@ async def _error_driven_retry(page, operation_fn, context: dict) -> dict:
 # ============================================================
 # 各操作的执行函数
 # ============================================================
+
+def _build_create_error_result(
+    error_type: str, error_text: str,
+    btn_text: str, btn_click_result: dict,
+    fill_data: dict, fill_rules: dict, fields: list,
+    submit_result: dict, multi_step_field_details: list,
+    username: str
+) -> dict:
+    """构建 create 操作的失败结果，保留表单数据供 playbook 生成完整步骤。
+
+    当表单已提交但业务失败时（如权限不足、重复数据等），需要保留完整的表单填写
+    和提交信息，以便 builder.py 生成完整的 playbook 步骤（包括表单填写和提交）。
+    """
+    from .result_factory import make_error
+
+    # 归一化文本
+    trigger_text = " ".join(btn_text.split())
+    submit_text = submit_result.get("text", "")
+    submit_text_normalized = " ".join(submit_text.split())
+
+    # 使用 submit_form_v2 返回的已验证 locator
+    submit_locator = submit_result.get("locator", "")
+    trigger_locator = btn_click_result.get("locator")
+
+    if not trigger_locator:
+        trigger_tag = btn_click_result.get("tag", "button")
+        actual_text = btn_click_result.get("actual_text", trigger_text)
+        trigger_locator = f"{trigger_tag}:has-text('{actual_text}')"
+
+    # 构建结果（包含表单数据，供 playbook 使用）
+    result = make_error(error_type, error_text,
+                       trigger_text=trigger_text,
+                       trigger_locator_verified=trigger_locator)
+    result["success"] = False
+    result["form_submitted"] = True  # 标记表单已提交
+    result["fill_data"] = fill_data
+    result["fill_rules"] = fill_rules
+    result["form_fields"] = fields
+    result["multi_step_field_details"] = multi_step_field_details
+    result["submit_locator"] = submit_locator
+    result["submit_locator_verified"] = submit_locator
+    result["submit_text"] = submit_text_normalized
+    result["submit_click_strategy"] = submit_result.get("click_strategy", "playwright")
+    result["dialog_detected"] = True
+    result["interaction_mode"] = "dialog"
+    result["selectors"] = {
+        "trigger": btn_text,
+        "submit": submit_text,
+    }
+
+    # 提取 marker
+    _marker_keywords = ["名称", "用户名", "name", "username"]
+    marker = None
+    # 1. 先检查 fill_data（input 字段）
+    for label, value in fill_data.items():
+        if any(kw in label.lower() for kw in _marker_keywords):
+            marker = value
+            break
+    # 2. 再检查 multi_step_field_details（select 字段）
+    if not marker:
+        for ms_field in multi_step_field_details:
+            option_text = ms_field.get("option_text", "")
+            if option_text:
+                marker = option_text
+                break
+    # 3. 最后 fallback 到 username
+    if not marker:
+        marker = username
+    result["marker"] = marker
+
+    return result
+
 
 async def _do_create(page, context: dict) -> dict:
     """执行创建操作：点击创建按钮 → 填表 → 提交 → 验证。"""
@@ -687,16 +771,30 @@ async def _do_create(page, context: dict) -> dict:
             if "成功" in err_text:
                 LOG.info(f"    检测到成功消息: {err_text}，忽略")
             else:
-                return api_error(err_text,
-                                trigger_text=btn_text,
-                                trigger_locator_verified=btn_click_result.get("locator"))
+                # 业务失败但表单已提交，保留表单数据供 playbook 生成完整步骤
+                return _build_create_error_result(
+                    "api_error", err_text, btn_text, btn_click_result,
+                    fill_data, fill_rules, fields, submit_result,
+                    multi_step_field_details, username
+                )
 
     # 10. 验证成功（弹窗关闭 / 成功提示）
     success = await _verify_operation_success(page, "create")
     if not success:
-        return no_success_signal("提交后未检测到成功信号",
-                                trigger_text=btn_text,
-                                trigger_locator_verified=btn_click_result.get("locator"))
+        # 二次检测：提取明确的业务失败信息
+        failure_info = await _extract_business_failure(page)
+        if failure_info:
+            # 业务失败但表单已提交，保留表单数据供 playbook 生成完整步骤
+            return _build_create_error_result(
+                "api_error", failure_info["error_text"], btn_text, btn_click_result,
+                fill_data, fill_rules, fields, submit_result,
+                multi_step_field_details, username
+            )
+        return _build_create_error_result(
+            "no_success_signal", "提交后未检测到成功信号", btn_text, btn_click_result,
+            fill_data, fill_rules, fields, submit_result,
+            multi_step_field_details, username
+        )
 
     # 10.5. API 触发检测（额外确认，从 Stage 2 移入）
     api_triggered = await _check_create_api_triggered_simple(page)
@@ -706,10 +804,19 @@ async def _do_create(page, context: dict) -> dict:
     # 11. 记录创建的标识数据（使用模糊匹配查找名称类字段）
     _marker_keywords = ["名称", "用户名", "name", "username"]
     marker = None
+    # 1. 先检查 fill_data（input 字段）
     for label, value in fill_data.items():
         if any(kw in label.lower() for kw in _marker_keywords):
             marker = value
             break
+    # 2. 再检查 multi_step_field_details（select 字段）
+    if not marker:
+        for ms_field in multi_step_field_details:
+            option_text = ms_field.get("option_text", "")
+            if option_text:
+                marker = option_text
+                break
+    # 3. 最后 fallback 到 username
     if not marker:
         marker = username
 
@@ -1485,9 +1592,8 @@ async def _do_generic_operation(page, context: dict) -> dict:
         clicked = dropdown_click_result.get("clicked", False)
         row_selector = f"{btn.get('parent', '更多')} > {btn_text}"
     else:
-        # toolbar 按钮：先勾选 checkbox（如果需要）
-        if btn_location == "toolbar" and marker:
-            await _ensure_row_selected(page, marker)
+        # toolbar 按钮：checkbox 已由调用方 (_validate_business_flow) 勾选，
+        # 此处不再重复 toggle，避免双重点击导致取消勾选
         btn_click_result = await _click_button_escalating(page, btn_text)
         clicked = btn_click_result["clicked"]
         dropdown_click_result = None

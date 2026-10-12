@@ -91,7 +91,8 @@ async def _prewarm_table_data(page, form_fields: list, toolbar_buttons: list,
         # Step 2.5: 如果 form_fields 为空，自己扫描
         if not form_fields:
             LOG.info("    预热: form_fields 为空，扫描表单字段...")
-            form_fields = await scan_form_fields_v2(page)
+            filler = FormFiller(page)
+            form_fields = await filler.scan_form_fields_v2()
             LOG.info(f"    预热: 扫描到 {len(form_fields)} 个表单字段")
 
         result["form_fields"] = form_fields
@@ -616,7 +617,7 @@ def _find_create_delete_actions(buttons_by_action: dict) -> tuple:
                 break
 
     # delete: 基于文本关键词识别破坏性操作（泛化：不写死具体操作名）
-    _destroy_keywords = ["删除", "delete", "remove", "清空", "clear"]
+    _destroy_keywords = ["删除", "移除", "delete", "remove", "清空", "clear"]
     for action in buttons_by_action:
         action_lower = action.lower()
         if any(kw in action_lower for kw in _destroy_keywords):

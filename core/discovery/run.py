@@ -858,13 +858,14 @@ test_data = {{
 
 
 async def _ensure_login(page, context, profile, login_url, target_url, args, workspace_dir):
-    """公共登录逻辑：委托给 LoginSession 处理 cookie 复用和登录。
+    """公共登录逻辑：优先使用 cookie，失败时再尝试登录。
 
     流程：
-    1. 解析凭据和配置
-    2. 通过 LoginSession.ensure_auth() 完成：cookie 检查 → 探测 → 登录
-    3. 保存 cookie 并注入 token 到 localStorage
-    4. 导航到目标 URL
+    1. 检查是否有有效的 cookie（优先使用）
+    2. 注入 cookie 和 localStorage token
+    3. 探测验证 cookie 是否有效
+    4. 如果 cookie 无效且有凭据，尝试登录
+    5. 导航到目标 URL
 
     Args:
         page: Playwright page
@@ -881,6 +882,48 @@ async def _ensure_login(page, context, profile, login_url, target_url, args, wor
     from lib.auth import LoginSession, LoginConfig
     from lib.auth.strategies.registry import get_strategy
 
+    # 优先尝试使用 cookie（不登录）
+    cookie_file = workspace_dir / "output" / "config" / "cookies.json"
+    if cookie_file.exists():
+        try:
+            cookies = json.loads(cookie_file.read_text(encoding="utf-8"))
+            if cookies:
+                LOG.info("尝试使用已有 cookie...")
+                await context.add_cookies(cookies)
+
+                # 注入 token 到 localStorage
+                token_key = profile.get("auth", {}).get("token_key", "accessToken")
+                token_cookie = next((c["value"] for c in cookies if c["name"] == token_key), None)
+                if token_cookie:
+                    await context.add_init_script(f"""
+                        localStorage.setItem('{token_key}', '{token_cookie}');
+                    """)
+
+                # 探测验证 cookie 是否有效
+                probe_url = profile.get("probe_url", "")
+                if probe_url:
+                    full_probe_url = profile.get("base_url", "").rstrip("/") + probe_url
+                    try:
+                        await page.goto(full_probe_url, wait_until="domcontentloaded", timeout=15000)
+                        # 检查是否被重定向到登录页
+                        if not _is_login_redirect(page):
+                            LOG.info("✅ Cookie 有效，跳过登录")
+                            # 导航到目标 URL
+                            await page.goto(target_url, wait_until="load", timeout=45000)
+                            return True
+                        else:
+                            LOG.warning("⚠️ Cookie 已失效，尝试登录")
+                    except Exception as e:
+                        LOG.warning(f"⚠️ Cookie 探测失败: {e}，尝试登录")
+                else:
+                    # 无 probe_url，信任 cookie
+                    LOG.info("✅ 使用已有 cookie（无 probe_url 验证）")
+                    await page.goto(target_url, wait_until="load", timeout=45000)
+                    return True
+        except Exception as e:
+            LOG.warning(f"⚠️ Cookie 加载失败: {e}，尝试登录")
+
+    # Cookie 无效或不存在，尝试登录
     LOG.info("登录...")
 
     # 解析凭据

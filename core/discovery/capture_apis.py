@@ -328,6 +328,14 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
         except Exception as e:
             LOG.debug(f"  操作间清理异常（不影响后续）: {e}")
 
+        # ★ 操作后重新加载页面（与 Stage 1 行为一致）
+        # 确保每个操作后回到初始页面状态，避免操作间状态污染
+        try:
+            await page.goto(target_url, wait_until="networkidle", timeout=60000)
+            await wait_for_table_ready(page, timeout=15000)
+        except Exception as e:
+            LOG.warning(f"  操作后页面重置失败: {e}")
+
         # ★ 记录操作结束时间
         op_end = time.time()
         replay_windows[action] = {"start": op_start, "end": op_end}

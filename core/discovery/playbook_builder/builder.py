@@ -581,6 +581,10 @@ def build_playbook(ui_result: dict) -> dict:
             if btn_text in _NON_BUSINESS_BUTTONS:
                 LOG.debug(f"  跳过分页按钮 fallback: '{btn_text}'")
                 continue
+            # ★ 跳过导航跳转按钮（"前往xxxx"类按钮是页面跳转，与 Stage 1 跳过逻辑一致）
+            if any(kw in btn_text for kw in ("前往", "跳转至")):
+                LOG.debug(f"  跳过导航按钮 fallback: '{btn_text}'")
+                continue
             # ★ toolbar "批量XX" 去重：行级已有 "XX" 操作时跳过
             if btn_list_key == "toolbar_buttons":
                 _fb_skip = False
@@ -708,6 +712,53 @@ def _build_create_steps(op_data: dict) -> list:
                 "fill_rule": radio_field.get("fill_rule", {}),
                 "option_text": radio_field.get("option_text", ""),
             })
+
+        # ★ 反向查找 is_marker：根据 Stage 1 实际使用的 marker 值，找到对应的字段
+        # 而不是盲取第一个 select — Stage 1 用哪个字段做搜索条件，就标记哪个
+        marker_value = op_data.get("marker")
+        fill_data = op_data.get("fill_data", {})
+        multi_step_details = op_data.get("multi_step_field_details", [])
+        has_marker = any(f.get("is_marker") for f in fields_info)
+        if not has_marker and marker_value:
+            # 1. 先检查 input 字段（fill_data）
+            marker_label = None
+            for label, value in fill_data.items():
+                if value == marker_value:
+                    marker_label = label
+                    break
+            # 精确匹配失败，尝试包含匹配（如 marker="test"，field value="AT_test_631167"）
+            if not marker_label:
+                for label, value in fill_data.items():
+                    if isinstance(value, str) and marker_value in value:
+                        marker_label = label
+                        break
+
+            # 2. 再检查 select 字段（multi_step_field_details）
+            if not marker_label:
+                for ms_field in multi_step_details:
+                    if ms_field.get("option_text") == marker_value:
+                        marker_label = ms_field.get("label")
+                        break
+                if not marker_label:
+                    for ms_field in multi_step_details:
+                        opt = ms_field.get("option_text", "")
+                        if isinstance(opt, str) and marker_value in opt:
+                            marker_label = ms_field.get("label")
+                            break
+
+            # 标记对应字段为 is_marker
+            if marker_label:
+                for field in fields_info:
+                    if field.get("label") == marker_label:
+                        field["is_marker"] = True
+                        break
+            else:
+                # 3. 如果没有任何字段匹配 marker 值（Stage 1 使用了 username fallback），
+                # 标记第一个有 option_text 的 select 字段，确保 Stage 2 能提取 marker
+                for field in fields_info:
+                    if field.get("kb_category") in ("el-select", "select") and field.get("option_text"):
+                        field["is_marker"] = True
+                        break
 
         if fields_info:
             steps.append({
@@ -957,6 +1008,27 @@ def _build_update_steps(op_data: dict) -> list:
                 "fill_rule": radio_field.get("fill_rule", {}),
                 "option_text": radio_field.get("option_text", ""),
             })
+
+        # ★ 反向查找 is_marker：根据 Stage 1 实际使用的 marker 值，找到对应的字段
+        marker_value = op_data.get("marker")
+        fill_data = op_data.get("fill_data", {})
+        has_marker = any(f.get("is_marker") for f in fields_info)
+        if not has_marker and marker_value and fill_data:
+            marker_label = None
+            for label, value in fill_data.items():
+                if value == marker_value:
+                    marker_label = label
+                    break
+            if not marker_label:
+                for label, value in fill_data.items():
+                    if isinstance(value, str) and marker_value in value:
+                        marker_label = label
+                        break
+            if marker_label:
+                for field in fields_info:
+                    if field.get("label") == marker_label:
+                        field["is_marker"] = True
+                        break
 
         if fields_info:
             steps.append({

@@ -412,25 +412,48 @@ async def _click_button_escalating(page, btn_text: str) -> dict:
         )
         locator = page.locator(enhanced).first
         if await locator.count() > 0:
-            # 获取实际匹配的元素标签（不硬编码 "button"）
-            # locator 使用 btn_text（Stage 1 实际成功匹配的文本），不使用元素自身的文本
-            # 因为元素文本可能包含子元素文本，导致 Stage 2 无法匹配
-            actual_tag = await page.evaluate(f"""() => {{
+            # 获取实际匹配的元素标签（按优先级：button > a > span）
+            # 避免 span 在 DOM 中排在 button 之前时被优先选中
+            # 同时记录 disabled 状态，优先选择 enabled 元素，但不静默降级
+            actual_info = await page.evaluate(f"""() => {{
                 const els = document.querySelectorAll('button, span, a');
+                const candidates = [];
                 for (const el of els) {{
                     if (el.offsetWidth === 0 || el.offsetHeight === 0) continue;
-                    if (el.disabled || el.classList.contains('is-disabled')) continue;
                     if (el.closest('.is-hidden') || el.closest('[style*="display: none"]')) continue;
                     const tabPane = el.closest('.el-tab-pane');
                     if (tabPane && window.getComputedStyle(tabPane).display === 'none') continue;
                     if ((el.textContent || '').includes({json.dumps(btn_text)})) {{
-                        return el.tagName.toLowerCase();
+                        const isDisabled = el.disabled || el.classList.contains('is-disabled');
+                        candidates.push({{ el, isDisabled }});
                     }}
                 }}
-                return 'button';
+                // 优先选择 enabled 的 BUTTON，其次 enabled 的 A，其次 enabled 的 SPAN
+                // 如果都没有 enabled，才考虑 disabled 元素（仍然按 button > a > span 优先级）
+                const enabledButton = candidates.find(c => c.el.tagName === 'BUTTON' && !c.isDisabled);
+                const enabledLink = candidates.find(c => c.el.tagName === 'A' && !c.isDisabled);
+                const enabledSpan = candidates.find(c => c.el.tagName === 'SPAN' && !c.isDisabled);
+
+                const chosen = enabledButton || enabledLink || enabledSpan
+                            || candidates.find(c => c.el.tagName === 'BUTTON')
+                            || candidates.find(c => c.el.tagName === 'A')
+                            || candidates.find(c => c.el.tagName === 'SPAN');
+
+                return chosen ? {{
+                    tag: chosen.el.tagName.toLowerCase(),
+                    isDisabled: chosen.isDisabled
+                }} : {{ tag: 'button', isDisabled: false }};
             }}""")
-            await locator.click(timeout=3000)
-            # locator 使用原始 btn_text（已验证能匹配），tag 使用实际标签
+            actual_tag = actual_info["tag"]
+            is_disabled = actual_info["isDisabled"]
+
+            if is_disabled:
+                LOG.warning(f"  按钮 '{btn_text}' 处于禁用状态，点击可能无效")
+            # 点击时优先点击 button 元素（使用精确的 tag 定位器而非通用 .first）
+            click_locator = page.locator(
+                safe_css(f'{actual_tag}:has-text("{btn_text}")')
+            ).first
+            await click_locator.click(timeout=3000)
             verified_locator = f'{actual_tag}:has-text("{btn_text}")'
             result.update({"clicked": True, "strategy": "playwright", "tag": actual_tag,
                            "click_strategy": "playwright", "actual_text": btn_text,
@@ -850,6 +873,53 @@ async def _check_data_changed(page, operation_type: str) -> bool:
 
         return false;
     }""")
+
+
+async def _extract_business_failure(page) -> dict | None:
+    """检测页面中是否存在明确的业务失败信息。
+
+    在 _verify_operation_success 返回 False 后调用，用于提取具体的错误信息。
+    与 _verify_operation_success 的区别：本函数只检测明确的失败关键词，
+    不检测"无成功信号"的情况（可能是 UI 延迟）。
+
+    Args:
+        page: Playwright Page 对象
+
+    Returns:
+        {"error_text": "..."} 如果检测到明确失败
+        None 如果没有检测到失败（可能是 UI 延迟）
+    """
+    try:
+        result = await page.evaluate("""() => {
+            // 检测明确的失败关键词
+            const failKw = ['失败', '错误', '异常', 'error', '无权', '权限不足',
+                            '已存在', '重复', 'duplicate', '不能为空', '必填'];
+
+            // 检查弹窗和错误提示容器
+            const containers = [
+                ...document.querySelectorAll('.el-message-box__wrapper:not([style*="display: none"])'),
+                ...document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"])'),
+                ...document.querySelectorAll('.el-message--error, .el-message--warning')
+            ];
+
+            for (const container of containers) {
+                if (container.offsetWidth === 0) continue;
+                const text = container.textContent.trim();
+                if (!text) continue;
+
+                // 检查是否包含失败关键词
+                const hasFailure = failKw.some(kw => text.includes(kw));
+                if (hasFailure) {
+                    return { error_text: text.substring(0, 200) };
+                }
+            }
+
+            return null;
+        }""")
+        return result
+    except Exception as e:
+        LOG.debug(f"    _extract_business_failure: {e}")
+        return None
 
 
 async def _ensure_on_list_page(page):

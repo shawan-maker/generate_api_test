@@ -233,10 +233,33 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
         try:
             if action == "click_button":
                 ctx["url_before_click"] = page.url
+
+                # 诊断：检查点击前的对话框状态
+                pre_click_state = await page.evaluate("""() => {
+                    const dialogs = document.querySelectorAll('.el-dialog__wrapper');
+                    return {
+                        totalDialogs: dialogs.length,
+                        visibleDialogs: Array.from(dialogs).filter(d =>
+                            d.style.display !== 'none' && d.offsetWidth > 0
+                        ).length,
+                        dialogDetails: Array.from(dialogs).map((d, i) => ({
+                            index: i,
+                            display: d.style.display,
+                            offsetWidth: d.offsetWidth,
+                            offsetHeight: d.offsetHeight,
+                            className: d.className.substring(0, 100)
+                        }))
+                    };
+                }""")
+                LOG.info(f"    [click_button] 点击前状态: {pre_click_state}")
+
                 await _step_click_button(page, step, button_driver, ctx)
 
                 # 诊断：检查点击后的表单状态和对话框
-                await page.wait_for_timeout(1000)  # 等待可能的验证完成
+                # 与 Stage 1 _do_create 保持一致：等待 1500ms + loading complete
+                await page.wait_for_timeout(1500)
+                from .wait_helpers import wait_for_loading_complete
+                await wait_for_loading_complete(page, timeout=10000)
                 post_click_state = await page.evaluate("""() => {
                     const result = {
                         dialogVisible: false,
@@ -1068,6 +1091,14 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver) -> str 
         LOG.debug(f"    multi_step 完成: {ms_filled}/{len(multi_step_fields)}")
         if close_dropdown_actions:
             LOG.info(f"    multi_step 检测到 {len(close_dropdown_actions)} 个下拉框关闭操作")
+
+        # ★ 从 multi_step 字段提取 marker（如 select 字段的 option_text）
+        if not marker_value:
+            for ms_field in multi_step_fields:
+                if ms_field.get("is_marker") and ms_field.get("option_text"):
+                    marker_value = ms_field["option_text"]
+                    LOG.info(f"    ✓ marker 已从 multi_step 字段提取: {marker_value}")
+                    break
 
     LOG.info(f"    已填充 {filled_count}/{len(fields)} 个字段")
     return marker_value

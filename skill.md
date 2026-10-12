@@ -1,14 +1,19 @@
-# Skill: API 自动化测试发现系统
-
-## 元信息
-
-- **名称**: api-ai-test
-- **版本**: 2.3.0
-- **用途**: 自动化发现、生成和执行 API/UI 测试
-- **平台**: 通用（Claude / GPT / 其他 AI 客户端）
-- **触发词**: api, test, 自动化, 发现, 生成, 执行, 测试, 用户管理, 角色管理
-
 ---
+name: api-ai-test
+description: "自动化发现、生成和执行 API/UI 测试的五阶段流水线。当用户提到 api、test、自动化测试、发现、生成、执行、用户管理、角色管理等关键词时触发。"
+version: "2.3.0"
+compatibility: "通用（Claude / GPT / 其他 AI 客户端）"
+allowed-tools:
+  - Bash(python:*)
+  - Read
+  - Write
+  - Glob
+  - Grep
+  - Edit
+  - Agent
+---
+
+# Skill: API 自动化测试发现系统
 
 ## 能力概述
 
