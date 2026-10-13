@@ -772,10 +772,14 @@ async def _verify_operation_success(page, operation_type: str, strict: bool = Fa
                 const text = content.textContent.trim();
                 if (!text) continue;
 
+                // ★ 检测"0个失败"等否定模式（如"2个成功，0个失败"）
+                const zeroFailurePattern = /0个失败|0个错误|失败[：:]\s*0|失败数为0|无失败/;
+                const hasZeroFailure = zeroFailurePattern.test(text);
+
                 // 失败优先：如果同时包含成功和失败关键词（混合结果），判定为失败
                 const hasSuccess = successKw.some(kw => text.includes(kw));
                 const hasError = errKw.some(kw => text.includes(kw));
-                if (hasError) {
+                if (hasError && !hasZeroFailure) {
                     return { type: 'error', text: text.substring(0, 200) };
                 }
                 if (hasSuccess) {

@@ -703,15 +703,25 @@ def _build_create_steps(op_data: dict) -> list:
             })
 
         # 添加 radio 字段（带已验证的选项 locator）
+        # 从 op_data 获取 cascade_actions，用于附加到对应的 radio 字段
+        cascade_actions = op_data.get("cascade_actions", [])
         for radio_field in radio_details:
-            fields_info.append({
+            radio_entry = {
                 "label": radio_field["label"],
                 "playwright_locator": radio_field.get("option_locator", ""),
                 "type": "radio",
                 "kb_category": "radio",
                 "fill_rule": radio_field.get("fill_rule", {}),
                 "option_text": radio_field.get("option_text", ""),
-            })
+            }
+
+            # ★ 附加该 radio 触发的 cascade 操作（如 transfer-box）
+            radio_label = radio_field.get("label")
+            matching_cascades = [c for c in cascade_actions if c.get("trigger_field") == radio_label]
+            if matching_cascades:
+                radio_entry["cascade_actions"] = matching_cascades
+
+            fields_info.append(radio_entry)
 
         # ★ 反向查找 is_marker：根据 Stage 1 实际使用的 marker 值，找到对应的字段
         # 而不是盲取第一个 select — Stage 1 用哪个字段做搜索条件，就标记哪个
@@ -999,15 +1009,25 @@ def _build_update_steps(op_data: dict) -> list:
             })
 
         # 添加 radio 字段（带已验证的选项 locator）
+        # 从 op_data 获取 cascade_actions，用于附加到对应的 radio 字段
+        cascade_actions = op_data.get("cascade_actions", [])
         for radio_field in radio_details:
-            fields_info.append({
+            radio_entry = {
                 "label": radio_field["label"],
                 "playwright_locator": radio_field.get("option_locator", ""),
                 "type": "radio",
                 "kb_category": "radio",
                 "fill_rule": radio_field.get("fill_rule", {}),
                 "option_text": radio_field.get("option_text", ""),
-            })
+            }
+
+            # ★ 附加该 radio 触发的 cascade 操作（如 transfer-box）
+            radio_label = radio_field.get("label")
+            matching_cascades = [c for c in cascade_actions if c.get("trigger_field") == radio_label]
+            if matching_cascades:
+                radio_entry["cascade_actions"] = matching_cascades
+
+            fields_info.append(radio_entry)
 
         # ★ 反向查找 is_marker：根据 Stage 1 实际使用的 marker 值，找到对应的字段
         marker_value = op_data.get("marker")

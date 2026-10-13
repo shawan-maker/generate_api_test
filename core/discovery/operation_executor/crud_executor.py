@@ -847,13 +847,20 @@ async def _do_create(page, context: dict) -> dict:
 
     # Phase 1.1: 收集 radio 字段详情
     radio_field_details = []
+    # 从 fill_result 获取 radio 实际选择的值和 cascade 操作
+    radio_selections = fill_result.get("radio_selections", {}) if isinstance(fill_result, dict) else {}
+    cascade_actions = fill_result.get("cascade_actions", []) if isinstance(fill_result, dict) else []
+
     for field in fields:
         if field.get("kb_category") == "radio":
+            field_label = field.get("label")
+            # 使用实际选择的值（从 fill_result.radio_selections 获取）
+            actual_option_text = radio_selections.get(field_label, "")
             radio_field_details.append({
-                "label": field.get("label"),
+                "label": field_label,
                 "kb_category": "radio",
                 "option_locator": field.get("selector"),
-                "option_text": "",
+                "option_text": actual_option_text,  # ★ 使用实际选择的值
                 "fill_rule": field.get("fill_rule", {}),
             })
 
@@ -882,6 +889,7 @@ async def _do_create(page, context: dict) -> dict:
         "success_locator": ".el-message--success",
         "multi_step_field_details": multi_step_field_details,  # Phase 1.1
         "radio_field_details": radio_field_details,  # Phase 1.1
+        "cascade_actions": cascade_actions,  # ★ 记录 radio 触发的级联操作（如 transfer-box）
     }
 
 
@@ -1232,6 +1240,8 @@ async def _do_edit(page, context: dict) -> dict:
     from core.discovery import const as _const
     multi_step_field_details = []
     radio_field_details = []
+    # 注意：fill_edit_form 返回 int，不包含 radio_selections
+    # 编辑操作通常不需要重新选择 radio，保持 option_text 为空
     for field in fields:
         kb_cat = field.get("kb_category", "")
         # edit 操作不修改 multi_step 字段，不收集（避免 playbook 包含 Stage 1 未执行的步骤）
@@ -1240,7 +1250,7 @@ async def _do_edit(page, context: dict) -> dict:
                 "label": field.get("label"),
                 "kb_category": "radio",
                 "option_locator": field.get("selector"),
-                "option_text": "",
+                "option_text": "",  # 编辑操作保持为空
                 "fill_rule": field.get("fill_rule", {}),
             })
 
@@ -1263,6 +1273,7 @@ async def _do_edit(page, context: dict) -> dict:
         "success_locator": ".el-message--success",
         "multi_step_field_details": multi_step_field_details,
         "radio_field_details": radio_field_details,
+        "cascade_actions": [],  # 编辑操作不收集 cascade（fill_edit_form 返回 int）
     }
 
 

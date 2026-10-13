@@ -13,7 +13,7 @@ API_AI_test/
 │   └── discovery/                 五阶段模块级发现引擎（主管线）
 │       ├── run.py                   CLI 入口
 │       ├── io_helpers.py            I/O 辅助（profile/manifest/modules 加载）
-│       ├── auth_runner.py           登录适配层（委托给 LoginSession）
+│       ├── auth_service.py          统一认证服务（所有入口的唯一认证接口）
 │       ├── batch_runner.py          批量模块发现
 │       ├── stage1_rescue.py         Stage 1 Phase C/D/E 补救子例程
 │       ├── discover_ui.py           Stage 1: UI 元素探测 + Playbook 生成
@@ -82,7 +82,7 @@ API_AI_test/
 ├── tests/                       单元测试（pytest）
 │   ├── test_module_discovery.py   主管线测试
 │   ├── test_stage5_verification.py Stage 5 导出测试
-│   ├── test_auth.py               鉴权测试
+│   ├── test_auth_service.py        认证服务测试（AuthService）
 │   ├── test_run_history.py        运行历史测试
 │   ├── test_utils.py              工具函数测试
 │   └── test_pre_apis_global.py    前置 API 测试

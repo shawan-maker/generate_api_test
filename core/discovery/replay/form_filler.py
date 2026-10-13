@@ -101,6 +101,7 @@ class FormFiller:
 
         filled = 0
         cascade_actions = []  # ★ 记录 radio 触发的级联操作（如 transfer-box）
+        radio_selections = {}  # ★ 记录 radio 实际选择的值（供 playbook 使用）
         select_close_dropdown = []  # ★ 记录 el-select 下拉框关闭操作
         for field in fields:
             label = field.get("label", "")
@@ -354,6 +355,7 @@ class FormFiller:
                             LOG.info(f"    Vue v-model 更新结果: {vue_update_result}")
 
                             filled += 1
+                            radio_selections[label] = first_text  # ★ 记录实际选择的值
                             LOG.info(f"    选择 radio: {label} = {first_text}")
 
                             # radio 级联：检测动态组件并自动处理
@@ -389,13 +391,13 @@ class FormFiller:
                                     LOG.info(f"    [radio-cascade] transfer-box 需要选择")
                                     executor = self._get_executor()
                                     success, detail = await executor.execute_with_details(
-                                        "list-selector", label, "", None, ""
+                                        "transfer-box", label, "", None, ""
                                     )
                                     if success:
                                         LOG.info(f"    [radio-cascade] transfer-box 选择成功")
                                         # ★ 记录 cascade 操作，供 Stage 2 回放
                                         cascade_actions.append({
-                                            "type": "list-selector",
+                                            "type": "transfer-box",
                                             "trigger_field": label,
                                             "trigger_value": first_text,
                                             "selected_items": detail.get("selected_items", []),
@@ -416,6 +418,7 @@ class FormFiller:
                             if await radio_label.count() > 0:
                                 await radio_label.click()
                                 filled += 1
+                                radio_selections[label] = first_text  # ★ 记录实际选择的值
                                 LOG.info(f"    选择 radio: {label} = {first_text} (label fallback)")
 
                 except Exception as e:
@@ -474,7 +477,11 @@ class FormFiller:
             except Exception as e:
                 LOG.warning(f"填充字段 {label} 失败: {e}")
 
-        return {"filled": filled, "cascade_actions": cascade_actions}
+        return {
+            "filled": filled,
+            "cascade_actions": cascade_actions,
+            "radio_selections": radio_selections,  # ★ 记录 radio 实际选择的值
+        }
 
     async def fill_multi_step_fields(self, fields: List[Dict], framework: str = "element-ui") -> Tuple[int, List[Dict], List[Dict]]:
         """处理 multi_step 类型的表单字段。
@@ -1809,6 +1816,7 @@ class MultiStepExecutor:
             "date-picker": self._execute_date_picker,
             "form-checkbox": self._execute_form_checkbox,
             "list-selector": self._execute_list_selector,
+            "transfer-box": self._execute_transfer_box,
         }
         handler = handlers.get(kb_category)
         if not handler:
@@ -1845,6 +1853,7 @@ class MultiStepExecutor:
             "date-picker": self._execute_date_picker,  # 暂未实现详情版本
             "form-checkbox": self._execute_form_checkbox,  # 暂未实现详情版本
             "list-selector": self._execute_list_selector_with_details,
+            "transfer-box": self._execute_transfer_box,
         }
         handler = handlers.get(kb_category)
         if not handler:
@@ -1852,7 +1861,7 @@ class MultiStepExecutor:
             return False, {}
 
         try:
-            if kb_category in ("el-select", "list-selector"):
+            if kb_category in ("el-select", "list-selector", "transfer-box"):
                 return await handler(label, option_text, options, selector)
             else:
                 # 其他类型暂时只返回成功标志，详情为空字典
@@ -2340,43 +2349,290 @@ class MultiStepExecutor:
                 LOG.info(f"    li 元素不可见（可能在视口外），跳过")
                 list_item = None
 
-        # 回退 2：自定义穿梭框（transfer-box）— 在左侧面板内搜索可点击元素
+        # 注意：transfer-box 已独立为 _execute_transfer_box 处理器，不在此处处理
+
+        LOG.warning(f"    list-selector {label}: 未找到可点击的列表项（checkbox/li 均无匹配）")
+        return False, {"skipped_reason": "no_clickable_items"}
+
+    async def _execute_transfer_box(self, label: str, option_text: str = "",
+                                    _options=None, selector: str = "") -> Tuple[bool, Dict]:
+        """transfer-box 穿梭框专用处理器
+
+        处理 el-table 结构的穿梭框（tbody/tr/span），不包含 checkbox 或 li 的 fallback。
+
+        Args:
+            label: 字段标签
+            option_text: 要选择的选项文本（为空则选择第一个）
+            selector: 组件容器 selector（未使用）
+            _options: 未使用
+
+        Returns:
+            Tuple[bool, Dict]: (是否成功, {"option_text": str, "selected_count": int})
+        """
+        import json
+
+        # 定位左侧面板
         transfer_left = await self.page.query_selector(
             '[class*="transfer-box-left"], [class*="transfer-left"], '
             '.el-transfer-panel:first-child, [class*="transfer"] .panel:first-child'
         )
-        if transfer_left:
-            LOG.info(f"    检测到自定义穿梭框左侧面板，搜索可点击元素...")
 
-            # === STEP 1: 优先使用 xpath 点击（用户验证的路径）===
-            # //tbody//tr[@class="el-table__row"]//span[1]
-            LOG.info(f"    [transfer-box] 尝试 xpath 点击: //tbody//tr[@class='el-table__row']//span[1]")
-            xpath_click_result = await self.page.evaluate("""(container) => {
-                const xpath = '//tbody//tr[@class="el-table__row"]//span[1]';
-                const result = document.evaluate(xpath, container, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-                const span = result.singleNodeValue;
-                if (span) {
-                    const text = (span.textContent || '').trim();
-                    const r = span.getBoundingClientRect();
-                    console.log('[transfer-box] xpath 点击 span:', text);
-                    span.click();
+        if not transfer_left:
+            LOG.warning(f"    transfer-box {label}: 未找到左侧面板")
+            return False, {"skipped_reason": "no_transfer_box_found"}
+
+        LOG.info(f"    检测到自定义穿梭框左侧面板，搜索可点击元素...")
+
+        # === STEP 1: 优先使用 xpath 点击（用户验证的路径）===
+        # //tbody//tr[@class="el-table__row"]//span[1]
+        LOG.info(f"    [transfer-box] 尝试 xpath 点击: //tbody//tr[@class='el-table__row']//span[1]")
+        xpath_click_result = await self.page.evaluate("""(container) => {
+            const xpath = '//tbody//tr[@class="el-table__row"]//span[1]';
+            const result = document.evaluate(xpath, container, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+            const span = result.singleNodeValue;
+
+            if (span) {
+                const text = (span.textContent || '').trim();
+                const r = span.getBoundingClientRect();
+
+                // === 点击前诊断信息 START ===
+                const debugInfo = {
+                    // 1. 元素基本属性
+                    text: text,
+                    tag: span.tagName,
+                    cls: (span.className || '').substring(0, 50),
+
+                    // 2. 位置和尺寸
+                    rect: {
+                        x: Math.round(r.x),
+                        y: Math.round(r.y),
+                        width: Math.round(r.width),
+                        height: Math.round(r.height)
+                    },
+
+                    // 3. 可见性检查
+                    visibility: {
+                        isVisible: r.width > 0 && r.height > 0,
+                        isDisplayed: window.getComputedStyle(span).display !== 'none',
+                        opacity: window.getComputedStyle(span).opacity,
+                        pointerEvents: window.getComputedStyle(span).pointerEvents
+                    },
+
+                    // 4. 事件监听器检查
+                    eventListeners: {
+                        hasClickHandler: !!span.onclick,
+                        hasVueComponent: !!span.__vue__,
+                        parentHasClickHandler: span.parentElement ? !!span.parentElement.onclick : false,
+                        closestTableRow: !!span.closest('tr'),
+                        closestTableCell: !!span.closest('td')
+                    },
+
+                    // 5. 父元素链（向上 5 层）
+                    parentChain: (() => {
+                        const chain = [];
+                        let el = span;
+                        for (let i = 0; i < 5 && el; i++) {
+                            chain.push({
+                                tag: el.tagName,
+                                cls: (el.className || '').substring(0, 30),
+                                hasClickHandler: !!el.onclick
+                            });
+                            el = el.parentElement;
+                        }
+                        return chain;
+                    })(),
+
+                    // 6. 遮挡检查（检查中心点被哪个元素遮挡）
+                    obstruction: (() => {
+                        const centerX = r.x + r.width / 2;
+                        const centerY = r.y + r.height / 2;
+                        const topElement = document.elementFromPoint(centerX, centerY);
+                        return {
+                            isTopElement: topElement === span,
+                            topElementTag: topElement ? topElement.tagName : null,
+                            topElementCls: topElement ? (topElement.className || '').substring(0, 30) : null,
+                            topElementText: topElement ? (topElement.textContent || '').trim().substring(0, 30) : null
+                        };
+                    })(),
+
+                    // 7. 禁用状态
+                    disabled: {
+                        isDisabled: span.hasAttribute('disabled'),
+                        hasDisabledClass: span.classList.contains('is-disabled'),
+                        isReadOnly: span.hasAttribute('readonly')
+                    },
+
+                    // 8. Vue 组件信息（如果有）
+                    vueInfo: (() => {
+                        if (!span.__vue__) return null;
+                        const vm = span.__vue__;
+                        return {
+                            componentName: vm.$options.name || vm.$options._componentTag || 'unknown',
+                            hasClickEvent: !!vm.$listeners?.click,
+                            parentComponentName: vm.$parent?.$options?.name || 'unknown'
+                        };
+                    })()
+                };
+                // === 点击前诊断信息 END ===
+
+                console.log('[transfer-box] 点击前诊断:', JSON.stringify(debugInfo, null, 2));
+
+                // 执行点击
+                span.click();
+
+                return {
+                    clicked: true,
+                    ...debugInfo
+                };
+            }
+            return { clicked: false, reason: 'xpath not found' };
+        }""", transfer_left)
+        LOG.info(f"    [transfer-box] xpath 点击结果: {json.dumps(xpath_click_result, ensure_ascii=False)}")
+
+        if xpath_click_result.get('clicked'):
+            target_text = xpath_click_result.get('text', '')
+
+            # === 输出点击前的诊断信息 ===
+            LOG.info(f"    [transfer-box] === 点击诊断信息 ===")
+            LOG.info(f"    [transfer-box] 元素文本: '{xpath_click_result.get('text')}'")
+            LOG.info(f"    [transfer-box] 位置: {xpath_click_result.get('rect')}")
+            LOG.info(f"    [transfer-box] 可见性: {json.dumps(xpath_click_result.get('visibility'), ensure_ascii=False)}")
+            LOG.info(f"    [transfer-box] 事件监听: {json.dumps(xpath_click_result.get('eventListeners'), ensure_ascii=False)}")
+            LOG.info(f"    [transfer-box] 父元素链: {json.dumps(xpath_click_result.get('parentChain'), ensure_ascii=False)}")
+            LOG.info(f"    [transfer-box] 遮挡检查: {json.dumps(xpath_click_result.get('obstruction'), ensure_ascii=False)}")
+            LOG.info(f"    [transfer-box] 禁用状态: {json.dumps(xpath_click_result.get('disabled'), ensure_ascii=False)}")
+            if xpath_click_result.get('vueInfo'):
+                LOG.info(f"    [transfer-box] Vue 信息: {json.dumps(xpath_click_result.get('vueInfo'), ensure_ascii=False)}")
+            LOG.info(f"    [transfer-box] === 诊断信息结束 ===")
+
+            # === 多次检查右侧面板（Vue 可能需要时间更新）===
+            right_panel_updated = False
+            for attempt in range(3):
+                await self.page.wait_for_timeout(300)  # 每次等待 300ms
+
+                right_panel = await self.page.evaluate("""() => {
+                    const right = document.querySelector('[class*="transfer-box-right"]');
+                    if (!right) return { found: false };
+
+                    const items = right.querySelectorAll('div, span, p, li');
+                    const texts = [];
+                    for (const el of items) {
+                        const t = (el.textContent || '').trim();
+                        if (t && t.length < 80) texts.push(t);
+                    }
+
                     return {
-                        clicked: true,
-                        text: text,
-                        tag: span.tagName,
-                        cls: (span.className || '').substring(0, 50),
-                        w: Math.round(r.width),
-                        h: Math.round(r.height)
+                        found: true,
+                        itemCount: items.length,
+                        texts: texts.slice(0, 10),
+                        rect: (() => {
+                            const r = right.getBoundingClientRect();
+                            return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
+                        })()
                     };
-                }
-                return { clicked: false, reason: 'xpath not found' };
-            }""", transfer_left)
-            LOG.info(f"    [transfer-box] xpath 点击结果: {json.dumps(xpath_click_result, ensure_ascii=False)}")
+                }""")
 
-            if xpath_click_result.get('clicked'):
-                target_text = xpath_click_result.get('text', '')
+                LOG.info(f"    [transfer-box] 右侧面板检查 (attempt {attempt + 1}/3): itemCount={right_panel.get('itemCount', 0)}, texts={right_panel.get('texts', [])[:5]}")
+
+                # 如果右侧面板有内容，说明点击成功
+                if right_panel.get('itemCount', 0) > 0:
+                    LOG.info(f"    [transfer-box] ✓ 右侧面板已更新，点击成功")
+                    right_panel_updated = True
+                    break
+
+            if not right_panel_updated:
+                LOG.warning(f"    [transfer-box] ⚠ 右侧面板未更新，可能点击未生效")
+                LOG.warning(f"    [transfer-box] 建议检查：1) 是否需要点击父元素(tr/td) 2) 是否需要用 Playwright click 3) 是否需要触发 Vue 事件")
+
+            return True, {"option_text": target_text, "selected_count": 1 if right_panel_updated else 0}
+
+        # === STEP 2: xpath 失败时，回退到 querySelectorAll + 筛选 ===
+        LOG.info(f"    [transfer-box] xpath 未找到，回退到 querySelectorAll 方式")
+        LOG.info(f"    [transfer-box] xpath 失败原因: {xpath_click_result.get('reason', 'unknown')}")
+
+        # 在左侧面板内找到可见、可点击的叶子元素
+        click_result = await self.page.evaluate("""(container) => {
+            const items = container.querySelectorAll('div, span, p, label, a');
+            const candidates = [];
+            for (const el of items) {
+                const r = el.getBoundingClientRect();
+                if (r.width <= 0 || r.height <= 0) continue;
+                if (r.height > 60) continue;
+                const text = (el.textContent || '').trim();
+                if (!text || text.length > 80) continue;
+                if (el.tagName === 'INPUT' || el.tagName === 'BUTTON') continue;
+                if (el.closest('[class*="header"], [class*="search"], [class*="filter"], [class*="title"]')) continue;
+                if (el.children.length <= 2) {
+                    candidates.push({
+                        text,
+                        tag: el.tagName,
+                        cls: (el.className || '').substring(0, 60),
+                        w: Math.round(r.width),
+                        h: Math.round(r.height),
+                        childCount: el.children.length,
+                        isLeaf: el.children.length === 0,
+                        hasAlphanumeric: /[a-zA-Z0-9]/.test(text)
+                    });
+                }
+            }
+            return candidates;
+        }""", transfer_left)
+
+        if click_result and len(click_result) > 0:
+            LOG.info(f"    穿梭框左侧面板找到 {len(click_result)} 个候选项: {[c['text'][:20] for c in click_result[:5]]}")
+            # === DIAG-STEP2: 输出每个候选项的详细信息 ===
+            for i, c in enumerate(click_result[:10]):
+                LOG.info(f"    [DIAG-STEP2] candidate[{i}]: text='{c['text']}', tag={c.get('tag')}, "
+                         f"isLeaf={c.get('isLeaf')}, hasAlphanumeric={c.get('hasAlphanumeric')}, "
+                         f"cls='{c.get('cls', '')[:40]}'")
+            # 结构性筛选：叶子元素 + 非标题容器
+            # ★ 修改：移除 hasAlphanumeric 要求，支持纯中文文本（如"普通用户"）
+            valid_candidates = [
+                c for c in click_result
+                if c.get('isLeaf')                           # 必须是叶子元素
+                and len(c.get('text', '')) > 2               # 文本长度 > 2
+                and 'box-left-text' not in c.get('cls', '')  # 排除标题容器
+                and 'text-po' not in c.get('cls', '')        # 排除标题子容器
+                and c.get('text', '') not in ['全选', '可选项']  # 排除常见 header 文本
+            ]
+            LOG.info(f"    [DIAG-STEP2] 筛选后有效候选: {len(valid_candidates)} 个")
+            if valid_candidates:
+                target_text = valid_candidates[0]["text"]
+                LOG.info(f"    穿梭框候选项筛选: 选择 '{target_text}' (从 {len(valid_candidates)} 个有效候选中)")
+            else:
+                target_text = click_result[0]["text"]
+                LOG.warning(f"    穿梭框候选项筛选: 未找到有效候选项，使用默认 '{target_text}'")
+            # 用文本精确点击目标元素
+            import json as _json_ls
+            _escaped_text = _json_ls.dumps(target_text)
+            LOG.info(f"    [DIAG-STEP3] 准备点击文本: '{target_text}'")
+            clicked = await self.page.evaluate(f"""(container) => {{
+                const targetText = {_escaped_text};
+                const items = container.querySelectorAll('div, span, p, label, a');
+                let foundEl = null;
+                for (const el of items) {{
+                    if ((el.textContent || '').trim() === targetText) {{
+                        foundEl = el;
+                        break;
+                    }}
+                }}
+                if (foundEl) {{
+                    const r = foundEl.getBoundingClientRect();
+                    foundEl.click();
+                    return {{
+                        clicked: true,
+                        tag: foundEl.tagName,
+                        cls: (foundEl.className || '').substring(0, 50),
+                        w: Math.round(r.width), h: Math.round(r.height)
+                    }};
+                }}
+                return {{ clicked: false, reason: 'not found' }};
+            }}""", transfer_left)
+            LOG.info(f"    [DIAG-STEP3] 点击结果: {json.dumps(clicked, ensure_ascii=False)}")
+
+            if clicked:
                 await self.page.wait_for_timeout(500)
-                LOG.info(f"    穿梭框 xpath 点击成功: '{target_text}'")
+                LOG.info(f"    穿梭框点击成功: '{target_text}'")
 
                 # === DIAG: 检查右侧面板是否更新 ===
                 right_panel = await self.page.evaluate("""() => {
@@ -2392,144 +2648,41 @@ class MultiStepExecutor:
                 }""")
                 LOG.info(f"    [DIAG-transfer] 右侧面板: {json.dumps(right_panel, ensure_ascii=False)}")
 
-                return True, {"option_text": target_text, "selected_count": 1}
-
-            # === STEP 2: xpath 失败时，回退到 querySelectorAll + 筛选 ===
-            LOG.info(f"    [transfer-box] xpath 未找到，回退到 querySelectorAll 方式")
-
-            # 在左侧面板内找到可见、可点击的叶子元素
-            click_result = await self.page.evaluate("""(container) => {
-                const items = container.querySelectorAll('div, span, p, label, a');
-                const candidates = [];
-                for (const el of items) {
-                    const r = el.getBoundingClientRect();
-                    if (r.width <= 0 || r.height <= 0) continue;
-                    if (r.height > 60) continue;
-                    const text = (el.textContent || '').trim();
-                    if (!text || text.length > 80) continue;
-                    if (el.tagName === 'INPUT' || el.tagName === 'BUTTON') continue;
-                    if (el.closest('[class*="header"], [class*="search"], [class*="filter"], [class*="title"]')) continue;
-                    if (el.children.length <= 2) {
-                        candidates.push({
-                            text,
-                            tag: el.tagName,
-                            cls: (el.className || '').substring(0, 60),
-                            w: Math.round(r.width),
-                            h: Math.round(r.height),
-                            childCount: el.children.length,
-                            isLeaf: el.children.length === 0,
-                            hasAlphanumeric: /[a-zA-Z0-9]/.test(text)
-                        });
-                    }
-                }
-                return candidates;
-            }""", transfer_left)
-
-            if click_result and len(click_result) > 0:
-                LOG.info(f"    穿梭框左侧面板找到 {len(click_result)} 个候选项: {[c['text'][:20] for c in click_result[:5]]}")
-                # === DIAG-STEP2: 输出每个候选项的详细信息 ===
-                for i, c in enumerate(click_result[:10]):
-                    LOG.info(f"    [DIAG-STEP2] candidate[{i}]: text='{c['text']}', tag={c.get('tag')}, "
-                             f"isLeaf={c.get('isLeaf')}, hasAlphanumeric={c.get('hasAlphanumeric')}, "
-                             f"cls='{c.get('cls', '')[:40]}'")
-                # 结构性筛选：叶子元素 + 非标题容器
-                # ★ 修改：移除 hasAlphanumeric 要求，支持纯中文文本（如"普通用户"）
-                valid_candidates = [
-                    c for c in click_result
-                    if c.get('isLeaf')                           # 必须是叶子元素
-                    and len(c.get('text', '')) > 2               # 文本长度 > 2
-                    and 'box-left-text' not in c.get('cls', '')  # 排除标题容器
-                    and 'text-po' not in c.get('cls', '')        # 排除标题子容器
-                    and c.get('text', '') not in ['全选', '可选项']  # 排除常见 header 文本
-                ]
-                LOG.info(f"    [DIAG-STEP2] 筛选后有效候选: {len(valid_candidates)} 个")
-                if valid_candidates:
-                    target_text = valid_candidates[0]["text"]
-                    LOG.info(f"    穿梭框候选项筛选: 选择 '{target_text}' (从 {len(valid_candidates)} 个有效候选中)")
-                else:
-                    target_text = click_result[0]["text"]
-                    LOG.warning(f"    穿梭框候选项筛选: 未找到有效候选项，使用默认 '{target_text}'")
-                # 用文本精确点击目标元素
-                import json as _json_ls
-                _escaped_text = _json_ls.dumps(target_text)
-                LOG.info(f"    [DIAG-STEP3] 准备点击文本: '{target_text}'")
-                clicked = await self.page.evaluate(f"""(container) => {{
-                    const targetText = {_escaped_text};
-                    const items = container.querySelectorAll('div, span, p, label, a');
-                    let foundEl = null;
-                    for (const el of items) {{
-                        if ((el.textContent || '').trim() === targetText) {{
-                            foundEl = el;
-                            break;
-                        }}
-                    }}
-                    if (foundEl) {{
-                        const r = foundEl.getBoundingClientRect();
-                        foundEl.click();
-                        return {{
-                            clicked: true,
-                            tag: foundEl.tagName,
-                            cls: (foundEl.className || '').substring(0, 50),
-                            w: Math.round(r.width), h: Math.round(r.height)
-                        }};
-                    }}
-                    return {{ clicked: false, reason: 'not found' }};
-                }}""", transfer_left)
-                LOG.info(f"    [DIAG-STEP3] 点击结果: {json.dumps(clicked, ensure_ascii=False)}")
-
-                if clicked:
-                    await self.page.wait_for_timeout(500)
-                    LOG.info(f"    穿梭框点击成功: '{target_text}'")
-
-                    # === DIAG: 检查右侧面板是否更新 ===
-                    right_panel = await self.page.evaluate("""() => {
-                        const right = document.querySelector('[class*="transfer-box-right"]');
-                        if (!right) return { found: false };
-                        const items = right.querySelectorAll('div, span, p');
-                        const texts = [];
-                        for (const el of items) {
-                            const t = (el.textContent || '').trim();
-                            if (t && t.length < 80) texts.push(t);
-                        }
-                        return { found: true, itemCount: items.length, texts: texts.slice(0, 10) };
-                    }""")
-                    LOG.info(f"    [DIAG-transfer] 右侧面板: {json.dumps(right_panel, ensure_ascii=False)}")
-
-                    # === DIAG: 如果右侧面板为空，dump 左侧 DOM 树 ===
-                    if right_panel.get("itemCount", 0) == 0:
-                        deep_diag = await self.page.evaluate("""() => {
-                            const left = document.querySelector('[class*="transfer-box-left"]');
-                            if (!left) return { found: false };
-                            function dumpTree(el, depth) {
-                                if (depth > 3) return null;
-                                const r = el.getBoundingClientRect();
-                                if (r.width <= 0 || r.height <= 0) return null;
-                                const result = {
-                                    tag: el.tagName,
-                                    cls: (el.className || '').substring(0, 40),
-                                    text: (el.childNodes.length === 1 && el.childNodes[0].nodeType === 3)
-                                        ? el.textContent.trim().substring(0, 30) : '',
-                                    w: Math.round(r.width), h: Math.round(r.height),
-                                    children: []
-                                };
-                                for (const child of el.children) {
-                                    const c = dumpTree(child, depth + 1);
-                                    if (c) result.children.push(c);
-                                }
-                                return result;
+                # === DIAG: 如果右侧面板为空，dump 左侧 DOM 树 ===
+                if right_panel.get("itemCount", 0) == 0:
+                    deep_diag = await self.page.evaluate("""() => {
+                        const left = document.querySelector('[class*="transfer-box-left"]');
+                        if (!left) return { found: false };
+                        function dumpTree(el, depth) {
+                            if (depth > 3) return null;
+                            const r = el.getBoundingClientRect();
+                            if (r.width <= 0 || r.height <= 0) return null;
+                            const result = {
+                                tag: el.tagName,
+                                cls: (el.className || '').substring(0, 40),
+                                text: (el.childNodes.length === 1 && el.childNodes[0].nodeType === 3)
+                                    ? el.textContent.trim().substring(0, 30) : '',
+                                w: Math.round(r.width), h: Math.round(r.height),
+                                children: []
+                            };
+                            for (const child of el.children) {
+                                const c = dumpTree(child, depth + 1);
+                                if (c) result.children.push(c);
                             }
-                            return { found: true, tree: dumpTree(left, 0) };
-                        }""")
-                        LOG.info(f"    [DIAG-transfer] 左侧 DOM 树: {json.dumps(deep_diag, ensure_ascii=False)}")
+                            return result;
+                        }
+                        return { found: true, tree: dumpTree(left, 0) };
+                    }""")
+                    LOG.info(f"    [DIAG-transfer] 左侧 DOM 树: {json.dumps(deep_diag, ensure_ascii=False)}")
 
-                    return True, {"option_text": target_text, "selected_count": 1}
-                else:
-                    LOG.warning(f"    穿梭框 JS click 失败: '{target_text}'")
-
+                return True, {"option_text": target_text, "selected_count": 1}
             else:
-                LOG.warning(f"    穿梭框左侧面板内未找到可点击元素")
+                LOG.warning(f"    穿梭框 JS click 失败: '{target_text}'")
 
-        LOG.warning(f"    list-selector {label}: 未找到可点击的列表项（checkbox/li/transfer-panel 均无匹配）")
+        else:
+            LOG.warning(f"    穿梭框左侧面板内未找到可点击元素")
+
+        LOG.warning(f"    transfer-box {label}: 未找到可点击元素")
         return False, {"skipped_reason": "no_clickable_items"}
 
     # ---- 内部工具方法 ----

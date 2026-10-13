@@ -488,6 +488,14 @@ async def _step_click_button(page, step: dict, button_driver: ButtonDriver, ctx:
     if not locator:
         raise Exception("click_button 步骤缺少 playwright_locator（Stage 1 未提供）")
 
+    # ★ 如果 btn_text 为空，从 locator 中提取（如 button:has-text("增加授权")）
+    if not btn_text:
+        import re
+        text_match = re.search(r'has-text\(["\']([^"\']+)["\']\)', locator)
+        if text_match:
+            btn_text = text_match.group(1)
+            LOG.info(f"    [click_button] 从 locator 提取文本: '{btn_text}'")
+
     LOG.info(f"    [click_button] text='{btn_text}', locator='{locator}', strategy={preferred_strategy}")
 
     # 增强：为 CSS 选择器添加隐藏过滤（防止匹配到 hidden/disabled 按钮）
@@ -495,8 +503,85 @@ async def _step_click_button(page, step: dict, button_driver: ButtonDriver, ctx:
     ui_framework = getattr(button_driver, 'framework', 'element-ui')
     enhanced_locator = safe_css(locator, ui_framework)
 
+    # ★ 与 Stage 1 _click_button_escalating 保持一致的按钮定位逻辑
+    # Stage 1 使用 button, span, a 三种元素匹配，然后通过 JS 评估选择优先级最高的
+    if btn_text:
+        enhanced_locator = safe_css(
+            f'button:has-text("{btn_text}"), span:has-text("{btn_text}"), '
+            f'a:has-text("{btn_text}")'
+        )
+
     # 策略 1: Playwright click（真实鼠标事件，触发 Vue/React 事件处理器）
     try:
+        # ★ 第一步：JavaScript 评估，确定应该点击哪个元素（与 Stage 1 一致）
+        click_result = await page.evaluate("""(btnText) => {
+            const els = document.querySelectorAll('button, span, a');
+            const candidates = [];
+            for (const el of els) {
+                if (el.offsetWidth === 0 || el.offsetHeight === 0) continue;
+                if (el.closest('.is-hidden') || el.closest('[style*="display: none"]')) continue;
+                if ((el.textContent || '').includes(btnText)) {
+                    const isDisabled = el.disabled || el.classList.contains('is-disabled');
+                    candidates.push({ el, isDisabled });
+                }
+            }
+            // 优先选择 enabled 的 BUTTON，其次 enabled 的 A，其次 enabled 的 SPAN
+            const enabledButton = candidates.find(c => c.el.tagName === 'BUTTON' && !c.isDisabled);
+            const enabledLink = candidates.find(c => c.el.tagName === 'A' && !c.isDisabled);
+            const enabledSpan = candidates.find(c => c.el.tagName === 'SPAN' && !c.isDisabled);
+            const chosen = enabledButton || enabledLink || enabledSpan
+                        || candidates.find(c => c.el.tagName === 'BUTTON')
+                        || candidates.find(c => c.el.tagName === 'A')
+                        || candidates.find(c => c.el.tagName === 'SPAN');
+            if (chosen) {
+                const el = chosen.el;
+                const rect = el.getBoundingClientRect();
+                return {
+                    clicked: true,
+                    tag: el.tagName.toLowerCase(),
+                    isDisabled: chosen.isDisabled,
+                    text: el.textContent.trim().substring(0, 30),
+                    rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+                    hasVueListeners: !!(el.__vue__ && el.__vue__._events),
+                    vueComponentName: el.__vue__ ? (el.__vue__.$options.name || 'anonymous') : null
+                };
+            }
+            return { clicked: false };
+        }""", btn_text)
+
+        if click_result.get("clicked"):
+            tag = click_result.get("tag")
+            is_disabled = click_result.get("isDisabled")
+            rect = click_result.get("rect", {})
+
+            if is_disabled:
+                LOG.warning(f"    [click_button] 按钮 '{btn_text}' 处于禁用状态")
+
+            # 策略 1a: Playwright CSS click（与 Stage 1 一致，优先使用）
+            try:
+                click_locator = page.locator(
+                    safe_css(f'{tag}:has-text("{btn_text}")')
+                ).first
+                await click_locator.click(timeout=3000)
+                LOG.info(f"    [click_button] Playwright CSS click 成功 (tag={tag}, vue={click_result.get('vueComponentName')})")
+                return
+            except Exception as css_err:
+                LOG.warning(f"    [click_button] Playwright CSS click 失败: {str(css_err)[:100]}")
+
+            # 策略 1b: 坐标点击（Stage 1 的最后手段）
+            try:
+                x = rect.get("x", 0) + rect.get("width", 0) / 2
+                y = rect.get("y", 0) + rect.get("height", 0) / 2
+                LOG.info(f"    [click_button] 尝试坐标点击 (x={x:.1f}, y={y:.1f})")
+                await page.mouse.click(x, y)
+                LOG.info(f"    [click_button] 坐标点击成功")
+                return
+            except Exception as coord_err:
+                LOG.warning(f"    [click_button] 坐标点击也失败: {coord_err}")
+                raise Exception(f"所有点击策略都失败: CSS={css_err}, Coord={coord_err}")
+        else:
+            LOG.info(f"    [click_button] 未找到匹配的按钮")
+
         # 诊断：点击前检查匹配的元素
         match_info = await page.evaluate("""(locator_text) => {
             const target = locator_text.replace(/\\s+/g, '');
@@ -639,9 +724,35 @@ async def _step_wait_for_dialog(page, step: dict, ctx: dict):
     ctx["interaction_mode"] = interaction_mode
 
     if interaction_mode == "dialog":
-        # Dialog 模式：等待对话框出现
-        await page.wait_for_selector(locator, state="visible", timeout=timeout)
-        await page.wait_for_timeout(1000)
+        # Dialog 模式：等待对话框或表单字段出现（兼容内联表单）
+        try:
+            # 先尝试等待对话框
+            await page.wait_for_selector(locator, state="visible", timeout=timeout)
+            await page.wait_for_timeout(1000)
+        except Exception:
+            # 对话框未出现，检查是否有内联表单字段
+            form_check = await page.evaluate("""() => {
+                const formItems = document.querySelectorAll('.el-form-item');
+                const visible = Array.from(formItems).filter(f => {
+                    const rect = f.getBoundingClientRect();
+                    return rect.width > 0 && rect.height > 0;
+                });
+                return {
+                    total: formItems.length,
+                    visible: visible.length,
+                    hasForm: visible.length > 0
+                };
+            }""")
+
+            if form_check.get("hasForm"):
+                # 检测到内联表单，认为等待成功
+                LOG.info(f"    [wait_for_dialog] 检测到内联表单（{form_check.get('visible')} 个可见字段），继续执行")
+                await page.wait_for_timeout(1000)
+            else:
+                # 既没有对话框也没有表单，抛出原始异常
+                raise Exception(
+                    f"wait_for_dialog 超时：未找到对话框（{locator}），也未检测到内联表单"
+                )
     elif interaction_mode == "page-nav":
         # Page-nav 模式：等待页面加载完成
         await page.wait_for_load_state("networkidle", timeout=10000)
@@ -897,17 +1008,17 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver) -> str 
                 if cascade_actions:
                     LOG.info(f"      [Radio] 检测到 {len(cascade_actions)} 个 cascade 操作")
                     for ca in cascade_actions:
-                        if ca.get("type") == "list-selector":
+                        if ca.get("type") == "transfer-box":
                             trigger_value = ca.get("trigger_value", "")
                             # 只有当选择的值匹配 trigger_value 时才执行 cascade
                             if not trigger_value or trigger_value == first_text:
-                                LOG.info(f"      [Radio] 执行 cascade: list-selector (trigger: {trigger_value})")
+                                LOG.info(f"      [Radio] 执行 cascade: transfer-box (trigger: {trigger_value})")
                                 await page.wait_for_timeout(500)  # 等待动态组件渲染
 
                                 from .form_filler import MultiStepExecutor
                                 executor = MultiStepExecutor(page, None, ui_framework)
                                 success, detail = await executor.execute_with_details(
-                                    "list-selector", label, "", None, ""
+                                    "transfer-box", label, "", None, ""
                                 )
                                 if success:
                                     LOG.info(f"      [Radio] cascade 成功: {detail.get('selected_items', [])}")
