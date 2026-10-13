@@ -524,6 +524,7 @@ def build_playbook(ui_result: dict) -> dict:
                 "role": steps_type,
                 "steps": op_steps,
                 "marker": marker,
+                "marker_source": op_data.get("marker_source") if steps_type == "create" else None,
                 "detection_status": "success" if is_success else "failed",
                 "replayable": replayable,
             }
@@ -723,65 +724,14 @@ def _build_create_steps(op_data: dict) -> list:
 
             fields_info.append(radio_entry)
 
-        # ★ 反向查找 is_marker：根据 Stage 1 实际使用的 marker 值，找到对应的字段
-        # 而不是盲取第一个 select — Stage 1 用哪个字段做搜索条件，就标记哪个
-        marker_value = op_data.get("marker")
-        fill_data = op_data.get("fill_data", {})
-        multi_step_details = op_data.get("multi_step_field_details", [])
-        has_marker = any(f.get("is_marker") for f in fields_info)
-        if not has_marker and marker_value:
-            # 1. 先检查 input 字段（fill_data）
-            marker_label = None
-            for label, value in fill_data.items():
-                if value == marker_value:
-                    marker_label = label
+        # ★ 标记 is_marker：使用 Stage 1 记录的 marker_source 正向查找
+        marker_source = op_data.get("marker_source")
+        if marker_source and marker_source.get("field_label"):
+            source_label = marker_source["field_label"]
+            for field in fields_info:
+                if field.get("label") == source_label:
+                    field["is_marker"] = True
                     break
-            # 精确匹配失败，尝试包含匹配（如 marker="test"，field value="AT_test_631167"）
-            if not marker_label:
-                for label, value in fill_data.items():
-                    if isinstance(value, str) and marker_value in value:
-                        marker_label = label
-                        break
-
-            # 2. 再检查 select 字段（multi_step_field_details）
-            if not marker_label:
-                for ms_field in multi_step_details:
-                    if ms_field.get("option_text") == marker_value:
-                        marker_label = ms_field.get("label")
-                        break
-                if not marker_label:
-                    for ms_field in multi_step_details:
-                        opt = ms_field.get("option_text", "")
-                        if isinstance(opt, str) and marker_value in opt:
-                            marker_label = ms_field.get("label")
-                            break
-
-            # 2.5 检查 cascade_actions（radio → transfer-box）
-            # marker 可能来自 radio 触发的 cascade 操作（如"组织架构" radio → "普通用户" transfer-box 选择）
-            if not marker_label:
-                for field in fields_info:
-                    for ca in field.get("cascade_actions", []):
-                        selected = ca.get("selected_items", [])
-                        trigger = ca.get("trigger_value", "")
-                        if (selected and selected[0] == marker_value) or trigger == marker_value:
-                            marker_label = field.get("label")
-                            break
-                    if marker_label:
-                        break
-
-            # 标记对应字段为 is_marker
-            if marker_label:
-                for field in fields_info:
-                    if field.get("label") == marker_label:
-                        field["is_marker"] = True
-                        break
-            else:
-                # 3. 如果没有任何字段匹配 marker 值（Stage 1 使用了 username fallback），
-                # 标记第一个有 option_text 的 select 字段，确保 Stage 2 能提取 marker
-                for field in fields_info:
-                    if field.get("kb_category") in ("el-select", "select") and field.get("option_text"):
-                        field["is_marker"] = True
-                        break
 
         if fields_info:
             steps.append({
@@ -1041,40 +991,6 @@ def _build_update_steps(op_data: dict) -> list:
                 radio_entry["cascade_actions"] = matching_cascades
 
             fields_info.append(radio_entry)
-
-        # ★ 反向查找 is_marker：根据 Stage 1 实际使用的 marker 值，找到对应的字段
-        marker_value = op_data.get("marker")
-        fill_data = op_data.get("fill_data", {})
-        has_marker = any(f.get("is_marker") for f in fields_info)
-        if not has_marker and marker_value:
-            marker_label = None
-            # 1. 检查 input 字段（fill_data）
-            if fill_data:
-                for label, value in fill_data.items():
-                    if value == marker_value:
-                        marker_label = label
-                        break
-                if not marker_label:
-                    for label, value in fill_data.items():
-                        if isinstance(value, str) and marker_value in value:
-                            marker_label = label
-                            break
-            # 2. 检查 cascade_actions（radio → transfer-box）
-            if not marker_label:
-                for field in fields_info:
-                    for ca in field.get("cascade_actions", []):
-                        selected = ca.get("selected_items", [])
-                        trigger = ca.get("trigger_value", "")
-                        if (selected and selected[0] == marker_value) or trigger == marker_value:
-                            marker_label = field.get("label")
-                            break
-                    if marker_label:
-                        break
-            if marker_label:
-                for field in fields_info:
-                    if field.get("label") == marker_label:
-                        field["is_marker"] = True
-                        break
 
         if fields_info:
             steps.append({
