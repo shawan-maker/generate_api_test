@@ -143,11 +143,11 @@ def _load_helpers() -> dict:
         print(f"  ⚠️  加载 helpers.py 失败: {e}")
         return {}
 
-# 导入鉴权模块 — 支持两种运行环境：
-#   框架内（lib/auth.py 存在）→ 完整 AuthSession（含滑块登录）
-#   生成脚本（lib/cookie_client.py 存在）→ cookie-only 轻量鉴权
+# 鉴权模式检测 — 支持两种运行环境：
+#   框架内（core/ 可用）→ 完整 AuthService（多策略登录）
+#   生成脚本（独立运行，无 core/）→ cookie-only 轻量鉴权
 try:
-    from lib.auth import AuthSession
+    from core.discovery.auth_service import AuthService  # noqa: F401
     _AUTH_MODE = "full"
 except ImportError:
     _AUTH_MODE = "cookie"
@@ -1121,12 +1121,10 @@ class TestRunner:
 
     def setup_auth(self) -> Optional[requests.Session]:
         """设置鉴权 — 支持两种模式:
-        - full: 使用 AuthSession（含滑块登录回退）
+        - full: 使用 AuthService（统一认证服务，支持多策略）
         - cookie: 仅使用 cookie_client（生成脚本专用）
         """
         auth_profile = self.manifest.get("auth_profile", {})
-        creds_env = auth_profile.get("credentials_env", {})
-        creds_default = auth_profile.get("credentials_default", {})
 
         # Cookie-only 模式（生成脚本）
         if _AUTH_MODE == "cookie":
@@ -1145,61 +1143,90 @@ class TestRunner:
             print("  ✅ Cookie 鉴权成功")
             return session
 
-        # Full auth 模式（框架内）
+        # Full auth 模式（框架内）— 使用 AuthService
+        # workspace_dir = self._base_dir.parent (workspace/<project>/)
+        # project_dir = framework_root / projects / project_name
+        workspace_dir = self._base_dir.parent
+        framework_root = workspace_dir.parent.parent  # workspace/ → framework root
+        project_name = workspace_dir.name
+        project_dir = framework_root / "projects" / project_name
+
+        # 从 manifest 构建 profile（兼容框架内 profile.yaml）
         profile = {
+            "strategy": self.manifest.get("module", {}).get("strategy", "ecscloud"),
+            "base_url": self.base_url,
             "login_url": self.manifest.get("module", {}).get("login_url", ""),
+            "probe_url": auth_profile.get("probe_url", ""),
             "auth": {
                 "header_name": auth_profile.get("header_name", "Authorization"),
                 "header_prefix": auth_profile.get("header_prefix", "Bearer "),
-                "freshness_ttl_seconds": auth_profile.get("freshness_ttl_seconds", 300),
+                "token_key": auth_profile.get("token_key", ""),
+                "token_storage": auth_profile.get("token_storage", "localStorage"),
+                "cookie_token_key": auth_profile.get("cookie_token_key", ""),
                 "fixed_headers": auth_profile.get("fixed_headers", {}),
             },
-            "captcha": auth_profile.get("captcha", {}),
-            "probe_url": auth_profile.get("probe_url", ""),
-            "credentials": {
-                "username_env": creds_env.get("username", "APP_USER"),
-                "password_env": creds_env.get("password", "APP_PASS"),
-                "username": creds_default.get("username", ""),
-                "password": creds_default.get("password", ""),
+            "session": {
+                "fresh_ttl_seconds": auth_profile.get("freshness_ttl_seconds", 1800),
             },
         }
 
-        username = os.environ.get(creds_env.get("username", "APP_USER")) or \
-                   creds_default.get("username", "")
-        password = os.environ.get(creds_env.get("password", "APP_PASS")) or \
-                   creds_default.get("password", "")
+        try:
+            from core.discovery.auth_service import AuthService
+            auth = AuthService(project_dir, workspace_dir, profile)
 
-        sess = AuthSession(profile, username, password)
+            # 先尝试读取已有 cookie
+            session = auth.ensure_http_session()
+            if session is not None:
+                # 验证 cookie 是否有效（HTTP probe）
+                probe_url = auth_profile.get("probe_url", "")
+                if probe_url:
+                    try:
+                        resp = session.get(self.base_url + probe_url, timeout=10)
+                        if resp.status_code == 200:
+                            data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+                            if data.get("success", True):
+                                print("  ✅ 使用已有鉴权")
+                                return session
+                    except Exception:
+                        pass
 
-        ctx_dir = self._base_dir / "config"
-        ctx_dir.mkdir(parents=True, exist_ok=True)
-        sess.set_context_path(str(ctx_dir / "context.json"))
+            # cookie 无效，尝试刷新
+            if os.environ.get("AUTO_LOGIN", "1") != "0":
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # 已有事件循环，使用 run_coroutine_threadsafe
+                        import concurrent.futures
+                        future = asyncio.run_coroutine_threadsafe(
+                            auth.refresh_browser_cookies(), loop)
+                        success = future.result(timeout=120)
+                    else:
+                        success = loop.run_until_complete(auth.refresh_browser_cookies())
+                except RuntimeError:
+                    success = asyncio.run(auth.refresh_browser_cookies())
 
-        session = requests.Session()
-        session.verify = False
+                if success:
+                    session = auth.ensure_http_session()
+                    if session is not None:
+                        print("  ✅ 自动登录成功")
+                        return session
 
-        fixed_headers = auth_profile.get("fixed_headers", {})
-        fixed_headers["Content-Type"] = "application/json"
-        session.headers.update(fixed_headers)
-
-        sess.load_context()
-        if sess.token and sess.probe_online(self.base_url):
-            session.headers[auth_profile.get("header_name", "Authorization")] = \
-                f"{auth_profile.get('header_prefix', 'Bearer ')}{sess.token}"
-            for c in sess._cookies:
-                session.cookies.set(c["name"], c["value"], domain=c.get("domain", ""))
-            print("  ✅ 使用已有鉴权")
+        except ImportError:
+            print("  ⚠️ AuthService 不可用，尝试 cookie-only 模式")
+            config_dir = self._base_dir / "config"
+            config_dir.mkdir(parents=True, exist_ok=True)
+            from lib.cookie_client import require_auth
+            auth_config = {
+                "header_name": auth_profile.get("header_name", "Authorization"),
+                "header_prefix": auth_profile.get("header_prefix", "Bearer "),
+                "fixed_headers": auth_profile.get("fixed_headers", {}),
+                "cookie_token_key": auth_profile.get("cookie_token_key", ""),
+            }
+            session, cookies = require_auth(config_dir, auth_config)
             return session
-
-        if os.environ.get("AUTO_LOGIN", "1") != "0":
-            client = sess.ensure_client(self.base_url)
-            if client and sess.token:
-                session.headers[auth_profile.get("header_name", "Authorization")] = \
-                    f"{auth_profile.get('header_prefix', 'Bearer ')}{sess.token}"
-                for c in sess._cookies:
-                    session.cookies.set(c["name"], c["value"], domain=c.get("domain", ""))
-                print("  ✅ 自动登录成功")
-                return session
+        except Exception as e:
+            print(f"  ⚠️ AuthService 异常: {e}")
 
         print("❌ 无法获取有效鉴权")
         print("   请设置 AUTO_LOGIN=1 或先运行发现流程刷新 cookie")

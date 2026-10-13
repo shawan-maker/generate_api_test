@@ -19,7 +19,15 @@ LOG = logging.getLogger("io_helpers")
 def load_profile(project_dir: Path) -> dict:
     """加载项目的 profile.yaml，并合并全局凭据库。
 
-    优先级：全局凭据库 (config/credentials.yaml) > 项目 profile.yaml
+    凭据优先级：credentials.yaml (按 base_url 匹配) > 环境变量 > profile.yaml
+
+    credentials.yaml 格式（按 base_url 组织）：
+        sites:
+          "https://10.151.61.248":
+            label: "EcsCloud/estack"
+            username: estack-yy
+            password: R@9eDuck$!mpleM00n
+            auth: { header_name: Authorization, ... }
     """
     try:
         import yaml
@@ -32,35 +40,34 @@ def load_profile(project_dir: Path) -> dict:
     if p.exists():
         profile = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
 
-    # 2. 加载全局凭据库并合并
+    # 2. 加载全局凭据库并合并（按 base_url 匹配）
     try:
         framework_root = Path(__file__).resolve().parents[2]  # core/discovery/ -> framework root
         creds_file = framework_root / "config" / "credentials.yaml"
 
         if creds_file.exists():
             all_creds = yaml.safe_load(creds_file.read_text(encoding="utf-8")) or {}
-            project_id = project_dir.name  # e.g. "ecm-compute"
+            sites = all_creds.get("sites", {})
+            base_url = profile.get("base_url", "")
 
-            if project_id in all_creds:
-                proj_creds = all_creds[project_id]
-                LOG.debug(f"已加载全局凭据: {project_id}")
+            site_creds = sites.get(base_url, {})
+            if site_creds:
+                LOG.debug(f"已加载全局凭据: {base_url}")
 
-                # 合并凭据（全局优先）
-                for key in ["base_url", "login_url", "username", "password", "auth"]:
-                    if key in proj_creds:
-                        if key == "auth" and "auth" in profile:
-                            # auth 字典深度合并
-                            profile["auth"].update(proj_creds["auth"])
-                        else:
-                            profile[key] = proj_creds[key]
+                # 合并 auth 配置（深度合并，credentials.yaml 优先）
+                if "auth" in site_creds:
+                    profile.setdefault("auth", {}).update(site_creds["auth"])
 
-                # 确保 credentials 字段存在（兼容旧代码）
-                if "credentials" not in profile:
-                    profile["credentials"] = {}
-                if "username" in proj_creds:
-                    profile["credentials"]["username"] = proj_creds["username"]
-                if "password" in proj_creds:
-                    profile["credentials"]["password"] = proj_creds["password"]
+                # 合并凭据到 profile.credentials（兼容旧代码）
+                profile.setdefault("credentials", {})
+                for k in ("username", "password"):
+                    if k in site_creds:
+                        profile["credentials"][k] = site_creds[k]
+
+                # 合并 URL 字段（如 credentials.yaml 中有不同的 login_url）
+                for k in ("base_url", "login_url"):
+                    if k in site_creds:
+                        profile[k] = site_creds[k]
     except Exception as e:
         LOG.warning(f"加载全局凭据库失败: {e}")
 
@@ -68,11 +75,18 @@ def load_profile(project_dir: Path) -> dict:
 
 
 def save_credentials(project_id: str, credentials: dict):
-    """将项目凭据保存到全局凭据库。
+    """将项目凭据保存到全局凭据库（credentials.yaml）。
+
+    按 base_url 组织到 sites 下：
+        sites:
+          "https://10.151.61.248":
+            username: estack-yy
+            password: ...
+            auth: { ... }
 
     Args:
-        project_id: 项目 ID (如 "ecm-compute")
-        credentials: 凭据字典，包含 username, password, base_url, login_url, auth 等
+        project_id: 项目 ID（用作 label，向后兼容）
+        credentials: 凭据字典，必须包含 base_url，可选 username, password, auth, login_url
     """
     try:
         import yaml
@@ -89,11 +103,31 @@ def save_credentials(project_id: str, credentials: dict):
         if creds_file.exists():
             all_creds = yaml.safe_load(creds_file.read_text(encoding="utf-8")) or {}
 
-        # 合并新项目凭据
-        if project_id not in all_creds:
-            all_creds[project_id] = {}
+        # 确保 sites 字典存在
+        sites = all_creds.setdefault("sites", {})
 
-        all_creds[project_id].update(credentials)
+        # 按 base_url 写入
+        base_url = credentials.get("base_url", "")
+        if not base_url:
+            LOG.warning(f"save_credentials: 缺少 base_url，无法保存")
+            return
+
+        if base_url not in sites:
+            sites[base_url] = {}
+
+        # 合并凭据（不覆盖 base_url 本身）
+        for k, v in credentials.items():
+            if k == "base_url":
+                continue
+            if k == "auth" and isinstance(v, dict) and isinstance(sites[base_url].get("auth"), dict):
+                # auth 深度合并
+                sites[base_url]["auth"].update(v)
+            else:
+                sites[base_url][k] = v
+
+        # 确保 label 字段存在
+        if "label" not in sites[base_url]:
+            sites[base_url]["label"] = project_id
 
         # 确保目录存在
         creds_file.parent.mkdir(parents=True, exist_ok=True)
@@ -104,7 +138,7 @@ def save_credentials(project_id: str, credentials: dict):
             encoding="utf-8"
         )
 
-        LOG.info(f"✅ 凭据已保存到全局凭据库: {project_id}")
+        LOG.info(f"✅ 凭据已保存到全局凭据库: {base_url}")
     except Exception as e:
         LOG.warning(f"保存凭据失败: {e}")
 

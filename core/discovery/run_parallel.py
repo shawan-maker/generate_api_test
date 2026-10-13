@@ -130,19 +130,10 @@ async def main_async():
     print(f"  分模块并行执行（版本 {version}，session: {session_id}）")
     print("=" * 60)
     print("▶ 预校验 cookie 有效性 ...")
-    if args.type == "ui":
-        # UI 脚本只需 cookie 文件存在，Playwright 会注入
-        cookie_file = workspace_dir / "output" / "config" / "cookies.json"
-        if not cookie_file.exists() or not json.loads(cookie_file.read_text("utf-8")):
-            print("❌ cookies.json 不存在或为空（请先运行发现流程获取 cookie）")
-            sys.exit(2)
-        cookie_count = len(json.loads(cookie_file.read_text("utf-8")))
-        print(f"✅ cookie 文件存在（{cookie_count} 条），开始执行 UI 脚本\n")
-    else:
-        if not ensure_cookie_valid(project_dir, workspace_dir, base_url, login_url):
-            print("❌ cookie 无效且无法自动登录（请先运行发现流程或设置 AUTO_LOGIN=1 + 凭据）")
-            sys.exit(2)
-        print("✅ cookie 有效，开始并行执行\n")
+    if not ensure_cookie_valid(project_dir, workspace_dir, base_url, login_url):
+        print("❌ cookie 无效且无法自动登录（请先运行发现流程或设置 AUTO_LOGIN=1 + 凭据）")
+        sys.exit(2)
+    print("✅ cookie 有效，开始并行执行\n")
 
     # ---- 2. 扫描脚本 ----
     scripts = scan_scripts(scripts_dir, args.module, args.type)

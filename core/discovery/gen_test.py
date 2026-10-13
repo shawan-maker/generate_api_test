@@ -257,3 +257,15 @@ def _sync_runtime_lib(api_dir: Path):
         if p.exists():
             p.unlink()
             LOG.info(f"  清理旧文件: lib/{flat_dead}")
+
+    # ---- 同步 cookies.json 到 api/config/ ----
+    # api_dir = projects/<name>/v1.0.0/api/
+    # workspace = workspace/<name>/output/config/cookies.json
+    project_dir = api_dir.parent.parent  # projects/<name>/
+    workspace_cookies = project_dir.parent.parent / "workspace" / project_dir.name / "output" / "config" / "cookies.json"
+    api_config = api_dir / "config"
+    api_config.mkdir(parents=True, exist_ok=True)
+    if workspace_cookies.exists():
+        dst_cookies = api_config / "cookies.json"
+        shutil.copy2(str(workspace_cookies), str(dst_cookies))
+        LOG.info(f"  Cookie 同步: workspace → {api_config}")

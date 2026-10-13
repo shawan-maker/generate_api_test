@@ -44,7 +44,6 @@ from core.discovery.io_helpers import (
     get_or_assign_module_index,
     get_or_assign_group_index,
 )
-from core.discovery.auth_runner import login_with_playwright as _login_with_playwright
 from core.discovery.stage1_rescue import hints_rescan as _hints_rescan
 from core.discovery.stage1_rescue import precondition_retry as _precondition_retry
 from core.discovery.stage1_rescue import vision_rescue as _vision_rescue
@@ -75,32 +74,44 @@ def _is_login_redirect(page) -> bool:
 async def _refresh_cookie_mid_discovery(page, context, project_dir, base_url, login_url, profile):
     """发现流程中途刷新 cookie（Stage 1/2 检测到登录页重定向时调用）。
 
-    使用 shared_runner.refresh_cookies 执行登录刷新 cookie，
+    使用 AuthService.refresh_browser_cookies() 执行登录刷新 cookie，
     刷新成功后将新 cookie 注入 context。
 
     Returns:
         bool: 是否刷新成功
     """
-    from core.discovery.shared_runner import refresh_cookies
+    from core.discovery.auth_service import AuthService
     workspace_dir = get_workspace_dir(project_dir)
-    result = await refresh_cookies(project_dir, workspace_dir, base_url, login_url)
-    if result:
-        cookie_file = workspace_dir / "output" / "config" / "cookies.json"
-        if cookie_file.exists():
-            try:
-                cookies = json.loads(cookie_file.read_text(encoding="utf-8"))
-                await context.add_cookies(cookies)
-                # 注入 token 到 localStorage
-                token_key = profile.get("auth", {}).get("token_key", "accessToken")
-                token_cookie = next((c["value"] for c in cookies if c["name"] == token_key), None)
-                if token_cookie:
-                    await context.add_init_script(f"""
-                        localStorage.setItem('{token_key}', '{token_cookie}');
-                    """)
-            except Exception as e:
-                LOG.warning(f"  cookie 注入失败: {e}")
-                return False
-    return result
+
+    auth = AuthService(
+        project_dir=project_dir,
+        workspace_dir=workspace_dir,
+        profile=profile,
+    )
+
+    result = await auth.refresh_browser_cookies()
+    if not result:
+        return False
+
+    # 重新注入 cookie 到当前 context
+    from lib.auth.cookie_store import CookieStore
+    store = CookieStore()
+    cookies = store.load(workspace_dir)
+    if not cookies:
+        LOG.warning("  cookie 文件为空，刷新可能失败")
+        return False
+
+    try:
+        # 域名过滤
+        import re
+        host_match = re.search(r'https?://([^/:]+)', base_url)
+        host = host_match.group(1) if host_match else ""
+        filtered = store.filter_by_host(cookies, host) if host else cookies
+        await context.add_cookies(filtered)
+        return True
+    except Exception as e:
+        LOG.warning(f"  cookie 注入失败: {e}")
+        return False
 
 
 def _normalize_url(url: str, base_url: str) -> str:
@@ -858,14 +869,11 @@ test_data = {{
 
 
 async def _ensure_login(page, context, profile, login_url, target_url, args, workspace_dir):
-    """公共登录逻辑：优先使用 cookie，失败时再尝试登录。
+    """公共登录逻辑：委托给 AuthService 统一处理。
 
     流程：
-    1. 检查是否有有效的 cookie（优先使用）
-    2. 注入 cookie 和 localStorage token
-    3. 探测验证 cookie 是否有效
-    4. 如果 cookie 无效且有凭据，尝试登录
-    5. 导航到目标 URL
+    1. AuthService.ensure_browser_auth() — cookie 优先 → 探测 → 失效才登录
+    2. 导航到目标 URL
 
     Args:
         page: Playwright page
@@ -879,124 +887,26 @@ async def _ensure_login(page, context, profile, login_url, target_url, args, wor
     Returns:
         bool: 是否登录成功
     """
-    from lib.auth import LoginSession, LoginConfig
-    from lib.auth.strategies.registry import get_strategy
+    from core.discovery.auth_service import AuthService
 
-    # 优先尝试使用 cookie（不登录）
-    cookie_file = workspace_dir / "output" / "config" / "cookies.json"
-    if cookie_file.exists():
-        try:
-            cookies = json.loads(cookie_file.read_text(encoding="utf-8"))
-            if cookies:
-                LOG.info("尝试使用已有 cookie...")
-                await context.add_cookies(cookies)
+    project_dir = Path(args.project) if not Path(args.project).is_absolute() else Path(args.project)
+    if not project_dir.is_absolute():
+        project_dir = ROOT / "projects" / args.project
 
-                # 注入 token 到 localStorage
-                token_key = profile.get("auth", {}).get("token_key", "accessToken")
-                token_cookie = next((c["value"] for c in cookies if c["name"] == token_key), None)
-                if token_cookie:
-                    await context.add_init_script(f"""
-                        localStorage.setItem('{token_key}', '{token_cookie}');
-                    """)
+    auth = AuthService(
+        project_dir=project_dir,
+        workspace_dir=workspace_dir,
+        profile=profile,
+        user_override=args.user,
+        pass_override=args.password,
+    )
 
-                # 探测验证 cookie 是否有效
-                probe_url = profile.get("probe_url", "")
-                if probe_url:
-                    full_probe_url = profile.get("base_url", "").rstrip("/") + probe_url
-                    try:
-                        await page.goto(full_probe_url, wait_until="domcontentloaded", timeout=15000)
-                        # 检查是否被重定向到登录页
-                        if not _is_login_redirect(page):
-                            LOG.info("✅ Cookie 有效，跳过登录")
-                            # 导航到目标 URL
-                            await page.goto(target_url, wait_until="load", timeout=45000)
-                            return True
-                        else:
-                            LOG.warning("⚠️ Cookie 已失效，尝试登录")
-                    except Exception as e:
-                        LOG.warning(f"⚠️ Cookie 探测失败: {e}，尝试登录")
-                else:
-                    # 无 probe_url，信任 cookie
-                    LOG.info("✅ 使用已有 cookie（无 probe_url 验证）")
-                    await page.goto(target_url, wait_until="load", timeout=45000)
-                    return True
-        except Exception as e:
-            LOG.warning(f"⚠️ Cookie 加载失败: {e}，尝试登录")
-
-    # Cookie 无效或不存在，尝试登录
-    LOG.info("登录...")
-
-    # 解析凭据
-    creds = profile.get("credentials", {}) or {}
-    username = (args.user
-                or creds.get("username")
-                or os.environ.get(creds.get("username_env", ""), "")
-                or "")
-    password = (args.password
-                or creds.get("password")
-                or os.environ.get(creds.get("password_env", ""), "")
-                or "")
-
-    if not username or not password:
-        LOG.error("缺少登录凭据，请通过 --user/--pass 提供")
-        return False
-
-    # 构建配置
-    base_url = profile.get("base_url", "")
-    config_profile = {
-        "strategy": profile.get("strategy", "ecscloud"),
-        "base_url": base_url,
-        "login_url": login_url,
-        "probe_url": profile.get("probe_url", ""),
-        "auth": profile.get("auth", {}),
-        "captcha": profile.get("captcha", {}),
-        "selectors": profile.get("selectors", {}),
-        "session": profile.get("session", {}),
-    }
-    config = LoginConfig.from_profile(config_profile, base_url=base_url, login_url=login_url)
-    config.username = username
-    config.password = password
-
-    strategy_name = config_profile.get("strategy", "ecscloud")
-    strategy = get_strategy(strategy_name)
-    session = LoginSession(workspace_dir, config)
-
-    # 通过 LoginSession 完成登录（cookie 检查 → 探测 → 登录）
-    success = await session.ensure_auth(page, context, strategy)
+    success = await auth.ensure_browser_auth(page, context)
     if not success:
-        LOG.error("❌ 登录失败")
+        LOG.error("❌ 认证失败")
         return False
 
-    LOG.info("  ✅ 登录成功")
-
-    # 保存凭据到全局凭据库
-    from core.discovery.io_helpers import save_credentials
-    credentials_to_save = {
-        "username": username,
-        "password": password,
-        "base_url": base_url,
-        "login_url": login_url,
-    }
-    if "auth" in profile:
-        credentials_to_save["auth"] = profile["auth"]
-    save_credentials(args.project, credentials_to_save)
-
-    # 确保 cookie 文件存在
-    cookie_file = workspace_dir / "output" / "config" / "cookies.json"
-    if cookie_file.exists():
-        # 注入 token 到 localStorage（如果策略没有做）
-        token_key = profile.get("auth", {}).get("token_key", "accessToken")
-        cookies = json.loads(cookie_file.read_text(encoding="utf-8"))
-        token_cookie = next((c["value"] for c in cookies if c["name"] == token_key), None)
-
-        if token_cookie:
-            try:
-                await context.add_init_script(f"""
-                    localStorage.setItem('{token_key}', '{token_cookie}');
-                """)
-                LOG.info(f"  ✅ 已通过 addInitScript 注入 token 到 localStorage.{token_key}")
-            except Exception:
-                pass
+    LOG.info("  ✅ 认证成功")
 
     # 导航到目标 URL
     try:

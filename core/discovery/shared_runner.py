@@ -90,59 +90,23 @@ def scan_scripts(scripts_dir: Path, module_filter: str = None, script_type: str 
 def ensure_cookie_valid(project_dir: Path, workspace_dir: Path, base_url: str, login_url: str) -> bool:
     """主进程先确保 cookie 有效（失效则单线程登录一次）。返回是否可用。
 
-    委托给 LoginSession：检查 cookie 新鲜度 → 服务端探测 → 自动登录。
+    委托给 AuthService：检查 cookie 新鲜度 → 服务端探测 → 自动登录。
     """
-    from lib.auth import LoginSession, LoginConfig
-    from lib.auth.strategies.registry import get_strategy
-    from lib.auth.cookie_store import CookieStore
+    from core.discovery.auth_service import AuthService
 
     project_profile = _load_profile(project_dir)
-    creds = project_profile.get("credentials", {}) or {}
-    username = creds.get("username") or os.environ.get(creds.get("username_env", ""), "")
-    password = creds.get("password") or os.environ.get(creds.get("password_env", ""), "")
+    auth = AuthService(project_dir, workspace_dir, project_profile)
 
-    if not username or not password:
-        print("  ❌ 缺少登录凭据")
-        return False
-
-    # 构建配置
-    profile = {
-        "strategy": project_profile.get("strategy", "ecscloud"),
-        "base_url": base_url,
-        "login_url": login_url,
-        "probe_url": project_profile.get("probe_url", ""),
-        "auth": project_profile.get("auth", {}),
-        "captcha": project_profile.get("captcha", {}),
-        "selectors": project_profile.get("selectors", {}),
-        "session": project_profile.get("session", {}),
-    }
-    config = LoginConfig.from_profile(profile, base_url=base_url, login_url=login_url)
-    config.username = username
-    config.password = password
-
-    strategy_name = profile.get("strategy", "ecscloud")
-    strategy = get_strategy(strategy_name)
-    session = LoginSession(workspace_dir, config)
-
-    # 同步检查：cookie 新鲜度 → 服务端探测
-    store = CookieStore()
-    if store.is_fresh(workspace_dir, config.fresh_ttl_seconds):
+    # 同步检查：cookie 新鲜度
+    if auth.check_cookie_fresh():
         return True
 
     # 需要浏览器登录
     try:
         import asyncio
-        from playwright.async_api import async_playwright
-        from lib.browser_launcher import launch_browser
 
         async def _do_login():
-            async with async_playwright() as pw:
-                browser, context, page = await launch_browser(pw, headless=False)
-                try:
-                    success = await session.ensure_auth(page, context, strategy)
-                    return success
-                finally:
-                    await browser.close()
+            return await auth.refresh_browser_cookies()
 
         return asyncio.run(_do_login())
     except Exception as e:
@@ -151,61 +115,25 @@ def ensure_cookie_valid(project_dir: Path, workspace_dir: Path, base_url: str, l
 
 
 async def refresh_cookies(project_dir: Path, workspace_dir: Path, base_url: str, login_url: str) -> bool:
-    """刷新 cookies：委托给 LoginSession 执行登录并保存 cookie。
+    """刷新 cookies：委托给 AuthService 执行登录并保存 cookie。
 
     使用非 headless 模式启动浏览器，支持多策略登录。
 
     Returns:
         True 如果刷新成功
     """
-    from lib.auth import LoginSession, LoginConfig
-    from lib.auth.strategies.registry import get_strategy
+    from core.discovery.auth_service import AuthService
 
     profile = _load_profile(project_dir)
-    creds = profile.get("credentials", {}) or {}
-    username = creds.get("username") or os.environ.get(creds.get("username_env", ""), "")
-    password = creds.get("password") or os.environ.get(creds.get("password_env", ""), "")
-
-    if not username or not password:
-        print("  ❌ 无法刷新 cookie: 缺少登录凭据")
-        return False
+    auth = AuthService(project_dir, workspace_dir, profile)
 
     try:
-        from playwright.async_api import async_playwright
-        from lib.browser_launcher import launch_browser
-
-        # 构建配置
-        config_profile = {
-            "strategy": profile.get("strategy", "ecscloud"),
-            "base_url": base_url,
-            "login_url": login_url,
-            "probe_url": profile.get("probe_url", ""),
-            "auth": profile.get("auth", {}),
-            "captcha": profile.get("captcha", {}),
-            "selectors": profile.get("selectors", {}),
-            "session": profile.get("session", {}),
-        }
-        config = LoginConfig.from_profile(config_profile, base_url=base_url, login_url=login_url)
-        config.username = username
-        config.password = password
-
-        strategy_name = config_profile.get("strategy", "ecscloud")
-        strategy = get_strategy(strategy_name)
-        session = LoginSession(workspace_dir, config)
-
-        async with async_playwright() as pw:
-            browser, context, page = await launch_browser(pw, headless=False)
-            try:
-                success = await session.ensure_auth(page, context, strategy)
-                if success:
-                    cookies = await context.cookies()
-                    print(f"  ✅ 新 cookie 已保存 ({len(cookies)} 条)")
-                    return True
-                else:
-                    print("  ❌ 登录失败")
-                    return False
-            finally:
-                await browser.close()
+        success = await auth.refresh_browser_cookies()
+        if success:
+            print("  ✅ cookie 刷新成功")
+        else:
+            print("  ❌ cookie 刷新失败")
+        return success
     except Exception as e:
         print(f"  ⚠️ cookie 刷新异常: {e}")
         return False
@@ -244,28 +172,18 @@ async def run_one(script_path: Path, module_name: str, runs_dir: Path,
         result = {"module": module_name, "script": str(script_path), "ok": False,
                   "returncode": -1, "durationSec": 0, "output": "", "attempt": attempt}
 
-        # 每次运行前检查 cookie 是否过期
-        if attempt == 1:  # 只在第一次运行时检查
-            cookie_file = workspace_dir / "output" / "config" / "cookies.json"
-            if cookie_file.exists():
-                try:
-                    with open(cookie_file, 'r', encoding='utf-8') as f:
-                        cookies_data = json.load(f)
-                    # 检查 cookies 是否过期（简单检查时间戳）
-                    current_time = int(time.time())
-                    is_expired = False
-                    for cookie in cookies_data:
-                        if 'expires' in cookie and cookie['expires'] > 0:
-                            if cookie['expires'] < current_time:
-                                is_expired = True
-                                break
-
-                    if is_expired:
-                        print(f"⏰ [{module_name}] Cookie 已过期，刷新中...")
-                        if not await refresh_cookies(project_dir, workspace_dir, base_url, login_url):
-                            print(f"  ⚠️ cookie 刷新失败，使用现有 cookie")
-                except Exception as e:
-                    print(f"  ⚠️ 检查 cookie 失败：{e}")
+        # 每次运行前检查 cookie 是否过期（统一使用 AuthService）
+        if attempt == 1:
+            try:
+                from core.discovery.auth_service import AuthService
+                profile = _load_profile(project_dir)
+                auth = AuthService(project_dir, workspace_dir, profile)
+                if not auth.check_cookie_fresh():
+                    print(f"⏰ [{module_name}] Cookie 已过期，刷新中...")
+                    if not await refresh_cookies(project_dir, workspace_dir, base_url, login_url):
+                        print(f"  ⚠️ cookie 刷新失败，使用现有 cookie")
+            except Exception as e:
+                print(f"  ⚠️ 检查 cookie 失败：{e}")
 
         try:
             # UI 脚本需要 --headless 参数（如果指定），API 脚本不需要
