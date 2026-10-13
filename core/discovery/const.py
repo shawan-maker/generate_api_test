@@ -289,6 +289,8 @@ NOTIFICATION_SUCCESS_KEYWORDS = frozenset({
 NOTIFICATION_FAILURE_KEYWORDS = frozenset({
     "失败", "错误", "异常", "error", "failed",
     "无权", "权限不足", "不存在", "不允许", "无法",
+    "不可", "不能", "禁止", "拒绝",
+    "denied", "refused", "forbidden",
     "超时", "timeout",
 })
 
@@ -316,8 +318,13 @@ def classify_notification(text: str) -> str:
     if not text:
         return "neutral"
     t = text.lower()
-    # 失败优先（"操作失败"不应被其他关键词覆盖）
-    if any(kw.lower() in t for kw in NOTIFICATION_FAILURE_KEYWORDS):
+
+    # ★ 先检查"零失败"模式（如"2个成功，0个失败"应该判定为成功）
+    zero_failure_pattern = _re.compile(r'0个失败|0个错误|失败[：:]\s*0|失败数为0|无失败')
+    has_zero_failure = zero_failure_pattern.search(t)
+
+    # 失败优先（"操作失败"不应被其他关键词覆盖），但排除"0个失败"模式
+    if any(kw.lower() in t for kw in NOTIFICATION_FAILURE_KEYWORDS) and not has_zero_failure:
         return "failure"
     if any(kw.lower() in t for kw in NOTIFICATION_SUCCESS_KEYWORDS):
         return "success"

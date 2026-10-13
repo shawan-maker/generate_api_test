@@ -756,6 +756,19 @@ def _build_create_steps(op_data: dict) -> list:
                             marker_label = ms_field.get("label")
                             break
 
+            # 2.5 检查 cascade_actions（radio → transfer-box）
+            # marker 可能来自 radio 触发的 cascade 操作（如"组织架构" radio → "普通用户" transfer-box 选择）
+            if not marker_label:
+                for field in fields_info:
+                    for ca in field.get("cascade_actions", []):
+                        selected = ca.get("selected_items", [])
+                        trigger = ca.get("trigger_value", "")
+                        if (selected and selected[0] == marker_value) or trigger == marker_value:
+                            marker_label = field.get("label")
+                            break
+                    if marker_label:
+                        break
+
             # 标记对应字段为 is_marker
             if marker_label:
                 for field in fields_info:
@@ -1033,16 +1046,29 @@ def _build_update_steps(op_data: dict) -> list:
         marker_value = op_data.get("marker")
         fill_data = op_data.get("fill_data", {})
         has_marker = any(f.get("is_marker") for f in fields_info)
-        if not has_marker and marker_value and fill_data:
+        if not has_marker and marker_value:
             marker_label = None
-            for label, value in fill_data.items():
-                if value == marker_value:
-                    marker_label = label
-                    break
-            if not marker_label:
+            # 1. 检查 input 字段（fill_data）
+            if fill_data:
                 for label, value in fill_data.items():
-                    if isinstance(value, str) and marker_value in value:
+                    if value == marker_value:
                         marker_label = label
+                        break
+                if not marker_label:
+                    for label, value in fill_data.items():
+                        if isinstance(value, str) and marker_value in value:
+                            marker_label = label
+                            break
+            # 2. 检查 cascade_actions（radio → transfer-box）
+            if not marker_label:
+                for field in fields_info:
+                    for ca in field.get("cascade_actions", []):
+                        selected = ca.get("selected_items", [])
+                        trigger = ca.get("trigger_value", "")
+                        if (selected and selected[0] == marker_value) or trigger == marker_value:
+                            marker_label = field.get("label")
+                            break
+                    if marker_label:
                         break
             if marker_label:
                 for field in fields_info:

@@ -341,9 +341,13 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
                         LOG.warning(f"    ⚠️ 等待抽屉/对话框超时，继续尝试填充")
 
                 marker_value = await _step_fill_form(page, step, button_driver)
-                if marker_value:
+                if marker_value and not marker:
+                    # 仅当调用方未传入 marker 时，才使用 fill_form 提取的值
                     result["marker"] = marker_value
-                    LOG.info(f"    ✓ marker 已更新: {marker_value}")
+                    LOG.info(f"    ✓ marker 已从表单字段提取: {marker_value}")
+                elif marker_value and marker:
+                    # 调用方已传入 marker，保持原值（避免 is_marker 字段错误覆盖）
+                    LOG.info(f"    [marker] 保持调用方传入的 marker: {marker}（忽略表单提取的: {marker_value}）")
                 else:
                     # 检查是否有 is_marker 字段但未成功填充
                     has_marker_field = any(f.get("is_marker") for f in step.get("fields", []))
@@ -821,7 +825,8 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver) -> str 
                 await page.wait_for_timeout(300)
 
                 # 检查 Vue v-model 是否更新
-                first_text = field.get("firstOptionText", "")
+                # 兼容两种字段名：firstOptionText（原始扫描）和 option_text（playbook 生成）
+                first_text = field.get("firstOptionText", "") or field.get("option_text", "")
                 if first_text:
                     vue_check = await page.evaluate("""(text) => {
                         const radios = document.querySelectorAll('.el-radio, .el-radio-button');
@@ -1022,6 +1027,16 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver) -> str 
                                 )
                                 if success:
                                     LOG.info(f"      [Radio] cascade 成功: {detail.get('selected_items', [])}")
+                                    # ★ 从 cascade 提取 marker（如 transfer-box selected_items）
+                                    selected_items = detail.get("selected_items", [])
+                                    if selected_items and selected_items[0] and not marker_value:
+                                        marker_value = selected_items[0]
+                                        LOG.info(f"      [Radio] marker 已从 cascade 提取: {marker_value}")
+                                    elif not marker_value:
+                                        # fallback: 使用 trigger_value
+                                        if trigger_value:
+                                            marker_value = trigger_value
+                                            LOG.info(f"      [Radio] marker 已从 cascade trigger 提取: {marker_value}")
                                 else:
                                     LOG.warning(f"      [Radio] cascade 失败")
 

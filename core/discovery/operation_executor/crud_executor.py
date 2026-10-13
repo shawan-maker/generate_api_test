@@ -529,7 +529,9 @@ def _build_create_error_result(
     btn_text: str, btn_click_result: dict,
     fill_data: dict, fill_rules: dict, fields: list,
     submit_result: dict, multi_step_field_details: list,
-    username: str
+    username: str,
+    radio_field_details: list = None,
+    cascade_actions: list = None,
 ) -> dict:
     """构建 create 操作的失败结果，保留表单数据供 playbook 生成完整步骤。
 
@@ -562,6 +564,8 @@ def _build_create_error_result(
     result["fill_rules"] = fill_rules
     result["form_fields"] = fields
     result["multi_step_field_details"] = multi_step_field_details
+    result["radio_field_details"] = radio_field_details  # ★ 错误路径也需记录 radio 详情
+    result["cascade_actions"] = cascade_actions  # ★ 错误路径也需记录级联操作（如 transfer-box）
     result["submit_locator"] = submit_locator
     result["submit_locator_verified"] = submit_locator
     result["submit_text"] = submit_text_normalized
@@ -576,11 +580,25 @@ def _build_create_error_result(
     # 提取 marker
     _marker_keywords = ["名称", "用户名", "name", "username"]
     marker = None
+    # 0. 优先检查 cascade_actions（如 transfer-box 选择的策略/角色名）
+    # 授权管理等页面，表格行显示的是策略名（selected_items）而非用户名
+    if cascade_actions:
+        for ca in cascade_actions:
+            if ca.get("type") == "transfer-box":
+                selected_items = ca.get("selected_items", [])
+                if selected_items and selected_items[0]:
+                    marker = selected_items[0]
+                    break
+                trigger_value = ca.get("trigger_value", "")
+                if trigger_value:
+                    marker = trigger_value
+                    break
     # 1. 先检查 fill_data（input 字段）
-    for label, value in fill_data.items():
-        if any(kw in label.lower() for kw in _marker_keywords):
-            marker = value
-            break
+    if not marker:
+        for label, value in fill_data.items():
+            if any(kw in label.lower() for kw in _marker_keywords):
+                marker = value
+                break
     # 2. 再检查 multi_step_field_details（select 字段）
     if not marker:
         for ms_field in multi_step_field_details:
@@ -678,6 +696,22 @@ async def _do_create(page, context: dict) -> dict:
     # 5. 填充表单（传入预生成的 fill_data）
     fill_result = await form_filler.fill_create_form(fields, username, fill_data)
     filled = fill_result["filled"] if isinstance(fill_result, dict) else fill_result
+    # ★ 提取 radio 和 cascade 信息，供错误路径也能记录
+    radio_selections = fill_result.get("radio_selections", {}) if isinstance(fill_result, dict) else {}
+    cascade_actions = fill_result.get("cascade_actions", []) if isinstance(fill_result, dict) else []
+    # 构建 radio_field_details（供错误路径使用）
+    radio_field_details = []
+    for field in fields:
+        if field.get("kb_category") == "radio":
+            field_label = field.get("label")
+            actual_option_text = radio_selections.get(field_label, "")
+            radio_field_details.append({
+                "label": field_label,
+                "kb_category": "radio",
+                "option_locator": field.get("selector"),
+                "option_text": actual_option_text,
+                "fill_rule": field.get("fill_rule", {}),
+            })
     # 重新扫描以获取最新字段状态
     if context.get("fill_overrides"):
         for label, value in context["fill_overrides"].items():
@@ -775,7 +809,9 @@ async def _do_create(page, context: dict) -> dict:
                 return _build_create_error_result(
                     "api_error", err_text, btn_text, btn_click_result,
                     fill_data, fill_rules, fields, submit_result,
-                    multi_step_field_details, username
+                    multi_step_field_details, username,
+                    radio_field_details=radio_field_details,
+                    cascade_actions=cascade_actions
                 )
 
     # 10. 验证成功（弹窗关闭 / 成功提示）
@@ -788,12 +824,16 @@ async def _do_create(page, context: dict) -> dict:
             return _build_create_error_result(
                 "api_error", failure_info["error_text"], btn_text, btn_click_result,
                 fill_data, fill_rules, fields, submit_result,
-                multi_step_field_details, username
+                multi_step_field_details, username,
+                radio_field_details=radio_field_details,
+                cascade_actions=cascade_actions
             )
         return _build_create_error_result(
             "no_success_signal", "提交后未检测到成功信号", btn_text, btn_click_result,
             fill_data, fill_rules, fields, submit_result,
-            multi_step_field_details, username
+            multi_step_field_details, username,
+            radio_field_details=radio_field_details,
+            cascade_actions=cascade_actions
         )
 
     # 10.5. API 触发检测（额外确认，从 Stage 2 移入）
@@ -804,11 +844,29 @@ async def _do_create(page, context: dict) -> dict:
     # 11. 记录创建的标识数据（使用模糊匹配查找名称类字段）
     _marker_keywords = ["名称", "用户名", "name", "username"]
     marker = None
+    # 0. 优先检查 cascade_actions（如 transfer-box 选择的策略/角色名）
+    # 授权管理等页面，表格行显示的是策略名（selected_items）而非用户名
+    if cascade_actions:
+        for ca in cascade_actions:
+            if ca.get("type") == "transfer-box":
+                # 优先使用 selected_items（实际选中的策略名，如"普通用户"）
+                selected_items = ca.get("selected_items", [])
+                if selected_items and selected_items[0]:
+                    marker = selected_items[0]
+                    LOG.info(f"    marker 使用 transfer-box selected_items: {marker}")
+                    break
+                # 回退到 trigger_value（radio 选项名，如"组织架构"）
+                trigger_value = ca.get("trigger_value", "")
+                if trigger_value:
+                    marker = trigger_value
+                    LOG.info(f"    marker 使用 transfer-box trigger_value: {trigger_value}")
+                    break
     # 1. 先检查 fill_data（input 字段）
-    for label, value in fill_data.items():
-        if any(kw in label.lower() for kw in _marker_keywords):
-            marker = value
-            break
+    if not marker:
+        for label, value in fill_data.items():
+            if any(kw in label.lower() for kw in _marker_keywords):
+                marker = value
+                break
     # 2. 再检查 multi_step_field_details（select 字段）
     if not marker:
         for ms_field in multi_step_field_details:

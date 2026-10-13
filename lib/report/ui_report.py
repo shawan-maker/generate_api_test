@@ -155,6 +155,7 @@ def write_ui_jsonl_log(results: list, module_name: str) -> str:
             "failure_reason": r.get("failure_reason", ""),
             "expected_status": r.get("expected_status", ""),
             "note": r.get("note", ""),
+            "matched_method": r.get("matched_method", ""),
         }
         entries.append(json.dumps(entry, ensure_ascii=False, default=str))
 
@@ -314,6 +315,8 @@ def generate_ui_report(results, module_name, group=None, group_index=None):
             detail_parts.append(f'<div class="failure-info"><span class="failure-label">失败类型:</span> <code>{esc(failure_type)}</code></div>')
         if note and not failure_reason:
             detail_parts.append(f'<div class="note-info"><span class="note-label">备注:</span> {esc(note)}</div>')
+        if matched_method:
+            detail_parts.append(f'<div class="method-info"><span class="method-label">断言策略:</span> <code>{esc(matched_method)}</code></div>')
         if expected_status == "failed":
             detail_parts.append(f'<div class="expected-info"><span class="expected-label">Stage 1 预期:</span> 失败</div>')
         if error and error != failure_reason:
@@ -389,6 +392,9 @@ tr.skip{{background:#f8f9fa}}
 .failure-label{{font-weight:600}}
 .note-info{{color:#f39c12;font-size:11px;margin-top:4px}}
 .note-label{{font-weight:600}}
+.method-info{{color:#2980b9;font-size:11px;margin-top:4px}}
+.method-label{{font-weight:600}}
+.method-info code{{font-size:10px;padding:1px 4px;background:#ebf5fb;border:1px solid #aed6f1;border-radius:3px}}
 .expected-info{{color:#7f8c8d;font-size:11px;margin-top:4px}}
 .expected-label{{font-weight:600}}
 .lightbox{{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.85);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out}}

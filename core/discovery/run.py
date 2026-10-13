@@ -20,6 +20,7 @@ import time
 import asyncio
 import logging
 import argparse
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -478,6 +479,40 @@ async def run_stage2(page, project_dir: Path, module_name: str,
             return full_result, False
 
     return None, False
+
+
+def _run_generated_api_script(script_path):
+    """Stage 3+4 生成脚本后自动执行，确保报告与脚本同步。
+
+    Args:
+        script_path: 生成的 API 测试脚本路径（Path 或 str）
+    """
+    script_path = Path(script_path)
+    LOG.info(f"\n🔄 自动执行 API 测试脚本...")
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(script_path)],
+            cwd=str(script_path.parent),
+            timeout=180,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+        )
+        if proc.stdout:
+            for line in proc.stdout.strip().split("\n"):
+                LOG.info(f"  [API] {line}")
+        if proc.returncode != 0:
+            LOG.warning(f"  ⚠️ API 测试脚本退出码: {proc.returncode}")
+            if proc.stderr:
+                for line in proc.stderr.strip().split("\n")[-5:]:
+                    LOG.warning(f"  [API stderr] {line}")
+        else:
+            LOG.info(f"  ✅ API 测试执行完成，报告已更新")
+    except subprocess.TimeoutExpired:
+        LOG.warning(f"  ⚠️ API 测试超时（180s），请手动执行: {script_path}")
+    except Exception as e:
+        LOG.warning(f"  ⚠️ API 测试执行失败: {e}，请手动执行: {script_path}")
 
 
 def run_stage34(project_dir: Path, module_name: str,
@@ -1600,6 +1635,9 @@ async def main():
                         LOG.warning(f"⏭️ 跳过脚本生成: {skip_info['reason']}")
                     elif script_path:
                         LOG.info(f"\n✅ Stage 3+4 完成! 测试脚本: {script_path}")
+                        # ★ 自动执行脚本生成报告（确保报告与脚本同步）
+                        if not getattr(args, 'no_run', False):
+                            _run_generated_api_script(script_path)
 
         # Stage 5（导出 artifacts）- 默认执行
         if manifest is None:

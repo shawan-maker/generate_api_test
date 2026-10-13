@@ -396,11 +396,13 @@ class FormFiller:
                                     if success:
                                         LOG.info(f"    [radio-cascade] transfer-box 选择成功")
                                         # ★ 记录 cascade 操作，供 Stage 2 回放
+                                        # selected_items 应包含实际选中的项（option_text）
+                                        selected_text = detail.get("option_text", "")
                                         cascade_actions.append({
                                             "type": "transfer-box",
                                             "trigger_field": label,
                                             "trigger_value": first_text,
-                                            "selected_items": detail.get("selected_items", []),
+                                            "selected_items": [selected_text] if selected_text else [],
                                         })
                                     else:
                                         LOG.warning(f"    [radio-cascade] transfer-box 选择失败")
