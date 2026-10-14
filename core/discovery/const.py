@@ -137,7 +137,7 @@ ELEMENT_TYPE_MAP = {
 }
 
 # 需要多步操作的组件类型（由 MultiStepExecutor 处理）
-MULTI_STEP_TYPES = ["el-select", "el-cascader", "date-picker", "list-selector", "transfer-box"]
+MULTI_STEP_TYPES = ["el-select", "el-cascader", "date-picker", "list-selector", "transfer-box", "ip-input"]
 
 # ============================================================
 # 统一 Locator 增强 — 隐藏过滤器

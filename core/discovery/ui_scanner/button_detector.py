@@ -63,6 +63,23 @@ async def _prewarm_table_data(page, form_fields: list, toolbar_buttons: list,
     result = {"row_actions": [], "dropdowns": [], "form_fields": [],
               "created_marker": None, "success": False}
 
+    # ★ 保存原始 URL，用于 page-nav 模式下导航回原页面
+    original_url = page.url
+
+    async def _navigate_back_if_needed():
+        """预热结束后，检查是否需要导航回原页面。
+
+        page-nav 模式下，点击创建按钮会跳转到新页面（如 /add），
+        _close_dialog 无法关闭页面，需要 navigate 回去。
+        dialog 模式下，_close_dialog 已处理弹窗，无需导航。
+        """
+        if page.url != original_url:
+            LOG.info(f"    预热: page-nav 模式，导航回原页面: {original_url}")
+            await page.goto(original_url, wait_until="networkidle")
+            await page.wait_for_timeout(2000)
+        else:
+            await _close_dialog(page)
+
     try:
         # Step 1: 找到创建按钮
         create_btn = None
@@ -94,36 +111,83 @@ async def _prewarm_table_data(page, form_fields: list, toolbar_buttons: list,
             filler = FormFiller(page)
             form_fields = await filler.scan_form_fields_v2()
             LOG.info(f"    预热: 扫描到 {len(form_fields)} 个表单字段")
+            for i, f in enumerate(form_fields):
+                LOG.info(f"    预热: 字段[{i}] label='{f.get('label')}' "
+                         f"type={f.get('type')} kb_category={f.get('kb_category')} "
+                         f"selector={str(f.get('selector', ''))[:80]}")
 
         result["form_fields"] = form_fields
 
         if not form_fields:
             LOG.warning("    预热: 未扫描到表单字段，跳过")
-            await _close_dialog(page)
+            await _navigate_back_if_needed()
             return result
 
         # Step 3: 生成填充数据
         fill_rules = generate_fill_rules(form_fields)
         fill_data = generate_fill_data(form_fields, username="AT_prewarm")
         LOG.info(f"    预热: 生成 {len(fill_data)} 个字段填充数据")
+        # 记录未生成填充数据的字段及原因
+        for f in form_fields:
+            label = f.get("label")
+            if label not in fill_data:
+                kb_cat = f.get("kb_category", "unknown")
+                has_rule = label in fill_rules
+                LOG.info(f"    预热: 字段 '{label}' 无填充数据 "
+                         f"(kb_category={kb_cat}, has_rule={has_rule})")
+        # 记录字段类型分布
+        field_types = {}
+        for f in form_fields:
+            kb_cat = f.get("kb_category", "unknown")
+            field_types[kb_cat] = field_types.get(kb_cat, 0) + 1
+        LOG.info(f"    预热: 字段类型分布: {field_types}")
 
-        # Step 4: 填充表单
-        filler = form_filler.FormFiller(page)
+        # Step 4: 填充表单（普通字段）
+        filler = FormFiller(page)
         fill_result = await filler.fill_create_form(form_fields, "AT_prewarm", fill_data)
         # fill_result 现在是 dict: {"filled": int, "cascade_actions": list}
         filled_count = fill_result["filled"] if isinstance(fill_result, dict) else fill_result
+        LOG.info(f"    预热: 表单填充结果: {filled_count}/{len(form_fields)} 个字段")
+
+        # Step 4.5: 填充多步字段（el-select / el-cascader / date-picker / transfer-box / form-checkbox）
+        multi_step_fields = [
+            f for f in form_fields
+            if f.get("kb_category") in const.MULTI_STEP_TYPES
+            or f.get("kb_category") == "form-checkbox"
+        ]
+        if multi_step_fields:
+            LOG.info(f"    预热: 填充 {len(multi_step_fields)} 个多步字段 "
+                     f"({[f.get('label') + '(' + f.get('kb_category', '') + ')' for f in multi_step_fields]})")
+            ms_filled, _, close_actions = await filler.fill_multi_step_fields(
+                multi_step_fields, framework
+            )
+            filled_count += ms_filled
+            LOG.info(f"    预热: 多步字段填充结果: {ms_filled}/{len(multi_step_fields)}")
+            # 关闭残留下拉框
+            for action in close_actions:
+                try:
+                    await page.keyboard.press("Escape")
+                    await page.wait_for_timeout(200)
+                except Exception:
+                    pass
+
         if filled_count == 0 and form_fields:
             LOG.warning(f"    预热: 表单填充失败: 0 个字段被填充")
-            await _close_dialog(page)
+            await _navigate_back_if_needed()
             return result
 
         # Step 5: 提交表单
         submit_result = await filler.submit_form_v2()
         if not submit_result:
             LOG.warning("    预热: 表单提交失败")
-            await _close_dialog(page)
+            await _navigate_back_if_needed()
             return result
         LOG.info(f"    预热: 表单已提交 (策略: {submit_result.get('click_strategy', '')})")
+        # 检查表单是否有校验错误
+        await page.wait_for_timeout(500)
+        form_errors = await read_form_errors(page)
+        if form_errors:
+            LOG.warning(f"    预热: 表单校验错误: {form_errors}")
 
         # Step 6: 等待表格刷新
         await page.wait_for_timeout(2000)
@@ -162,14 +226,16 @@ async def _prewarm_table_data(page, form_fields: list, toolbar_buttons: list,
                 result["dropdowns"] = new_dropdowns
                 if new_dropdowns:
                     LOG.info(f"    预热: 发现 {len(new_dropdowns)} 个下拉子项")
+            await _navigate_back_if_needed()  # 预热完成，导航回原页面
         else:
             LOG.warning("    预热: 创建后表格仍无数据行")
+            await _navigate_back_if_needed()  # 预热失败，导航回原页面
 
         return result
 
     except Exception as e:
         LOG.warning(f"    预热异常: {e}")
-        await _close_dialog(page)
+        await _navigate_back_if_needed()
         return result
 
 

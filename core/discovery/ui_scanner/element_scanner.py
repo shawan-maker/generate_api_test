@@ -84,10 +84,14 @@ async def discover_all(page) -> dict:
     kb = _get_kb()
     framework = await _detect_ui_framework(page)
 
+    # ★ 页面结构快照（含 tab 检测）—— 必须在 _discover_once 之前
+    # _discover_once 含预热（prewarm），预热提交表单可能导致页面跳转（page-nav 模式），
+    # 跳转后 tab 元素消失，导致 tab 检测失败。
+    original_url = page.url
+    page_structure = await _snapshot_page_structure(page)
+
     result = await _discover_once(page, kb, framework)
 
-    # 页面结构快照（含 tab 检测）
-    page_structure = await _snapshot_page_structure(page)
     result["page_structure"] = page_structure
     result["framework"] = framework
 
@@ -1302,6 +1306,18 @@ async def _snapshot_page_structure(page) -> dict:
         result = await page.evaluate("""() => {
             const result = {};
 
+            // ---- Tab 检测调试 ----
+            const tabDebug = {
+                elTabsHeader: !!document.querySelector('.el-tabs__header'),
+                elTabsNavWrap: !!document.querySelector('.el-tabs__nav-wrap'),
+                elTabs: !!document.querySelector('.el-tabs'),
+                antTabsNav: !!document.querySelector('.ant-tabs-nav'),
+                roleTablist: !!document.querySelector('[role="tablist"]'),
+                elTabsItems: document.querySelectorAll('.el-tabs__item').length,
+                roleTab: document.querySelectorAll('[role="tab"]').length,
+            };
+            result._tabDebug = tabDebug;
+
             // ---- Tab 检测 ----
             const tablist = document.querySelector(
                 '.el-tabs__header, .ant-tabs-nav, [role="tablist"]'
@@ -1357,9 +1373,20 @@ async def _snapshot_page_structure(page) -> dict:
 
             return result;
         }""")
+        # 输出 tab 调试信息
+        tab_debug = result.get("_tabDebug", {})
+        if tab_debug:
+            LOG.info(f"  [Tab调试] elTabsHeader={tab_debug.get('elTabsHeader')}, "
+                     f"elTabsNavWrap={tab_debug.get('elTabsNavWrap')}, "
+                     f"elTabs={tab_debug.get('elTabs')}, "
+                     f"roleTablist={tab_debug.get('roleTablist')}, "
+                     f"elTabsItems={tab_debug.get('elTabsItems')}, "
+                     f"roleTab={tab_debug.get('roleTab')}")
+        if not result.get("tabs"):
+            LOG.warning(f"  [Tab调试] tablist 选择器未匹配，无法检测 tab")
         return result if result else {}
     except Exception as e:
-        LOG.debug(f"页面结构快照失败: {e}")
+        LOG.warning(f"页面结构快照失败: {e}")
         return {}
 
 

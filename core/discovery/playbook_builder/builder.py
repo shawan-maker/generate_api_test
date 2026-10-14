@@ -680,7 +680,7 @@ def _build_create_steps(op_data: dict) -> list:
                 continue
 
             # 跳过 multi_step 和 radio（单独处理）
-            if kb_category in ("el-select", "el-cascader", "date-picker", "form-checkbox", "radio"):
+            if kb_category in const.MULTI_STEP_TYPES or kb_category in ("form-checkbox", "radio"):
                 continue
 
             rule = fill_rules.get(label, {})
@@ -912,7 +912,7 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
                 continue
 
             # 跳过 multi_step 和 radio（单独处理）
-            if kb_category in ("el-select", "el-cascader", "date-picker", "form-checkbox", "radio"):
+            if kb_category in const.MULTI_STEP_TYPES or kb_category in ("form-checkbox", "radio"):
                 continue
 
             rule = fill_rules.get(label, {})
@@ -1477,7 +1477,7 @@ def _build_page_nav_steps(op_data: dict) -> list:
                 if "cascade_actions" in field:
                     radio_field["cascade_actions"] = field["cascade_actions"]
                 fill_fields.append(radio_field)
-            elif kb_category in ("list-selector", "el-cascader", "date-picker", "form-checkbox"):
+            elif kb_category in const.MULTI_STEP_TYPES or kb_category == "form-checkbox":
                 # 多步组件：kb_category 已在 MULTI_STEP_TYPES 中，replay_engine 正确路由
                 fill_fields.append({
                     "label": label,

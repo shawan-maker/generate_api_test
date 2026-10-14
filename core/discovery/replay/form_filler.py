@@ -19,6 +19,45 @@ from .. import const
 LOG = logging.getLogger("form_filler")
 
 
+def _log_scan_debug(raw_result: dict):
+    """记录 scan_form_fields 返回的调试信息。"""
+    # D1: radio 误分类
+    for d in raw_result.get("_debug_multiInput", []):
+        LOG.info(f"    [D1-radio] formItem='{d.get('formItemLabel')}' "
+                 f"rawInputs={d.get('allRawCount')} filteredInputs={d.get('allInputsCount')} "
+                 f"radioInRaw={d.get('radioInRawCount')}")
+        for detail in d.get("details", []):
+            LOG.info(f"    [D1-radio]   type={detail.get('type')} "
+                     f"parentIsRadio={detail.get('parentIsRadio')} "
+                     f"parentIsRadioBtn={detail.get('parentIsRadioBtn')}")
+
+    # D3: IP 输入组件
+    for ic in raw_result.get("_debug_ipCheck", []):
+        LOG.info(f"    [D3-ip] label='{ic.get('label')}' "
+                 f"inputCount={ic.get('inputCount')} "
+                 f"widthRatio={ic.get('widthRatio')} "
+                 f"hasIpInLabel={ic.get('hasIpInLabel')} "
+                 f"hasAddBtn={ic.get('hasAddBtn')} "
+                 f"tagCount={ic.get('tagCount')}")
+        for sub in ic.get("subInputDetails", []):
+            LOG.info(f"    [D3-ip]   input[{sub.get('idx')}]: "
+                     f"type={sub.get('type')} width={sub.get('width')} "
+                     f"placeholder='{sub.get('placeholder')}' readOnly={sub.get('readOnly')}")
+
+    # D2: "添加"按钮
+    for d in raw_result.get("_debug_addBtn", []):
+        LOG.info(f"    [D2-addBtn] formItem='{d.get('formItemLabel')}' "
+                 f"btnText='{d.get('btnText')}' visible={d.get('visible')} "
+                 f"currentTags={d.get('currentTags')}")
+
+    # D4: el-select 多选
+    for d in raw_result.get("_debug_multiSelect", []):
+        LOG.info(f"    [D4-multiSelect] label='{d.get('label')}' "
+                 f"hasMultipleClass={d.get('hasMultipleClass')} "
+                 f"hasTagsContainer={d.get('hasTagsContainer')} "
+                 f"currentTagCount={d.get('currentTagCount')}")
+
+
 class FormFiller:
     """表单填充封装类，供 capture_apis 调用"""
 
@@ -48,7 +87,13 @@ class FormFiller:
         Args:
             scope_selector: 可选，限定搜索范围的 CSS 选择器（如 '.el-drawer:not([style*="display: none"])'）
         """
-        fields = await scan_form_fields(self.page, scope_selector=scope_selector)
+        raw_result = await scan_form_fields(self.page, scope_selector=scope_selector)
+        # 兼容新的返回格式（包含调试信息）
+        if isinstance(raw_result, dict):
+            fields = raw_result.get('fields', [])
+            _log_scan_debug(raw_result)
+        else:
+            fields = raw_result
         # 保留完整字段结构，含 kb_category
         result = []
         for f in fields:
@@ -69,6 +114,13 @@ class FormFiller:
                 entry["thead_label"] = f["thead_label"]
             if f.get("visible_index") is not None:
                 entry["visible_index"] = f["visible_index"]
+            # ★ IP 多段输入专用字段
+            if f.get("subSelectors"):
+                entry["subSelectors"] = f["subSelectors"]
+            if f.get("inputCount"):
+                entry["inputCount"] = f["inputCount"]
+            if f.get("ipVersion"):
+                entry["ipVersion"] = f["ipVersion"]
             result.append(entry)
         return result
 
@@ -152,7 +204,9 @@ class FormFiller:
 
                             # 检测新增 form fields
                             try:
-                                post_fields = await scan_form_fields(self.page)
+                                post_scan_result = await scan_form_fields(self.page)
+                                # 兼容新的返回格式（包含调试信息）
+                                post_fields = post_scan_result.get('fields', []) if isinstance(post_scan_result, dict) else post_scan_result
                                 current_labels = {f['label'] for f in fields}
                                 new_fields = [f for f in post_fields if f['label'] not in current_labels]
                                 if new_fields:
@@ -310,7 +364,18 @@ class FormFiller:
             label = field.get("label", "")
             selector = field.get("selector") or field.get("playwright_locator", "")
 
-            success, detail = await executor.execute_with_details(kb_cat, label, option_text="", selector=selector)
+            # 为 ip-input 传递额外参数
+            extra_kwargs = {}
+            if kb_cat == "ip-input":
+                extra_kwargs = {
+                    "sub_selectors": field.get("subSelectors", []),
+                    "input_count": field.get("inputCount", 4),
+                    "ip_version": field.get("ipVersion", "v4"),
+                }
+
+            success, detail = await executor.execute_with_details(
+                kb_cat, label, option_text="", selector=selector, **extra_kwargs
+            )
 
             if success:
                 filled += 1
@@ -926,6 +991,10 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
     () => {{
         const FORM_ITEM_SEL = '{form_item}';
         const fields = [];
+        const _debug_ipCheck = [];
+        const _debug_multiInput = [];
+        const _debug_addBtn = [];
+        const _debug_multiSelect = [];
 
         // 以 form-item 为单位遍历（支持 scope 限定）
         const scope = {_scope_js};
@@ -983,6 +1052,18 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                 const selectIdx = fields.length;
                 fields.push({{ label, type: 'select', kb_category: 'el-select',
                              selector: _buildComponentSelector(fi, '{select_container}', selectIdx), required }});
+                // [D4] el-select 多选调试
+                const isMulti = selectEl.classList.contains('el-select--multiple')
+                    || selectEl.querySelector('.el-select__tags') !== null
+                    || selectEl.querySelector('input[multiple]') !== null;
+                if (isMulti) {{
+                    _debug_multiSelect.push({{
+                        label: label,
+                        hasMultipleClass: selectEl.classList.contains('el-select--multiple'),
+                        hasTagsContainer: selectEl.querySelector('.el-select__tags') !== null,
+                        currentTagCount: (selectEl.querySelectorAll('.el-tag') || []).length,
+                    }});
+                }}
             }}
             else if (fi.querySelector('{radio_group}')) {{
                 const radioIdx = fields.length;
@@ -1027,7 +1108,124 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                     'input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"])'
                 )).filter(inp => !inp.readOnly && inp.offsetWidth > 0);
 
+                // [D1] 调试: 检查是否有 radio input 被误匹配到 allInputs
+                const _allRawInputs = Array.from(fi.querySelectorAll('input:not([type="hidden"])'));
+                const _radioInAllRaw = _allRawInputs.filter(inp => inp.type === 'radio' || inp.closest('.el-radio-group'));
+                if (_radioInAllRaw.length > 0) {{
+                    _debug_multiInput.push({{
+                        formItemLabel: label,
+                        allRawCount: _allRawInputs.length,
+                        allInputsCount: allInputs.length,
+                        radioInRawCount: _radioInAllRaw.length,
+                        details: _radioInAllRaw.map(inp => ({{
+                            type: inp.type,
+                            className: (inp.className || '').substring(0, 60),
+                            parentIsRadio: inp.closest('.el-radio-group') !== null,
+                            parentIsRadioBtn: inp.closest('.el-radio-button') !== null,
+                        }})),
+                    }});
+                }}
+
+                // [D3] 调试: IP 输入组件 DOM 结构确认
+                if (allInputs.length >= 2) {{
+                    const widths = allInputs.map(inp => inp.offsetWidth);
+                    const maxW = Math.max(...widths);
+                    const minW = Math.min(...widths);
+                    _debug_ipCheck.push({{
+                        label: label,
+                        inputCount: allInputs.length,
+                        widthRatio: minW > 0 ? (maxW / minW).toFixed(2) : 'inf',
+                        hasIpInLabel: /ip|地址|IP/i.test(label),
+                        hasElInputNumber: !!fi.querySelector('.el-input-number'),
+                        hasRadioGroup: !!fi.querySelector('{radio_group}'),
+                        hasAddBtn: !!fi.querySelector('button.el-button--text'),
+                        tagCount: fi.querySelectorAll('.el-tag').length,
+                        subInputDetails: allInputs.map((inp, i) => ({{
+                            idx: i,
+                            type: inp.type || 'text',
+                            width: inp.offsetWidth,
+                            placeholder: inp.placeholder || '',
+                            readOnly: inp.readOnly,
+                        }})),
+                    }});
+                }}
+
                 const ta = fi.querySelector('textarea');
+
+                // 7.5 IP 输入组检测（在复合输入组之前）
+                // 检测条件：4 或 8 个 input + 宽度相近 + label 含 IP
+                const labelLower = label.toLowerCase();
+                const isIpLabel = /ip|ipv4|ipv6|地址/.test(labelLower);
+                // ★ 区分真正的数字输入 vs IP 多段输入：
+                // - 真正的 el-input-number：1 个 input 在 .el-input-number 内
+                // - IP 多段输入：4/8/16 个 input，每个都在 .el-input-number 内（用于限制 0-255）
+                const allInInputNumber = allInputs.length > 0 && allInputs.every(inp => !!inp.closest('.el-input-number'));
+                const isIpMultiSegment = allInputs.length === 4 || allInputs.length === 8 || allInputs.length === 16;
+                // 只有当"不是 IP 多段数量"且"所有 input 都在 el-input-number 内"时，才排除
+                const hasIpInputNumber = !isIpMultiSegment && allInInputNumber;
+                const hasIpRadioGroup = !!fi.querySelector('{radio_group}');
+
+                if (!hasIpInputNumber && !hasIpRadioGroup && isIpLabel &&
+                    (allInputs.length === 4 || allInputs.length === 8 || allInputs.length === 16)) {{
+                    // 检查宽度是否相近（排除不同宽度的 input 组合）
+                    const widths = allInputs.map(inp => inp.offsetWidth);
+                    const maxW = Math.max(...widths);
+                    const minW = Math.min(...widths);
+                    const widthRatio = minW > 0 ? (maxW / minW) : 999;
+
+                    if (widthRatio < 1.5) {{
+                        // 判断 IPv4/IPv6
+                        let ipVersion = 'v4';
+                        if (labelLower.includes('ipv6') || labelLower.includes('v6')) {{
+                            ipVersion = 'v6';
+                        }} else if (allInputs.length > 0) {{
+                            // 辅助判断：maxlength >= 4 或 placeholder 含 ":"
+                            const firstInput = allInputs[0];
+                            const maxLength = parseInt(firstInput.getAttribute('maxlength') || '3');
+                            const placeholder = firstInput.placeholder || '';
+                            if (maxLength >= 4 || placeholder.includes(':')) {{
+                                ipVersion = 'v6';
+                            }}
+                        }}
+
+                        // 构建每个 input 的 selector
+                        const subSelectors = allInputs.map((inp, idx) => {{
+                            const path = [];
+                            let current = inp;
+                            while (current && current.nodeType === Node.ELEMENT_NODE) {{
+                                let selector = current.nodeName.toLowerCase();
+                                if (current.id) {{
+                                    selector = `#${{current.id}}`;
+                                    path.unshift(selector);
+                                    break;
+                                }} else {{
+                                    let sibling = current;
+                                    let nth = 1;
+                                    while (sibling.previousElementSibling) {{
+                                        sibling = sibling.previousElementSibling;
+                                        if (sibling.nodeName === current.nodeName) nth++;
+                                    }}
+                                    if (nth > 1 || current.nextElementSibling) {{
+                                        selector += `:nth-of-type(${{nth}})`;
+                                    }}
+                                }}
+                                path.unshift(selector);
+                                current = current.parentElement;
+                            }}
+                            return path.join(' > ');
+                        }});
+
+                        fields.push({{
+                            label, type: 'ip-input', kb_category: 'ip-input',
+                            selector: _buildComponentSelector(fi, '{form_item}', fields.length),
+                            subSelectors: subSelectors,
+                            inputCount: allInputs.length,
+                            ipVersion: ipVersion,
+                            required,
+                        }});
+                        return; // 已识别为 IP，跳过后续检测
+                    }}
+                }}
 
                 if (allInputs.length >= 2) {{
                     // 复合输入组：过滤辅助输入，选择主输入
@@ -1059,6 +1257,18 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                     fields.push({{ label, type: 'textarea', kb_category: 'textarea-generic',
                                  selector: _buildSelector(ta), required }});
                 }}
+                }}
+
+                // [D2] 调试: "添加"按钮行为确认
+                const _addBtn = fi.querySelector('button.el-button--text');
+                const _tagCount = fi.querySelectorAll('.el-tag').length;
+                if (_addBtn) {{
+                    _debug_addBtn.push({{
+                        formItemLabel: label,
+                        btnText: _addBtn.textContent.trim(),
+                        visible: _addBtn.offsetWidth > 0,
+                        currentTags: _tagCount,
+                    }});
                 }}
             }}
         }});
@@ -1157,7 +1367,13 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
             }});
         }});
 
-        return fields;
+        return {{
+            fields: fields,
+            _debug_ipCheck: _debug_ipCheck,
+            _debug_multiInput: _debug_multiInput,
+            _debug_addBtn: _debug_addBtn,
+            _debug_multiSelect: _debug_multiSelect,
+        }};
 
         function _buildSelector(element) {{
             if (element.id) return `#${{element.id}}`;
@@ -1402,6 +1618,10 @@ def generate_fill_rules(fields: List[Dict]) -> dict:
     - description_pattern: 生成描述
     - name_pattern: 生成名称
     - fixed_value: 固定值（不需要变化的字段）
+    - ip_v4_pattern: 生成 IPv4 地址（4 段）
+    - ip_v4_range_pattern: 生成 IPv4 地址区间（8 段）
+    - ip_v6_pattern: 生成 IPv6 地址（8 段）
+    - ip_v6_range_pattern: 生成 IPv6 地址区间（16 段）
 
     Args:
         fields: scan_form_fields_v2() 返回的字段列表
@@ -1417,8 +1637,44 @@ def generate_fill_rules(fields: List[Dict]) -> dict:
             continue
 
         field_type = field.get("type", "input")
+        kb_category = field.get("kb_category", "")
         input_type = field.get("inputType", "text")
         required = field.get("required", False)
+
+        # 特殊处理 IP 输入字段
+        if kb_category == "ip-input":
+            input_count = field.get("inputCount", 4)
+            ip_version = field.get("ipVersion", "v4")
+
+            if ip_version == "v4":
+                if input_count == 4:
+                    # IPv4 单地址：10.0.0.1
+                    rules[label] = {"rule": "ip_v4_pattern", "params": {
+                        "base": "10.0.0",
+                        "last_octet": 1 + len(rules)  # 避免重复
+                    }}
+                elif input_count == 8:
+                    # IPv4 区间：10.0.0.1 - 10.0.0.10
+                    rules[label] = {"rule": "ip_v4_range_pattern", "params": {
+                        "base": "10.0.0",
+                        "start": 1 + len(rules),
+                        "end": 10 + len(rules)
+                    }}
+            elif ip_version == "v6":
+                if input_count == 8:
+                    # IPv6 单地址：2001:0db8:0000:0000:0000:0000:0000:0001
+                    rules[label] = {"rule": "ip_v6_pattern", "params": {
+                        "prefix": "2001:db8",
+                        "suffix": 1 + len(rules)
+                    }}
+                elif input_count == 16:
+                    # IPv6 区间
+                    rules[label] = {"rule": "ip_v6_range_pattern", "params": {
+                        "prefix": "2001:db8",
+                        "start": 1 + len(rules),
+                        "end": 10 + len(rules)
+                    }}
+            continue
 
         # 根据字段标签和类型推断规则
         rule = _infer_fill_rule(label, field_type, input_type, required)
@@ -1524,6 +1780,51 @@ def apply_fill_rule(rule: dict, timestamp: str = None) -> str:
     if rule_type == "fixed_value":
         return params.get("value", "")
 
+    # IP 地址生成规则
+    if rule_type == "ip_v4_pattern":
+        # IPv4 单地址：10.0.0.1
+        base = params.get("base", "10.0.0")
+        last_octet = params.get("last_octet", 1)
+        # 使用时间戳确保唯一性（避免与其他测试数据冲突）
+        last_val = (int(timestamp) % 254) + 1 if last_octet == 1 else last_octet
+        return f"{base}.{last_val}"
+
+    if rule_type == "ip_v4_range_pattern":
+        # IPv4 区间：10.0.0.1-10.0.0.10
+        base = params.get("base", "10.0.0")
+        start = params.get("start", 1)
+        end = params.get("end", 10)
+        # 确保 end > start
+        start_val = (int(timestamp) % 240) + 1 if start == 1 else start
+        end_val = start_val + 9 if end == 10 else end
+        return f"{base}.{start_val}-{base}.{end_val}"
+
+    if rule_type == "ip_v6_pattern":
+        # IPv6 单地址：展开为 8 段 2001:0db8:0000:0000:0000:0000:0000:0001
+        prefix = params.get("prefix", "2001:db8")
+        suffix = params.get("suffix", 1)
+        suffix_val = (int(timestamp) % 65534) + 1 if suffix == 1 else suffix
+        # 展开为 8 段
+        prefix_parts = prefix.split(":")
+        while len(prefix_parts) < 7:
+            prefix_parts.append("0000")
+        prefix_parts.append(f"{suffix_val:04x}")
+        return ":".join(prefix_parts)
+
+    if rule_type == "ip_v6_range_pattern":
+        # IPv6 区间
+        prefix = params.get("prefix", "2001:db8")
+        start = params.get("start", 1)
+        end = params.get("end", 10)
+        start_val = (int(timestamp) % 65520) + 1 if start == 1 else start
+        end_val = start_val + 9 if end == 10 else end
+        prefix_parts = prefix.split(":")
+        while len(prefix_parts) < 7:
+            prefix_parts.append("0000")
+        start_ip = ":".join(prefix_parts + [f"{start_val:04x}"])
+        end_ip = ":".join(prefix_parts + [f"{end_val:04x}"])
+        return f"{start_ip}-{end_ip}"
+
     # 未知规则，返回默认值
     return f"test_{timestamp}"
 
@@ -1622,18 +1923,19 @@ class MultiStepExecutor:
 
     async def execute_with_details(self, kb_category: str, label: str,
                                    option_text: str = "", options: list = None,
-                                   selector: str = "") -> Tuple[bool, Dict]:
+                                   selector: str = "", **kwargs) -> Tuple[bool, Dict]:
         """根据 kb_category 分发到对应的执行方法，并返回详细执行信息。
 
         与 execute() 类似，但返回元组 (成功标志, 详情字典)。
         详情字典包含 is_editable 和 option_text 等运行时信息。
 
         Args:
-            kb_category: KB 类别名（如 "el-select", "el-cascader", "date-picker"）
+            kb_category: KB 类别名（如 "el-select", "el-cascader", "date-picker", "ip-input"）
             label: 字段标签（用于定位组件）
             option_text: 要选择的选项文本
             options: 级联选择的多级选项列表（如 ["uiautotest", "uiautotest"]）
             selector: CSS selector（来自 playbook，直接定位元素）
+            **kwargs: 额外参数（如 ip-input 需要的 sub_selectors, input_count, ip_version）
 
         Returns:
             Tuple[bool, Dict]: (是否成功完成交互, 详情字典)
@@ -1645,6 +1947,7 @@ class MultiStepExecutor:
             "form-checkbox": self._execute_form_checkbox,  # 暂未实现详情版本
             "list-selector": self._execute_list_selector_with_details,
             "transfer-box": self._execute_transfer_box,
+            "ip-input": self._execute_ip_input_with_details,
         }
         handler = handlers.get(kb_category)
         if not handler:
@@ -1652,7 +1955,9 @@ class MultiStepExecutor:
             return False, {}
 
         try:
-            if kb_category in ("el-select", "list-selector", "transfer-box"):
+            if kb_category == "ip-input":
+                return await handler(label, kwargs)
+            elif kb_category in ("el-select", "list-selector", "transfer-box"):
                 return await handler(label, option_text, options, selector)
             else:
                 # 其他类型暂时只返回成功标志，详情为空字典
@@ -2144,6 +2449,175 @@ class MultiStepExecutor:
 
         LOG.warning(f"    list-selector {label}: 未找到可点击的列表项（checkbox/li 均无匹配）")
         return False, {"skipped_reason": "no_clickable_items"}
+
+    async def _execute_ip_input_with_details(self, label: str, kwargs: dict) -> Tuple[bool, Dict]:
+        """IP 多段输入组件处理器。
+
+        将 IP 地址分段填充到多个 input 中，支持 IPv4/IPv6。
+
+        Args:
+            label: 字段标签
+            kwargs: 额外参数
+                - sub_selectors: 每个 input 的 CSS selector 列表
+                - input_count: input 数量（4=IPv4 单地址，8=IPv4 区间或 IPv6 单地址，16=IPv6 区间）
+                - ip_version: IPv 版本 ('v4' 或 'v6')
+                - fill_rule: 填充规则（用于生成 IP 值）
+
+        Returns:
+            Tuple[bool, Dict]: (是否成功, {"option_text": str, "input_count": int})
+        """
+        sub_selectors = kwargs.get("sub_selectors", [])
+        input_count = kwargs.get("input_count", 4)
+        ip_version = kwargs.get("ip_version", "v4")
+        fill_rule = kwargs.get("fill_rule")
+
+        # 1. 根据 fill_rule 生成 IP 值
+        if fill_rule:
+            ip_value = apply_fill_rule(fill_rule)
+        else:
+            # 使用默认 IP 值
+            if ip_version == "v4":
+                if input_count == 4:
+                    ip_value = "10.0.0.1"
+                elif input_count == 8:
+                    ip_value = "10.0.0.1-10.0.0.10"
+                else:
+                    ip_value = "10.0.0.1"
+            else:  # v6
+                if input_count == 8:
+                    ip_value = "2001:0db8:0000:0000:0000:0000:0000:0001"
+                elif input_count == 16:
+                    ip_value = "2001:0db8:0000:0000:0000:0000:0000:0001-2001:0db8:0000:0000:0000:0000:0000:000a"
+                else:
+                    ip_value = "2001:0db8:0000:0000:0000:0000:0000:0001"
+
+        LOG.info(f"    IP 填充: {label} = {ip_value} (version={ip_version}, inputs={input_count})")
+
+        # 2. 解析 IP 值为各段
+        segments = self._parse_ip_segments(ip_value, input_count, ip_version)
+        if not segments:
+            LOG.warning(f"    IP 解析失败: {ip_value}")
+            return False, {"skipped_reason": "ip_parse_failed"}
+
+        if len(segments) != input_count:
+            LOG.warning(f"    IP 段数不匹配: 解析出 {len(segments)} 段，需要 {input_count} 段")
+            return False, {"skipped_reason": "segment_count_mismatch"}
+
+        # 3. 逐个填充 input
+        filled_count = 0
+        for i, (selector, value) in enumerate(zip(sub_selectors, segments)):
+            try:
+                # 点击 input 获取焦点
+                await self.page.click(selector, timeout=2000)
+                await self.page.wait_for_timeout(50)
+
+                # 清空并填充
+                await self.page.keyboard.press("Control+A")
+                await self.page.keyboard.press("Backspace")
+                await self.page.keyboard.type(value, delay=30)
+
+                # 触发 input 事件以更新 Vue 响应式
+                await self.page.evaluate(f"""() => {{
+                    const input = document.querySelector('{selector}');
+                    if (input) {{
+                        input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                        input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                    }}
+                }}""")
+
+                await self.page.wait_for_timeout(100)
+                filled_count += 1
+                LOG.debug(f"      IP input[{i}] = {value}")
+
+            except Exception as e:
+                LOG.warning(f"    IP input[{i}] 填充失败: {selector} - {e}")
+                # 继续填充其他段，不中断
+
+        if filled_count == 0:
+            return False, {"skipped_reason": "all_inputs_failed"}
+
+        LOG.info(f"    ✅ IP 填充成功: {filled_count}/{input_count} 段")
+        return True, {"option_text": ip_value, "input_count": filled_count}
+
+    def _parse_ip_segments(self, ip_value: str, input_count: int, ip_version: str) -> list:
+        """解析 IP 值为各段列表。
+
+        Args:
+            ip_value: IP 值字符串（如 "10.0.0.1" 或 "10.0.0.1-10.0.0.10"）
+            input_count: 期望的段数
+            ip_version: IPv 版本 ('v4' 或 'v6')
+
+        Returns:
+            list: 各段字符串列表
+        """
+        if not ip_value:
+            return []
+
+        # IPv4 处理
+        if ip_version == "v4":
+            if input_count == 4:
+                # 单地址: "10.0.0.1" → ["10", "0", "0", "1"]
+                parts = ip_value.split(".")
+                return parts[:4] if len(parts) >= 4 else []
+            elif input_count == 8:
+                # 区间: "10.0.0.1-10.0.0.10" → ["10","0","0","1","10","0","0","10"]
+                if "-" in ip_value:
+                    start, end = ip_value.split("-", 1)
+                    start_parts = start.strip().split(".")
+                    end_parts = end.strip().split(".")
+                    if len(start_parts) == 4 and len(end_parts) == 4:
+                        return start_parts + end_parts
+                return []
+
+        # IPv6 处理
+        elif ip_version == "v6":
+            if input_count == 8:
+                # 单地址: "2001:db8::1" → ["2001","0db8","0000","0000","0000","0000","0000","0001"]
+                expanded = self._expand_ipv6(ip_value)
+                return expanded.split(":") if expanded else []
+            elif input_count == 16:
+                # 区间
+                if "-" in ip_value:
+                    start, end = ip_value.split("-", 1)
+                    start_expanded = self._expand_ipv6(start.strip())
+                    end_expanded = self._expand_ipv6(end.strip())
+                    if start_expanded and end_expanded:
+                        return start_expanded.split(":") + end_expanded.split(":")
+                return []
+
+        return []
+
+    def _expand_ipv6(self, addr: str) -> str:
+        """将 IPv6 地址展开为完整 8 段形式。
+
+        Args:
+            addr: IPv6 地址（可含 :: 缩写）
+
+        Returns:
+            str: 完整展开的地址（如 "2001:0db8:0000:0000:0000:0000:0000:0001"）
+        """
+        import re
+
+        if not addr or ":" not in addr:
+            return ""
+
+        # 处理 :: 缩写
+        if "::" in addr:
+            prefix, suffix = addr.split("::", 1)
+            prefix_parts = prefix.split(":") if prefix else []
+            suffix_parts = suffix.split(":") if suffix else []
+            missing = 8 - len(prefix_parts) - len(suffix_parts)
+            parts = prefix_parts + ["0"] * missing + suffix_parts
+        else:
+            parts = addr.split(":")
+
+        # 补齐到 8 段
+        while len(parts) < 8:
+            parts.append("0")
+
+        # 每段补齐到 4 位
+        expanded = ":".join(p.zfill(4) for p in parts)
+        return expanded
 
     async def _execute_transfer_box(self, label: str, option_text: str = "",
                                     _options=None, selector: str = "") -> Tuple[bool, Dict]:
