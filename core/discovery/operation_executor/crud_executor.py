@@ -524,58 +524,26 @@ async def _error_driven_retry(page, operation_fn, context: dict) -> dict:
 # marker 提取辅助函数
 # ============================================================
 
-def _determine_marker_with_source(
-    cascade_actions: list,
-    fill_data: dict,
-    multi_step_field_details: list,
-    username: str,
-) -> tuple:
-    """确定 create 操作的 marker 值及其来源字段。
+def _determine_marker_with_source(fields: list, fill_data: dict) -> tuple:
+    """取表单中第一个 input 类型字段的值作为 marker。
 
-    优先级链（与原逻辑完全一致）：
-      0. cascade_actions → selected_items / trigger_value
-      1. fill_data 中 label 含名称关键词的 input 字段
-      2. multi_step_field_details 中第一个有 option_text 的字段
-      3. fallback 到 username
+    选择逻辑：
+      - 遍历 fields，找到第一个 type=="input" 的字段
+      - 从 fill_data 中获取该字段的值
+      - 无 input 字段 → (None, None)
 
     Returns:
         (marker_value, marker_source)
-        marker_source = {
-            "type": "cascade" | "input" | "multi_step" | "fallback",
-            "field_label": str,
-        }
+        marker_source = {"type": "input", "field_label": str}
+        或 (None, None)
     """
-    _marker_keywords = ["名称", "用户名", "name", "username"]
-
-    # 0. cascade_actions
-    for ca in (cascade_actions or []):
-        if ca.get("type") == "transfer-box":
-            selected_items = ca.get("selected_items", [])
-            if selected_items and selected_items[0]:
-                return selected_items[0], {
-                    "type": "cascade",
-                    "field_label": ca.get("trigger_field", ""),
-                }
-            trigger_value = ca.get("trigger_value", "")
-            if trigger_value:
-                return trigger_value, {
-                    "type": "cascade",
-                    "field_label": ca.get("trigger_field", ""),
-                }
-
-    # 1. fill_data（label 含名称关键词的 input）
-    for label, value in (fill_data or {}).items():
-        if any(kw in label.lower() for kw in _marker_keywords):
-            return value, {"type": "input", "field_label": label}
-
-    # 2. multi_step_field_details（第一个有 option_text 的）
-    for ms in (multi_step_field_details or []):
-        opt = ms.get("option_text", "")
-        if opt:
-            return opt, {"type": "multi_step", "field_label": ms.get("label", "")}
-
-    # 3. fallback
-    return username, {"type": "fallback", "field_label": ""}
+    for f in (fields or []):
+        if f.get("type") == "input":
+            label = f.get("label", "")
+            value = (fill_data or {}).get(label, "")
+            if value:
+                return value, {"type": "input", "field_label": label}
+    return None, None
 
 
 # ============================================================
@@ -636,9 +604,7 @@ def _build_create_error_result(
     }
 
     # 提取 marker 及来源
-    marker, marker_source = _determine_marker_with_source(
-        cascade_actions, fill_data, multi_step_field_details, username
-    )
+    marker, marker_source = _determine_marker_with_source(fields, fill_data)
     result["marker"] = marker
     result["marker_source"] = marker_source
 
@@ -873,10 +839,11 @@ async def _do_create(page, context: dict) -> dict:
         LOG.info(f"    API 触发确认: POST 请求已检测到")
 
     # 11. 记录创建的标识数据及其来源
-    marker, marker_source = _determine_marker_with_source(
-        cascade_actions, fill_data, multi_step_field_details, username
-    )
-    LOG.info(f"    marker: {marker} (来源: {marker_source['type']}/{marker_source['field_label']})")
+    marker, marker_source = _determine_marker_with_source(fields, fill_data)
+    if marker:
+        LOG.info(f"    marker: {marker} (来源: {marker_source['type']}/{marker_source['field_label']})")
+    else:
+        LOG.info(f"    marker: None (无 input 类型字段)")
 
     # 确保回到列表页
     await _ensure_on_list_page(page)

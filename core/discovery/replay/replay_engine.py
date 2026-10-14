@@ -13,6 +13,7 @@ replay_engine.py — Playbook 回放引擎
 
 import logging
 import json
+from typing import Optional
 from .button_driver import ButtonDriver, confirm_dialog
 from .form_filler import apply_fill_rule, FormFiller
 from .wait_helpers import wait_for_table_ready
@@ -383,7 +384,11 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
                 LOG.info(f"    [表单填充后状态] {json.dumps(form_state, ensure_ascii=False, indent=2)}")
 
             elif action == "find_row":
-                await _step_find_row(page, step, button_driver, marker)
+                resolved = await _step_find_row(page, step, button_driver, marker)
+                if resolved and not marker:
+                    # first_row 模式：使用提取的 marker 供后续步骤使用
+                    marker = resolved
+                    result["marker"] = marker
 
             elif action == "click_row_button":
                 ctx["url_before_click"] = page.url
@@ -1125,14 +1130,32 @@ async def _step_navigate_back(page, step: dict):
     await wait_for_table_ready(page, timeout=15000)
 
 
-async def _step_find_row(page, step: dict, button_driver: ButtonDriver, marker: str):
-    """步骤：定位数据行"""
-    if not marker:
-        raise Exception("find_row 步骤需要 marker，但无可用 marker")
+async def _step_find_row(page, step: dict, button_driver: ButtonDriver, marker: str) -> Optional[str]:
+    """步骤：定位数据行
 
-    row = await button_driver.find_data_row(marker)
-    if not row:
-        raise Exception(f"未找到数据行: {marker}")
+    Returns:
+        resolved_marker: 提取的 marker 文本（用于 first_row 模式），或 None
+    """
+    mode = step.get("mode", "by_marker")
+
+    if mode == "first_row":
+        # 无 marker 模式：直接取第一行
+        row = await button_driver.find_first_data_row()
+        if not row:
+            raise Exception("表格无数据行")
+        # 从第一行提取文本作为后续操作的 marker
+        text = await row.inner_text()
+        resolved = text.strip()[:50]  # 截取前 50 字符
+        LOG.info(f"    find_row (first_row): 提取 marker = {resolved}")
+        return resolved
+    else:
+        # 有 marker 模式：按 marker 搜索
+        if not marker:
+            raise Exception("find_row 步骤需要 marker，但无可用 marker")
+        row = await button_driver.find_data_row(marker)
+        if not row:
+            raise Exception(f"未找到数据行: {marker}")
+        return None
 
 
 async def _step_click_row_button(page, step: dict, button_driver: ButtonDriver, marker: str):

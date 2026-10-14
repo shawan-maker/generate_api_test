@@ -650,7 +650,7 @@ class TestBuildQuerySteps:
             "trigger_locator_verified": "button.search",
             "trigger_mode": "button",
         }
-        steps = _build_query_steps(op_data)
+        steps = _build_query_steps(op_data, create_marker="test_marker")
         actions = [s["action"] for s in steps]
         assert "fill_input" in actions
         assert "click_button" in actions
@@ -662,7 +662,7 @@ class TestBuildQuerySteps:
             "search_input": {"locator": "input.search", "placeholder": "搜索"},
             "trigger_mode": "enter",
         }
-        steps = _build_query_steps(op_data)
+        steps = _build_query_steps(op_data, create_marker="test_marker")
         actions = [s["action"] for s in steps]
         assert "fill_input" in actions
         assert "press_key" in actions
@@ -675,7 +675,7 @@ class TestBuildQuerySteps:
             "trigger_locator_verified": "input[type='text']",
             "trigger_mode": "button",
         }
-        steps = _build_query_steps(op_data)
+        steps = _build_query_steps(op_data, create_marker="test_marker")
         actions = [s["action"] for s in steps]
         assert "press_key" in actions
         # 不应该有 click_button
@@ -699,10 +699,22 @@ class TestBuildQuerySteps:
             "trigger_locator_verified": "button.search",
             "trigger_mode": "auto",
         }
-        steps = _build_query_steps(op_data)
+        steps = _build_query_steps(op_data, create_marker="test_marker")
         actions = [s["action"] for s in steps]
         assert "fill_input" in actions
         assert "click_button" not in actions
+        assert actions[-1] == "wait_for_table_ready"
+
+    def test_query_without_marker_skips_fill_input(self):
+        """create_marker=None → 跳过 fill_input，保留触发和等待步骤"""
+        op_data = {
+            "search_input": {"locator": "input.search", "placeholder": "搜索"},
+            "trigger_mode": "enter",
+        }
+        steps = _build_query_steps(op_data, create_marker=None)
+        actions = [s["action"] for s in steps]
+        assert "fill_input" not in actions
+        assert "press_key" in actions
         assert actions[-1] == "wait_for_table_ready"
 
     def test_query_fill_input_has_marker_placeholder(self):
@@ -711,7 +723,7 @@ class TestBuildQuerySteps:
             "search_input": {"locator": "input.search", "placeholder": "名称"},
             "trigger_mode": "enter",
         }
-        steps = _build_query_steps(op_data)
+        steps = _build_query_steps(op_data, create_marker="test_marker")
         fill = [s for s in steps if s["action"] == "fill_input"][0]
         assert fill["value"] == "{marker_name}"
 

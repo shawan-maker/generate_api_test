@@ -57,6 +57,25 @@ class ButtonDriver:
         # 当前页找不到，尝试翻页查找
         return await self._find_row_with_pagination(marker)
 
+    async def find_first_data_row(self) -> Optional[Locator]:
+        """定位表格第一行数据（无需 marker）
+
+        用于无 marker 场景（表单无 input 字段时），直接取第一行进行操作。
+        """
+        try:
+            # 等待表格主体行出现
+            await self.page.wait_for_selector(
+                ".el-table__body-wrapper tbody tr",
+                timeout=10000
+            )
+            # 获取第一行
+            first_row = self.page.locator(".el-table__body-wrapper tbody tr").first
+            if await first_row.count() > 0:
+                return first_row
+        except Exception:
+            pass
+        return None
+
     async def _find_row_on_current_page(self, marker: str) -> Optional[Locator]:
         """在当前页面查找行（含加载等待 + 扩展重试）"""
         try:

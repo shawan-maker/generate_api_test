@@ -472,6 +472,13 @@ def build_playbook(ui_result: dict) -> dict:
 
     operations = {}
 
+    # 提取 create 操作的 marker，供 query/generic/update/delete 步骤使用
+    create_marker = None
+    for op_data in validated_operations.values():
+        if _classify_op_steps_type(op_data) == "create":
+            create_marker = op_data.get("marker")
+            break
+
     for action, op_data in validated_operations.items():
         is_success = op_data.get("success", False)
         error_type = op_data.get("error_type", "")
@@ -500,14 +507,14 @@ def build_playbook(ui_result: dict) -> dict:
             if steps_type == "create":
                 op_steps.extend(_build_create_steps(op_data))
             elif steps_type == "query":
-                op_steps.extend(_build_query_steps(op_data))
+                op_steps.extend(_build_query_steps(op_data, create_marker))
             elif steps_type == "update":
-                op_steps.extend(_build_update_steps(op_data))
+                op_steps.extend(_build_update_steps(op_data, create_marker))
             elif steps_type == "delete":
-                op_steps.extend(_build_delete_steps(op_data))
+                op_steps.extend(_build_delete_steps(op_data, create_marker))
             else:
                 # 通用操作（含导入、授权、冻结等）
-                op_steps.extend(_build_generic_steps(op_data))
+                op_steps.extend(_build_generic_steps(op_data, create_marker))
 
         if op_steps or not is_success:
             # 使用 trigger_text 作为业务名称（按钮原文即操作名）
@@ -767,14 +774,19 @@ def _build_create_steps(op_data: dict) -> list:
     return steps
 
 
-def _build_delete_steps(op_data: dict) -> list:
+def _build_delete_steps(op_data: dict, create_marker=None) -> list:
     """构建删除操作步骤"""
     steps = []
+
+    # 确定 find_row 模式：有 create_marker 则按 marker 搜索，否则取第一行
+    find_row_mode = "by_marker" if create_marker else "first_row"
+    find_row_desc = "定位目标数据行" if create_marker else "定位表格第一行"
 
     # Step 1: 定位数据行
     steps.append({
         "action": "find_row",
-        "description": "定位目标数据行"
+        "mode": find_row_mode,
+        "description": find_row_desc
     })
 
     # Step 2: 勾选 checkbox（如果需要）
@@ -824,14 +836,19 @@ def _build_delete_steps(op_data: dict) -> list:
     return steps
 
 
-def _build_update_steps(op_data: dict) -> list:
+def _build_update_steps(op_data: dict, create_marker=None) -> list:
     """构建更新操作步骤"""
     steps = []
+
+    # 确定 find_row 模式：有 create_marker 则按 marker 搜索，否则取第一行
+    find_row_mode = "by_marker" if create_marker else "first_row"
+    find_row_desc = "定位目标数据行" if create_marker else "定位表格第一行"
 
     # Step 1: 定位数据行
     steps.append({
         "action": "find_row",
-        "description": "定位目标数据行"
+        "mode": find_row_mode,
+        "description": find_row_desc
     })
 
     # Step 2: 点击编辑按钮
@@ -1021,18 +1038,21 @@ def _build_update_steps(op_data: dict) -> list:
     return steps
 
 
-def _build_query_steps(op_data: dict) -> list:
+def _build_query_steps(op_data: dict, create_marker=None) -> list:
     """构建 query 操作步骤
 
     支持两种模式：
     1. 搜索按钮模式：click_button + wait_for_table_ready
     2. 搜索输入框模式：fill_input + (click_button/press_key) + wait_for_table_ready
+
+    当 create_marker 为 None 时，跳过 fill_input 步骤（无 marker 可搜索），
+    但仍保留触发搜索和等待表格就绪的步骤。
     """
     steps = []
 
-    # 搜索输入框步骤（如果有）
+    # 搜索输入框步骤（如果有，且 create_marker 不为空）
     search_input = op_data.get("search_input")
-    if search_input:
+    if search_input and create_marker:
         locator = search_input.get("locator", "")
         placeholder = search_input.get("placeholder", "")
         if locator:
@@ -1086,18 +1106,23 @@ def _build_query_steps(op_data: dict) -> list:
     return steps
 
 
-def _build_generic_steps(op_data: dict) -> list:
+def _build_generic_steps(op_data: dict, create_marker=None) -> list:
     """构建通用操作步骤"""
     steps = []
 
     selectors = op_data.get("selectors", {})
+
+    # 确定 find_row 模式：有 create_marker 则按 marker 搜索，否则取第一行
+    find_row_mode = "by_marker" if create_marker else "first_row"
+    find_row_desc = "定位目标数据行" if create_marker else "定位表格第一行"
 
     # 如果需要先勾选 checkbox（toolbar 操作），先定位行
     needs_checkbox = op_data.get("needs_checkbox", False)
     if needs_checkbox:
         steps.append({
             "action": "find_row",
-            "description": "定位目标数据行"
+            "mode": find_row_mode,
+            "description": find_row_desc
         })
         checkbox_locator = op_data.get("checkbox_locator", ".el-checkbox__input")
         steps.append({
@@ -1109,7 +1134,8 @@ def _build_generic_steps(op_data: dict) -> list:
     elif selectors.get("row_selector"):
         steps.append({
             "action": "find_row",
-            "description": "定位目标数据行"
+            "mode": find_row_mode,
+            "description": find_row_desc
         })
 
     # 点击触发按钮（只使用已验证的 locator）
