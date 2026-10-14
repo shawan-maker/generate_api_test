@@ -826,11 +826,9 @@ async def _verify_operation_success(page, operation_type: str, strict: bool = Fa
         LOG.info("    检测到明确的错误状态")
         return False
 
-    # 5. 乐观策略：没有检测到任何错误信号 → 视为成功
-    # 原因：如果操作真的失败了，前面的检查应该已经捕获到错误消息或弹窗
-    LOG.info("    未检测到错误信号，判定为成功")
-    return True
-
+    # 5. 无信号：没有检测到明确的成功/失败信号 → 标记为失败
+    # 避免"乐观策略"导致的误判（如填充非法值后仍标记为成功）
+    LOG.warning("    ⚠️ 未检测到明确的成功/失败信号，标记为失败（可能是 toast 过快消失或后端无反馈）")
     return False
 
 
