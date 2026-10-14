@@ -188,7 +188,7 @@ async def _inject_notification_observer(page):
 
 
 async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
-                               marker: str = None, interceptor=None) -> dict:
+                               marker: str = None, interceptor=None, role: str = None) -> dict:
     """执行 playbook 中的步骤序列（泛化版本）
 
     自适应两种交互模式：
@@ -201,6 +201,7 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
         button_driver: ButtonDriver 实例
         marker: 已创建的记录标识（用于行级操作）
         interceptor: RequestInterceptor 实例（可选，用于标记提交时间戳）
+        role: 操作类型（create/query/update/delete/generic），用于控制 marker 提取逻辑
 
     Returns:
         dict: 执行结果，包含 marker（如果是 create 操作）
@@ -341,14 +342,14 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
                     except Exception:
                         LOG.warning(f"    ⚠️ 等待抽屉/对话框超时，继续尝试填充")
 
-                marker_value = await _step_fill_form(page, step, button_driver)
-                if marker_value and not marker:
-                    # 仅当调用方未传入 marker 时，才使用 fill_form 提取的值
+                marker_value = await _step_fill_form(page, step, button_driver, role)
+                if marker_value:
+                    # fill_form 提取的值始终优先（动态值 > 静态值）
+                    if marker and marker != marker_value:
+                        LOG.info(f"    [marker] 已更新: {marker} → {marker_value}")
+                    else:
+                        LOG.info(f"    ✓ marker 已从表单字段提取: {marker_value}")
                     result["marker"] = marker_value
-                    LOG.info(f"    ✓ marker 已从表单字段提取: {marker_value}")
-                elif marker_value and marker:
-                    # 调用方已传入 marker，保持原值（避免 is_marker 字段错误覆盖）
-                    LOG.info(f"    [marker] 保持调用方传入的 marker: {marker}（忽略表单提取的: {marker_value}）")
                 else:
                     # 检查是否有 is_marker 字段但未成功填充
                     has_marker_field = any(f.get("is_marker") for f in step.get("fields", []))
@@ -386,7 +387,7 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
             elif action == "find_row":
                 resolved = await _step_find_row(page, step, button_driver, marker)
                 if resolved and not marker:
-                    # first_row 模式：使用提取的 marker 供后续步骤使用
+                    # first_row 模式（含 fallback）：使用提取的 marker 供后续步骤使用
                     marker = resolved
                     result["marker"] = marker
 
@@ -770,8 +771,15 @@ async def _step_wait_for_dialog(page, step: dict, ctx: dict):
         raise Exception(f"未知的 interaction_mode: {interaction_mode}")
 
 
-async def _step_fill_form(page, step: dict, button_driver: ButtonDriver) -> str | None:
-    """步骤：填充表单字段（纯执行，不做推断）"""
+async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: str = None) -> str | None:
+    """步骤：填充表单字段（纯执行，不做推断）
+
+    Args:
+        page: Playwright Page 对象
+        step: 步骤定义
+        button_driver: ButtonDriver 实例
+        role: 操作类型（create/query/update/delete/generic），只有 create 操作才提取 marker
+    """
     fields = step.get("fields", [])
     filled_count = 0
     marker_value = None
@@ -855,16 +863,17 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver) -> str 
                                 )
                                 if success:
                                     LOG.info(f"      [Radio] cascade 成功: {detail.get('selected_items', [])}")
-                                    # ★ 从 cascade 提取 marker（如 transfer-box selected_items）
-                                    selected_items = detail.get("selected_items", [])
-                                    if selected_items and selected_items[0] and not marker_value:
-                                        marker_value = selected_items[0]
-                                        LOG.info(f"      [Radio] marker 已从 cascade 提取: {marker_value}")
-                                    elif not marker_value:
-                                        # fallback: 使用 trigger_value
-                                        if trigger_value:
-                                            marker_value = trigger_value
-                                            LOG.info(f"      [Radio] marker 已从 cascade trigger 提取: {marker_value}")
+                                    # ★ 只有 create 操作才从 cascade 提取 marker
+                                    if role == "create":
+                                        selected_items = detail.get("selected_items", [])
+                                        if selected_items and selected_items[0] and not marker_value:
+                                            marker_value = selected_items[0]
+                                            LOG.info(f"      [Radio] marker 已从 cascade 提取: {marker_value}")
+                                        elif not marker_value:
+                                            # fallback: 使用 trigger_value
+                                            if trigger_value:
+                                                marker_value = trigger_value
+                                                LOG.info(f"      [Radio] marker 已从 cascade trigger 提取: {marker_value}")
                                 else:
                                     LOG.warning(f"      [Radio] cascade 失败")
 
@@ -1027,11 +1036,12 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver) -> str 
 
             if fill_success:
                 filled_count += 1
-                if is_marker and not marker_value:
+                # ★ 只有 create 操作才提取 marker
+                if role == "create" and is_marker and not marker_value:
                     marker_value = value
             else:
                 LOG.warning(f"      ❌ 字段 {label} 所有候选选择器均失败")
-                if is_marker:
+                if role == "create" and is_marker:
                     LOG.warning(f"      ⚠️ marker 字段 {label} 填充失败，marker 未更新")
         except Exception as e:
             LOG.warning(f"      ❌ 填充失败: {label}: {e}")
@@ -1046,8 +1056,8 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver) -> str 
         if close_dropdown_actions:
             LOG.info(f"    multi_step 检测到 {len(close_dropdown_actions)} 个下拉框关闭操作")
 
-        # ★ 从 multi_step 字段提取 marker（如 select 字段的 option_text）
-        if not marker_value:
+        # ★ 只有 create 操作才从 multi_step 字段提取 marker
+        if role == "create" and not marker_value:
             for ms_field in multi_step_fields:
                 if ms_field.get("is_marker") and ms_field.get("option_text"):
                     marker_value = ms_field["option_text"]
@@ -1151,7 +1161,15 @@ async def _step_find_row(page, step: dict, button_driver: ButtonDriver, marker: 
     else:
         # 有 marker 模式：按 marker 搜索
         if not marker:
-            raise Exception("find_row 步骤需要 marker，但无可用 marker")
+            # 运行时 fallback：marker 不可用时降级为 first_row
+            LOG.warning("    ⚠️ find_row mode=by_marker 但 marker 为 None，降级为 first_row")
+            row = await button_driver.find_first_data_row()
+            if not row:
+                raise Exception("表格无数据行（marker 不可用且无数据行）")
+            text = await row.inner_text()
+            resolved = text.strip()[:50]
+            LOG.info(f"    find_row (fallback→first_row): 提取 marker = {resolved}")
+            return resolved
         row = await button_driver.find_data_row(marker)
         if not row:
             raise Exception(f"未找到数据行: {marker}")

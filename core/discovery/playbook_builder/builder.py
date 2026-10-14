@@ -519,9 +519,10 @@ def build_playbook(ui_result: dict) -> dict:
         if op_steps or not is_success:
             # 使用 trigger_text 作为业务名称（按钮原文即操作名）
             display_name = op_data.get("trigger_text") or action
-            # ★ 只有 create 操作存储 marker（自身生成的值）
-            # 其他操作的 marker 从上游 create 传播，不硬编码到 playbook
-            marker = op_data.get("marker") if steps_type == "create" else None
+            # ★ create 的 marker 不存储具体值。
+            # Stage 1 的具体值只在 Stage 1 有意义，UI 回放时由 fill_form 动态提取新值。
+            # marker_source 保留（记录位置和构造方法），供后续阶段知道"从哪里提取"。
+            marker = None
             # replayable: 有步骤的操作都可回放（无论成功失败）
             # 失败操作仍需回放以捕获 API 并在报告中展示实际结果
             replayable = bool(op_steps)

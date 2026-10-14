@@ -236,6 +236,7 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
         try:
             # 执行 playbook 中的步骤序列
             steps = op.get("steps", [])
+            op_role = op.get("role", "generic")
             # 传递 marker：优先使用当前会话创建的 marker（数据关联），否则使用 playbook 记录的 fallback marker
             # created_marker 来自本会话 create 操作的 fill_form，op.get("marker") 是 Stage 1 快照（可能已过期）
             op_marker = created_marker or op.get("marker")
@@ -249,7 +250,7 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
                 or any("{marker_name}" in str(s.get("value", "")) for s in steps)
             )
             pass_marker = op_marker if needs_marker else None
-            result = await replay_from_playbook(page, steps, button_driver, pass_marker, interceptor)
+            result = await replay_from_playbook(page, steps, button_driver, pass_marker, interceptor, role=op_role)
 
             # 检查 assert_success 标记（软断言，不影响 marker 提取和 replay_windows）
             if result.get("assertion_failed"):
@@ -274,7 +275,6 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
                             step["matched_method"] = assert_methods[desc]
 
             # 如果是 create 或 update 类操作且成功，记录/更新 marker
-            op_role = op.get("role", "")
             if op_role in ("create", "update"):
                 if result.get("marker"):
                     created_marker = result["marker"]

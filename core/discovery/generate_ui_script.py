@@ -454,8 +454,12 @@ async def run_operation(page, operation_name, operations_data, marker=None):
         print(f"⚠️ 操作不存在: {{operation_name}}")
         return marker, {{"operation": operation_name, "status": "failed", "error": "操作不存在", "steps": []}}
 
-    # 使用 playbook 中定义的 marker（如果有），否则使用上一个操作传递的 marker
-    op_marker = op.get("marker") or marker
+    # create 操作：marker 完全由 fill_form 运行时提取，不使用 playbook 中的值
+    # 其他操作：优先使用 playbook 中的值，否则使用上游传递的 marker
+    if op.get("role") == "create":
+        op_marker = None  # fill_form 会提取新值
+    else:
+        op_marker = op.get("marker") or marker
 
     # 获取 Stage 1 的期望状态（用于报告标注，不跳过执行）
     st = _OPERATION_STATUS.get(operation_name, {{}})
@@ -498,7 +502,7 @@ async def run_operation(page, operation_name, operations_data, marker=None):
     op_start = time.time()
 
     try:
-        result = await replay_from_playbook(page, steps, button_driver, op_marker)
+        result = await replay_from_playbook(page, steps, button_driver, op_marker, role=op.get("role"))
         duration = time.time() - op_start
 
         new_marker = result.get("marker", op_marker)

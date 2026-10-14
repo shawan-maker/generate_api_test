@@ -293,7 +293,8 @@ class TestBuildPlaybook:
             },
         }
         pb = build_playbook(self._make_ui_result(validated_operations=ops))
-        assert pb["operations"]["创建"]["marker"] == "test_marker_001"
+        # create 的 marker 不存储具体值（由 fill_form 运行时动态提取）
+        assert pb["operations"]["创建"]["marker"] is None
         assert pb["operations"]["编辑"]["marker"] is None
 
     def test_page_nav_operation(self):
