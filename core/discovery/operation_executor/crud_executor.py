@@ -84,6 +84,71 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
         dict: {action: {"success": bool, "fill_data": dict, "selectors": dict, ...}}
               如果关键操作全部失败，返回 None。
     """
+    # [TAB-STATE-DIAG] 诊断：记录当前 Tab 状态
+    try:
+        page_structure = ui_result.get("page_structure", {})
+        tabs_info = page_structure.get("tabs", [])
+        if tabs_info:
+            LOG.info(f"    [TAB-STATE-DIAG] 页面有 {len(tabs_info)} 个 Tab:")
+            for t in tabs_info:
+                active_str = "✓ ACTIVE" if t.get("active") else "✗"
+                LOG.info(f"    [TAB-STATE-DIAG]   {active_str} [{t.get('index')}] "
+                         f"'{t.get('name')}' locator='{t.get('locator', '')}'")
+
+        # 检查当前实际激活的 Tab（通过 pane 可见性判断）
+        current_tab = await page.evaluate("""() => {
+            const panes = document.querySelectorAll('.el-tab-pane');
+            const result = {
+                paneCount: panes.length,
+                visiblePanes: [],
+                headerPaneMismatch: false
+            };
+
+            // 收集所有可见的 pane
+            panes.forEach((pane, i) => {
+                const style = window.getComputedStyle(pane);
+                if (style.display !== 'none' && style.visibility !== 'hidden') {
+                    result.visiblePanes.push({
+                        index: i,
+                        id: pane.id || '',
+                        name: pane.getAttribute('aria-label') || pane.querySelector('.el-tab-pane__title')?.textContent || ''
+                    });
+                }
+            });
+
+            // 检查 header 和 pane 的激活状态是否一致
+            const activeHeaders = document.querySelectorAll('.el-tabs__item.is-active');
+            const activePanes = result.visiblePanes.length;
+
+            // 如果 header 数量和可见 pane 数量不匹配，说明状态不同步
+            if (activeHeaders.length !== activePanes) {
+                result.headerPaneMismatch = true;
+                result.activeHeaderCount = activeHeaders.length;
+                result.activeHeaderTexts = Array.from(activeHeaders).map(h => h.textContent.trim());
+            }
+
+            return result;
+        }""")
+
+        if current_tab.get('paneCount', 0) == 0:
+            LOG.info(f"    [TAB-STATE-DIAG] 页面无 tab-pane 结构")
+        else:
+            visible_count = len(current_tab.get('visiblePanes', []))
+            LOG.info(f"    [TAB-STATE-DIAG] 共 {current_tab.get('paneCount')} 个 pane, {visible_count} 个可见")
+            for vp in current_tab.get('visiblePanes', []):
+                LOG.info(f"    [TAB-STATE-DIAG]   可见 pane[{vp.get('index')}] id='{vp.get('id', '')}' name='{vp.get('name', '')}'")
+
+            if current_tab.get('headerPaneMismatch'):
+                LOG.warning(f"    [TAB-STATE-DIAG] ⚠️ Header-Pane 状态不同步！")
+                LOG.warning(f"    [TAB-STATE-DIAG]   active headers: {current_tab.get('activeHeaderCount')} 个 {current_tab.get('activeHeaderTexts', [])}")
+                LOG.warning(f"    [TAB-STATE-DIAG]   visible panes: {visible_count} 个")
+    except Exception as e:
+        LOG.warning(f"    [TAB-STATE-DIAG] 诊断失败: {e}")
+
+    # [Toast Fix A] 注入 MutationObserver 捕获瞬态通知（el-message / el-notification）
+    # Stage 1 之前没有注入，导致 __captured_messages 始终为空
+    await _install_message_capture(page)
+
     validated = {}
     form_filler = FormFiller(page)
     framework = ui_result.get("framework", "element-ui")
@@ -645,7 +710,8 @@ async def _do_create(page, context: dict) -> dict:
         confirmed = await confirm_dialog(page)
         if confirmed:
             await page.wait_for_timeout(1500)
-            success = await _verify_operation_success(page, "create")
+            captured_msgs = await _get_captured_messages(page)
+            success = await _verify_operation_success(page, "create", captured_messages=captured_msgs)
             if success:
                 LOG.info(f"    无表单字段的确认对话框操作成功")
                 # 构建 trigger_locator_verified（与正常 _do_create 路径一致）
@@ -846,7 +912,8 @@ async def _do_create(page, context: dict) -> dict:
                 )
 
     # 10. 验证成功（弹窗关闭 / 成功提示）
-    success = await _verify_operation_success(page, "create")
+    captured_msgs = await _get_captured_messages(page)
+    success = await _verify_operation_success(page, "create", captured_messages=captured_msgs)
     if not success:
         # 二次检测：提取明确的业务失败信息
         failure_info = await _extract_business_failure(page)
@@ -1248,7 +1315,8 @@ async def _do_edit(page, context: dict) -> dict:
                                   trigger_text=btn_text,
                                   trigger_locator_verified=btn_click_result.get("locator"))
 
-    success = await _verify_operation_success(page, "update")
+    captured_msgs = await _get_captured_messages(page)
+    success = await _verify_operation_success(page, "update", captured_messages=captured_msgs)
     if not success:
         await _close_dialog(page)
         return no_success_signal("编辑提交后未检测到成功信号",
@@ -2343,7 +2411,8 @@ async def _do_save_or_confirm(page, context: dict) -> dict:
         await page.wait_for_timeout(1000)
 
     # 验证成功
-    success = await _verify_operation_success(page, "save", strict=True)
+    captured_msgs = await _get_captured_messages(page)
+    success = await _verify_operation_success(page, "save", strict=True, captured_messages=captured_msgs)
 
     if success:
         return make_success(selectors={"trigger": btn_text}, error_type="", error_text="")

@@ -633,41 +633,61 @@ async def _install_message_capture(page) -> None:
         const SUCCESS_KEYWORDS = ['成功', 'success', 'Success', '完成', 'done'];
         const ERROR_KEYWORDS = ['失败', 'error', 'Error', '异常', '错误'];
 
+        // 辅助函数：分类并存储捕获的消息
+        function _pushCaptured(text) {
+            if (!text) return;
+            const isSuccess = SUCCESS_KEYWORDS.some(kw => text.includes(kw));
+            const isError = ERROR_KEYWORDS.some(kw => text.includes(kw));
+            window.__captured_messages.push({
+                text: text.substring(0, 200),
+                type: isSuccess ? 'success' : (isError ? 'error' : 'info'),
+                time: Date.now()
+            });
+        }
+
+        // 辅助函数：检查是否是 Element UI Message / Notification
+        function _isNotificationNode(node) {
+            if (!node.classList) return false;
+            if (node.classList.contains('el-message') ||
+                node.classList.contains('el-message--success') ||
+                node.classList.contains('el-message--error') ||
+                node.classList.contains('el-message--warning') ||
+                node.classList.contains('el-notification') ||
+                node.classList.contains('ant-message-notice') ||
+                node.classList.contains('ant-notification-notice')) {
+                return true;
+            }
+            // 也检查子节点是否包含消息组件
+            if (node.querySelector && node.querySelector(
+                '.el-message, .el-notification, .ant-message-notice, .ant-notification-notice'
+            )) {
+                return true;
+            }
+            return false;
+        }
+
         window.__msg_capture_observer = new MutationObserver((mutations) => {
             for (const mutation of mutations) {
                 for (const node of mutation.addedNodes) {
                     if (node.nodeType !== 1) continue;
 
+                    if (!_isNotificationNode(node)) continue;
+
                     const text = (node.textContent || '').trim();
-                    if (!text) continue;
-
-                    // 检查是否是 Element UI Message / Notification
-                    const isMessage = node.classList && (
-                        node.classList.contains('el-message') ||
-                        node.classList.contains('el-message--success') ||
-                        node.classList.contains('el-message--error') ||
-                        node.classList.contains('el-message--warning') ||
-                        node.classList.contains('el-notification') ||
-                        node.classList.contains('ant-message-notice') ||
-                        node.classList.contains('ant-notification-notice')
-                    );
-
-                    if (!isMessage) {
-                        // 也检查子节点是否包含消息组件
-                        const inner = node.querySelector && node.querySelector(
-                            '.el-message, .el-notification, .ant-message-notice, .ant-notification-notice'
-                        );
-                        if (!inner) continue;
+                    if (text) {
+                        // 同步文本：直接存储
+                        _pushCaptured(text);
+                    } else {
+                        // 异步文本：Element UI $notify 先 appendChild 空 div，
+                        // 后通过 Vue 响应式异步设置 message 文本。
+                        // 延迟 100ms 重读（Vue nextTick 通常 <16ms，
+                        // 但留足余量避免边界情况）。
+                        const targetNode = node;
+                        setTimeout(() => {
+                            const delayedText = (targetNode.textContent || '').trim();
+                            _pushCaptured(delayedText);
+                        }, 100);
                     }
-
-                    const isSuccess = SUCCESS_KEYWORDS.some(kw => text.includes(kw));
-                    const isError = ERROR_KEYWORDS.some(kw => text.includes(kw));
-
-                    window.__captured_messages.push({
-                        text: text.substring(0, 200),
-                        type: isSuccess ? 'success' : (isError ? 'error' : 'info'),
-                        time: Date.now()
-                    });
                 }
             }
         });
@@ -712,6 +732,83 @@ async def _verify_operation_success(page, operation_type: str, strict: bool = Fa
     Returns:
         bool: 是否检测到成功信号
     """
+    # [TOAST-DIAG] 诊断：扫描所有可能的 toast/notification DOM 元素
+    try:
+        toast_diag = await page.evaluate("""() => {
+            const result = { allToasts: [], capturedCount: 0, capturedMessages: [] };
+
+            // 1. 扫描所有可能的 toast/notification 容器
+            const selectors = [
+                '.el-message', '.el-message--success', '.el-message--error', '.el-message--warning',
+                '.el-notification', '.el-notification__content', '.el-notification__title',
+                '.el-message-box', '.el-message-box__wrapper',
+                '[class*="toast"]', '[class*="notice"]', '[class*="message"]'
+            ];
+            const seen = new Set();
+            selectors.forEach(sel => {
+                document.querySelectorAll(sel).forEach(el => {
+                    const key = el.tagName + ':' + el.className.substring(0, 50);
+                    if (seen.has(key)) return;
+                    seen.add(key);
+                    result.allToasts.push({
+                        tag: el.tagName,
+                        className: el.className.substring(0, 200),
+                        text: el.textContent.trim().substring(0, 100),
+                        visible: el.offsetWidth > 0 && el.offsetHeight > 0,
+                        style_display: window.getComputedStyle(el).display,
+                        style_visibility: window.getComputedStyle(el).visibility,
+                        style_opacity: window.getComputedStyle(el).opacity,
+                        rect: {
+                            top: Math.round(el.getBoundingClientRect().top),
+                            left: Math.round(el.getBoundingClientRect().left),
+                            width: Math.round(el.getBoundingClientRect().width),
+                            height: Math.round(el.getBoundingClientRect().height)
+                        }
+                    });
+                });
+            });
+
+            // 2. 扫描 MutationObserver 捕获到的消息
+            result.capturedCount = (window.__captured_messages || []).length;
+            result.capturedMessages = (window.__captured_messages || []).slice(-5).map(m => ({
+                text: m.text,
+                type: m.type,
+                time: m.time
+            }));
+
+            // 3. 扫描 body 直接子元素中可能的 toast 容器
+            for (const child of document.body.children) {
+                if (child.id === 'app') continue;
+                // 处理 SVG 元素的 className（可能是 SVGAnimatedString）
+                const cls = typeof child.className === 'string' ? child.className : (child.className?.baseVal || '');
+                if (cls && (cls.includes('message') || cls.includes('notification') || cls.includes('toast'))) {
+                    result.allToasts.push({
+                        tag: child.tagName,
+                        id: child.id,
+                        className: cls.substring(0, 200),
+                        text: child.textContent.trim().substring(0, 100),
+                        isBodyChild: true,
+                        visible: child.offsetWidth > 0
+                    });
+                }
+            }
+
+            return result;
+        }""")
+        LOG.info(f"    [TOAST-DIAG] found {len(toast_diag.get('allToasts', []))} toast elements, "
+                 f"captured {toast_diag.get('capturedCount', 0)} messages")
+        for t in toast_diag.get('allToasts', [])[:10]:  # 最多输出 10 个
+            visible_str = "✓" if t.get('visible') else "✗"
+            body_str = " [body]" if t.get('isBodyChild') else ""
+            LOG.info(f"    [TOAST-DIAG]   {visible_str} {t.get('tag')} class='{t.get('className', '')[:60]}' "
+                     f"text='{t.get('text', '')[:40]}'{body_str} "
+                     f"rect={t.get('rect', {})}")
+        for m in toast_diag.get('capturedMessages', []):
+            LOG.info(f"    [TOAST-DIAG]   captured: type={m.get('type')} text='{m.get('text', '')[:40]}' "
+                     f"time={m.get('time')}")
+    except Exception as e:
+        LOG.warning(f"    [TOAST-DIAG] 诊断失败: {e}")
+
     # 0. 检查捕获的消息（使用语义分类器）
     has_processing = False
     if captured_messages:
@@ -743,9 +840,22 @@ async def _verify_operation_success(page, operation_type: str, strict: bool = Fa
         const antMsg = document.querySelector('.ant-message-success, .ant-message .anticon-check-circle');
         if (antMsg && antMsg.offsetWidth > 0) return true;
 
-        // Notification success
+        // Notification success (icon-based)
         const notif = document.querySelector('.el-notification .el-icon-success, .ant-notification .anticon-check-circle');
         if (notif) return true;
+
+        // [Toast Fix B] Notification success (text-based, no icon)
+        // Element UI $notify 可能没有 icon，只有文本
+        const successKw = ['成功', '完成', '已保存', '已添加', '已删除', '已更新'];
+        const notifications = document.querySelectorAll('.el-notification, .ant-notification-notice');
+        for (const n of notifications) {
+            if (n.offsetWidth > 0 && n.offsetHeight > 0) {
+                const text = (n.querySelector('.el-notification__content, .ant-notification-notice-message') || n).textContent.trim();
+                if (successKw.some(kw => text.includes(kw))) {
+                    return true;
+                }
+            }
+        }
 
         return false;
     }""")

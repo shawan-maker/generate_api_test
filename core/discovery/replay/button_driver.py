@@ -79,6 +79,64 @@ class ButtonDriver:
     async def _find_row_on_current_page(self, marker: str) -> Optional[Locator]:
         """在当前页面查找行（含加载等待 + 扩展重试）"""
         try:
+            # [TAB-SCOPE-DIAG] 诊断：记录行查找时的 tab-pane 可见性
+            try:
+                scope_diag = await self.page.evaluate("""() => {
+                    const panes = document.querySelectorAll('.el-tab-pane');
+                    if (panes.length === 0) return { noTabPane: true };
+                    const result = { panes: [], tables: [], paginations: [] };
+                    panes.forEach((pane, i) => {
+                        const style = window.getComputedStyle(pane);
+                        result.panes.push({
+                            index: i,
+                            id: pane.id || '',
+                            visible: style.display !== 'none' && style.visibility !== 'hidden',
+                            display: style.display,
+                            tableCount: pane.querySelectorAll('.el-table').length,
+                            rowCount: pane.querySelectorAll('.el-table__body-wrapper tbody tr').length,
+                            paginationCount: pane.querySelectorAll('.el-pagination').length
+                        });
+                    });
+                    // 全页面统计
+                    result.tables = Array.from(document.querySelectorAll('.el-table')).map(t => {
+                        const pane = t.closest('.el-tab-pane');
+                        return {
+                            inTabPane: !!pane,
+                            paneId: pane ? pane.id : '',
+                            rowCount: t.querySelectorAll('.el-table__body-wrapper tbody tr').length
+                        };
+                    });
+                    result.paginations = Array.from(document.querySelectorAll('.el-pagination')).map(p => {
+                        const pane = p.closest('.el-tab-pane');
+                        return {
+                            inTabPane: !!pane,
+                            paneId: pane ? pane.id : '',
+                            visible: p.offsetWidth > 0
+                        };
+                    });
+                    return result;
+                }""")
+                if scope_diag.get('noTabPane'):
+                    LOG.debug(f"    [TAB-SCOPE-DIAG] 无 tab-pane 结构")
+                else:
+                    LOG.info(f"    [TAB-SCOPE-DIAG] {len(scope_diag.get('panes', []))} 个 tab-pane, "
+                             f"{len(scope_diag.get('tables', []))} 个表格, "
+                             f"{len(scope_diag.get('paginations', []))} 个分页组件")
+                    for p in scope_diag.get('panes', []):
+                        vis = "✓" if p.get('visible') else "✗"
+                        LOG.info(f"    [TAB-SCOPE-DIAG]   {vis} pane[{p.get('index')}] id='{p.get('id', '')}' "
+                                 f"tables={p.get('tableCount')} rows={p.get('rowCount')} "
+                                 f"paginations={p.get('paginationCount')}")
+                    for t in scope_diag.get('tables', []):
+                        LOG.info(f"    [TAB-SCOPE-DIAG]   table: inTabPane={t.get('inTabPane')} "
+                                 f"paneId='{t.get('paneId', '')}' rows={t.get('rowCount')}")
+                    for pg in scope_diag.get('paginations', []):
+                        vis = "✓" if pg.get('visible') else "✗"
+                        LOG.info(f"    [TAB-SCOPE-DIAG]   pagination: {vis} inTabPane={pg.get('inTabPane')} "
+                                 f"paneId='{pg.get('paneId', '')}'")
+            except Exception as e:
+                LOG.debug(f"    [TAB-SCOPE-DIAG] 诊断失败: {e}")
+
             MAIN_SEL = self.selectors["table"]["body_row"]
             FIXED_SELS = [
                 self.selectors["table"]["fixed_row"],
@@ -133,6 +191,35 @@ class ButtonDriver:
     async def _find_row_with_pagination(self, marker: str, max_pages: int = 3) -> Optional[Locator]:
         """带分页的行查找：当前页找不到时尝试翻页（最多 max_pages 页）"""
         try:
+            # [PAGINATION-DIAG] 诊断：记录分页组件数量和可见性
+            try:
+                pg_diag = await self.page.evaluate("""() => {
+                    const pgs = document.querySelectorAll('.el-pagination');
+                    return Array.from(pgs).map((pg, i) => {
+                        const pane = pg.closest('.el-tab-pane');
+                        const nextBtn = pg.querySelector('.btn-next');
+                        return {
+                            index: i,
+                            inTabPane: !!pane,
+                            paneId: pane ? pane.id : '',
+                            visible: pg.offsetWidth > 0,
+                            hasNextBtn: !!nextBtn,
+                            nextBtnDisabled: nextBtn ? nextBtn.disabled : null,
+                            nextBtnVisible: nextBtn ? nextBtn.offsetWidth > 0 : false
+                        };
+                    });
+                }""")
+                LOG.info(f"    [PAGINATION-DIAG] 找到 {len(pg_diag)} 个分页组件:")
+                for pg in pg_diag:
+                    vis = "✓" if pg.get('visible') else "✗"
+                    next_vis = "✓" if pg.get('nextBtnVisible') else "✗"
+                    next_dis = "disabled" if pg.get('nextBtnDisabled') else "enabled"
+                    LOG.info(f"    [PAGINATION-DIAG]   {vis} pagination[{pg.get('index')}] "
+                             f"inTabPane={pg.get('inTabPane')} paneId='{pg.get('paneId', '')}' "
+                             f"nextBtn: {next_vis} {next_dis}")
+            except Exception as e:
+                LOG.debug(f"    [PAGINATION-DIAG] 诊断失败: {e}")
+
             # 检查是否有分页组件
             pagination_sel = self.selectors["pagination"]["container"]
             has_pagination = await self.page.evaluate(f"""
