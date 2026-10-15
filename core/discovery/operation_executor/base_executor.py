@@ -158,6 +158,19 @@ async def _extract_fallback_marker(page) -> str | None:
                 if (cell.querySelector('.el-checkbox, .el-radio')) continue;
                 if (cell.querySelector('button, .el-button, .el-dropdown')) continue;
                 if (skipTexts.includes(text)) continue;
+
+                // 优化：如果包含冒号分隔符，只取冒号后面的值部分
+                // 例如 "组织： AT_test_799040" → "AT_test_799040"
+                if (text.includes('：') || text.includes(':')) {
+                    const parts = text.split(/[：:]/);
+                    if (parts.length >= 2) {
+                        const valuePart = parts[1].trim();
+                        if (valuePart.length >= 2 && valuePart.length <= 30) {
+                            return valuePart;
+                        }
+                    }
+                }
+
                 return text;
             }
             return null;

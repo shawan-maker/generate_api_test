@@ -191,6 +191,10 @@ async def _validate_single_tab_crud(
             )
             if result and result.get("success"):
                 created_marker = result.get("marker")
+                if not created_marker:  # 成功但没取到 marker，fallback 取第一行
+                    created_marker = await _extract_fallback_marker(page)
+                    if created_marker:
+                        LOG.info(f"{tab_prefix}create 成功但 marker 为空，使用 fallback marker: {created_marker}")
                 validated[action] = result
             else:
                 fallback = await _extract_fallback_marker(page)
@@ -1313,6 +1317,10 @@ async def _do_edit(page, context: dict) -> dict:
 
     _log.debug(f"    [_do_edit] START: btn_text='{btn_text}', marker='{marker}', location='{btn_location}'")
 
+    # [DEBUG] 记录点击前的 URL
+    url_before_click = await page.evaluate("() => window.location.href")
+    _log.info(f"    [EDIT-DEBUG] 点击前 URL: {url_before_click}")
+
     # 找到行并点击编辑（带重试）
     max_locate_retries = 2
     row_selector = None
@@ -1330,9 +1338,11 @@ async def _do_edit(page, context: dict) -> dict:
                 return row_not_found(f"未找到数据行: {marker}",
                                     trigger_text=btn_text,
                                     trigger_locator_verified=None)
+            _log.info(f"    [EDIT-DEBUG] 使用行内按钮点击方式 (marker='{marker}')")
             clicked = await driver.click_row_button_v2(row, btn_text)
             row_selector = btn_text
         else:
+            _log.info(f"    [EDIT-DEBUG] 使用 toolbar 按钮点击方式")
             btn_click_result = await _click_button_escalating(page, btn_text)
             clicked = btn_click_result["clicked"]
 
@@ -1349,14 +1359,142 @@ async def _do_edit(page, context: dict) -> dict:
     await page.wait_for_timeout(1500)
     await wait_for_loading_complete(page)
 
+    # [DEBUG] 记录点击后的 URL 和页面状态
+    url_after_click = await page.evaluate("() => window.location.href")
+    _log.info(f"    [EDIT-DEBUG] 点击后 URL: {url_after_click}")
+    _log.info(f"    [EDIT-DEBUG] URL 是否变化: {url_before_click != url_after_click}")
+
+    # [DEBUG] 检查是否有 order-submit 区域（底部固定操作栏）
+    order_submit_info = await page.evaluate("""() => {
+        // 查找 order-submit 或类似的操作栏
+        const selectors = [
+            '.order-submit',
+            '.order-submit.clearfix',
+            '.main-wrapper .order-submit',
+            '[class*="order-submit"]',
+            '[class*="submit-bar"]',
+            '[class*="action-bar"]',
+            '.fixed-bottom',
+            '.sticky-bottom'
+        ];
+
+        let found = null;
+        for (const selector of selectors) {
+            const el = document.querySelector(selector);
+            if (el) {
+                const rect = el.getBoundingClientRect();
+                const style = window.getComputedStyle(el);
+                found = {
+                    selector: selector,
+                    tagName: el.tagName,
+                    className: el.className,
+                    rect: {
+                        top: rect.top,
+                        bottom: rect.bottom,
+                        left: rect.left,
+                        right: rect.right,
+                        width: rect.width,
+                        height: rect.height
+                    },
+                    style: {
+                        position: style.position,
+                        display: style.display,
+                        visibility: style.visibility,
+                        opacity: style.opacity,
+                        zIndex: style.zIndex
+                    },
+                    innerHTML: el.innerHTML.substring(0, 200)
+                };
+                break;
+            }
+        }
+
+        // 检查视口高度
+        const viewportHeight = window.innerHeight;
+
+        // 查找所有 fixed/sticky 定位的元素
+        const fixedElements = [];
+        document.querySelectorAll('*').forEach(el => {
+            const style = window.getComputedStyle(el);
+            if (style.position === 'fixed' || style.position === 'sticky') {
+                const rect = el.getBoundingClientRect();
+                if (rect.height > 0 && rect.width > 0) {
+                    fixedElements.push({
+                        tagName: el.tagName,
+                        className: el.className.substring(0, 100),
+                        position: style.position,
+                        rect: { top: rect.top, bottom: rect.bottom, height: rect.height }
+                    });
+                }
+            }
+        });
+
+        return {
+            found: found,
+            viewportHeight: viewportHeight,
+            fixedElementsCount: fixedElements.length,
+            fixedElements: fixedElements.slice(0, 5)  // 只返回前5个
+        };
+    }""")
+
+    _log.info(f"    [EDIT-DEBUG] order-submit 区域: {order_submit_info.get('found') is not None}")
+    if order_submit_info.get('found'):
+        _log.info(f"    [EDIT-DEBUG]   selector: {order_submit_info['found']['selector']}")
+        _log.info(f"    [EDIT-DEBUG]   className: {order_submit_info['found']['className']}")
+        _log.info(f"    [EDIT-DEBUG]   rect: {order_submit_info['found']['rect']}")
+        _log.info(f"    [EDIT-DEBUG]   style: {order_submit_info['found']['style']}")
+    _log.info(f"    [EDIT-DEBUG] 视口高度: {order_submit_info.get('viewportHeight')}")
+    _log.info(f"    [EDIT-DEBUG] fixed/sticky 元素数量: {order_submit_info.get('fixedElementsCount')}")
+    if order_submit_info.get('fixedElements'):
+        for i, fe in enumerate(order_submit_info['fixedElements']):
+            _log.info(f"    [EDIT-DEBUG]   fixed[{i}]: {fe}")
+
     # 验证编辑弹窗打开
     from core.discovery.ui_scanner.button_detector import _check_precondition_state, _close_dialog
     state = await _check_precondition_state(page, {"type": "dialog"})
+
+    # [DEBUG] 记录弹窗检测结果
+    _log.info(f"    [EDIT-DEBUG] 弹窗检测结果: success={state.get('success')}, actual_state={state.get('actual_state')}")
+    _log.info(f"    [EDIT-DEBUG] 弹窗详情: {state}")
+
+    # 分支：页面跳转模式 vs 弹窗模式
+    if url_before_click != url_after_click:
+        # ── 页面跳转编辑模式 ──
+        _log.info(f"    [EDIT-DEBUG] 检测到页面跳转，走跨页面编辑流程")
+        from core.discovery.operation_executor.navigation_executor import (
+            _explore_and_operate_in_new_page, _navigate_back_to_list,
+        )
+        nav_info = await _explore_and_operate_in_new_page(
+            page=page, action="edit", new_url=url_after_click, depth=0, max_depth=3
+        )
+        await _navigate_back_to_list(page, url_before_click)
+
+        nav_submit = nav_info.get("submit_result", {})
+        if nav_submit.get("success"):
+            _log.info(f"    [EDIT-DEBUG] 跨页面编辑成功")
+            selectors = {"trigger": btn_text}
+            if row_selector:
+                selectors["row_selector"] = row_selector
+            return make_success(
+                fill_data=nav_info.get("fill_data", {}),
+                selectors=selectors,
+                nav_info=nav_info,
+                trigger_text=btn_text,
+            )
+        else:
+            error_text = nav_info.get("error_text", "") or "跨页面编辑未检测到成功信号"
+            _log.warning(f"    [EDIT-DEBUG] 跨页面编辑失败: {error_text}")
+            return make_error("cross_page_edit_failed", error_text,
+                              trigger_text=btn_text,
+                              trigger_locator_verified=btn_click_result.get("locator"),
+                              nav_info=nav_info)
+
     if not state["success"]:
         return no_dialog("点击编辑后未出现编辑弹窗",
                         trigger_text=btn_text,
                         trigger_locator_verified=btn_click_result.get("locator"))
 
+    # ── 弹窗编辑模式 ──
     # 扫描字段并修改
     fields = await form_filler.scan_form_fields_v2()
     modifications = context.get("edit_overrides")
@@ -1801,6 +1939,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
                                 trigger_locator_verified=None)
         dropdown_click_result = await driver.click_row_more_item(row, btn_text)
         clicked = dropdown_click_result.get("clicked", False)
+        LOG.info(f"    [DEBUG-dropdown] click_row_more_item 返回: {dropdown_click_result}")
         row_selector = f"{btn.get('parent', '更多')} > {btn_text}"
     else:
         # toolbar 按钮：checkbox 已由调用方 (_validate_business_flow) 勾选，
@@ -2198,6 +2337,60 @@ async def _do_generic_operation(page, context: dict) -> dict:
     else:
         # ── 无弹窗：可能是即时操作（状态切换、toast 反馈等） ──
         LOG.debug(f"    未检测到弹窗 (state: {state.get('actual_state', 'none')})")
+
+        # [DEBUG-暂停] 检测按钮状态变化（如"暂停"→"启用"）
+        if marker and btn_location in ("row_action", "dropdown"):
+            _btn_state_after = await page.evaluate("""(args) => {
+                const marker = args.marker;
+                const originalBtnText = args.originalBtnText;
+                const rows = document.querySelectorAll('.el-table__body-wrapper .el-table__row');
+                for (const row of rows) {
+                    const cells = row.querySelectorAll('.cell');
+                    let rowText = '';
+                    cells.forEach(c => rowText += c.textContent.trim() + ' ');
+                    if (!rowText.includes(marker)) continue;
+
+                    // 找到目标行，收集所有操作按钮
+                    const buttons = [];
+                    row.querySelectorAll('button, .el-button, a').forEach(btn => {
+                        const text = btn.textContent.trim();
+                        const visible = btn.offsetWidth > 0 && btn.offsetHeight > 0;
+                        const disabled = btn.disabled || btn.classList.contains('is-disabled');
+                        buttons.push({ text, visible, disabled });
+                    });
+
+                    // 检查"更多"菜单中的按钮（需先展开才能看到，这里只检查已渲染的）
+                    const dropdownMenus = row.querySelectorAll('.el-dropdown-menu');
+                    dropdownMenus.forEach(dd => {
+                        dd.querySelectorAll('.el-dropdown-menu__item').forEach(item => {
+                            const text = item.textContent.trim();
+                            buttons.push({ text, visible: true, disabled: false, inDropdown: true });
+                        });
+                    });
+
+                    // 检查原始按钮是否还在
+                    const originalStillExists = buttons.some(b =>
+                        b.text === originalBtnText && b.visible && !b.disabled
+                    );
+
+                    return {
+                        found: true,
+                        marker: marker,
+                        buttons: buttons,
+                        originalBtnStillExists: originalStillExists
+                    };
+                }
+                return { found: false };
+            }""", {"marker": marker, "originalBtnText": btn_text})
+            LOG.info(f"    [DEBUG-暂停] 点击后按钮状态: {_btn_state_after}")
+
+            # 如果原始按钮不再存在（如"暂停"消失，变成"启用"），视为成功
+            if _btn_state_after.get('found') and not _btn_state_after.get('originalBtnStillExists'):
+                LOG.info(f"    [DEBUG-暂停] 检测到按钮状态变化: '{btn_text}' 已消失，操作可能成功")
+                return {"success": True, "trigger_text": trigger_text_normalized,
+                        "selectors": {"trigger": btn_text},
+                        "button_state_changed": True}
+
         # 先检查是否已经产生了成功信号（toast/数据变化）
         _instant_msgs = await _get_captured_messages(page)
         _instant_success = await _verify_operation_success(

@@ -556,11 +556,56 @@ class ButtonDriver:
             result["expand_strategy"] = expand_strategy
             return result
 
-        # 查找并点击菜单项（按钮类型，需要等待加载）
-        click_result = await click_dropdown_option(self.page, item_text)
-        result["clicked"] = click_result.get("clicked", False) if isinstance(click_result, dict) else click_result
-        result["expand_strategy"] = expand_strategy
-        result["actual_item_text"] = click_result.get("actual_text", item_text) if isinstance(click_result, dict) else item_text
+        # 展开成功后，直接在可见的下拉菜单中查找并点击目标项
+        # 不再调用全局的 click_dropdown_option（它可能找到其他已关闭菜单的项）
+        clicked_item = await self.page.evaluate(f"""() => {{
+            // 只查找可见的下拉菜单中的项
+            const items = Array.from(document.querySelectorAll('.el-dropdown-menu__item'));
+            const visibleItems = items.filter(el =>
+                el.offsetWidth > 0 && el.offsetHeight > 0
+                && !el.closest('[style*="display: none"]')
+            );
+
+            // 先精确匹配，再包含匹配
+            let target = visibleItems.find(el => el.textContent.trim() === '{item_text}');
+            if (!target) {{
+                target = visibleItems.find(el => el.textContent.trim().includes('{item_text}'));
+            }}
+
+            if (target) {{
+                const text = target.textContent.trim();
+                target.click();
+                return {{ clicked: true, text: text, visibleCount: visibleItems.length }};
+            }}
+
+            // 没找到可见项，返回所有项的状态用于诊断
+            return {{
+                clicked: false,
+                text: '',
+                visibleCount: visibleItems.length,
+                totalItems: items.length,
+                allItems: items.map(el => ({{
+                    text: el.textContent.trim(),
+                    visible: el.offsetWidth > 0 && el.offsetHeight > 0,
+                    parentDisplay: el.parentElement ? window.getComputedStyle(el.parentElement).display : ''
+                }}))
+            }};
+        }}""")
+
+        LOG.info(f"    [dropdown-click] 结果: {clicked_item}")
+
+        if clicked_item and clicked_item.get("clicked"):
+            result["clicked"] = True
+            result["expand_strategy"] = expand_strategy
+            result["actual_item_text"] = clicked_item.get("text", item_text)
+            from .wait_helpers import wait_for_loading_complete
+            await wait_for_loading_complete(self.page)
+        else:
+            # 可见菜单中没有找到，尝试全局 fallback
+            click_result = await click_dropdown_option(self.page, item_text)
+            result["clicked"] = click_result.get("clicked", False) if isinstance(click_result, dict) else click_result
+            result["expand_strategy"] = expand_strategy
+            result["actual_item_text"] = click_result.get("actual_text", item_text) if isinstance(click_result, dict) else item_text
         return result
 
     async def confirm_message_box(self) -> str:
@@ -896,15 +941,35 @@ async def click_dropdown_option(page: Page, option_text: str, ui_framework: str 
 
     try:
         # 快速检查：元素是否存在且可见
-        visible = await page.evaluate(f"""() => {{
+        visible_info = await page.evaluate(f"""() => {{
             const items = Array.from(document.querySelectorAll(
                 '{dropdown_menu_item}, {select_dropdown_item}'));
             const target = items.find(
                 item => item.textContent.trim().includes('{option_text}'));
-            if (!target) return 'not_found';
-            if (target.offsetWidth > 0 && target.offsetHeight > 0) return 'visible';
-            return 'hidden';
+            if (!target) return {{ status: 'not_found', details: null }};
+
+            const style = window.getComputedStyle(target);
+            const rect = target.getBoundingClientRect();
+            return {{
+                status: (target.offsetWidth > 0 && target.offsetHeight > 0) ? 'visible' : 'hidden',
+                details: {{
+                    offsetWidth: target.offsetWidth,
+                    offsetHeight: target.offsetHeight,
+                    rect: {{ width: rect.width, height: rect.height, top: rect.top, left: rect.left }},
+                    display: style.display,
+                    visibility: style.visibility,
+                    opacity: style.opacity,
+                    className: target.className,
+                    parentClassName: target.parentElement ? target.parentElement.className : '',
+                    parentDisplay: target.parentElement ? window.getComputedStyle(target.parentElement).display : ''
+                }}
+            }};
         }}""")
+
+        visible = visible_info.get('status', 'not_found')
+        LOG.info(f"    [DEBUG-dropdown-option] option_text='{option_text}', visible={visible}")
+        if visible == 'hidden' and visible_info.get('details'):
+            LOG.info(f"    [DEBUG-dropdown-option] hidden 原因: {visible_info['details']}")
 
         if visible == 'not_found':
             return {"clicked": False, "actual_text": ""}
@@ -916,9 +981,13 @@ async def click_dropdown_option(page: Page, option_text: str, ui_framework: str 
                 f'{select_dropdown_item}:has-text("{option_text}")'
             ).first
             if await option.count() > 0:
-                await option.click(timeout=3000)
-                await wait_for_loading_complete(page)
-                return {"clicked": True, "actual_text": option_text}
+                try:
+                    await option.click(timeout=3000)
+                    LOG.info(f"    [DEBUG-dropdown-option] Playwright click 成功")
+                    await wait_for_loading_complete(page)
+                    return {"clicked": True, "actual_text": option_text}
+                except Exception as e:
+                    LOG.warning(f"    [DEBUG-dropdown-option] Playwright click 失败: {e}")
 
         # 不可见或 Playwright click 失败 → JS click（强制触发）
         clicked_text = await page.evaluate(f"""
@@ -929,12 +998,18 @@ async def click_dropdown_option(page: Page, option_text: str, ui_framework: str 
                     item => item.textContent.trim().includes('{option_text}'));
                 if (target) {{
                     const text = target.textContent.trim().replace(/\\s+/g, '');
+                    // 先尝试触发 Vue 事件
+                    const vueEvent = new MouseEvent('click', {{ bubbles: true, cancelable: true }});
+                    target.dispatchEvent(vueEvent);
+                    // 也直接调用 click()
                     target.click();
                     return text;
                 }}
                 return null;
             }}
         """)
+
+        LOG.info(f"    [DEBUG-dropdown-option] JS click 结果: clicked_text={clicked_text}")
 
         if clicked_text:
             await wait_for_loading_complete(page)

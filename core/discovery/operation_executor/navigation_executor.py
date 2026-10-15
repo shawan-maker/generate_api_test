@@ -76,6 +76,38 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
         await page.wait_for_load_state("networkidle", timeout=15000)
         await page.wait_for_timeout(1500)
 
+        # [DEBUG] 检查新页面的 order-submit 区域（底部固定操作栏）
+        _order_submit_check = await page.evaluate("""() => {
+            const selectors = [
+                '.order-submit',
+                '.order-submit.clearfix',
+                '.main-wrapper .order-submit',
+                '[class*="order-submit"]',
+                '[class*="submit-bar"]',
+                '[class*="action-bar"]'
+            ];
+
+            let found = null;
+            for (const selector of selectors) {
+                const el = document.querySelector(selector);
+                if (el) {
+                    const rect = el.getBoundingClientRect();
+                    const style = window.getComputedStyle(el);
+                    found = {
+                        selector: selector,
+                        className: el.className,
+                        rect: { top: rect.top, bottom: rect.bottom, height: rect.height, width: rect.width },
+                        style: { position: style.position, display: style.display },
+                        buttonCount: el.querySelectorAll('button').length
+                    };
+                    break;
+                }
+            }
+
+            return found;
+        }""")
+        LOG.info(f"    [NAV-DEBUG] order-submit 区域: {_order_submit_check}")
+
         # 重新安装消息捕获（页面导航后 JS hook 丢失）
         await _install_message_capture(page)
         # DIAG: 验证消息捕获是否安装成功
