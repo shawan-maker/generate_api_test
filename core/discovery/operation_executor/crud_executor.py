@@ -38,6 +38,142 @@ from core.discovery.ui_scanner.button_detector import (
 LOG = logging.getLogger("crud_executor")
 
 
+async def _get_row_selector_by_marker(page, marker: str) -> str:
+    """根据 marker 文本获取所在行的 CSS 选择器。
+
+    Args:
+        page: Playwright Page 对象
+        marker: 行标识文本
+
+    Returns:
+        str: 行的 CSS 选择器，如 ".el-table__body-wrapper .el-table__row:nth-child(1)"
+             如果未找到，返回空字符串
+    """
+    if not marker:
+        return ""
+
+    try:
+        row_info = await page.evaluate(f"""() => {{
+            const rows = document.querySelectorAll('.el-table__body-wrapper .el-table__row');
+            for (let i = 0; i < rows.length; i++) {{
+                const row = rows[i];
+                const cells = row.querySelectorAll('.cell');
+                for (const cell of cells) {{
+                    const text = cell.textContent.trim();
+                    if (text.includes('{marker}')) {{
+                        return {{
+                            found: true,
+                            rowIndex: i,
+                            selector: `.el-table__body-wrapper .el-table__row:nth-child(${{i + 1}})`
+                        }};
+                    }}
+                }}
+            }}
+            return {{ found: false }};
+        }}""")
+
+        if row_info.get("found"):
+            return row_info.get("selector", "")
+        return ""
+
+    except Exception as e:
+        LOG.debug(f"  [get-row-selector] 失败: {e}")
+        return ""
+
+
+async def _scan_row_after_operation(page, row_selector: str, marker: str, existing_actions: set) -> list:
+    """操作执行后，增量扫描当前行，发现新出现的按钮。
+
+    用于捕获状态依赖的按钮，如：
+    - "暂停"操作成功后，"启用"按钮出现
+    - "冻结"操作成功后，"解冻"按钮出现
+
+    Args:
+        page: Playwright Page 对象
+        row_selector: 行的 CSS 选择器
+        marker: 行标识（用于验证行仍然存在）
+        existing_actions: 已知的操作按钮文本集合（用于去重）
+
+    Returns:
+        list: 新发现的按钮列表，格式同 element_scanner 的按钮格式
+    """
+    try:
+        # 1. 验证行仍然存在
+        row_exists = await page.evaluate(f"""() => {{
+            const row = document.querySelector('{row_selector}');
+            return row ? true : false;
+        }}""")
+
+        if not row_exists:
+            LOG.debug(f"  [incremental-scan] 行不存在（可能已删除），跳过扫描")
+            return []
+
+        # 2. 扫描当前行的所有操作按钮
+        new_buttons = await page.evaluate(f"""() => {{
+            const row = document.querySelector('{row_selector}');
+            if (!row) return [];
+
+            const buttons = [];
+            const existingTexts = {list(existing_actions)};
+
+            // 扫描直接可见的按钮（.el-button）
+            const directBtns = row.querySelectorAll('.cell .el-button');
+            directBtns.forEach(btn => {{
+                const text = btn.textContent.trim();
+                if (text && !existingTexts.includes(text)) {{
+                    const rect = btn.getBoundingClientRect();
+                    buttons.push({{
+                        text: text,
+                        tag: 'BUTTON',
+                        location: 'row_action',
+                        selector: `button:has-text("${{text}}")`,
+                        rect: {{ width: rect.width, height: rect.height }},
+                        is_new: true,
+                    }});
+                }}
+            }});
+
+            // 扫描下拉菜单项（如果有"更多"按钮）
+            const dropdowns = row.querySelectorAll('.el-dropdown');
+            dropdowns.forEach(dd => {{
+                const menu = dd.querySelector('.el-dropdown-menu');
+                if (menu) {{
+                    const items = menu.querySelectorAll('.el-dropdown-menu__item');
+                    items.forEach(item => {{
+                        const text = item.textContent.trim();
+                        if (text && !existingTexts.includes(text)) {{
+                            buttons.push({{
+                                text: text,
+                                tag: 'DROPDOWN_ITEM',
+                                location: 'dropdown',
+                                selector: `.el-dropdown-menu__item:has-text("${{text}}")`,
+                                is_new: true,
+                            }});
+                        }}
+                    }});
+                }}
+            }});
+
+            return buttons;
+        }}""")
+
+        # 3. 过滤掉不可见的按钮
+        visible_buttons = [
+            btn for btn in new_buttons
+            if btn.get("rect", {}).get("width", 0) > 0 or btn.get("tag") == "DROPDOWN_ITEM"
+        ]
+
+        if visible_buttons:
+            LOG.info(f"  [incremental-scan] 发现 {len(visible_buttons)} 个新按钮: "
+                     f"{[b['text'] for b in visible_buttons]}")
+
+        return visible_buttons
+
+    except Exception as e:
+        LOG.warning(f"  [incremental-scan] 扫描失败: {e}")
+        return []
+
+
 async def discover_and_validate(page, username: str = "test") -> dict:
     """Stage 1 入口：探测 + 业务闭环验证。
 
@@ -169,6 +305,38 @@ async def _validate_single_tab_crud(
 
     tab_prefix = f"[{tab_name}] " if tab_name else ""
     LOG.debug(f"{tab_prefix}操作分发: { {a: action_roles[a] for a in ordered_actions} }")
+
+    # ★ Switch 操作验证（在 CRUD 操作之前执行）
+    # Switch 作为独立的业务操作，记录到 validated 中
+    # ★ 过滤掉行级 switch（location='row'），只验证 toolbar/form 级的 switch
+    switches = ui_result.get("switches", [])
+    tab_switches = [
+        sw for sw in switches
+        if sw.get("tab") == tab_name and sw.get("location") != "row"
+    ]
+
+    if tab_switches:
+        LOG.info(f"{tab_prefix}检测到 {len(tab_switches)} 个 switch 操作")
+        for sw in tab_switches:
+            sw_text = sw.get("text", "Switch")
+            sw_locator = sw.get("locator", ".el-switch")
+            LOG.info(f"{tab_prefix}验证操作: {sw_text} (switch)")
+
+            # 执行 switch 切换
+            result = await _do_toggle_switch(page, {"switch_info": sw})
+
+            if result and result.get("success"):
+                # 记录到 validated（使用 switch: 前缀避免与按钮操作冲突）
+                validated[f"switch:{sw_text}"] = result
+                LOG.info(f"{tab_prefix}switch 操作成功: {sw_text}")
+            else:
+                # switch 操作失败，记录但不阻断后续操作
+                error_text = result.get("error_text", "") if result else "未知错误"
+                LOG.warning(f"{tab_prefix}switch 操作失败: {sw_text} ({error_text})")
+                validated[f"switch:{sw_text}"] = result or make_error("switch_failed", error_text)
+
+            # switch 状态变化后，等待页面稳定
+            await page.wait_for_timeout(500)
 
     for action in ordered_actions:
         btn = buttons_by_action.get(action)
@@ -304,6 +472,56 @@ async def _validate_single_tab_crud(
                 validated[action] = result
             elif result:
                 validated[action] = result
+
+        # ★ 增量发现：操作成功后，扫描当前行发现新出现的按钮
+        # 适用场景：暂停→启用、禁用→启用 等状态依赖的操作对
+        if result and result.get("success"):
+            should_scan = (
+                role in ("generic", "update", "delete")  # 状态变更类操作
+                and btn_location in ("row_action", "dropdown")  # 行级操作
+                and created_marker  # 有明确的行标识
+            )
+
+            if should_scan:
+                # 获取当前行的选择器（基于 marker）
+                row_selector = await _get_row_selector_by_marker(page, created_marker)
+                if row_selector:
+                    existing_actions = set(buttons_by_action.keys())
+                    new_buttons = await _scan_row_after_operation(
+                        page, row_selector, created_marker, existing_actions
+                    )
+
+                    if new_buttons:
+                        LOG.info(f"{tab_prefix}增量发现 {len(new_buttons)} 个新按钮")
+
+                        # 将新按钮加入待验证队列
+                        for new_btn in new_buttons:
+                            new_btn["tab"] = tab_name  # 标记 tab
+                            new_action = new_btn.get("text", "")
+
+                            # 去重检查
+                            if new_action in buttons_by_action:
+                                continue
+
+                            buttons_by_action[new_action] = new_btn
+
+                            # 推断角色
+                            new_role = _infer_action_role(new_action, new_btn, delete_actions=_delete_actions)
+                            action_roles[new_action] = new_role
+
+                            # 插入到 ordered_actions 的合适位置
+                            # delete 类操作放最后，其他操作放当前位置后面
+                            if new_role == "delete":
+                                ordered_actions.append(new_action)
+                            else:
+                                # 在当前 action 后面插入
+                                try:
+                                    current_idx = ordered_actions.index(action)
+                                    ordered_actions.insert(current_idx + 1, new_action)
+                                except ValueError:
+                                    ordered_actions.append(new_action)
+
+                            LOG.info(f"{tab_prefix}  + {new_action} (角色: {new_role})")
 
         # 操作后确保回到列表页
         try:
@@ -1613,6 +1831,164 @@ async def _do_edit(page, context: dict) -> dict:
         "radio_field_details": radio_field_details,
         "cascade_actions": [],  # 编辑操作不收集 cascade（fill_edit_form 返回 int）
     }
+
+
+async def _do_toggle_switch(page, context: dict) -> dict:
+    """执行 switch 切换操作：点击 switch → 处理确认弹框 → 验证状态变化。
+
+    Switch 操作被视为独立的业务操作，记录到 validated_operations 中。
+
+    Args:
+        page: Playwright Page 对象
+        context: 包含 switch_info 字典
+
+    Returns:
+        dict: 操作结果，包含 success, before_state, after_state, trigger_text 等
+    """
+    switch_info = context["switch_info"]
+    sw_text = switch_info.get("text", "Switch")
+    sw_locator = switch_info.get("locator", ".el-switch")
+    before_checked = switch_info.get("is_checked", False)
+
+    LOG.info(f"    [switch] 切换 '{sw_text}': {'ON' if before_checked else 'OFF'} → {'OFF' if before_checked else 'ON'}")
+
+    try:
+        # 1. 记录点击前的 URL（用于检测页面跳转）
+        url_before = page.url
+
+        # 2. 点击 switch
+        clicked = False
+        try:
+            # ★ 使用 JS 点击，排除表格行内的 switch
+            click_result = await page.evaluate(f"""() => {{
+                // 查找所有匹配的 switch
+                const candidates = document.querySelectorAll('{sw_locator}');
+                // 过滤掉表格行内的 switch
+                const toolbarSwitches = Array.from(candidates).filter(sw => {{
+                    return !sw.closest('.el-table__row, .el-table__body tr, tr.el-table__row');
+                }});
+
+                if (toolbarSwitches.length === 0) {{
+                    return {{ clicked: false, reason: 'no_toolbar_switch' }};
+                }}
+
+                // 点击第一个 toolbar 级的 switch
+                const sw = toolbarSwitches[0];
+                sw.click();
+                return {{ clicked: true, total: candidates.length, filtered: toolbarSwitches.length }};
+            }}""")
+
+            if click_result.get("clicked"):
+                clicked = True
+                LOG.debug(f"    [switch] 点击成功: {sw_locator} (toolbar级)")
+            else:
+                reason = click_result.get("reason", "unknown")
+                LOG.warning(f"    [switch] 点击失败: {reason}")
+                return make_error("switch_click_failed", f"无法点击 toolbar switch: {sw_text} ({reason})",
+                                trigger_text=sw_text)
+        except Exception as e:
+            LOG.warning(f"    [switch] 点击失败: {e}")
+            return make_error("switch_click_failed", f"无法点击 switch: {sw_text}",
+                            trigger_text=sw_text)
+
+        if not clicked:
+            return click_failed(f"无法点击 switch: {sw_text}", trigger_text=sw_text)
+
+        # 3. 等待可能的确认弹框
+        await page.wait_for_timeout(500)
+
+        # 检查是否出现确认弹框（el-message-box 或 el-dialog）
+        confirm_handled = False
+        try:
+            confirm_box = await page.query_selector('.el-message-box__wrapper:not([style*="display: none"])')
+            if confirm_box:
+                LOG.info(f"    [switch] 检测到确认弹框")
+                # 点击确认按钮
+                confirm_btn = await page.query_selector('.el-message-box__btns .el-button--primary')
+                if confirm_btn:
+                    await confirm_btn.click()
+                    await page.wait_for_timeout(500)
+                    confirm_handled = True
+                    LOG.info(f"    [switch] 已点击确认按钮")
+                else:
+                    # 尝试其他确认按钮
+                    for btn_selector in ['.el-message-box__btns button:first-child', 'button:has-text("确定")']:
+                        btn = await page.query_selector(btn_selector)
+                        if btn and await btn.is_visible():
+                            await btn.click()
+                            await page.wait_for_timeout(500)
+                            confirm_handled = True
+                            LOG.info(f"    [switch] 已点击确认按钮 (fallback)")
+                            break
+        except Exception as e:
+            LOG.debug(f"    [switch] 确认弹框处理: {e}")
+
+        # 4. 等待状态变化
+        await page.wait_for_timeout(800)
+
+        # 5. 检查 switch 状态是否变化（同样排除表格行内的 switch）
+        after_state = await page.evaluate(f"""() => {{
+            const candidates = document.querySelectorAll('{sw_locator}');
+            const toolbarSwitches = Array.from(candidates).filter(sw => {{
+                return !sw.closest('.el-table__row, .el-table__body tr, tr.el-table__row');
+            }});
+
+            if (toolbarSwitches.length === 0) {{
+                return {{ found: false, isChecked: false }};
+            }}
+
+            const sw = toolbarSwitches[0];
+            return {{
+                found: true,
+                isChecked: sw.classList.contains('is-checked')
+            }};
+        }}""")
+
+        if not after_state.get("found"):
+            return make_error("switch_not_found", f"switch 元素消失: {sw_text}",
+                            trigger_text=sw_text)
+
+        after_checked = after_state.get("isChecked", False)
+
+        # 6. 验证状态变化
+        if before_checked == after_checked:
+            LOG.warning(f"    [switch] 状态未变化: {'ON' if after_checked else 'OFF'}")
+            return make_error("switch_state_unchanged",
+                            f"switch 状态未变化: {sw_text}",
+                            trigger_text=sw_text)
+
+        # 7. 检查成功消息（可选）
+        captured_msgs = await _get_captured_messages(page)
+        success_msg = None
+        for msg in captured_msgs:
+            msg_text = msg.get("text", "")
+            if "成功" in msg_text or "success" in msg_text.lower():
+                success_msg = msg_text
+                break
+
+        # 8. 构建成功结果
+        before_state_str = "ON" if before_checked else "OFF"
+        after_state_str = "ON" if after_checked else "OFF"
+
+        LOG.info(f"    [switch] 切换成功: {before_state_str} → {after_state_str}"
+                + (f" (消息: {success_msg})" if success_msg else ""))
+
+        return {
+            "success": True,
+            "before_state": before_state_str,
+            "after_state": after_state_str,
+            "trigger_text": sw_text,
+            "selectors": {"trigger": sw_locator},
+            "trigger_locator_verified": sw_locator,
+            "confirm_handled": confirm_handled,
+            "success_message": success_msg,
+            "is_switch": True,
+            "fill_data": {},
+        }
+
+    except Exception as e:
+        LOG.error(f"    [switch] 异常: {e}")
+        return exception(f"switch 操作异常: {e}", trigger_text=sw_text)
 
 
 async def _do_delete(page, context: dict) -> dict:

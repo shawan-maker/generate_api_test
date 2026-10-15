@@ -440,34 +440,46 @@ class ButtonDriver:
         # 检测活跃覆盖层
         overlay_prefix = await self._detect_active_overlay()
 
-        # 查找并点击"更多"按钮
+        # 查找并点击"更多"按钮（优先在当前行内搜索）
         more_btn = None
-        for pattern in more_patterns:
-            xpath = kb.expand_step(
-                pattern,
-                label="更多",
-                idx=row_index + 1,
-                framework=self.framework,
-                apply_hidden=True
-            )
 
-            if overlay_prefix:
-                scoped_xpath = apply_overlay_scope(xpath, overlay_prefix)
+        # ★ 优先：直接通过 row Locator 在当前行内查找 .el-dropdown
+        try:
+            row_dropdown = row.locator('.el-dropdown')
+            if await row_dropdown.count() > 0:
+                more_btn = row_dropdown.first
+                LOG.debug(f"    ✓ 行内直接定位 .el-dropdown (行索引={row_index})")
+        except Exception as e:
+            LOG.debug(f"    行内直接定位失败: {e}")
+
+        # 如果行内未找到，回退到 KB XPath 模板搜索
+        if not more_btn:
+            for pattern in more_patterns:
+                xpath = kb.expand_step(
+                    pattern,
+                    label="更多",
+                    idx=row_index + 1,
+                    framework=self.framework,
+                    apply_hidden=True
+                )
+
+                if overlay_prefix:
+                    scoped_xpath = apply_overlay_scope(xpath, overlay_prefix)
+                    try:
+                        btn = self.page.locator(f"xpath={scoped_xpath}")
+                        if await btn.count() > 0:
+                            more_btn = btn
+                            break
+                    except Exception:
+                        pass
+
                 try:
-                    btn = self.page.locator(f"xpath={scoped_xpath}")
+                    btn = self.page.locator(f"xpath={xpath}")
                     if await btn.count() > 0:
                         more_btn = btn
                         break
                 except Exception:
-                    pass
-
-            try:
-                btn = self.page.locator(f"xpath={xpath}")
-                if await btn.count() > 0:
-                    more_btn = btn
-                    break
-            except Exception:
-                continue
+                    continue
 
         if not more_btn:
             LOG.warning(f"未找到行内更多按钮 (行索引={row_index})")
@@ -478,33 +490,99 @@ class ButtonDriver:
         # 仅 hover 内部 <span> 可能无法触发 Vue 的事件处理器。
         expanded = False
         expand_strategy = "failed"
-        try:
-            await more_btn.hover()
-            await self.page.wait_for_timeout(300)
-            # 显式向 .el-dropdown 父元素派发 mouseenter 事件
-            await self.page.evaluate("""(el) => {
-                const dropdown = el.closest('.el-dropdown');
-                if (dropdown) {
-                    dropdown.dispatchEvent(new MouseEvent('mouseenter', {bubbles: false}));
-                    dropdown.dispatchEvent(new MouseEvent('mouseover', {bubbles: true}));
-                }
-                // 也触发 .el-dropdown__caret-button（如果有）
-                const caret = el.closest('.el-dropdown__caret-button') || el.closest('.el-button-group');
-                if (caret) {
-                    caret.dispatchEvent(new MouseEvent('mouseenter', {bubbles: false}));
-                }
-            }""", await more_btn.element_handle())
-            await self.page.wait_for_timeout(600)
-            # 检查菜单是否展开（子项可见）
-            expanded = await self.page.evaluate("""() => {
-                const items = document.querySelectorAll('.el-dropdown-menu__item');
-                return Array.from(items).some(el => el.offsetWidth > 0);
-            }""")
-            if expanded:
-                LOG.debug(f"    ✓ hover 展开成功 (行索引={row_index})")
-                expand_strategy = "hover"
-        except Exception as e:
-            LOG.debug(f"hover + dispatch on more button failed: {e}")
+
+        # ★ 优先尝试：直接使用 scoped 到当前行的 .el-dropdown 展开
+        if more_btn and row:
+            try:
+                # 获取当前行的 .el-dropdown 元素
+                scoped_dropdown = await self.page.evaluate("""(rowIndex) => {
+                    const rows = document.querySelectorAll('.el-table__body-wrapper .el-table__row');
+                    const targetRow = rows[rowIndex];
+                    if (!targetRow) return null;
+                    const dropdown = targetRow.querySelector('.el-dropdown');
+                    return dropdown ? true : null;
+                }""", row_index)
+
+                if scoped_dropdown:
+                    # 通过 JS 直接触发当前行的 dropdown
+                    expanded = await self.page.evaluate("""(rowIndex) => {
+                        const rows = document.querySelectorAll('.el-table__body-wrapper .el-table__row');
+                        const targetRow = rows[rowIndex];
+                        if (!targetRow) return false;
+                        const dropdown = targetRow.querySelector('.el-dropdown');
+                        if (!dropdown) return false;
+
+                        // 方法 1: 调用 Vue 实例的 show 方法
+                        if (dropdown.__vue__) {
+                            const vm = dropdown.__vue__;
+                            if (typeof vm.show === 'function') {
+                                vm.show();
+                                return true;
+                            }
+                            if (typeof vm.handleMouseEnter === 'function') {
+                                vm.handleMouseEnter();
+                                return true;
+                            }
+                        }
+
+                        // 方法 2: 派发 mouseenter 事件
+                        dropdown.dispatchEvent(new MouseEvent('mouseenter', {bubbles: false}));
+                        dropdown.dispatchEvent(new MouseEvent('mouseover', {bubbles: true}));
+                        return true;
+                    }""", row_index)
+
+                    if expanded:
+                        await self.page.wait_for_timeout(600)
+                        # 检查菜单是否真正展开
+                        expanded = await self.page.evaluate("""(rowIndex) => {
+                            const rows = document.querySelectorAll('.el-table__body-wrapper .el-table__row');
+                            const targetRow = rows[rowIndex];
+                            if (!targetRow) return false;
+
+                            // 查找与当前行 dropdown 关联的 popper
+                            const allPoppers = Array.from(document.querySelectorAll('.el-dropdown-menu'));
+                            const visiblePoppers = allPoppers.filter(p =>
+                                p.offsetWidth > 0 && p.offsetHeight > 0
+                            );
+                            return visiblePoppers.length > 0;
+                        }""", row_index)
+
+                        if expanded:
+                            LOG.debug(f"    ✓ scoped hover 展开成功 (行索引={row_index})")
+                            expand_strategy = "hover"
+            except Exception as e:
+                LOG.debug(f"scoped hover on row dropdown failed: {e}")
+                expanded = False
+
+        # Fallback: 使用全局的 more_btn 展开
+        if not expanded:
+            try:
+                await more_btn.hover()
+                await self.page.wait_for_timeout(300)
+                # 显式向 .el-dropdown 父元素派发 mouseenter 事件
+                await self.page.evaluate("""(el) => {
+                    const dropdown = el.closest('.el-dropdown');
+                    if (dropdown) {
+                        dropdown.dispatchEvent(new MouseEvent('mouseenter', {bubbles: false}));
+                        dropdown.dispatchEvent(new MouseEvent('mouseover', {bubbles: true}));
+                    }
+                    // 也触发 .el-dropdown__caret-button（如果有）
+                    const caret = el.closest('.el-dropdown__caret-button') || el.closest('.el-button-group');
+                    if (caret) {
+                        caret.dispatchEvent(new MouseEvent('mouseenter', {bubbles: false}));
+                    }
+                }""", await more_btn.element_handle())
+                await self.page.wait_for_timeout(600)
+                # 检查菜单是否展开（子项可见）
+                expanded = await self.page.evaluate("""() => {
+                    const items = document.querySelectorAll('.el-dropdown-menu__item');
+                    return Array.from(items).some(el => el.offsetWidth > 0);
+                }""")
+                if expanded:
+                    LOG.debug(f"    ✓ hover 展开成功 (行索引={row_index})")
+                    expand_strategy = "hover"
+            except Exception as e:
+                LOG.debug(f"hover + dispatch on more button failed: {e}")
 
         if not expanded:
             # hover 未展开，尝试 click（某些 dropdown 配置 trigger="click"）
@@ -556,11 +634,67 @@ class ButtonDriver:
             result["expand_strategy"] = expand_strategy
             return result
 
-        # 展开成功后，直接在可见的下拉菜单中查找并点击目标项
+        # 展开成功后，限定在当前行的下拉菜单中查找并点击目标项
         # 不再调用全局的 click_dropdown_option（它可能找到其他已关闭菜单的项）
-        clicked_item = await self.page.evaluate(f"""() => {{
-            // 只查找可见的下拉菜单中的项
-            const items = Array.from(document.querySelectorAll('.el-dropdown-menu__item'));
+        clicked_item = await self.page.evaluate(f"""(rowIndex) => {{
+            // 步骤 1: 定位当前行的 .el-dropdown 元素
+            const rows = document.querySelectorAll('.el-table__body-wrapper .el-table__row');
+            const targetRow = rows[rowIndex];
+            if (!targetRow) {{
+                return {{ clicked: false, error: 'Row not found', rowIndex: rowIndex }};
+            }}
+
+            const rowDropdown = targetRow.querySelector('.el-dropdown');
+            if (!rowDropdown) {{
+                return {{ clicked: false, error: 'No dropdown in row', rowIndex: rowIndex }};
+            }}
+
+            // 步骤 2: 找到与当前行 dropdown 关联的 popper
+            // Element UI 会为每个 dropdown 创建一个 popper，通过位置或 Vue 实例关联
+            const allPoppers = Array.from(document.querySelectorAll('.el-dropdown-menu'));
+            const visiblePoppers = allPoppers.filter(p =>
+                p.offsetWidth > 0 && p.offsetHeight > 0
+                && !p.closest('[style*="display: none"]')
+            );
+
+            // 找到与当前 rowDropdown 关联的 popper（通过 Vue 实例或位置匹配）
+            let targetPopper = null;
+
+            // 方法 1: 通过 Vue 实例关联
+            if (rowDropdown.__vue__) {{
+                const vm = rowDropdown.__vue__;
+                if (vm.popperElm) {{
+                    targetPopper = vm.popperElm;
+                }}
+            }}
+
+            // 方法 2: 如果只有一个可见 popper，直接使用
+            if (!targetPopper && visiblePoppers.length === 1) {{
+                targetPopper = visiblePoppers[0];
+            }}
+
+            // 方法 3: 通过位置匹配（popper 应该在 rowDropdown 附近）
+            if (!targetPopper && visiblePoppers.length > 0) {{
+                const dropdownRect = rowDropdown.getBoundingClientRect();
+                targetPopper = visiblePoppers.find(popper => {{
+                    const popperRect = popper.getBoundingClientRect();
+                    // popper 应该在 dropdown 下方或附近
+                    return Math.abs(popperRect.left - dropdownRect.left) < 200
+                        && popperRect.top >= dropdownRect.top - 50;
+                }});
+            }}
+
+            // 如果找不到 targetPopper，使用所有可见 popper 作为 fallback
+            const searchPoppers = targetPopper ? [targetPopper] : visiblePoppers;
+
+            // 步骤 3: 在目标 popper 中查找菜单项
+            const items = [];
+            searchPoppers.forEach(popper => {{
+                popper.querySelectorAll('.el-dropdown-menu__item').forEach(item => {{
+                    items.push(item);
+                }});
+            }});
+
             const visibleItems = items.filter(el =>
                 el.offsetWidth > 0 && el.offsetHeight > 0
                 && !el.closest('[style*="display: none"]')
@@ -575,22 +709,30 @@ class ButtonDriver:
             if (target) {{
                 const text = target.textContent.trim();
                 target.click();
-                return {{ clicked: true, text: text, visibleCount: visibleItems.length }};
+                return {{
+                    clicked: true,
+                    text: text,
+                    visibleCount: visibleItems.length,
+                    scopedToRow: true,
+                    popperMethod: targetPopper ? 'matched' : 'fallback'
+                }};
             }}
 
-            // 没找到可见项，返回所有项的状态用于诊断
+            // 没找到可见项，返回诊断信息
             return {{
                 clicked: false,
                 text: '',
                 visibleCount: visibleItems.length,
                 totalItems: items.length,
+                scopedToRow: true,
+                rowIndex: rowIndex,
                 allItems: items.map(el => ({{
                     text: el.textContent.trim(),
                     visible: el.offsetWidth > 0 && el.offsetHeight > 0,
                     parentDisplay: el.parentElement ? window.getComputedStyle(el.parentElement).display : ''
                 }}))
             }};
-        }}""")
+        }}""", row_index)
 
         LOG.info(f"    [dropdown-click] 结果: {clicked_item}")
 

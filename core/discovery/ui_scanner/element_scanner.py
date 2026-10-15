@@ -107,11 +107,14 @@ async def discover_all(page) -> dict:
         active_tab = next((t for t in tabs if t.get("active")), tabs[0])
         active_tab_name = active_tab.get("name", "")
 
-        # 为初始扫描的所有按钮补打 tab 标记
-        for btn in result.get("toolbar_buttons", []):
-            btn["tab"] = active_tab_name
-        for ra in result.get("row_actions", []):
-            ra["tab"] = active_tab_name
+        # 为初始扫描的所有按钮类型补打 tab 标记（统一标记策略）
+        _btn_types_to_mark = [
+            "toolbar_buttons", "row_actions", "dropdowns",
+            "dialog_buttons", "search_inputs", "menu_items",
+        ]
+        for btn_type in _btn_types_to_mark:
+            for item in result.get(btn_type, []):
+                item["tab"] = active_tab_name
         for vo_data in result.get("validated_operations", {}).values():
             vo_data["tab"] = active_tab_name
 
@@ -160,15 +163,20 @@ def _merge_tab_results(base: dict, tab_result: dict, tab_name: str):
         tab_result: 当前 tab 的扫描结果
         tab_name: tab 名称
     """
-    # toolbar_buttons 合并：直接追加（多 Tab 的同名按钮是独立操作）
+    # toolbar_buttons 合并：去重后追加（同一 Tab 内不重复，跨 Tab 的同名按钮保留）
     for btn in tab_result.get("toolbar_buttons", []):
         btn["tab"] = tab_name
-        base.setdefault("toolbar_buttons", []).append(btn)
+        btn_list = base.setdefault("toolbar_buttons", [])
+        # 去重：同一 tab + 同一文本 = 同一个按钮
+        if not any(b.get("tab") == tab_name and b.get("text") == btn.get("text") for b in btn_list):
+            btn_list.append(btn)
 
-    # row_actions 合并：直接追加（同理）
+    # row_actions 合并：去重后追加（同理）
     for ra in tab_result.get("row_actions", []):
         ra["tab"] = tab_name
-        base.setdefault("row_actions", []).append(ra)
+        ra_list = base.setdefault("row_actions", [])
+        if not any(b.get("tab") == tab_name and b.get("text") == ra.get("text") for b in ra_list):
+            ra_list.append(ra)
 
     # form_actions 合并（不标记 tab，表单按钮通常跨 tab 共享）
     for fa in tab_result.get("form_actions", []):
@@ -199,6 +207,11 @@ def _merge_tab_results(base: dict, tab_result: dict, tab_name: str):
     for db in tab_result.get("dialog_buttons", []):
         db["tab"] = tab_name
         base.setdefault("dialog_buttons", []).append(db)
+
+    # switches 合并
+    for sw in tab_result.get("switches", []):
+        sw["tab"] = tab_name
+        base.setdefault("switches", []).append(sw)
 
 
 async def _discover_once(page, kb: ProbeKB, framework: str) -> dict:
@@ -280,6 +293,16 @@ async def _discover_once(page, kb: ProbeKB, framework: str) -> dict:
             LOG.info(f"    - placeholder='{si.get('placeholder', '')}', locator={si.get('locator', '')}, "
                      f"source={si.get('source', 'css')}")
 
+    # 3.6 Switch 开关发现（el-switch 元素，如"开启黑名单"）
+    switches = await _discover_switches(page)
+    result["switches"] = switches
+    if switches:
+        LOG.info(f"  Switch 开关: {len(switches)} 个")
+        for sw in switches:
+            state = "ON" if sw.get("is_checked") else "OFF"
+            tab_info = f" (tab: {sw.get('tab')})" if sw.get('tab') else ""
+            LOG.info(f"    - '{sw.get('text', '')}' [{state}]{tab_info}")
+
     # 4. 创建表单扫描（同时扫描弹窗按钮）
     # 通过位置判断：工具栏按钮通常是 create 类操作
     has_create = any(_classify_button_location(b) == "create_like" for b in result["toolbar_buttons"])
@@ -296,30 +319,36 @@ async def _discover_once(page, kb: ProbeKB, framework: str) -> dict:
         await _close_dialog(page)
 
     # 4.1 数据预热：空表格时先创建数据以发现行操作按钮
-    # 条件：无行操作 + 有创建按钮 + 表格无数据行
+    # 条件：无行操作 + 有创建按钮（无论表格是否有数据）
+    # 修复：即使表格有数据，如果行操作未被发现，也应执行预热
     if not result["row_actions"] and has_create:
         page_structure = await _snapshot_page_structure(page)
-        if page_structure.get("mainBodyRows", 0) == 0:
+        main_body_rows = page_structure.get("mainBodyRows", 0)
+
+        if main_body_rows == 0:
             LOG.info("  表格无数据行，执行数据预热以发现行操作按钮...")
-            prewarm_result = await _prewarm_table_data(
-                page, result.get("form_fields", []), result["toolbar_buttons"], framework
-            )
-            if prewarm_result.get("success"):
-                # 合并行操作（去重）
-                for ra in prewarm_result.get("row_actions", []):
-                    if not any(b["text"] == ra["text"] for b in result["row_actions"]):
-                        result["row_actions"].append(ra)
-                # 合并下拉子项（去重）
-                for dd in prewarm_result.get("dropdowns", []):
-                    if not any(d["text"] == dd["text"] and d["parent"] == dd["parent"]
-                               for d in result["dropdowns"]):
-                        result["dropdowns"].append(dd)
-                # 如果 Stage 4 没扫到 form_fields，用预热时扫到的
-                if not result["form_fields"] and prewarm_result.get("form_fields"):
-                    result["form_fields"] = prewarm_result["form_fields"]
-                    LOG.info(f"  预热补充表单字段: {len(result['form_fields'])} 个")
-                LOG.info(f"  数据预热完成: {len(prewarm_result.get('row_actions', []))} 个行操作, "
-                         f"{len(prewarm_result.get('dropdowns', []))} 个下拉子项")
+        else:
+            LOG.info(f"  表格有 {main_body_rows} 行数据但行操作未被发现，执行数据预热...")
+
+        prewarm_result = await _prewarm_table_data(
+            page, result.get("form_fields", []), result["toolbar_buttons"], framework
+        )
+        if prewarm_result.get("success"):
+            # 合并行操作（去重）
+            for ra in prewarm_result.get("row_actions", []):
+                if not any(b["text"] == ra["text"] for b in result["row_actions"]):
+                    result["row_actions"].append(ra)
+            # 合并下拉子项（去重）
+            for dd in prewarm_result.get("dropdowns", []):
+                if not any(d["text"] == dd["text"] and d["parent"] == dd["parent"]
+                           for d in result["dropdowns"]):
+                    result["dropdowns"].append(dd)
+            # 如果 Stage 4 没扫到 form_fields，用预热时扫到的
+            if not result["form_fields"] and prewarm_result.get("form_fields"):
+                result["form_fields"] = prewarm_result["form_fields"]
+                LOG.info(f"  预热补充表单字段: {len(result['form_fields'])} 个")
+            LOG.info(f"  数据预热完成: {len(prewarm_result.get('row_actions', []))} 个行操作, "
+                     f"{len(prewarm_result.get('dropdowns', []))} 个下拉子项")
 
     # 4.2 form_page 交互扫描：点击编辑类按钮后扫描完整的表单交互状态
     # 条件：有 form_action 按钮 + 不是 CRUD 页面（无 create_like 按钮）
@@ -493,6 +522,157 @@ async def _scan_candidates(page) -> list:
         return results;
     }}""")
     return raw
+
+
+async def _discover_switches(page) -> list:
+    """扫描页面中的 el-switch 元素，记录其状态和上下文。
+
+    扫描策略：
+    - 查找所有 .el-switch 元素
+    - 获取相邻的标签文本（优先 form-item label，其次 sibling 文本）
+    - 记录当前状态（is-checked 类名）
+    - 记录所属 tab-pane（如果在 tab 内）
+
+    Args:
+        page: Playwright Page 对象
+
+    Returns:
+        list: switch 信息列表，每个元素包含：
+            - text: switch 旁的标签文本（如"开启黑名单"）
+            - locator: CSS 选择器
+            - is_checked: 当前是否开启
+            - tab: 所属 tab 名称（如果在 tab-pane 内）
+            - location: 位置类型（toolbar/form）
+    """
+    try:
+        raw_switches = await page.evaluate("""() => {
+            const switches = document.querySelectorAll('.el-switch');
+            const results = [];
+
+            switches.forEach((sw, idx) => {
+                // 跳过不可见的 switch
+                const rect = sw.getBoundingClientRect();
+                if (rect.width === 0 || rect.height === 0) return;
+
+                // 检查是否可见（不在 display:none 的父元素内）
+                const style = window.getComputedStyle(sw);
+                if (style.display === 'none' || style.visibility === 'hidden') return;
+                const parentHidden = sw.closest('[style*="display: none"], .el-tab-pane[style*="display: none"]');
+                if (parentHidden) return;
+
+                // 获取标签文本：优先 form-item__label，其次相邻文本
+                let labelText = '';
+                const formItem = sw.closest('.el-form-item');
+                if (formItem) {
+                    const label = formItem.querySelector('.el-form-item__label');
+                    if (label) {
+                        labelText = label.textContent.trim();
+                    }
+                }
+                // 如果没有 label，尝试从相邻元素获取
+                if (!labelText) {
+                    const prev = sw.previousElementSibling;
+                    if (prev && prev.textContent) {
+                        labelText = prev.textContent.trim();
+                    }
+                }
+                // 最后尝试从父元素的文本内容推断
+                if (!labelText) {
+                    const parent = sw.parentElement;
+                    if (parent) {
+                        const parentText = parent.textContent.trim();
+                        // 提取 switch 前的文本
+                        const swIdx = parent.innerHTML.indexOf(sw.outerHTML);
+                        if (swIdx > 0) {
+                            const beforeText = parent.textContent.substring(0, swIdx).trim();
+                            if (beforeText) labelText = beforeText;
+                        }
+                    }
+                }
+
+                // 如果没有文本，使用默认名称
+                if (!labelText) {
+                    labelText = 'Switch ' + (idx + 1);
+                }
+
+                // 检查当前状态
+                const isChecked = sw.classList.contains('is-checked');
+
+                // 检查是否在 tab-pane 内
+                const tabPane = sw.closest('.el-tab-pane');
+                let tabName = '';
+                if (tabPane) {
+                    // 尝试从 tab-pane 的 id 或 aria-label 获取名称
+                    tabName = tabPane.getAttribute('aria-label') || '';
+                    if (!tabName && tabPane.id) {
+                        // pane-xxx → xxx
+                        tabName = tabPane.id.replace('pane-', '');
+                    }
+                }
+
+                // ★ 判断位置类型：优先检查是否在表格行内
+                const tableRow = sw.closest('.el-table__row, .el-table__body tr, tr.el-table__row');
+                const isInTableRow = !!tableRow;
+
+                let location;
+                if (isInTableRow) {
+                    location = 'row';  // 表格行内的 switch，不参与业务操作验证
+                } else if (formItem) {
+                    location = 'form';  // 表单内的 switch
+                } else {
+                    location = 'toolbar';  // 工具栏区域的 switch
+                }
+
+                // ★ 构建唯一 selector（根据位置类型生成不同精度的选择器）
+                let selector = '';
+
+                if (location === 'row') {
+                    // 行级 switch：不需要精确 selector（不参与验证）
+                    selector = '.el-table__row .el-switch';
+                } else if (location === 'toolbar' || location === 'form') {
+                    // toolbar/form 级 switch：需要精确排除表格行内的 switch
+                    if (tabPane) {
+                        const paneId = tabPane.id || '';
+                        if (paneId) {
+                            // 使用 :not() 排除表格行内的 switch
+                            selector = `#${paneId} .el-switch:not(.el-table__row .el-switch)`;
+                            // 备选：如果 :not() 不支持复杂选择器，使用更简单的方案
+                            // 实际使用时会 fallback 到 JS 过滤
+                        }
+                    }
+                }
+
+                if (!selector) {
+                    // 使用 nth-of-type
+                    const allSwitches = Array.from(document.querySelectorAll('.el-switch'));
+                    const visibleSwitches = allSwitches.filter(s => {
+                        const r = s.getBoundingClientRect();
+                        return r.width > 0 && r.height > 0;
+                    });
+                    const visibleIdx = visibleSwitches.indexOf(sw);
+                    selector = `.el-switch:nth-of-type(${visibleIdx + 1})`;
+                }
+
+                results.push({
+                    text: labelText,
+                    locator: selector,
+                    is_checked: isChecked,
+                    tab: tabName,
+                    location: location,
+                    is_switch: true,  // 标记为 switch 类型
+                    tag: 'SWITCH',
+                });
+            });
+
+            return results;
+        }""")
+
+        LOG.debug(f"  _discover_switches: 发现 {len(raw_switches)} 个 switch")
+        return raw_switches or []
+
+    except Exception as e:
+        LOG.warning(f"  _discover_switches 异常: {e}")
+        return []
 
 
 async def _discover_search_inputs(page, kb: ProbeKB = None, framework: str = "element-ui") -> list:
