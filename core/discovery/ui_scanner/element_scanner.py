@@ -100,8 +100,22 @@ async def discover_all(page) -> dict:
                  f"fixed_right={page_structure.get('hasFixedRight')}, "
                  f"rows={page_structure.get('mainBodyRows', 0)}")
 
-    # ---- Tab 迭代扫描：检测到多个 tab 时，逐一扫描 ----
+    # ---- 补打初始 Tab 的标记 ----
     tabs = page_structure.get("tabs", [])
+    if tabs:
+        # 找到活跃 Tab（active=true），如果没有则用第一个
+        active_tab = next((t for t in tabs if t.get("active")), tabs[0])
+        active_tab_name = active_tab.get("name", "")
+
+        # 为初始扫描的所有按钮补打 tab 标记
+        for btn in result.get("toolbar_buttons", []):
+            btn["tab"] = active_tab_name
+        for ra in result.get("row_actions", []):
+            ra["tab"] = active_tab_name
+        for vo_data in result.get("validated_operations", {}).values():
+            vo_data["tab"] = active_tab_name
+
+    # ---- Tab 迭代扫描：检测到多个 tab 时，逐一扫描 ----
     if len(tabs) > 1:
         tab_names = [t["name"] for t in tabs]
         LOG.info(f"  📑 检测到 {len(tabs)} 个 tab: {tab_names}")
@@ -138,40 +152,23 @@ async def discover_all(page) -> dict:
 def _merge_tab_results(base: dict, tab_result: dict, tab_name: str):
     """将 tab 扫描结果合并到主结果中，标记 tab 来源。
 
-    同名按钮替换策略：当后扫描的 tab 出现与先扫描 tab 同名的 toolbar_buttons
-    或 row_actions 时，替换为先扫描的（因为页面当前停留在后扫描的 tab 上，
-    后续 CRUD 验证需要操作当前可见 tab 的按钮）。
+    追加策略：所有按钮直接追加，不替换同名按钮。每个按钮标记 tab 字段，
+    供下游代码（crud_executor、builder）区分不同 tab 的独立操作。
 
     Args:
         base: 主结果字典（会被原地修改）
         tab_result: 当前 tab 的扫描结果
         tab_name: tab 名称
     """
-    # toolbar_buttons 合并：同名按钮替换（保留当前 tab 的可见按钮）
+    # toolbar_buttons 合并：直接追加（多 Tab 的同名按钮是独立操作）
     for btn in tab_result.get("toolbar_buttons", []):
         btn["tab"] = tab_name
-        existing_list = base.setdefault("toolbar_buttons", [])
-        existing_idx = next(
-            (i for i, b in enumerate(existing_list) if b.get("text") == btn.get("text")),
-            None
-        )
-        if existing_idx is not None:
-            existing_list[existing_idx] = btn  # 替换为当前 tab 的按钮
-        else:
-            existing_list.append(btn)
+        base.setdefault("toolbar_buttons", []).append(btn)
 
-    # row_actions 合并：同名替换（同理）
+    # row_actions 合并：直接追加（同理）
     for ra in tab_result.get("row_actions", []):
         ra["tab"] = tab_name
-        existing_list = base.setdefault("row_actions", [])
-        existing_idx = next(
-            (i for i, b in enumerate(existing_list) if b.get("text") == ra.get("text")),
-            None
-        )
-        if existing_idx is not None:
-            existing_list[existing_idx] = ra
-        else:
-            existing_list.append(ra)
+        base.setdefault("row_actions", []).append(ra)
 
     # form_actions 合并（不标记 tab，表单按钮通常跨 tab 共享）
     for fa in tab_result.get("form_actions", []):

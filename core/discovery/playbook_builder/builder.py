@@ -482,11 +482,24 @@ def build_playbook(ui_result: dict) -> dict:
     for action, op_data in validated_operations.items():
         is_success = op_data.get("success", False)
         error_type = op_data.get("error_type", "")
+        tab_name = op_data.get("tab", "")
 
         # 所有操作都生成步骤（无论成功失败），确保 Stage 2 能回放并捕获 API
         # 失败操作（如后端业务失败）仍需捕获 API 响应并生成脚本
         op_steps = []
         steps_type = "unknown"
+
+        # ★ 多 Tab 页面：在操作步骤前插入 click_tab
+        if len(tabs) > 1 and tab_name:
+            tab_info = next((t for t in tabs if t.get("name") == tab_name), None)
+            if tab_info:
+                click_tab_step = {
+                    "action": "click_tab",
+                    "tab_name": tab_name,
+                    "playwright_locator": tab_info.get("locator", ""),
+                    "description": f"切换到 {tab_name} Tab"
+                }
+                op_steps.append(click_tab_step)
 
         # ★ 跨页面操作检测：nav_info 中有 navigated_url → page-nav 模式
         # 不论成功失败，只要有导航信息就视为 page-nav
@@ -536,6 +549,9 @@ def build_playbook(ui_result: dict) -> dict:
                 "detection_status": "success" if is_success else "failed",
                 "replayable": replayable,
             }
+            # ★ 多 Tab 页面：记录操作归属的 tab
+            if len(tabs) > 1 and tab_name:
+                entry["tab"] = tab_name
             if not is_success and error_type:
                 entry["error_type"] = error_type
                 entry["error_text"] = op_data.get("error_text", "")

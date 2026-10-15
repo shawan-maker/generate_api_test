@@ -68,9 +68,255 @@ async def discover_and_validate(page, username: str = "test") -> dict:
     return ui_result
 
 
+async def _validate_single_tab_crud(
+    page,
+    tab_buttons: dict,
+    ui_result: dict,
+    username: str,
+    tab_name: str = ""
+) -> dict:
+    """在单个 Tab 上下文中执行完整 CRUD 验证。
+
+    Args:
+        page: Playwright Page 对象
+        tab_buttons: {action: btn} 字典，该 Tab 下的所有按钮
+        ui_result: discover_all() 返回的探测结果
+        username: 用户名
+        tab_name: Tab 名称（用于日志）
+
+    Returns:
+        dict: {action: {"success": bool, "fill_data": dict, "selectors": dict, ...}}
+    """
+    validated = {}
+    form_filler = FormFiller(page)
+    framework = ui_result.get("framework", "element-ui")
+    buttons_by_action = tab_buttons
+
+    _DROPDOWN_TRIGGER_TEXTS = {"更多", "操作", "Actions", "More", "批量操作"}
+    _NON_BUSINESS_BUTTONS = {"GO", "Go", "go", "跳转", "跳转至"}
+
+    # 收集行级操作文本，用于去重批量操作
+    _row_action_texts = {
+        btn.get("text", "") for btn in buttons_by_action.values()
+        if btn.get("location") in ("row_action", "dropdown")
+        and btn.get("text") not in _DROPDOWN_TRIGGER_TEXTS
+    }
+    _BATCH_PREFIXES = ["批量", "batch", "bulk"]
+    _DESTROY_KEYWORDS = ["删除", "移除", "delete", "remove", "清空", "clear"]
+
+    # 自动推断 query 操作：如果没有 query 按钮但探测到搜索输入框
+    if "query" not in buttons_by_action and ui_result.get("search_inputs"):
+        search_input = ui_result["search_inputs"][0]
+        LOG.info(f"  自动推断 query 操作: 使用搜索输入框 '{search_input.get('placeholder', '')}'")
+        buttons_by_action["query"] = {
+            "text": f"搜索:{search_input.get('placeholder', '输入框')}",
+            "action": "query",
+            "tag": "INPUT",
+            "location": "toolbar",
+            "is_search_input": True,
+            "search_input": search_input,
+        }
+
+    # 表单字段（从探测结果获取）
+    form_fields = ui_result.get("form_fields", [])
+
+    # 记录创建的数据标识（供后续操作复用）
+    created_marker = None
+
+    # 动态确定操作顺序
+    _create_action, _delete_actions = _find_create_delete_actions(buttons_by_action)
+    _query_action = "query" if "query" in buttons_by_action else None
+
+    # marker fallback: 无 create 操作但表格有数据时，从第一行提取标识
+    _pre_marker = None
+    if not _create_action:
+        try:
+            _pre_marker = await page.evaluate("""() => {
+                const rows = document.querySelectorAll(
+                    '.el-table__body-wrapper .el-table__row');
+                if (rows.length === 0) return null;
+                const cells = rows[0].querySelectorAll('.cell');
+                for (const cell of cells) {
+                    const text = cell.textContent.trim();
+                    if (!text || text.length < 2 || text.length > 50) continue;
+                    if (/^\\d+$/.test(text)) continue;
+                    if (cell.querySelector('.el-checkbox, .el-icon, i[class*="icon"]')) continue;
+                    return text;
+                }
+                return null;
+            }""")
+            if _pre_marker:
+                created_marker = _pre_marker
+                LOG.info(f"  无 create 操作，从表格首行提取 marker: '{_pre_marker}'")
+        except Exception as e:
+            LOG.debug(f"  marker fallback 失败: {e}")
+
+    ordered_actions = []
+    if _create_action:
+        ordered_actions.append(_create_action)
+    if _query_action and _query_action != _create_action:
+        ordered_actions.append(_query_action)
+    for action in buttons_by_action:
+        if action != _create_action and action != _query_action and action not in _delete_actions:
+            ordered_actions.append(action)
+    ordered_actions.extend(_delete_actions)
+
+    # 记录每个 action 的语义角色
+    action_roles = {}
+    for action in buttons_by_action:
+        btn = buttons_by_action[action]
+        action_roles[action] = _infer_action_role(action, btn, delete_actions=_delete_actions)
+
+    tab_prefix = f"[{tab_name}] " if tab_name else ""
+    LOG.debug(f"{tab_prefix}操作分发: { {a: action_roles[a] for a in ordered_actions} }")
+
+    for action in ordered_actions:
+        btn = buttons_by_action.get(action)
+        if not btn:
+            LOG.debug(f"{tab_prefix}跳过 {action}: 未找到对应按钮")
+            continue
+
+        btn_text = btn.get("text", "")
+        btn_location = btn.get("location", "toolbar")
+        role = action_roles.get(action, "generic")
+        LOG.info(f"{tab_prefix}验证操作: {action} (按钮: {btn_text}, 角色: {role})")
+
+        # 基于角色分发到对应验证函数
+        if role == "create":
+            result = await _error_driven_retry(
+                page, _do_create, {
+                    "btn": btn, "fields": form_fields, "username": username,
+                    "form_filler": form_filler, "framework": framework,
+                }
+            )
+            if result and result.get("success"):
+                created_marker = result.get("marker")
+                validated[action] = result
+            else:
+                fallback = await _extract_fallback_marker(page)
+                if fallback:
+                    created_marker = fallback
+                    LOG.info(f"{tab_prefix}create 失败，使用 fallback marker: {fallback}")
+                if result:
+                    validated[action] = result
+
+        elif role == "query":
+            if btn.get("is_search_input"):
+                result = await _do_query_via_search_input(page, btn, marker=created_marker)
+                if result and result.get("success"):
+                    validated[action] = result
+            else:
+                result = await _error_driven_retry(
+                    page, _do_query, {"btn": btn, "marker": created_marker}
+                )
+                if result and result.get("success"):
+                    validated[action] = result
+
+        elif role == "detail":
+            result = await _error_driven_retry(
+                page, _do_detail, {
+                    "btn": btn, "marker": created_marker,
+                }
+            )
+            if result and result.get("success"):
+                validated[action] = result
+
+        elif role == "update":
+            if btn_location in ("row_action", "dropdown"):
+                if not created_marker:
+                    LOG.warning(f"{tab_prefix}{action} 跳过: create 失败且无可用 marker")
+                    validated[action] = skipped("create 失败且无可用 marker")
+                else:
+                    result = await _error_driven_retry(
+                        page, _do_edit, {
+                            "btn": btn, "marker": created_marker,
+                            "form_filler": form_filler, "framework": framework,
+                        }
+                    )
+                    if result and result.get("success"):
+                        validated[action] = result
+                    elif result:
+                        validated[action] = result
+            else:
+                result = await _error_driven_retry(
+                    page, _do_generic_operation, {
+                        "btn": btn, "action": action, "marker": created_marker,
+                        "form_filler": form_filler,
+                    }
+                )
+                if result and result.get("success"):
+                    validated[action] = result
+                elif result:
+                    validated[action] = result
+
+        elif role == "delete":
+            if btn_location == "row_action":
+                if not created_marker:
+                    LOG.warning(f"{tab_prefix}{action} 跳过: create 失败且无可用 marker")
+                    validated[action] = skipped("create 失败且无可用 marker")
+                else:
+                    result = await _error_driven_retry(
+                        page, _do_delete, {
+                            "btn": btn, "marker": created_marker,
+                        }
+                    )
+                    if result and result.get("success"):
+                        validated[action] = result
+                        created_marker = None
+                    elif result:
+                        validated[action] = result
+            else:
+                if btn_location == "toolbar" and created_marker:
+                    selected = await _ensure_row_selected(page, created_marker)
+                    if selected:
+                        LOG.debug(f"{tab_prefix}已勾选表格行供批量删除使用")
+
+                result = await _error_driven_retry(
+                    page, _do_generic_operation, {
+                        "btn": btn, "action": action, "marker": created_marker,
+                        "form_filler": form_filler,
+                    }
+                )
+                if result and result.get("success"):
+                    validated[action] = result
+                    created_marker = None
+                elif result:
+                    validated[action] = result
+
+        else:
+            # generic 角色
+            if btn_location == "toolbar" and created_marker:
+                selected = await _ensure_row_selected(page, created_marker)
+                if selected:
+                    LOG.debug(f"{tab_prefix}已勾选表格行供 toolbar 操作使用")
+
+            result = await _error_driven_retry(
+                page, _do_generic_operation, {
+                    "btn": btn, "action": action, "marker": created_marker,
+                    "form_filler": form_filler,
+                }
+            )
+            if result and result.get("success"):
+                validated[action] = result
+            elif result:
+                validated[action] = result
+
+        # 操作后确保回到列表页
+        try:
+            await _ensure_on_list_page(page)
+        except Exception as e:
+            LOG.error(f"{tab_prefix}_ensure_on_list_page 异常: {e}")
+            if "has been closed" in str(e):
+                LOG.error(f"{tab_prefix}浏览器已关闭，停止后续操作验证")
+                break
+
+    return validated
+
+
 async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
     """按动态顺序逐一验证按钮的业务闭环。
 
+    支持多 Tab 页面：检测到多个 tab 时，逐一切换 tab 并独立验证每个 tab 的 CRUD 操作。
     操作顺序：create 优先（创建测试数据），delete 最后（清理），其他操作按发现顺序。
     每个按钮执行完整流程：点击 → 填表(如适用) → 提交 → 验证成功。
     验证失败的按钮进入错误驱动重试循环。
@@ -149,40 +395,35 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
     # Stage 1 之前没有注入，导致 __captured_messages 始终为空
     await _install_message_capture(page)
 
-    validated = {}
-    form_filler = FormFiller(page)
-    framework = ui_result.get("framework", "element-ui")
-
-    # 收集所有按钮，按 action 分组（包括 dropdowns）
+    # 收集所有按钮（包括 dropdowns）
     all_buttons = (
         ui_result.get("toolbar_buttons", [])
         + ui_result.get("row_actions", [])
-        + ui_result.get("dropdowns", [])  # ← 补上 dropdowns 验证缺口
+        + ui_result.get("dropdowns", [])
     )
-    buttons_by_action = {}
+
     _DROPDOWN_TRIGGER_TEXTS = {"更多", "操作", "Actions", "More", "批量操作"}
-    _NON_BUSINESS_BUTTONS = {"GO", "Go", "go", "跳转", "跳转至"}  # 分页跳转等非业务按钮
+    _NON_BUSINESS_BUTTONS = {"GO", "Go", "go", "跳转", "跳转至"}
+    _DESTROY_KEYWORDS = ["删除", "移除", "delete", "remove", "清空", "clear"]
+    _NAVIGATION_CLASS_KEYWORDS = {"breadcrumb", "pagination"}
+    _BATCH_PREFIXES = ["批量", "batch", "bulk"]
 
     # 收集行级操作文本，用于去重批量操作
     _row_action_texts = {
         btn.get("text", "") for btn in all_buttons
         if btn.get("location") in ("row_action", "dropdown")
-        and btn.get("text") not in _DROPDOWN_TRIGGER_TEXTS  # 排除下拉触发器
+        and btn.get("text") not in _DROPDOWN_TRIGGER_TEXTS
     }
-    _BATCH_PREFIXES = ["批量", "batch", "bulk"]
-    _DESTROY_KEYWORDS = ["删除", "移除", "delete", "remove", "清空", "clear"]
-
-    # 检查是否有行级删除操作（用于语义级去重）
     has_row_destroy = any(
         any(kw in ra_text.lower() for kw in _DESTROY_KEYWORDS)
         for ra_text in _row_action_texts
     )
 
-    # 非业务元素的 className 关键词（面包屑、分页等 DOM 噪音）
-    _NAVIGATION_CLASS_KEYWORDS = {"breadcrumb", "pagination"}
+    # 按 Tab 分组按钮，过滤非业务按钮
+    buttons_by_tab = {}  # {tab_name: {action: btn}}
 
     for btn in all_buttons:
-        # 跳过下拉菜单触发器（如"更多"），它们只是展开菜单，不是实际操作
+        # 跳过下拉菜单触发器
         if btn.get("text") in _DROPDOWN_TRIGGER_TEXTS and btn.get("tag") != "DROPDOWN_ITEM":
             continue
 
@@ -196,7 +437,7 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
             LOG.debug(f"  跳过非业务元素: '{btn.get('text', '')}' (cls={btn_cls[:40]})")
             continue
 
-        # 跳过导航跳转按钮（"前往xxxx"类按钮是页面跳转，不是业务操作）
+        # 跳过导航跳转按钮
         btn_text_val = btn.get("text", "")
         if any(kw in btn_text_val for kw in ("前往", "跳转至")):
             LOG.info(f"  跳过导航按钮: '{btn_text_val}'")
@@ -222,247 +463,79 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
             if skip:
                 continue
 
-        # 使用按钮文本作为 action（不再调用 _match_crud）
+        # 使用按钮文本作为 action
         action = btn.get("action", "") or btn.get("text", "")
-        if action:
-            existing = buttons_by_action.get(action)
-            # 优先选择 BUTTON 元素，避免被 DIV 包装器覆盖
-            # 扫描顺序可能先遇到 DIV.btn-group-left，后遇到真正的 BUTTON.el-button--primary
-            if not existing or (existing.get("tag") != "BUTTON" and btn.get("tag") == "BUTTON"):
-                buttons_by_action[action] = btn
-
-    # 自动推断 query 操作：如果没有 query 按钮但探测到搜索输入框
-    if "query" not in buttons_by_action and ui_result.get("search_inputs"):
-        search_input = ui_result["search_inputs"][0]  # 使用得分最高的搜索框
-        LOG.info(f"  自动推断 query 操作: 使用搜索输入框 '{search_input.get('placeholder', '')}'")
-        # 创建合成的 query 按钮记录
-        buttons_by_action["query"] = {
-            "text": f"搜索:{search_input.get('placeholder', '输入框')}",
-            "action": "query",
-            "tag": "INPUT",
-            "location": "toolbar",
-            "is_search_input": True,
-            "search_input": search_input,
-        }
-
-    # 表单字段（从探测结果获取）
-    form_fields = ui_result.get("form_fields", [])
-
-    # 记录创建的数据标识（供后续操作复用）
-    created_marker = None
-
-    # 动态确定操作顺序：
-    # 结构性判断哪些操作需要先有数据（编辑/删除类需 marker），哪些不需要
-    # create 优先 → query 紧随其后（验证搜索功能）→ 其他操作按发现顺序 → delete 最后
-    _create_action, _delete_actions = _find_create_delete_actions(buttons_by_action)
-    _query_action = "query" if "query" in buttons_by_action else None
-
-    # marker fallback: 无 create 操作但表格有数据时，从第一行提取标识供 row_action 使用
-    _pre_marker = None
-    if not _create_action:
-        try:
-            _pre_marker = await page.evaluate("""() => {
-                // 从主表格（非 fixed 列）第一行提取第一个有意义的文本
-                const rows = document.querySelectorAll(
-                    '.el-table__body-wrapper .el-table__row');
-                if (rows.length === 0) return null;
-                const cells = rows[0].querySelectorAll('.cell');
-                for (const cell of cells) {
-                    const text = cell.textContent.trim();
-                    // 跳过空值、纯数字、过短/过长的文本
-                    if (!text || text.length < 2 || text.length > 50) continue;
-                    if (/^\\d+$/.test(text)) continue;
-                    // 跳过 checkbox/icon 列
-                    if (cell.querySelector('.el-checkbox, .el-icon, i[class*="icon"]')) continue;
-                    return text;
-                }
-                return null;
-            }""")
-            if _pre_marker:
-                created_marker = _pre_marker
-                LOG.info(f"  无 create 操作，从表格首行提取 marker: '{_pre_marker}'")
-        except Exception as e:
-            LOG.debug(f"  marker fallback 失败: {e}")
-
-    ordered_actions = []
-    if _create_action:
-        ordered_actions.append(_create_action)
-    if _query_action and _query_action != _create_action:
-        ordered_actions.append(_query_action)
-    for action in buttons_by_action:
-        if action != _create_action and action != _query_action and action not in _delete_actions:
-            ordered_actions.append(action)
-    ordered_actions.extend(_delete_actions)
-
-    # 记录每个 action 的语义角色（create/update/delete/generic/query）
-    action_roles = {}
-    for action in buttons_by_action:
-        btn = buttons_by_action[action]
-        action_roles[action] = _infer_action_role(action, btn, delete_actions=_delete_actions)
-
-    LOG.debug(f"  操作分发: { {a: action_roles[a] for a in ordered_actions} }")
-
-    for action in ordered_actions:
-        btn = buttons_by_action.get(action)
-        if not btn:
-            LOG.debug(f"  跳过 {action}: 未找到对应按钮")
+        if not action:
             continue
 
-        btn_text = btn.get("text", "")
-        btn_location = btn.get("location", "toolbar")
-        role = action_roles.get(action, "generic")
-        LOG.info(f"  验证操作: {action} (按钮: {btn_text}, 角色: {role})")
+        # 获取 tab 标记
+        tab_name = btn.get("tab", "")
 
-        # 基于角色分发到对应验证函数（不依赖硬编码操作名）
-        if role == "create":
-            result = await _error_driven_retry(
-                page, _do_create, {
-                    "btn": btn, "fields": form_fields, "username": username,
-                    "form_filler": form_filler, "framework": framework,
-                }
-            )
-            if result and result.get("success"):
-                created_marker = result.get("marker")
-                validated[action] = result
+        # 按 tab 分组
+        if tab_name not in buttons_by_tab:
+            buttons_by_tab[tab_name] = {}
+
+        # 优先选择 BUTTON 元素
+        existing = buttons_by_tab[tab_name].get(action)
+        if not existing or (existing.get("tag") != "BUTTON" and btn.get("tag") == "BUTTON"):
+            buttons_by_tab[tab_name][action] = btn
+
+    # 按 Tab 独立验证
+    validated = {}
+    tabs_info = page_structure.get("tabs", [])
+
+    for tab_name, tab_buttons in buttons_by_tab.items():
+        # 切换到该 Tab（如果有多个 Tab）
+        if tab_name and len(tabs_info) > 1:
+            tab_info = next((t for t in tabs_info if t.get("name") == tab_name), None)
+            if tab_info and tab_info.get("locator"):
+                LOG.info(f"  📑 切换到 Tab: {tab_name}")
+                try:
+                    await page.click(tab_info["locator"], timeout=5000)
+                    await page.wait_for_timeout(2000)
+                except Exception as e:
+                    LOG.warning(f"  ⚠️ Tab 切换失败: {e}")
+                    continue
+
+        # 在该 Tab 上下文中执行完整 CRUD 验证
+        tab_result = await _validate_single_tab_crud(
+            page, tab_buttons, ui_result, username, tab_name
+        )
+
+        # 合并结果（多 Tab 时加前缀）
+        for action, result in tab_result.items():
+            result["tab"] = tab_name
+            if tab_name and len(tabs_info) > 1:
+                # 多 Tab 页面：操作名加 tab 前缀（避免冲突）
+                validated[f"{tab_name}/{action}"] = result
             else:
-                # create 失败时从表格提取 fallback marker
-                fallback = await _extract_fallback_marker(page)
-                if fallback:
-                    created_marker = fallback
-                    LOG.info(f"  create 失败，使用 fallback marker: {fallback}")
-                if result:
-                    validated[action] = result
-
-        elif role == "query":
-            if btn.get("is_search_input"):
-                result = await _do_query_via_search_input(page, btn, marker=created_marker)
-                if result and result.get("success"):
-                    validated[action] = result
-            else:
-                result = await _error_driven_retry(
-                    page, _do_query, {"btn": btn, "marker": created_marker}
-                )
-                if result and result.get("success"):
-                    validated[action] = result
-
-        elif role == "detail":
-            result = await _error_driven_retry(
-                page, _do_detail, {
-                    "btn": btn, "marker": created_marker,
-                }
-            )
-            if result and result.get("success"):
+                # 单 Tab 页面：保持原名
                 validated[action] = result
-
-        elif role == "update":
-            # 只有 row_action / dropdown 的编辑走专有路径
-            # toolbar 的编辑操作走 generic
-            if btn_location in ("row_action", "dropdown"):
-                if not created_marker:
-                    LOG.warning(f"  {action} 跳过: create 失败且无可用 marker")
-                    validated[action] = skipped("create 失败且无可用 marker")
-                else:
-                    result = await _error_driven_retry(
-                        page, _do_edit, {
-                            "btn": btn, "marker": created_marker,
-                            "form_filler": form_filler, "framework": framework,
-                        }
-                    )
-                    if result and result.get("success"):
-                        validated[action] = result
-                    elif result:
-                        validated[action] = result
-            else:
-                # toolbar 编辑走 generic
-                result = await _error_driven_retry(
-                    page, _do_generic_operation, {
-                        "btn": btn, "action": action, "marker": created_marker,
-                        "form_filler": form_filler,
-                    }
-                )
-                if result and result.get("success"):
-                    validated[action] = result
-                elif result:
-                    validated[action] = result
-
-        elif role == "delete":
-            # 只有 row_action 的删除走专有路径（直接点击行内删除按钮）
-            # toolbar 和 dropdown 的删除走 generic（需要 checkbox 勾选或两步点击）
-            if btn_location == "row_action":
-                if not created_marker:
-                    LOG.warning(f"  {action} 跳过: create 失败且无可用 marker")
-                    validated[action] = skipped("create 失败且无可用 marker")
-                else:
-                    result = await _error_driven_retry(
-                        page, _do_delete, {
-                            "btn": btn, "marker": created_marker,
-                        }
-                    )
-                    if result and result.get("success"):
-                        validated[action] = result
-                        created_marker = None  # 已删除
-                    elif result:
-                        validated[action] = result
-            else:
-                # toolbar 批量删除或 dropdown 删除走 generic
-                if btn_location == "toolbar" and created_marker:
-                    selected = await _ensure_row_selected(page, created_marker)
-                    if selected:
-                        LOG.debug(f"    已勾选表格行供批量删除使用")
-
-                result = await _error_driven_retry(
-                    page, _do_generic_operation, {
-                        "btn": btn, "action": action, "marker": created_marker,
-                        "form_filler": form_filler,
-                    }
-                )
-                if result and result.get("success"):
-                    validated[action] = result
-                    created_marker = None  # 已删除
-                elif result:
-                    validated[action] = result
-
-        else:
-            # generic 角色：所有其他操作统一走通用路径
-            # 不写死操作名白名单，任何未被上述角色匹配的操作都走这里
-            if btn_location == "toolbar" and created_marker:
-                selected = await _ensure_row_selected(page, created_marker)
-                if selected:
-                    LOG.debug(f"    已勾选表格行供 toolbar 操作使用")
-
-            result = await _error_driven_retry(
-                page, _do_generic_operation, {
-                    "btn": btn, "action": action, "marker": created_marker,
-                    "form_filler": form_filler,
-                }
-            )
-            if result and result.get("success"):
-                validated[action] = result
-            elif result:
-                validated[action] = result
-
-        # 操作后确保回到列表页
-        try:
-            await _ensure_on_list_page(page)
-        except Exception as e:
-            LOG.error(f"    _ensure_on_list_page 异常: {e}")
-            # 浏览器可能已关闭，停止后续操作验证
-            if "has been closed" in str(e):
-                LOG.error(f"    浏览器已关闭，停止后续操作验证")
-                break
 
     # 判断是否有关键操作失败（create-like 和 delete-like 角色）
-    # 不写死具体操作名，检查是否有任一 create/delete 角色的操作成功验证
+    # 需要从 buttons_by_tab 重建 action_roles
+    all_buttons_flat = {}
+    for tab_buttons in buttons_by_tab.values():
+        all_buttons_flat.update(tab_buttons)
+
+    action_roles = {}
+    for action, btn in all_buttons_flat.items():
+        _create_action, _delete_actions = _find_create_delete_actions(all_buttons_flat)
+        action_roles[action] = _infer_action_role(action, btn, delete_actions=_delete_actions)
+
     has_create_role = any(r == "create" for r in action_roles.values())
     has_delete_role = any(r == "delete" for r in action_roles.values())
 
+    # 检查 validated 中的 key（可能带 tab 前缀）
     create_verified = any(
-        action_roles.get(a) == "create" and validated.get(a, {}).get("success")
-        for a in validated
+        validated.get(k, {}).get("success")
+        for k in validated
+        if action_roles.get(k.split("/")[-1]) == "create"
     )
     delete_verified = any(
-        action_roles.get(a) == "delete" and validated.get(a, {}).get("success")
-        for a in validated
+        validated.get(k, {}).get("success")
+        for k in validated
+        if action_roles.get(k.split("/")[-1]) == "delete"
     )
 
     failed_critical = []
@@ -473,14 +546,13 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
 
     if failed_critical:
         LOG.error(f"  Stage 1 关键操作验证失败: {failed_critical}")
-        # 即使有关键操作失败，也返回已验证的操作（用于 Stage 2 回放）
-        # 失败的操作会标记 detection_status="failed"，builder.py 生成完整步骤
-        # 这样 Stage 2 可以完整回放并捕获 API，不会退化为 fallback 模式
         LOG.info(f"  返回 {len(validated)} 个已验证操作（含失败操作）供 Stage 2 使用")
         return validated
 
-    LOG.info(f"  Stage 1 验证完成: {len(validated)}/{len(buttons_by_action)} 个操作通过")
+    LOG.info(f"  Stage 1 验证完成: {len(validated)} 个操作通过")
     return validated
+
+
 
 
 # ============================================================
