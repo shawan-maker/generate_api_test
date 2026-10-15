@@ -158,7 +158,7 @@ async def _prewarm_table_data(page, form_fields: list, toolbar_buttons: list,
         if multi_step_fields:
             LOG.info(f"    预热: 填充 {len(multi_step_fields)} 个多步字段 "
                      f"({[f.get('label') + '(' + f.get('kb_category', '') + ')' for f in multi_step_fields]})")
-            ms_filled, _, close_actions = await filler.fill_multi_step_fields(
+            ms_filled, ms_details, close_actions = await filler.fill_multi_step_fields(
                 multi_step_fields, framework
             )
             filled_count += ms_filled
@@ -170,6 +170,29 @@ async def _prewarm_table_data(page, form_fields: list, toolbar_buttons: list,
                     await page.wait_for_timeout(200)
                 except Exception:
                     pass
+
+            # ✅ P6: 检查必填多步字段是否填充成功
+            required_failed = []
+            for detail in ms_details:
+                label = detail.get("label", "")
+                # 查找对应的字段定义，检查是否必填
+                field_def = next((f for f in multi_step_fields if f.get("label") == label), None)
+                is_required = field_def and field_def.get("required", False)
+                # 检查是否填充成功（is_editable 或 option_text）
+                is_success = detail.get("is_editable", False) or detail.get("option_text", "")
+                if is_required and not is_success:
+                    required_failed.append(label)
+
+            # 也检查未被 fill_multi_step_fields 处理的必填字段
+            handled_labels = {d.get("label") for d in ms_details}
+            for f in multi_step_fields:
+                if f.get("label") not in handled_labels and f.get("required", False):
+                    required_failed.append(f.get("label"))
+
+            if required_failed:
+                LOG.warning(f"    预热: 必填多步字段填充失败: {required_failed}，跳过提交")
+                await _navigate_back_if_needed()
+                return result
 
         if filled_count == 0 and form_fields:
             LOG.warning(f"    预热: 表单填充失败: 0 个字段被填充")

@@ -1034,7 +1034,7 @@ el-select IP地址/网段(CIDR): selector 展开成功
 
 | 问题 | 日志证据 | 修复方案 | 优先级 |
 |------|---------|---------|--------|
-| IP 填充非法值 | D3-ip 显示 4/8 个 input，当前填充文本 | P1: IP 多段输入 | **P0（最高）** |
+| IP 填充非法值 | D3-ip 显示 4/8 个 input，当前填充文本 | P1: IP 多段输入 ✅ | **已完成** |
 | Radio 结构非标准 | D1-radio 显示 radio 不在 el-radio-group 内 | P4a: allInputs 过滤 radio | **P0** |
 | 多步字段未填充 | 日志显示 3/4 el-select 填充成功 | P5: el-select 预热填充 ✅ | **已完成** |
 | 添加按钮未激活 | D2-addBtn 显示按钮不可见 | P2: 标签多条目（依赖 P1） | P1 |
@@ -1042,15 +1042,692 @@ el-select IP地址/网段(CIDR): selector 展开成功
 
 ---
 
-## 八、总结
+### 7.5 P1 实施完成验证（2026-10-14）
 
-| 方案 | 工作量 | 风险 | 确定性 | 优先级 |
-|------|--------|------|--------|--------|
-| P5: el-select 预热 | 20 行 | 极低 | 95% | Phase 1 |
-| P4a: radio 误分类 | 5 行 | 低 | 60%（需调试确认） | Phase 1 |
-| P1: IP 多段输入 | 115 行 | 中 | 85% | Phase 2 |
-| P3: el-select 多选 | 48 行 | 中 | 85% | Phase 2 |
-| P2: 标签多条目 | 55 行 | 中 | 80% | Phase 3 |
-| P4b: 条件字段发现 | 70 行 | 中 | 75% | Phase 3 |
+#### 7.5.1 实施内容
 
-**建议**：Phase 1 先实施 + 添加全部调试日志 → 收集日志 → 确认 Phase 2/3 方案细节 → 逐步实施。
+**JS 扫描逻辑**（`form_filler.py:1106-1228`）：
+- 新增优先级 7.5：IP 输入组检测
+- 检测条件：4/8/16 个 input + 宽度相近 + label 含 IP 关键词
+- IPv4/IPv6 区分：优先看 label（"IPv6"/"v6"），其次看 maxlength/placeholder
+- 输出：`subSelectors`（每个 input 的 selector）、`inputCount`、`ipVersion`
+
+**IP 填充执行器**（`form_filler.py:2440-2613`）：
+- `_execute_ip_input_with_details`：分段填充 IP
+- `_parse_ip_segments`：解析 IP 值为各段
+- `_expand_ipv6`：展开 IPv6 缩写（:: → 完整 8 段）
+- 逐段填充：点击 → 清空 → 输入 → 触发 input/change 事件
+
+**填充规则**（`form_filler.py:1583-1701`）：
+- 新增 4 种 IP 规则：`ip_v4_pattern`、`ip_v4_range_pattern`、`ip_v6_pattern`、`ip_v6_range_pattern`
+- `generate_fill_rules`：根据 inputCount 和 ipVersion 选择规则
+- `apply_fill_rule`：生成具体 IP 值（如 `10.0.0.1`、`10.0.0.1-10.0.0.10`）
+
+**常量定义**（`const.py:140`）：
+- `MULTI_STEP_TYPES` 新增 `"ip-input"`
+
+**字段透传**（`form_filler.py:98-122`）：
+- `scan_form_fields_v2` 透传 `subSelectors`、`inputCount`、`ipVersion`
+
+**关键修复**：IP 输入组件检测中的 `el-input-number` 误判问题
+- 根因：IP 地址字段使用了 `el-input-number` 组件，导致被误判为数字输入
+- 修复：区分"单个数字输入"vs"多个数字输入组成的 IP 段"
+- 代码：`form_filler.py:1163-1165`
+
+#### 7.5.2 验证结果
+
+**测试通过**：
+```bash
+675 passed in 5.81s ✅
+```
+
+**黑白名单 Stage 1 验证**（2026-10-14 17:00-17:17）：
+
+```
+IP 填充: IP地址 = 10.0.0.1 (version=v4, inputs=4) ✅
+IP 填充: IP地址区间 = 10.0.0.1-10.0.0.10 (version=v4, inputs=8) ✅
+```
+
+**乐观策略验证**：
+```
+17:16:56 [base_executor]     ⚠️ 未检测到明确的成功/失败信号，标记为失败（可能是 toast 过快消失或后端无反馈）
+17:16:56 [crud_executor]     第 1 次失败: [no_success_signal] 提交后未检测到成功信号
+```
+
+**多步字段填充**：
+```
+✅ multi_step: IP地址 (ip-input)
+✅ multi_step: IP地址区间 (ip-input)
+⚠️ multi_step 失败: IP地址/掩码(黑白) (el-select)  # 级联依赖问题，与 P1 无关
+✅ multi_step: 授权类型(黑白) (el-select)
+⚠️ multi_step 失败: 授权主体(黑白) (el-select)    # 级联依赖问题，与 P1 无关
+✅ multi_step: IP地址/掩码 (el-select)
+✅ multi_step: 授权类型 (el-select)
+```
+
+**最终结果**：
+```
+Stage 1 关键操作验证失败: ['create-like']
+业务堆栈验证: 1/2 操作成功
+  - 新增: 失败 (no_success_signal)
+  - 查询: 成功
+```
+
+**结论**：
+- ✅ P1 IP 多段输入修复成功，IP 字段填充了合法值
+- ✅ 乐观策略移除成功，"无信号"不再误判为成功
+- ⚠️ 新增操作失败，根因是多步字段（授权主体）填充失败后仍提交表单
+
+---
+
+### 7.6 乐观策略移除（2026-10-14）
+
+#### 7.6.1 问题定义
+
+**用户明确的成功判定标准**：
+- 有 toast/dialog + "成功"描述 → 成功
+- 有 toast/dialog + "失败"描述 → 失败
+- "xx中"等待过期 → 可以标记为成功
+- **没有 toast/dialog → 不应该标记为成功**
+
+**原实现问题**：
+`base_executor.py:702-832` 的 `_verify_operation_success` 函数在检测不到任何信号时，走"乐观策略"直接返回 `True`：
+
+```python
+# 5. 乐观策略：没有检测到任何错误信号 → 视为成功
+LOG.info("    未检测到错误信号，判定为成功")
+return True
+```
+
+这导致 IP 字段填充非法值 `AT_test_965723` 后仍被标记为成功，严重干扰分析。
+
+#### 7.6.2 修复方案
+
+移除乐观策略，改为返回 `False`：
+
+```python
+# 5. 无信号：没有检测到明确的成功/失败信号 → 标记为失败
+# 避免"乐观策略"导致的误判（如填充非法值后仍标记为成功）
+LOG.warning("    ⚠️ 未检测到明确的成功/失败信号，标记为失败（可能是 toast 过快消失或后端无反馈）")
+return False
+```
+
+**修改文件**：
+- `core/discovery/operation_executor/base_executor.py:829-832`
+
+**下游影响**：
+- 9 个调用方（`crud_executor.py`、`navigation_executor.py`）已正确处理 `False`
+- 返回 `error_type="no_success_signal"`，明确表达"无信号"状态
+- `builder.py` 已正确处理 `success=False` + `error_type="no_success_signal"`
+
+#### 7.6.3 验证结果
+
+```
+17:16:56 [base_executor]     ⚠️ 未检测到明确的成功/失败信号，标记为失败（可能是 toast 过快消失或后端无反馈）
+17:16:56 [crud_executor]     第 1 次失败: [no_success_signal] 提交后未检测到成功信号
+```
+
+**结论**：乐观策略移除后，系统不再误判"无信号"为成功，准确识别出表单提交失败的问题。
+
+---
+
+## 八、下一阶段实施方案
+
+### 8.1 P6: 多步字段填充失败后仍提交表单（**P0 优先级**）
+
+#### 8.1.1 问题定义
+
+**日志证据**（2026-10-14 17:16:43-17:16:56）：
+
+```
+17:16:43 [form_filler]     ⚠️ multi_step 失败: IP地址/掩码(黑白) (el-select)
+17:16:48 [form_filler]     ⚠️ multi_step 失败: 授权主体(黑白) (el-select)
+17:16:48 [button_detector]     预热: 多步字段填充结果: 5/6
+17:16:48 [button_detector]     预热: 表单已提交 (策略: js)
+17:16:56 [base_executor]     ⚠️ 未检测到明确的成功/失败信号，标记为失败
+```
+
+**根因**：
+- `button_detector.py` 预热流程中，多步字段填充部分失败（5/6 成功）
+- **当前逻辑：无论成功失败，都继续提交表单**
+- 导致必填字段（授权主体）为空时仍提交，表单验证失败
+- 没有检测到明确的错误信号（toast 可能过快消失或后端无反馈）
+
+**影响**：
+- Stage 1 验证失败，错误地认为"新增操作无法执行"
+- 实际是预热阶段的多步字段填充失败导致的
+
+#### 8.1.2 修复方案
+
+**修改文件**：`core/discovery/ui_scanner/button_detector.py`
+
+**修改位置**：预热流程 Step 4.5（多步字段填充）之后
+
+**当前逻辑**（约 line 280-295）：
+
+```python
+# Step 4.5: 填充多步字段
+if multi_step_fields:
+    ms_filled, details, close_actions = await filler.fill_multi_step_fields(
+        multi_step_fields, framework
+    )
+    filled_count += ms_filled
+    LOG.info(f"    预热: 多步字段填充结果: {ms_filled}/{len(multi_step_fields)}")
+    # 关闭残留下拉框
+    for action in close_actions:
+        await page.keyboard.press("Escape")
+        await page.wait_for_timeout(200)
+
+# Step 5: 提交表单（无论多步字段是否全部成功）
+await filler.submit_form_v2()
+```
+
+**修复逻辑**：
+
+```python
+# Step 4.5: 填充多步字段
+if multi_step_fields:
+    ms_filled, details, close_actions = await filler.fill_multi_step_fields(
+        multi_step_fields, framework
+    )
+    filled_count += ms_filled
+    LOG.info(f"    预热: 多步字段填充结果: {ms_filled}/{len(multi_step_fields)}")
+    # 关闭残留下拉框
+    for action in close_actions:
+        await page.keyboard.press("Escape")
+        await page.wait_for_timeout(200)
+    
+    # ✅ 新增：检查必填字段是否都填充成功
+    required_failed = []
+    for d in details:
+        field_label = d.get("label", "")
+        is_required = any(
+            f.get("label") == field_label and f.get("required", False)
+            for f in multi_step_fields
+        )
+        if is_required and not d.get("is_editable", False):
+            required_failed.append(field_label)
+    
+    if required_failed:
+        LOG.warning(f"    预热: 必填多步字段填充失败: {required_failed}，跳过提交")
+        return result  # 跳过提交，返回预热结果
+```
+
+#### 8.1.3 同步修复 `_do_create`
+
+**修改文件**：`core/discovery/operation_executor/crud_executor.py`
+
+**修改位置**：`_do_create` 函数中多步字段填充之后（约 line 745-760）
+
+**当前逻辑**：
+
+```python
+# Step 6: 填充多步字段
+ms_filled, ms_details, close_actions = await filler.fill_multi_step_fields(
+    multi_step_field_details, framework
+)
+
+# Step 7: 提交表单（无论多步字段是否全部成功）
+submit_result = await filler.submit_form_v2()
+```
+
+**修复逻辑**：
+
+```python
+# Step 6: 填充多步字段
+ms_filled, ms_details, close_actions = await filler.fill_multi_step_fields(
+    multi_step_field_details, framework
+)
+
+# ✅ 新增：检查必填字段是否都填充成功
+required_failed = []
+for d in ms_details:
+    field_label = d.get("label", "")
+    is_required = any(
+        f.get("label") == field_label and f.get("required", False)
+        for f in multi_step_field_details
+    )
+    if is_required and not d.get("is_editable", False):
+        required_failed.append(field_label)
+
+if required_failed:
+    LOG.warning(f"    必填多步字段填充失败: {required_failed}，跳过提交")
+    return _build_create_error_result(
+        "multi_step_required_failed",
+        f"必填多步字段填充失败: {', '.join(required_failed)}",
+        trigger_text=btn_text,
+        trigger_locator_verified=btn_click_result.get("locator"),
+    )
+
+# Step 7: 提交表单
+submit_result = await filler.submit_form_v2()
+```
+
+#### 8.1.4 涉及文件清单
+
+| 文件 | 修改内容 | 行数估计 |
+|------|---------|---------|
+| `button_detector.py` | 预热流程检查必填字段 | ~15 |
+| `crud_executor.py` | `_do_create` 检查必填字段 | ~20 |
+
+#### 8.1.5 风险评估
+
+| 风险 | 等级 | 说明 | 缓解措施 |
+|------|------|------|---------|
+| 误判必填字段 | 低 | 依赖 `required` 标记准确性 | 检查 `form_fields` 中的 `required` 字段 |
+| 影响非必填字段 | 低 | 只检查 `required=True` 的字段 | 非必填字段失败不阻止提交 |
+| 预热阶段跳过提交 | 低 | 预热失败不影响 Stage 1 验证 | Stage 1 验证使用 `_do_create`，独立于预热 |
+
+#### 8.1.6 确定性评估
+
+- 必填字段检测：依赖 `form_fields` 中的 `required` 标记，**90% 确定**
+- 多步字段失败后的错误处理：**95% 确定**，已有 `_build_create_error_result` 函数
+- 预热阶段跳过提交：**95% 确定**，不影响 Stage 1 验证
+
+#### 8.1.7 验证计划
+
+```bash
+# 1. 单元测试
+python -m pytest tests/ -q
+
+# 2. 黑白名单 Stage 1（有头模式，观察日志）
+python -m core.discovery.run --project estack --module "黑白名单" \
+  --url "/estack/web/estack/user-center/user-manage/black-list" --stage 1
+
+# 验证点:
+# - [ ] 多步字段填充失败时，日志输出 "必填多步字段填充失败: [...]"
+# - [ ] 表单未提交（预热阶段）
+# - [ ] Stage 1 验证失败原因明确：multi_step_required_failed
+```
+
+---
+
+### 8.2 优先级更新
+
+| 方案 | 工作量 | 风险 | 确定性 | 优先级 | 状态 |
+|------|--------|------|--------|--------|------|
+| P5: el-select 预热 | 20 行 | 极低 | 95% | Phase 1 | ✅ 已完成 |
+| P1: IP 多段输入 | 115 行 | 中 | 85% | Phase 2 | ✅ 已完成 |
+| P6: 多步字段失败后仍提交 | 35 行 | 低 | 95% | **Phase 2.5** | ⏳ 待实施 |
+| P4a: radio 误分类 | 5 行 | 低 | 60% | Phase 1 | ⏳ 待实施 |
+| P3: el-select 多选 | 48 行 | 中 | 85% | Phase 2 | ⏳ 待实施 |
+| P2: 标签多条目 | 55 行 | 中 | 80% | Phase 3 | ⏳ 待实施 |
+| P4b: 条件字段发现 | 70 行 | 中 | 75% | Phase 3 | ⏳ 待实施 |
+| **Phase 1: 复合组件检测增强** | 50 行 | 中 | 90% | **立即实施** | ⏳ 待实施 |
+| **Phase 2: el-select 类型分类** | 80 行 | 高 | 70% | Phase 1 后 | ⏳ 待实施 |
+| **Phase 3: 泛化级联检测** | 30 行 | 低 | 85% | Phase 1 后 | ⏳ 待实施 |
+
+**建议**：
+1. **立即实施（P0 优先级）**：Phase 1 复合组件检测增强 → 解决子网掩码 + 授权主体问题
+2. **Phase 2.5（待实施）**：P6 多步字段失败后仍提交 → 修复预热阶段的表单提交逻辑
+3. **Phase 2（待实施）**：el-select 类型分类 → 区分单选/多选/穿梭框/树形选择
+4. **Phase 1（待实施）**：P4a radio 误分类 → 修复 radio 字段检测
+5. **Phase 3（待实施）**：P2 标签多条目、P4b 条件字段发现、Phase 3 泛化级联检测
+
+---
+
+## 九、总结
+
+**已完成**：
+- ✅ P5: el-select 预热填充（2026-10-09）
+- ✅ P1: IP 多段输入（2026-10-14）
+- ✅ 乐观策略移除（2026-10-14）
+- ✅ D5/D6: 复合组件 + 级联检测调试日志（2026-10-14）
+
+**待实施**：
+- ⏳ **Phase 1: 复合组件检测增强**（**P0 优先级**，解决子网掩码 + 授权主体问题）
+- ⏳ **Phase 2: el-select 类型分类**（单选/多选/穿梭框/树形选择）
+- ⏳ **Phase 3: 泛化级联检测**
+- ⏳ P6: 多步字段失败后仍提交
+- ⏳ P4a: radio 误分类修复
+- ⏳ P2: 标签多条目
+- ⏳ P4b: 条件字段发现
+
+**下一步**：实施 Phase 1，增强 2.1 优先级的复合组件检测逻辑（解决子网掩码和授权主体问题）
+
+---
+
+## 十、D5/D6 调试日志验证结论
+
+> 日期：2026-10-14
+> 状态：✅ 验证完成（D5/D6 调试日志已添加并运行 Stage 1）
+
+### 10.1 D5 — 复合组件结构验证
+
+#### 10.1.1 子网掩码字段（IP地址/网段）✅ 确认
+
+```
+[D5-composite] label='IP地址/网段' selectCount=1 independentInputs=4 totalInputs=5
+hasIpInLabel=True isIpMaskCandidate=True
+  input[0]: type=text width=55 inInputNumber=True
+  input[1]: type=text width=55 inInputNumber=True
+  input[2]: type=text width=55 inInputNumber=True
+  input[3]: type=text width=55 inInputNumber=True
+```
+
+**确认结构**：1 个 select（掩码选择框）+ 4 个 input（IP 段，都在 el-input-number 内）
+
+**检测条件命中**：`isIpMaskCandidate=True`，说明泛化检测逻辑可以识别这个模式
+
+**当前扫描结果**（11 个字段中的 5 个）：
+```
+字段[2] IP地址/网段(下拉) → el-select  ❌ 掩码选择框，验证失败"为空"
+字段[3] IP地址/网段      → input-generic  (IP 段 1)
+字段[4] IP地址/网段      → input-generic  (IP 段 2)
+字段[5] IP地址/网段      → input-generic  (IP 段 3)
+字段[6] IP地址/网段      → input-generic  (IP 段 4)
+```
+
+**问题根因**：优先级 2.1 的复合检测逻辑只是简单拆分为 select + inputs，没有识别 IP+掩码的语义关联
+
+#### 10.1.2 授权主体字段 ✅ 确认
+
+```
+[D5-composite] label='授权主体' selectCount=2 independentInputs=1 totalInputs=3
+  input[0]: type=text width=258 inInputNumber=False
+```
+
+**确认结构**：**2 个 select** + 1 个 input（width=258，不在 el-input-number 内）
+
+**关键发现**：
+- `selectCount=2`：同一个 form-item 内有 2 个 el-select
+- `independentInputs=1`：1 个独立 input（width=258）
+- 这个 input 很可能是第二个 select 内部的**搜索框**（`.el-select__input`），而不是独立字段
+
+**当前扫描结果**（11 个字段中的 3 个）：
+```
+字段[7]  授权主体(下拉) → el-select  ✅ 类型选择器，选择'组织'
+字段[8]  授权主体      → input-generic  (第二个 select 的搜索框) ❌ 误判
+字段[10] 授权主体      → el-select  (来自另一个 tab 的表单)
+```
+
+**问题根因**：优先级 2.1 使用 `fi.querySelector('.el-select')` 只找到**第一个 select**，第二个 select 的搜索框被误判为独立 input
+
+### 10.2 D6 — 级联检测验证
+
+修复后的 D6 逻辑（pre-scan → 等待 → post-scan）显示：
+
+```
+[D6-cascade] pre-scan: 11 个字段, 等待 2s 检测级联渲染 (trigger=授权主体(下拉), type=el-select)
+[D6-cascade] 无级联效果 (pre=11 post=11)
+```
+
+**所有 3 次级联检测都显示"无级联效果"**：
+1. 选择"授权主体(下拉)"后：pre=11 post=11
+2. 选择"IP地址/网段"后：pre=11 post=11
+3. 选择"授权主体"后：pre=11 post=11
+
+**关键结论**：**不存在级联渲染**！两个 select 始终存在于 DOM 中，不是条件渲染的。问题纯粹是**扫描检测错误**，不是级联填充问题。
+
+### 10.3 核心问题总结
+
+| 问题 | 本质 | 当前状态 |
+|------|------|---------|
+| 子网掩码字段 | 2.1 优先级没有识别 IP+掩码复合模式 | 已确认 `isIpMaskCandidate=True` |
+| 授权主体字段 | 2.1 优先级只找第一个 select，第二个 select 的搜索框被误判 | 已确认 `selectCount=2` |
+| 级联渲染 | 不存在！两个 select 始终在 DOM 中 | ✅ 已排除 |
+
+**下一步**：实施泛化方案，增强 2.1 优先级的复合组件检测逻辑
+
+---
+
+## 十一、泛化方案：复合组件检测 + el-select 类型分类
+
+> 日期：2026-10-14
+> 状态：待实施
+
+### 11.1 问题泛化
+
+**问题 1（子网掩码）的本质**：当一个 `form-item` 包含 select + 多个 input 时，当前 2.1 优先级只是粗暴地拆分为独立字段，丢失了组件间的语义关联。子网掩码只是这个通用问题的一个特例——通用问题是**复合组件模式识别缺失**。
+
+**问题 2（授权主体）的本质**：当一个 form-item 包含多个 select 时，当前 2.1 优先级只检测第一个 select，其他 select 的内部组件（如搜索框）被误判为独立字段。通用问题是**多 select 场景检测不完整**。
+
+**el-select 类型分类缺失**：当前所有 el-select 都标记为 `kb_category: 'el-select'`，没有区分单选/多选/穿梭框/树形选择等不同类型，导致填充策略无法精确匹配。
+
+### 11.2 方案一：JS 扫描侧 — 复合组件通用模式识别
+
+当前 2.1 只做"select + input → 拆分"。改为：**收集 form-item 内的完整组件清单**，按组件组合模式分发：
+
+```javascript
+// 2.1 通用复合组件检测
+const selects = Array.from(fi.querySelectorAll('.el-select'));
+const cascaders = Array.from(fi.querySelectorAll('.el-cascader'));
+const datePickers = Array.from(fi.querySelectorAll('[class*="date-picker"]'));
+
+// 过滤掉所有 select/cascader/date-picker 内部的 input（如搜索框）
+const allInputs = Array.from(fi.querySelectorAll('input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"])'))
+    .filter(inp => {
+        if (inp.readOnly || inp.offsetWidth === 0) return false;
+        // 排除所有复合组件内部的 input
+        return !selects.some(s => s.contains(inp))
+            && !cascaders.some(c => c.contains(inp))
+            && !datePickers.some(d => d.contains(inp));
+    });
+
+// 组件清单
+const componentInventory = {
+    selectCount: selects.length,
+    cascaderCount: cascaders.length,
+    datePickerCount: datePickers.length,
+    inputCount: allInputs.length,
+};
+
+// 模式匹配表（通用，可扩展）
+const pattern = matchCompositePattern(componentInventory, label);
+switch (pattern) {
+    case 'ip-with-mask':    // 1 select + 4/8/16 inputs + IP label
+        fields.push({ type: 'ip-input-with-mask', ... });
+        break;
+    case 'multi-select-composite':  // N selects + M inputs
+        // 逐个添加 select，排除内部搜索框
+        selects.forEach((selectEl, idx) => {
+            fields.push({ type: classifySelect(selectEl), ... });
+        });
+        break;
+    case 'single-select-input':  // 1 select + 1 input（原 2.1 行为）
+        fields.push({ type: 'select', kb_category: 'el-select', ... });
+        fields.push({ type: 'input', kb_category: 'input-generic', ... });
+        break;
+    ...
+}
+```
+
+**关键改进**：
+1. 使用 `querySelectorAll` 找所有 select，而非 `querySelector` 只找第一个
+2. 过滤掉所有 select/cascader/date-picker 内部的 input（如搜索框）
+3. 模式匹配表可扩展，新增模式只需加一行
+
+### 11.3 方案二：el-select 类型分类
+
+#### 11.3.1 扩展 kb_category 分类
+
+当前：所有 el-select 都标记为 `kb_category: 'el-select'`
+
+改为：根据 select 的实际特征分类
+
+| 当前 kb_category | 新 kb_category | 识别特征 | 填充策略 |
+|------------------|----------------|---------|---------|
+| `el-select` | `el-select-single` | 单选，无 `el-select--multiple` class | 选择第一个选项或默认值 |
+| `el-select` | `el-select-multiple` | 多选，有 `el-select--multiple` class 或 `.el-select__tags` 容器 | 选择多个选项，生成逗号分隔值 |
+| `el-select` | `el-transfer` | 穿梭框，有 `.el-transfer` 或左右面板结构 | 从左面板选择项移动到右面板 |
+| `el-select` | `el-tree-select` | 树形选择，有 `.el-tree` 或层级结构 | 展开树节点，选择叶子节点 |
+
+#### 11.3.2 JS 扫描侧分类逻辑
+
+```javascript
+function classifySelect(selectEl) {
+    // 1. 检查是否为穿梭框（el-transfer）
+    if (selectEl.classList.contains('el-transfer') ||
+        selectEl.querySelector('.el-transfer__panel')) {
+        return { kb_category: 'el-transfer', type: 'transfer' };
+    }
+    
+    // 2. 检查是否为树形选择（el-tree-select）
+    if (selectEl.classList.contains('el-tree-select') ||
+        selectEl.querySelector('.el-tree')) {
+        return { kb_category: 'el-tree-select', type: 'tree-select' };
+    }
+    
+    // 3. 检查是否为多选（el-select-multiple）
+    if (selectEl.classList.contains('el-select--multiple') ||
+        selectEl.querySelector('.el-select__tags')) {
+        return { kb_category: 'el-select-multiple', type: 'select-multiple' };
+    }
+    
+    // 4. 默认为单选（el-select-single）
+    return { kb_category: 'el-select-single', type: 'select-single' };
+}
+
+// 在 2.4 优先级中使用
+selects.forEach((selectEl, idx) => {
+    const classification = classifySelect(selectEl);
+    const labelSuffix = selects.length > 1 ? `(${idx + 1})` : '';
+    fields.push({
+        label: label + labelSuffix,
+        type: classification.type,
+        kb_category: classification.kb_category,
+        selector: _buildComponentSelector(fi, '.el-select', idx),
+        required,
+    });
+});
+```
+
+#### 11.3.3 Python 侧填充策略适配
+
+```python
+# fill_multi_step_fields 中
+if kb_cat == 'el-select-single':
+    # 单选：选择第一个选项或默认值
+    success, detail = await executor.execute_with_details(...)
+elif kb_cat == 'el-select-multiple':
+    # 多选：选择多个选项
+    success, detail = await executor.execute_with_details(...)
+elif kb_cat == 'el-transfer':
+    # 穿梭框：从左面板选择项移动到右面板
+    success, detail = await executor.execute_with_details(...)
+elif kb_cat == 'el-tree-select':
+    # 树形选择：展开树节点，选择叶子节点
+    success, detail = await executor.execute_with_details(...)
+```
+
+### 11.4 方案三：多 select 场景处理
+
+#### 11.4.1 检测 form-item 内的所有 select
+
+```javascript
+const selects = Array.from(fi.querySelectorAll('.el-select'));
+
+if (selects.length > 0) {
+    // 逐个分类并添加
+    selects.forEach((selectEl, idx) => {
+        const classification = classifySelect(selectEl);
+        
+        // 多个 select 时添加序号后缀
+        const labelSuffix = selects.length > 1 ? `(${idx + 1})` : '';
+        
+        fields.push({
+            label: label + labelSuffix,
+            type: classification.type,
+            kb_category: classification.kb_category,
+            selector: _buildComponentSelector(fi, '.el-select', idx),
+            required,
+        });
+    });
+    
+    // 检查是否有独立 input（排除所有 select 内部的搜索框）
+    const independentInputs = Array.from(fi.querySelectorAll('input:...'))
+        .filter(inp => !selects.some(s => s.contains(inp)) && ...);
+    
+    independentInputs.forEach(inp => {
+        fields.push({ type: 'input', kb_category: 'input-generic', ... });
+    });
+}
+```
+
+#### 11.4.2 授权主体字段处理
+
+```javascript
+// 授权主体：2 个 el-select
+[D5-composite] label='授权主体' selectCount=2 independentInputs=1 totalInputs=3
+
+// 改进后的扫描结果
+字段[7]  授权主体(1) → el-select-single  (类型选择器)
+字段[8]  授权主体(2) → el-select-single  (实体选择器)
+// 字段[8] 的搜索框被过滤，不再误判为独立 input
+```
+
+### 11.5 实施计划
+
+#### Phase 1：复合组件检测增强（P7 + P8）
+
+**目标**：解决子网掩码和授权主体问题
+
+**修改文件**：`core/discovery/replay/form_filler.py`
+
+**修改点**：
+1. 优先级 2.1：使用 `querySelectorAll` 找所有 select
+2. 优先级 2.1：过滤掉所有 select 内部的 input（搜索框）
+3. 优先级 2.1：添加 `matchCompositePattern` 模式匹配函数
+4. 优先级 2.1：新增 `ip-with-mask` 模式处理
+
+**验证**：重跑 Stage 1，确认子网掩码和授权主体字段正确识别
+
+#### Phase 2：el-select 类型分类（P9）
+
+**目标**：区分单选/多选/穿梭框/树形选择
+
+**修改文件**：
+- `core/discovery/replay/form_filler.py`（JS 扫描侧）
+- `core/discovery/replay/multi_step_executor.py`（Python 填充侧）
+
+**修改点**：
+1. JS 侧：添加 `classifySelect` 函数
+2. JS 侧：在 2.4 优先级中使用分类逻辑
+3. Python 侧：在 `fill_multi_step_fields` 中适配不同 kb_category
+4. `const.py`：更新 `MULTI_STEP_TYPES` 列表
+
+**验证**：
+- 单选：选择第一个选项
+- 多选：选择多个选项
+- 穿梭框：从左面板移动到右面板
+- 树形选择：展开并选择叶子节点
+
+#### Phase 3：泛化级联检测（P10）
+
+**目标**：统一处理 radio/select 的级联依赖
+
+**修改文件**：`core/discovery/replay/form_filler.py`
+
+**修改点**：
+1. 提取通用的 `_detect_cascade` 函数（复用 D6 逻辑）
+2. 在 `fill_multi_step_fields` 中对所有可交互组件调用级联检测
+3. 自动填充级联渲染出的新字段
+
+**验证**：确认级联字段自动填充
+
+### 11.6 优先级与依赖
+
+| 阶段 | 任务 | 优先级 | 复杂度 | 依赖 |
+|------|------|--------|--------|------|
+| Phase 1 | 复合组件检测增强 | P1 | 中 | 无 |
+| Phase 2 | el-select 类型分类 | P2 | 高 | Phase 1 |
+| Phase 3 | 泛化级联检测 | P3 | 低 | Phase 1 |
+
+**建议实施顺序**：
+1. **Phase 1**（立即实施）：解决子网掩码和授权主体问题
+2. **Phase 2**（后续实施）：完善 el-select 类型分类
+3. **Phase 3**（可选）：泛化级联检测
+
+### 11.7 总结
+
+**D5/D6 验证结论**：
+- ✅ 子网掩码字段：确认 `isIpMaskCandidate=True`，需要增强 2.1 检测逻辑
+- ✅ 授权主体字段：确认 `selectCount=2`，需要使用 `querySelectorAll` 找所有 select
+- ✅ 级联渲染：不存在！问题纯粹是扫描检测错误
+
+**泛化方案**：
+- 方案一：复合组件通用模式识别（解决子网掩码问题）
+- 方案二：el-select 类型分类（完善选择框处理）
+- 方案三：多 select 场景处理（解决授权主体问题）
+
+**下一步**：实施 Phase 1，增强 2.1 优先级的复合组件检测逻辑

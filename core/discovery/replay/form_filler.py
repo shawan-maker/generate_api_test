@@ -57,6 +57,21 @@ def _log_scan_debug(raw_result: dict):
                  f"hasTagsContainer={d.get('hasTagsContainer')} "
                  f"currentTagCount={d.get('currentTagCount')}")
 
+    # D5: 复合组件结构
+    for d in raw_result.get("_debug_composite", []):
+        LOG.info(f"    [D5-composite] label='{d.get('label')}' "
+                 f"selectCount={d.get('selectCount')} "
+                 f"independentInputs={d.get('independentInputCount')} "
+                 f"totalInputs={d.get('totalInputCount')} "
+                 f"hasIpInLabel={d.get('hasIpInLabel')} "
+                 f"isIpMaskCandidate={d.get('isIpMaskCandidate')}")
+        for sub in d.get("inputDetails", []):
+            LOG.info(f"    [D5-composite]   input[{sub.get('idx')}]: "
+                     f"type={sub.get('type')} width={sub.get('width')} "
+                     f"placeholder='{sub.get('placeholder')}' "
+                     f"inInputNumber={sub.get('inInputNumber')} "
+                     f"maxLength={sub.get('maxLength')}")
+
 
 class FormFiller:
     """表单填充封装类，供 capture_apis 调用"""
@@ -123,6 +138,83 @@ class FormFiller:
                 entry["ipVersion"] = f["ipVersion"]
             result.append(entry)
         return result
+
+    async def _detect_cascade_debug(self, trigger_label: str, trigger_type: str,
+                                     pre_fields: List[Dict]):
+        """[D6] 级联检测调试：pre-scan → 等待 → post-scan，对比前后字段差异。
+
+        关键：pre-scan 和 post-scan 都使用 scan_form_fields()，确保 selector 格式一致。
+        pre_fields 参数仅用于日志参考（显示当前已知的多步字段），不作为比较基准。
+        """
+        # pre-scan：填充后的当前状态（与 post-scan 用同一函数，selector 格式一致）
+        try:
+            pre_scan = await scan_form_fields(self.page)
+            pre_raw = pre_scan.get('fields', []) if isinstance(pre_scan, dict) else pre_scan
+        except Exception as e:
+            LOG.warning(f"    [D6-cascade] pre-scan 失败: {e}")
+            return
+
+        LOG.info(f"    [D6-cascade] pre-scan: {len(pre_raw)} 个字段, 等待 2s 检测级联渲染 "
+                 f"(trigger={trigger_label}, type={trigger_type})")
+        await self.page.wait_for_timeout(2000)
+
+        try:
+            post_scan = await scan_form_fields(self.page)
+            post_raw = post_scan.get('fields', []) if isinstance(post_scan, dict) else post_scan
+        except Exception as e:
+            LOG.warning(f"    [D6-cascade] post-scan 失败: {e}")
+            return
+
+        # 用 selector 作为字段唯一标识（两次扫描格式一致）
+        pre_selectors = {f.get('selector') for f in pre_raw if f.get('selector')}
+        post_selectors = {f.get('selector') for f in post_raw if f.get('selector')}
+
+        # 1. 检测全新 selector（级联渲染出的新字段）
+        new_selectors = post_selectors - pre_selectors
+        if new_selectors:
+            new_field_list = [f for f in post_raw if f.get('selector') in new_selectors]
+            for nf in new_field_list:
+                LOG.warning(f"    [D6-cascade] 🆕 新字段: label='{nf.get('label')}' "
+                           f"kb_category={nf.get('kb_category')} selector={nf.get('selector')}")
+
+        # 2. 检测消失的 selector（级联隐藏了字段）
+        gone_selectors = pre_selectors - post_selectors
+        if gone_selectors:
+            gone_list = [f for f in pre_raw if f.get('selector') in gone_selectors]
+            for gf in gone_list:
+                LOG.warning(f"    [D6-cascade] ❌ 消失: label='{gf.get('label')}' "
+                           f"kb_category={gf.get('kb_category')}")
+
+        # 3. 检测同 label 多字段（级联 select 等）
+        from collections import defaultdict
+        post_by_label = defaultdict(list)
+        for f in post_raw:
+            if f.get('selector'):
+                post_by_label[f.get('label')].append(f)
+
+        for lbl, fields_list in post_by_label.items():
+            if len(fields_list) > 1:
+                new_in_label = [f for f in fields_list if f.get('selector') in new_selectors]
+                if new_in_label:
+                    LOG.warning(f"    [D6-cascade] 🔗 同 label 多字段: label='{lbl}' "
+                               f"共 {len(fields_list)} 个, 新增 {len(new_in_label)} 个")
+                    for ni in new_in_label:
+                        LOG.warning(f"    [D6-cascade]   新增: kb_category={ni.get('kb_category')} "
+                                   f"selector={ni.get('selector')}")
+
+        # 4. 检测同 label el-select 多实例
+        same_label_selects = [f for f in post_raw
+                             if f.get('label') == trigger_label
+                             and f.get('kb_category') == 'el-select']
+        if len(same_label_selects) > 1:
+            LOG.warning(f"    [D6-cascade] 📋 同名 el-select: {trigger_label} "
+                       f"共 {len(same_label_selects)} 个")
+            for i, s in enumerate(same_label_selects):
+                LOG.warning(f"    [D6-cascade]   select[{i}]: selector={s.get('selector')} "
+                           f"required={s.get('required')}")
+
+        if not new_selectors and not gone_selectors:
+            LOG.info(f"    [D6-cascade] 无级联效果 (pre={len(pre_raw)} post={len(post_raw)})")
 
     async def fill_create_form(self, fields: List[Dict], username: str,
                                  fill_data: Dict[str, str] = None) -> Dict:
@@ -404,6 +496,10 @@ class FormFiller:
                             "field_label": label,
                             "action": "press_escape",
                         })
+
+                # ★ [D6] 级联检测：el-select/radio 填充后重新扫描，检测新字段
+                if kb_cat in ("el-select", "radio"):
+                    await self._detect_cascade_debug(label, kb_cat, fields)
             elif detail.get("skipped_reason") == "no_options":
                 # 记录 no_options 字段，第二轮重试
                 no_options_fields.append({
@@ -995,6 +1091,7 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
         const _debug_multiInput = [];
         const _debug_addBtn = [];
         const _debug_multiSelect = [];
+        const _debug_composite = [];
 
         // 以 form-item 为单位遍历（支持 scope 限定）
         const scope = {_scope_js};
@@ -1022,16 +1119,104 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
 
             // 2. 按优先级检测组件类型
 
-            // 2.1 复合组件检测：select + 独立 input（如手机号带国家编码）
-            const selectEl = fi.querySelector('{select_container}');
+            // 2.1 复合组件检测（增强版）：find ALL selects, filter internal inputs
+            const selects = Array.from(fi.querySelectorAll('{select_container}'));
+            const selectEl = selects[0] || null;  // 兼容 2.4 单 select 路径
             const independentInputs = Array.from(fi.querySelectorAll('input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"])'))
-                .filter(inp => !inp.readOnly && !selectEl?.contains(inp) && inp.offsetWidth > 0);
+                .filter(inp => !inp.readOnly && inp.offsetWidth > 0
+                    && !selects.some(s => s.contains(inp)));
 
-            if (selectEl && independentInputs.length > 0) {{
-                // 复合组件：先添加 select，再添加独立 input
-                const selectIdx = fields.length;
-                fields.push({{ label: label + '(下拉)', type: 'select', kb_category: 'el-select',
-                             selector: _buildComponentSelector(fi, '{select_container}', selectIdx), required }});
+            if (selects.length > 0 && independentInputs.length > 0) {{
+                // [D5] 复合组件结构诊断
+                const allRawInputs = Array.from(fi.querySelectorAll('input:not([type="hidden"])'))
+                    .filter(inp => inp.offsetWidth > 0);
+                const labelLower = label.toLowerCase();
+                _debug_composite.push({{
+                    label: label,
+                    selectCount: selects.length,
+                    independentInputCount: independentInputs.length,
+                    totalInputCount: allRawInputs.length,
+                    hasIpInLabel: /ip|ipv4|ipv6|地址|网段/i.test(label),
+                    isIpMaskCandidate: (independentInputs.length === 4 || independentInputs.length === 8 || independentInputs.length === 16),
+                    inputDetails: independentInputs.map((inp, idx) => ({{
+                        idx: idx,
+                        type: inp.type,
+                        width: inp.offsetWidth,
+                        placeholder: inp.placeholder,
+                        readOnly: inp.readOnly,
+                        inInputNumber: !!inp.closest('.el-input-number'),
+                        maxLength: inp.getAttribute('maxlength') || '',
+                    }})),
+                }});
+
+                // ★ 模式匹配：IP+掩码复合组件
+                const hasIpInLabel = /ip|ipv4|ipv6|地址|网段/i.test(label);
+                const isIpMaskCandidate = (independentInputs.length === 4 || independentInputs.length === 8 || independentInputs.length === 16)
+                    && hasIpInLabel && selects.length === 1;
+
+                if (isIpMaskCandidate) {{
+                    // IP+掩码：4/8/16 个 IP 段 + 1 个掩码选择框
+                    const widths = independentInputs.map(inp => inp.offsetWidth);
+                    const maxW = Math.max(...widths);
+                    const minW = Math.min(...widths);
+                    const widthRatio = minW > 0 ? (maxW / minW) : 999;
+
+                    if (widthRatio < 1.5) {{
+                        const ipVersion = /ipv6|v6/i.test(label) ? 'v6' : 'v4';
+                        const subSelectors = independentInputs.map(inp => _buildSelector(inp));
+
+                        fields.push({{
+                            label, type: 'ip-input', kb_category: 'ip-input',
+                            selector: _buildComponentSelector(fi, '{form_item}', fields.length),
+                            subSelectors: subSelectors,
+                            inputCount: independentInputs.length,
+                            ipVersion: ipVersion,
+                            required,
+                        }});
+                        fields.push({{
+                            label: label + '(掩码)', type: 'select', kb_category: 'el-select',
+                            selector: _buildSelector(selects[0]),
+                            required,
+                        }});
+                        return;
+                    }}
+                }}
+
+                // 通用模式：逐个输出 select，再输出独立 input
+                selects.forEach((sel, idx) => {{
+                    const isMulti = sel.classList.contains('el-select--multiple')
+                        || sel.querySelector('.el-select__tags') !== null
+                        || sel.querySelector('input[multiple]') !== null;
+                    const labelSuffix = selects.length > 1 ? '(' + (idx + 1) + ')' : '(下拉)';
+
+                    // 为每个 select 生成唯一 CSS 路径
+                    const selPath = [];
+                    let cur = sel;
+                    while (cur && cur.nodeType === Node.ELEMENT_NODE) {{
+                        let s = cur.nodeName.toLowerCase();
+                        if (cur.id) {{ s = '#' + cur.id; selPath.unshift(s); break; }}
+                        let sib = cur; let nth = 1;
+                        while (sib.previousElementSibling) {{
+                            sib = sib.previousElementSibling;
+                            if (sib.nodeName === cur.nodeName) nth++;
+                        }}
+                        if (nth > 1 || cur.nextElementSibling) s += ':nth-of-type(' + nth + ')';
+                        selPath.unshift(s);
+                        cur = cur.parentElement;
+                    }}
+                    const selSelector = selPath.join(' > ');
+
+                    fields.push({{ label: label + labelSuffix, type: 'select', kb_category: 'el-select',
+                                 selector: selSelector, required }});
+                    if (isMulti) {{
+                        _debug_multiSelect.push({{
+                            label: label + labelSuffix,
+                            hasMultipleClass: sel.classList.contains('el-select--multiple'),
+                            hasTagsContainer: sel.querySelector('.el-select__tags') !== null,
+                            currentTagCount: (sel.querySelectorAll('.el-tag') || []).length,
+                        }});
+                    }}
+                }});
                 independentInputs.forEach(inp => {{
                     fields.push({{ label, type: 'input', kb_category: 'input-generic',
                                  selector: _buildSelector(inp),
@@ -1048,22 +1233,28 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                 fields.push({{ label, type: 'date-picker', kb_category: 'date-picker',
                              selector: _buildComponentSelector(fi, '{date_picker}', datePickerIdx), required }});
             }}
-            else if (selectEl) {{
-                const selectIdx = fields.length;
-                fields.push({{ label, type: 'select', kb_category: 'el-select',
-                             selector: _buildComponentSelector(fi, '{select_container}', selectIdx), required }});
-                // [D4] el-select 多选调试
-                const isMulti = selectEl.classList.contains('el-select--multiple')
-                    || selectEl.querySelector('.el-select__tags') !== null
-                    || selectEl.querySelector('input[multiple]') !== null;
-                if (isMulti) {{
-                    _debug_multiSelect.push({{
-                        label: label,
-                        hasMultipleClass: selectEl.classList.contains('el-select--multiple'),
-                        hasTagsContainer: selectEl.querySelector('.el-select__tags') !== null,
-                        currentTagCount: (selectEl.querySelectorAll('.el-tag') || []).length,
-                    }});
-                }}
+            else if (selects.length > 0) {{
+                // 2.4 增强：处理 form-item 内的多个 select（如授权主体：类型选择 + 实体选择）
+                selects.forEach((sel, idx) => {{
+                    const labelSuffix = selects.length > 1 ? '(' + (idx + 1) + ')' : '';
+                    // 使用 _buildSelector 生成唯一 CSS 路径（区分同 form-item 内的多个 select）
+                    const selSelector = _buildSelector(sel);
+
+                    fields.push({{ label: label + labelSuffix, type: 'select', kb_category: 'el-select',
+                                 selector: selSelector, required }});
+                    // [D4] el-select 多选调试
+                    const isMulti = sel.classList.contains('el-select--multiple')
+                        || sel.querySelector('.el-select__tags') !== null
+                        || sel.querySelector('input[multiple]') !== null;
+                    if (isMulti) {{
+                        _debug_multiSelect.push({{
+                            label: label + labelSuffix,
+                            hasMultipleClass: sel.classList.contains('el-select--multiple'),
+                            hasTagsContainer: sel.querySelector('.el-select__tags') !== null,
+                            currentTagCount: (sel.querySelectorAll('.el-tag') || []).length,
+                        }});
+                    }}
+                }});
             }}
             else if (fi.querySelector('{radio_group}')) {{
                 const radioIdx = fields.length;
@@ -1373,6 +1564,7 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
             _debug_multiInput: _debug_multiInput,
             _debug_addBtn: _debug_addBtn,
             _debug_multiSelect: _debug_multiSelect,
+            _debug_composite: _debug_composite,
         }};
 
         function _buildSelector(element) {{
@@ -2147,7 +2339,9 @@ class MultiStepExecutor:
             await self.page.wait_for_timeout(500)
             verify = await self._verify_select_filled(label, selector)
             if not verify.get("filled"):
-                LOG.warning(f"    ⚠️ select 填充后验证失败: {label} 仍为空")
+                debug_info = verify.get("debug", {})
+                LOG.warning(f"    ⚠️ select 填充后验证失败: {label} 仍为空 "
+                           f"debug={debug_info}")
                 return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True}
             LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
             return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text)}
@@ -2165,7 +2359,9 @@ class MultiStepExecutor:
             await self.page.wait_for_timeout(500)
             verify = await self._verify_select_filled(label, selector)
             if not verify.get("filled"):
-                LOG.warning(f"    ⚠️ select 填充后验证失败: {label} 仍为空")
+                debug_info = verify.get("debug", {})
+                LOG.warning(f"    ⚠️ select 填充后验证失败: {label} 仍为空 "
+                           f"debug={debug_info}")
                 return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True}
             LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
             return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text)}
@@ -2956,41 +3152,138 @@ class MultiStepExecutor:
         """验证 select 字段填充后是否有值。
 
         支持单选（input.value）、多选 tag 模式（.el-tag）、tree-select（.el-select__selected-item）。
+        优先使用 selector 直接定位，回退到 label 搜索。
 
         Returns:
             dict: {"filled": bool, "displayed_value": str, "is_empty": bool}
         """
-        js = """(label) => {
-            const formItems = document.querySelectorAll('.el-form-item');
-            for (const fi of formItems) {
-                const labelEl = fi.querySelector('.el-form-item__label');
-                if (!labelEl || !labelEl.textContent.includes(label)) continue;
+        js = """([label, selector]) => {
+            let sel = null;
 
-                const sel = fi.querySelector('.el-select');
-                if (!sel) return {filled: false, reason: 'no_select_found'};
-
-                const tags = sel.querySelectorAll('.el-tag');
-                const input = sel.querySelector('.el-input__inner');
-                const selectedLabel = sel.querySelector('.el-select__selected-item, .el-select__tags-text');
-
-                const hasTags = tags.length > 0;
-                const hasValue = input && input.value.trim().length > 0;
-                const hasSelectedText = selectedLabel && selectedLabel.textContent.trim().length > 0;
-
-                const displayed = hasTags
-                    ? Array.from(tags).map(t => t.textContent.trim()).join(', ')
-                    : (input ? input.value : '') || (selectedLabel ? selectedLabel.textContent.trim() : '');
-
-                return {
-                    filled: hasTags || hasValue || hasSelectedText,
-                    displayed_value: displayed,
-                    is_empty: !(hasTags || hasValue || hasSelectedText)
-                };
+            // 优先使用 selector 直接定位
+            if (selector) {
+                try {
+                    const el = document.querySelector(selector);
+                    if (el) {
+                        // selector 可能指向 .el-select 本身或其子元素
+                        sel = el.classList.contains('el-select') ? el : el.closest('.el-select');
+                        if (!sel) sel = el.querySelector('.el-select');
+                    }
+                } catch (e) {}
             }
-            return {filled: false, reason: 'no_form_item_found'};
+
+            // 回退：通过 label 搜索
+            if (!sel) {
+                // 去除后缀如 "(掩码)", "(下拉)", "(1)", "(2)"
+                const baseLabel = label.replace(/\\([\\u4e00-\\u9fa5\\d]+\\)$/, '').trim();
+                const formItems = document.querySelectorAll('.el-form-item');
+                for (const fi of formItems) {
+                    const labelEl = fi.querySelector('.el-form-item__label');
+                    if (!labelEl) continue;
+                    const labelText = labelEl.textContent.trim();
+                    if (labelText.includes(baseLabel) || baseLabel.includes(labelText)) {
+                        sel = fi.querySelector('.el-select');
+                        if (sel) break;
+                    }
+                }
+            }
+
+            if (!sel) return {filled: false, reason: 'no_select_found',
+                debug: {selectorFound: !!document.querySelector(selector), selector: selector}};
+
+            const isTreeSelect = sel.classList.contains('tree-select');
+            const tags = sel.querySelectorAll('.el-tag');
+            const input = sel.querySelector('.el-input__inner');
+            const selectedLabel = sel.querySelector('.el-select__selected-item, .el-select__tags-text');
+            const tagsContainer = sel.querySelector('.el-select__tags');
+
+            const hasTags = tags.length > 0;
+            const hasValue = input && input.value.trim().length > 0;
+            const hasSelectedText = selectedLabel && selectedLabel.textContent.trim().length > 0;
+
+            // tree-select 特殊检测：多种策略
+            let hasTreeSelected = false;
+            let treeSelectedText = '';
+            if (isTreeSelect) {
+                // 策略1: 检查 .el-select__tags 内的文本（排除 input 元素）
+                if (tagsContainer) {
+                    const treeChildren = Array.from(tagsContainer.children)
+                        .filter(c => c.tagName !== 'INPUT' && !c.classList.contains('el-input'));
+                    if (treeChildren.length > 0) {
+                        const text = treeChildren.map(c => c.textContent.trim()).filter(t => t).join(', ');
+                        if (text) {
+                            hasTreeSelected = true;
+                            treeSelectedText = text;
+                        }
+                    }
+                }
+
+                // 策略2: 检查 .el-tree-node.is-current（当前选中节点）
+                // 注意：Element Plus 的 tree 下拉面板 teleport 到 <body>，不在 .el-select 内部
+                if (!hasTreeSelected) {
+                    const currentNode = document.querySelector('.el-tree-node.is-current');
+                    if (currentNode) {
+                        const label = currentNode.querySelector('.el-tree-node__label');
+                        if (label) {
+                            const text = label.textContent.trim();
+                            if (text) {
+                                hasTreeSelected = true;
+                                treeSelectedText = text;
+                            }
+                        }
+                    }
+                }
+
+                // 策略3: 检查 Vue model 值
+                if (!hasTreeSelected && sel.__vue__) {
+                    const vue = sel.__vue__;
+                    const modelValue = vue.modelValue || vue.value || vue.selectedLabel;
+                    if (modelValue !== null && modelValue !== undefined && String(modelValue).trim()) {
+                        hasTreeSelected = true;
+                        treeSelectedText = String(modelValue);
+                    }
+                }
+
+                // 策略4: 检查 input 的 placeholder
+                // tree-select 选中后 placeholder 变为空字符串（默认值是"请选择"）
+                // 空字符串说明已选中，非"请选择"的文本也说明已选中
+                if (!hasTreeSelected && input) {
+                    const ph = input.placeholder;
+                    if (ph !== null && ph !== undefined) {
+                        if (ph === '' || (!ph.includes('请选择') && !ph.includes('选择'))) {
+                            hasTreeSelected = true;
+                            treeSelectedText = ph || '(已选中)';
+                        }
+                    }
+                }
+            }
+
+            const displayed = hasTags
+                ? Array.from(tags).map(t => t.textContent.trim()).join(', ')
+                : hasTreeSelected ? treeSelectedText
+                : (input ? input.value : '') || (selectedLabel ? selectedLabel.textContent.trim() : '');
+
+            const filled = hasTags || hasValue || hasSelectedText || hasTreeSelected;
+
+            return {
+                filled: filled,
+                displayed_value: displayed,
+                is_empty: !filled,
+                debug: {
+                    hasTags, hasValue, hasSelectedText, hasTreeSelected,
+                    tagCount: tags.length,
+                    inputValue: input ? input.value : null,
+                    inputPlaceholder: input ? input.placeholder : null,
+                    hasTagsContainer: !!tagsContainer,
+                    tagsContainerChildren: tagsContainer ? tagsContainer.children.length : 0,
+                    isMultiSelect: sel.classList.contains('el-select--multiple'),
+                    isTreeSelect: isTreeSelect,
+                    selClassName: sel.className
+                }
+            };
         }"""
         try:
-            return await self.page.evaluate(js, label)
+            return await self.page.evaluate(js, [label, selector])
         except Exception as e:
             LOG.debug(f"    _verify_select_filled exception: {e}")
             return {"filled": False, "reason": "js_exception"}
@@ -3307,7 +3600,15 @@ class MultiStepExecutor:
                             if (leafNodes.length > 0) {
                                 for (const node of leafNodes) {
                                     if (node.textContent.trim() === text) {
-                                        node.click();
+                                        // 优先点击勾选框：checkbox 在 .el-tree-node__content 级别，
+                                        // 不在 .custom-tree-node 内部，需要向上查找
+                                        const treeContent = node.closest('.el-tree-node__content');
+                                        const checkbox = treeContent ? treeContent.querySelector('.el-checkbox') : null;
+                                        if (checkbox) {
+                                            checkbox.click();
+                                        } else {
+                                            node.click();
+                                        }
                                         return true;
                                     }
                                 }
@@ -3316,7 +3617,14 @@ class MultiStepExecutor:
                             const labels = tree.querySelectorAll('.el-tree-node__label');
                             for (const label of labels) {
                                 if (label.textContent.trim() === text) {
-                                    label.click();
+                                    // 优先点击勾选框
+                                    const treeNode = label.closest('.el-tree-node');
+                                    const checkbox = treeNode ? treeNode.querySelector('.el-checkbox') : null;
+                                    if (checkbox) {
+                                        checkbox.click();
+                                    } else {
+                                        label.click();
+                                    }
                                     return true;
                                 }
                             }
@@ -3333,6 +3641,11 @@ class MultiStepExecutor:
                     }
                     return false;
                 }""", option_text)
+            # 多选 select 选择后下拉框不自动关闭，需要按 ESC 关闭让 tags 渲染
+            if clicked:
+                await self.page.wait_for_timeout(200)
+                await self.page.keyboard.press("Escape")
+                await self.page.wait_for_timeout(300)
             else:
                 # 点击第一个可见选项（支持标准 item 和 tree node）
                 clicked = await self.page.evaluate("""() => {
@@ -3348,7 +3661,15 @@ class MultiStepExecutor:
                             if (leafNodes.length > 0) {
                                 for (const node of leafNodes) {
                                     if (node.offsetWidth > 0 && node.offsetHeight > 0) {
-                                        node.click();
+                                        // 优先点击勾选框：checkbox 在 .el-tree-node__content 级别，
+                                        // 不在 .custom-tree-node 内部，需要向上查找
+                                        const treeContent = node.closest('.el-tree-node__content');
+                                        const checkbox = treeContent ? treeContent.querySelector('.el-checkbox') : null;
+                                        if (checkbox) {
+                                            checkbox.click();
+                                        } else {
+                                            node.click();
+                                        }
                                         return true;
                                     }
                                 }
@@ -3365,7 +3686,14 @@ class MultiStepExecutor:
                             const labels = tree.querySelectorAll('.el-tree-node__label');
                             for (const label of labels) {
                                 if (label.offsetWidth > 0 && label.offsetHeight > 0) {
-                                    label.click();
+                                    // 优先点击勾选框
+                                    const treeNode = label.closest('.el-tree-node');
+                                    const checkbox = treeNode ? treeNode.querySelector('.el-checkbox') : null;
+                                    if (checkbox) {
+                                        checkbox.click();
+                                    } else {
+                                        label.click();
+                                    }
                                     return true;
                                 }
                             }
@@ -3382,6 +3710,11 @@ class MultiStepExecutor:
                     }
                     return false;
                 }""")
+            # 多选 select 选择后下拉框不自动关闭，需要按 ESC 关闭让 tags 渲染
+            if clicked:
+                await self.page.wait_for_timeout(200)
+                await self.page.keyboard.press("Escape")
+                await self.page.wait_for_timeout(300)
             return bool(clicked)
         except Exception as e:
             LOG.debug(f"    _click_visible_option exception: {e}")

@@ -759,6 +759,40 @@ async def _do_create(page, context: dict) -> dict:
                 ms_field["option_text"] = detail.get("option_text", "")
                 break
 
+    # ✅ P6: 检查必填多步字段是否填充成功
+    required_failed = []
+    for detail in ms_details:
+        label = detail.get("label", "")
+        # 查找对应的字段定义，检查是否必填
+        field_def = next((f for f in fields if f.get("label") == label), None)
+        is_required = field_def and field_def.get("required", False)
+        # 检查是否填充成功（is_editable 或 option_text，且没有 skipped_reason）
+        is_success = (detail.get("is_editable", False) or detail.get("option_text", "")) \
+                     and not detail.get("skipped_reason")
+        if is_required and not is_success:
+            required_failed.append(label)
+
+    # 也检查未被 fill_multi_step_fields 处理的必填字段
+    handled_labels = {d.get("label") for d in ms_details}
+    for f in fields:
+        if f.get("kb_category") in const.MULTI_STEP_TYPES or f.get("kb_category") == "form-checkbox":
+            if f.get("label") not in handled_labels and f.get("required", False):
+                required_failed.append(f.get("label"))
+
+    if required_failed:
+        LOG.warning(f"    必填多步字段填充失败: {required_failed}，跳过提交")
+        from core.discovery.ui_scanner.button_detector import _close_dialog
+        await _close_dialog(page)
+        return _build_create_error_result(
+            "multi_step_required_failed",
+            f"必填多步字段填充失败: {', '.join(required_failed)}",
+            btn_text, btn_click_result,
+            fill_data, fill_rules, fields, None,
+            multi_step_field_details, username,
+            radio_field_details=radio_field_details,
+            cascade_actions=cascade_actions
+        )
+
     if ms_filled == 0:
         # 兜底：尝试 select_dropdowns()
         select_count = await form_filler.select_dropdowns()
