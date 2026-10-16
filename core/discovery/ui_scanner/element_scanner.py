@@ -609,8 +609,18 @@ async def _discover_switches(page) -> list:
                     labelText = 'Switch ' + (idx + 1);
                 }
 
-                // 检查当前状态
-                const isChecked = sw.classList.contains('is-checked');
+                // 检查当前状态（优先使用 Vue 实例值，fallback 到 classList）
+                let isChecked = false;
+                const vue = sw.__vue__;
+                if (vue && typeof vue.value !== 'undefined') {
+                    // Vue 实例的 value 是实际状态
+                    isChecked = vue.value === (vue.activeValue !== undefined ? vue.activeValue : true);
+                } else {
+                    // fallback: 检查自身和子元素的 is-checked
+                    isChecked = sw.classList.contains('is-checked')
+                        || !!sw.querySelector('.is-checked')
+                        || sw.querySelector('.el-switch__core')?.classList.contains('is-checked');
+                }
 
                 // 检查是否在 tab-pane 内
                 const tabPane = sw.closest('.el-tab-pane');
@@ -736,7 +746,18 @@ async def _discover_search_inputs(page, kb: ProbeKB = None, framework: str = "el
                     kb_results = await page.evaluate(f"""() => {{
                         const xpaths = {xpath_json};
                         const found = [];
-                        const table = document.querySelector('.el-table, table, .ant-table');
+                        // ★ 查找当前可见的表格（多 Tab 页面有多个 table，需要选激活 Tab 的）
+                        const allTables = document.querySelectorAll('.el-table, table, .ant-table');
+                        let table = null;
+                        for (const t of allTables) {{
+                            if (t.offsetWidth > 0 && t.offsetHeight > 0) {{
+                                table = t;
+                                break;
+                            }}
+                        }}
+                        if (!table && allTables.length > 0) {{
+                            table = allTables[0];  // fallback: 没有可见的用第一个
+                        }}
                         if (!table) return found;
                         const tableRect = table.getBoundingClientRect();
 
@@ -808,7 +829,18 @@ async def _discover_search_inputs(page, kb: ProbeKB = None, framework: str = "el
         const results = [];
         // 已知的 locator（KB 轮已发现的）
         const knownLocators = {json.dumps(list(seen_locators))};
-        const table = document.querySelector('.el-table, table, .ant-table');
+        // ★ 查找当前可见的表格（多 Tab 页面有多个 table，需要选激活 Tab 的）
+        const allTables = document.querySelectorAll('.el-table, table, .ant-table');
+        let table = null;
+        for (const t of allTables) {{
+            if (t.offsetWidth > 0 && t.offsetHeight > 0) {{
+                table = t;
+                break;
+            }}
+        }}
+        if (!table && allTables.length > 0) {{
+            table = allTables[0];  // fallback: 没有可见的用第一个
+        }}
         if (!table) return results;
         const tableRect = table.getBoundingClientRect();
 
@@ -951,7 +983,18 @@ async def _discover_dropdowns(page, parent_buttons: list, kb: ProbeKB = None, fr
     dropdown_triggers = await page.evaluate("""(parentTexts) => {
         const results = [];
         const parentSet = new Set(parentTexts);
-        const table = document.querySelector('.el-table, table, .ant-table');
+        // ★ 查找当前可见的表格（多 Tab 页面有多个 table，需要选激活 Tab 的）
+        const allTables = document.querySelectorAll('.el-table, table, .ant-table');
+        let table = null;
+        for (const t of allTables) {
+            if (t.offsetWidth > 0 && t.offsetHeight > 0) {
+                table = t;
+                break;
+            }
+        }
+        if (!table && allTables.length > 0) {
+            table = allTables[0];  // fallback
+        }
         const toolbar = table?.closest('[class*="toolbar"], [class*="Toolbar"]')
                        || table?.parentElement;
         const scopes = [table, toolbar].filter(Boolean);
@@ -970,7 +1013,18 @@ async def _discover_dropdowns(page, parent_buttons: list, kb: ProbeKB = None, fr
     # 展开每个触发器（优化：去重 + 快速失败）
     for text in triggers:
         clicked = await page.evaluate(f"""(text) => {{
-            const table = document.querySelector('.el-table, table, .ant-table');
+            // ★ 查找当前可见的表格
+            const allTables = document.querySelectorAll('.el-table, table, .ant-table');
+            let table = null;
+            for (const t of allTables) {{
+                if (t.offsetWidth > 0 && t.offsetHeight > 0) {{
+                    table = t;
+                    break;
+                }}
+            }}
+            if (!table && allTables.length > 0) {{
+                table = allTables[0];
+            }}
             const toolbar = table?.closest('[class*="toolbar"], [class*="Toolbar"]')
                            || table?.parentElement;
             const scopes = [table, toolbar].filter(Boolean);
