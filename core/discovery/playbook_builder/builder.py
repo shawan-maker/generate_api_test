@@ -717,7 +717,7 @@ def _build_create_steps(op_data: dict) -> list:
 
         # 添加 multi_step 字段（带完整属性）
         for ms_field in multi_step_details:
-            fields_info.append({
+            field_info = {
                 "label": ms_field["label"],
                 "playwright_locator": ms_field.get("selector", ""),
                 "type": ms_field["kb_category"].replace("el-", "") if ms_field["kb_category"].startswith("el-") else ms_field["kb_category"],
@@ -725,7 +725,11 @@ def _build_create_steps(op_data: dict) -> list:
                 "fill_rule": ms_field.get("fill_rule", {}),
                 "is_editable": ms_field.get("is_editable", False),
                 "option_text": ms_field.get("option_text", ""),
-            })
+            }
+            # ★ Phase 4a: 序列化 el-select 子类型
+            if "select_sub_type" in ms_field:
+                field_info["select_sub_type"] = ms_field["select_sub_type"]
+            fields_info.append(field_info)
 
         # 添加 radio 字段（带已验证的选项 locator）
         # 从 op_data 获取 cascade_actions，用于附加到对应的 radio 字段
@@ -747,6 +751,14 @@ def _build_create_steps(op_data: dict) -> list:
                 radio_entry["cascade_actions"] = matching_cascades
 
             fields_info.append(radio_entry)
+
+        # ★ Phase 4b: 为 el-select 附加 cascade_actions
+        for field_info in fields_info:
+            if field_info.get("kb_category") == "el-select":
+                field_label = field_info.get("label")
+                matching_cascades = [c for c in cascade_actions if c.get("trigger_field") == field_label]
+                if matching_cascades:
+                    field_info["cascade_actions"] = matching_cascades
 
         # ★ 标记 is_marker：使用 Stage 1 记录的 marker_source 正向查找
         marker_source = op_data.get("marker_source")
@@ -995,7 +1007,7 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
 
         # 添加 multi_step 字段（带完整属性）
         for ms_field in multi_step_details:
-            fields_info.append({
+            field_info = {
                 "label": ms_field["label"],
                 "playwright_locator": ms_field.get("selector", ""),
                 "type": ms_field["kb_category"].replace("el-", "") if ms_field["kb_category"].startswith("el-") else ms_field["kb_category"],
@@ -1003,7 +1015,11 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
                 "fill_rule": ms_field.get("fill_rule", {}),
                 "is_editable": ms_field.get("is_editable", False),
                 "option_text": ms_field.get("option_text", ""),
-            })
+            }
+            # ★ Phase 4a: 序列化 el-select 子类型
+            if "select_sub_type" in ms_field:
+                field_info["select_sub_type"] = ms_field["select_sub_type"]
+            fields_info.append(field_info)
 
         # 添加 radio 字段（带已验证的选项 locator）
         # 从 op_data 获取 cascade_actions，用于附加到对应的 radio 字段
@@ -1025,6 +1041,14 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
                 radio_entry["cascade_actions"] = matching_cascades
 
             fields_info.append(radio_entry)
+
+        # ★ Phase 4b: 为 el-select 附加 cascade_actions
+        for field_info in fields_info:
+            if field_info.get("kb_category") == "el-select":
+                field_label = field_info.get("label")
+                matching_cascades = [c for c in cascade_actions if c.get("trigger_field") == field_label]
+                if matching_cascades:
+                    field_info["cascade_actions"] = matching_cascades
 
         if fields_info:
             steps.append({
@@ -1183,7 +1207,7 @@ def _build_generic_steps(op_data: dict, create_marker=None) -> list:
         fill_fields = []
         for d in dialog_fills:
             if d.get("option_text") and d.get("selector"):
-                fill_fields.append({
+                fill_field = {
                     "label": d.get("label", ""),
                     "playwright_locator": d["selector"],
                     "type": "select",
@@ -1191,7 +1215,11 @@ def _build_generic_steps(op_data: dict, create_marker=None) -> list:
                     "fill_rule": {},
                     "is_editable": d.get("is_editable", False),
                     "option_text": d["option_text"],
-                })
+                }
+                # ★ Phase 4a: 序列化 el-select 子类型
+                if "select_sub_type" in d:
+                    fill_field["select_sub_type"] = d["select_sub_type"]
+                fill_fields.append(fill_field)
         if fill_fields:
             steps.append({
                 "action": "fill_form",

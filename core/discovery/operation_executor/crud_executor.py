@@ -1179,7 +1179,12 @@ async def _do_create(page, context: dict) -> dict:
                 LOG.debug(f"    填充 override {label} 失败: {e}")
 
     # 6. 处理多步组件
-    ms_filled, ms_details, _ = await form_filler.fill_multi_step_fields(fields, framework)
+    ms_filled, ms_details, ms_cascade_actions = await form_filler.fill_multi_step_fields(fields, framework)
+
+    # ★ Phase 4b: 合并级联 actions（radio + multi_step）
+    if ms_cascade_actions:
+        cascade_actions.extend(ms_cascade_actions)
+        LOG.info(f"    [cascade] 合并 multi_step 级联: {len(ms_cascade_actions)} 个")
 
     # 跟踪因无选项被跳过的字段
     skipped_no_options = [d["label"] for d in ms_details if d.get("skipped_reason") == "no_options"]
@@ -1201,6 +1206,9 @@ async def _do_create(page, context: dict) -> dict:
             if ms_field["label"] == label:
                 ms_field["is_editable"] = detail.get("is_editable", False)
                 ms_field["option_text"] = detail.get("option_text", "")
+                # ★ Phase 4a: 传递 el-select 子类型
+                if "select_sub_type" in detail:
+                    ms_field["select_sub_type"] = detail["select_sub_type"]
                 break
 
     # ✅ P6: 检查必填多步字段是否填充成功

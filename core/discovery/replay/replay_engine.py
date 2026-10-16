@@ -1056,6 +1056,34 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
         if close_dropdown_actions:
             LOG.info(f"    multi_step 检测到 {len(close_dropdown_actions)} 个下拉框关闭操作")
 
+        # ★ Phase 4b: 处理 el-select 的 cascade_actions
+        for ms_field in multi_step_fields:
+            if ms_field.get("kb_category") == "el-select":
+                cascade_actions = ms_field.get("cascade_actions", [])
+                if cascade_actions:
+                    field_label = ms_field.get("label", "")
+                    LOG.info(f"    [el-select] {field_label} 检测到 {len(cascade_actions)} 个 cascade 操作")
+                    for ca in cascade_actions:
+                        ca_type = ca.get("type", "")
+                        if ca_type == "transfer-box":
+                            trigger_value = ca.get("trigger_value", "")
+                            selected_items = ca.get("selected_items", [])
+                            LOG.info(f"    [el-select] 执行 cascade: transfer-box (trigger: {trigger_value})")
+                            await page.wait_for_timeout(500)
+
+                            from .form_filler import MultiStepExecutor
+                            executor = MultiStepExecutor(page, None, ui_framework)
+                            success, detail = await executor.execute_with_details(
+                                "transfer-box", field_label, "", None, ""
+                            )
+                            if success:
+                                LOG.info(f"    [el-select] cascade 成功: {detail}")
+                                if role == "create" and not marker_value and selected_items:
+                                    marker_value = selected_items[0]
+                                    LOG.info(f"    ✓ marker 已从 el-select cascade 提取: {marker_value}")
+                            else:
+                                LOG.warning(f"    [el-select] cascade 失败")
+
         # ★ 只有 create 操作才从 multi_step 字段提取 marker
         if role == "create" and not marker_value:
             for ms_field in multi_step_fields:
