@@ -372,14 +372,17 @@ async def _validate_single_tab_crud(
 
         # ★ Switch 操作：统一调度
         if btn.get("_is_switch"):
+            LOG.info(f"{tab_prefix}[SWITCH-DEBUG] 检测到 switch 操作: text='{btn.get('text')}', locator='{btn.get('locator')}', is_checked={btn.get('is_checked')}")
             result = await _do_toggle_switch(page, {"switch_info": btn})
+            LOG.info(f"{tab_prefix}[SWITCH-DEBUG] toggle 结果: success={result.get('success') if result else None}, before={result.get('before_checked') if result else None}, after={result.get('after_checked') if result else None}")
             if result and result.get("success"):
-                validated[action] = result
+                # ★ 传递 _is_switch 标记到 validated，供 builder 识别
+                validated[action] = {**result, "_is_switch": True, "locator": btn.get("locator"), "text": btn.get("text"), "is_checked": btn.get("is_checked")}
                 LOG.info(f"{tab_prefix}{action} 操作成功")
             else:
                 error_text = result.get("error_text", "") if result else "未知错误"
                 LOG.warning(f"{tab_prefix}{action} 操作失败: {error_text}")
-                validated[action] = result or make_error("switch_failed", error_text)
+                validated[action] = {**(result or make_error("switch_failed", error_text)), "_is_switch": True, "locator": btn.get("locator"), "text": btn.get("text"), "is_checked": btn.get("is_checked")}
             # switch 状态变化后，等待页面稳定
             await page.wait_for_timeout(500)
             continue
@@ -408,16 +411,23 @@ async def _validate_single_tab_crud(
                     validated[action] = result
 
         elif role == "query":
+            LOG.info(f"{tab_prefix}[QUERY-DEBUG] 开始验证 query 操作: btn_text='{btn.get('text')}', is_search_input={btn.get('is_search_input')}, marker={created_marker}")
             if btn.get("is_search_input"):
                 result = await _do_query_via_search_input(page, btn, marker=created_marker)
+                LOG.info(f"{tab_prefix}[QUERY-DEBUG] search_input 结果: success={result.get('success') if result else None}, error={result.get('error') if result else 'None'}")
                 if result and result.get("success"):
                     validated[action] = result
+                else:
+                    LOG.warning(f"{tab_prefix}[QUERY-DEBUG] query 验证失败（search_input）: {result}")
             else:
                 result = await _error_driven_retry(
                     page, _do_query, {"btn": btn, "marker": created_marker}
                 )
+                LOG.info(f"{tab_prefix}[QUERY-DEBUG] button 结果: success={result.get('success') if result else None}, error={result.get('error') if result else 'None'}")
                 if result and result.get("success"):
                     validated[action] = result
+                else:
+                    LOG.warning(f"{tab_prefix}[QUERY-DEBUG] query 验证失败（button）: {result}")
 
         elif role == "detail":
             result = await _error_driven_retry(
@@ -1426,9 +1436,19 @@ async def _do_query_via_search_input(page, btn: dict, marker: str = None) -> dic
 
     # 填写搜索框
     try:
-        input_el = page.locator(locator).first
-        if await input_el.count() == 0:
-            return make_error("locator_failed", f"搜索输入框未找到: {locator}")
+        # ★ 多 tab 页面可能有多个同名搜索框（每个 tab 一个），优先选择可见的
+        visible_el = page.locator(f"{locator}:visible").first
+        if await visible_el.count() > 0:
+            input_el = visible_el
+            LOG.info(f"    [query] 找到可见搜索框")
+        else:
+            # fallback: 取第一个（可能不可见）
+            input_el = page.locator(locator).first
+            total_count = await page.locator(locator).count()
+            if total_count == 0:
+                return make_error("locator_failed", f"搜索输入框未找到: {locator}")
+            LOG.info(f"    [query] 搜索框不可见 ({total_count} 个匹配，尝试等待)...")
+            await input_el.wait_for(state='visible', timeout=5000)
 
         await input_el.click()
         await input_el.fill(search_text)
@@ -1525,8 +1545,10 @@ async def _do_query(page, context: dict) -> dict:
                 await search_input.fill(search_text)
                 LOG.info(f"  [query] 已填充搜索框: '{search_text}'")
                 await page.wait_for_timeout(500)
-    except Exception:
-        pass
+    except Exception as e:
+        LOG.warning(f"  [query] 搜索框填充异常: {e}")
+        import traceback
+        LOG.debug(f"  [query] 异常堆栈:\n{traceback.format_exc()}")
 
     # 点击搜索按钮
     btn_click_result = await _click_button_escalating(page, btn_text)
@@ -1666,11 +1688,14 @@ async def _do_edit(page, context: dict) -> dict:
     row_selector = None
     btn_click_result = {"clicked": False, "strategy": "", "tag": "button", "text": btn_text}
     for attempt in range(max_locate_retries):
+        _log.info(f"    [EDIT-DEBUG] attempt={attempt + 1}/{max_locate_retries}, btn_location={btn_location}, marker={marker}")
         if btn_location == "row_action" and marker:
             from core.discovery.replay.button_driver import ButtonDriver
             driver = ButtonDriver(page)
+            _log.info(f"    [EDIT-DEBUG] 开始定位数据行: marker='{marker}'")
             row = await driver.find_data_row(marker)
             if not row:
+                _log.warning(f"    [EDIT-DEBUG] 行定位失败: marker='{marker}' 未找到")
                 if attempt < max_locate_retries - 1:
                     LOG.debug(f"    行定位失败，等待后重试 ({attempt + 1}/{max_locate_retries})")
                     await page.wait_for_timeout(1000)
@@ -1679,8 +1704,9 @@ async def _do_edit(page, context: dict) -> dict:
                 return row_not_found(f"未找到数据行: {marker}",
                                     trigger_text=btn_text,
                                     trigger_locator_verified=None)
-            _log.info(f"    [EDIT-DEBUG] 使用行内按钮点击方式 (marker='{marker}')")
+            _log.info(f"    [EDIT-DEBUG] 行定位成功，点击行内按钮: btn_text='{btn_text}'")
             clicked = await driver.click_row_button_v2(row, btn_text)
+            _log.info(f"    [EDIT-DEBUG] click_row_button_v2 返回: clicked={clicked}")
             row_selector = btn_text
         else:
             _log.info(f"    [EDIT-DEBUG] 使用 toolbar 按钮点击方式")
@@ -1699,6 +1725,8 @@ async def _do_edit(page, context: dict) -> dict:
                            trigger_locator_verified=None)
 
     # Phase 3: 使用统一后点击检测
+    _log.info(f"    [EDIT-DEBUG] 开始 _observe_post_click (timeout_ms=3000)")
+    _log.info(f"    [EDIT-DEBUG] 点击前 URL: {url_before_click}")
     obs = await _observe_post_click(
         page, url_before_click, timeout_ms=3000,
         new_page_event=new_tab_event, new_page_ref=new_tab_ref
@@ -1708,6 +1736,11 @@ async def _do_edit(page, context: dict) -> dict:
     url_after_click = page.url
     _log.info(f"    [EDIT-DEBUG] 点击后 URL: {url_after_click}")
     _log.info(f"    [EDIT-DEBUG] observe scenario: {obs['scenario']}")
+    _log.info(f"    [EDIT-DEBUG] URL 变化: {url_before_click != url_after_click}")
+    if url_before_click != url_after_click:
+        _log.info(f"    [EDIT-DEBUG] URL diff:")
+        _log.info(f"      before: {url_before_click}")
+        _log.info(f"      after:  {url_after_click}")
 
     # [DEBUG] 检查是否有 order-submit 区域（底部固定操作栏）
     order_submit_info = await page.evaluate("""() => {

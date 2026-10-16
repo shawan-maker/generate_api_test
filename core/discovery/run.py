@@ -216,6 +216,10 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str,
     # 导航到目标页
     await page.goto(target_url, wait_until="load", timeout=45000)
 
+    # ---- 等待 SPA 路由完成 ----
+    # SPA 前端路由可能异步跳转，需要等待 3 秒后再检测
+    await page.wait_for_timeout(3000)
+
     # ---- 重定向检测：如果被重定向到登录页，刷新 cookie 后重试 ----
     if _is_login_redirect(page) and context and profile:
         LOG.warning(f"  ⚠️ 页面被重定向到登录页 ({page.url})，尝试刷新 cookie")

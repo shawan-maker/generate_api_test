@@ -344,6 +344,11 @@ def _build_form_page_playbook(ui_result: dict, form_actions: list) -> dict:
         if form_fields:
             fields_info = []
             for field in form_fields:
+                # 防御性检查：跳过字符串字段（数据结构异常）
+                if isinstance(field, str):
+                    LOG.warning(f"  ⚠️ form_fields 包含字符串: {field}，跳过")
+                    continue
+
                 label = field.get("label", "")
                 selector = field.get("selector", "")
                 field_type = field.get("type", "input")
@@ -512,7 +517,11 @@ def build_playbook(ui_result: dict) -> dict:
                 op_data["navigate_back_url"] = ui_result.get("target_url", "")
 
         # 基于 op_data 结构特征分发步骤构建（不写死任何操作名）
-        if is_page_nav:
+        if op_data.get("_is_switch"):
+            # ★ Switch 操作：专用步骤（Stage 1 已记录 locator，Stage 2 直接使用）
+            steps_type = "switch"
+            op_steps.extend(_build_switch_steps(op_data))
+        elif is_page_nav:
             steps_type = "generic"  # page-nav 走通用角色
             op_steps.extend(_build_page_nav_steps(op_data))
         else:
@@ -651,6 +660,33 @@ def build_playbook(ui_result: dict) -> dict:
         "page_structure": page_structure,
         "operations": operations
     }
+
+
+def _build_switch_steps(op_data: dict) -> list:
+    """构建 switch 切换步骤（Stage 2 直接使用 Stage 1 的 locator）
+
+    Switch 操作不需要重新搜索按钮，直接使用 Stage 1 记录的 CSS locator 点击。
+    """
+    steps = []
+
+    # 使用 Stage 1 验证的 locator
+    sw_locator = op_data.get("locator", "")
+    if not sw_locator:
+        # fallback: 从 switch 信息中构造
+        sw_locator = op_data.get("playwright_locator", ".el-switch")
+
+    sw_text = op_data.get("text", "状态")
+    is_checked = op_data.get("is_checked", False)
+
+    steps.append({
+        "action": "toggle_switch",
+        "playwright_locator": sw_locator,
+        "text": sw_text,
+        "is_checked_before": is_checked,
+        "description": f"切换 {sw_text}"
+    })
+
+    return steps
 
 
 def _build_create_steps(op_data: dict) -> list:

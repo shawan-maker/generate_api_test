@@ -453,6 +453,9 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
             elif action == "click_tab":
                 await _step_click_tab(page, step)
 
+            elif action == "toggle_switch":
+                await _step_toggle_switch(page, step)
+
             elif action == "assert_table_has_data":
                 await _step_assert_table_has_data(page)
 
@@ -507,6 +510,16 @@ async def _step_click_button(page, step: dict, button_driver: ButtonDriver, ctx:
             LOG.info(f"    [click_button] 从 locator 提取文本: '{btn_text}'")
 
     LOG.info(f"    [click_button] text='{btn_text}', locator='{locator}', strategy={preferred_strategy}")
+
+    # ★ DEBUG: 检查元素是否存在（特别是 el-switch）
+    if 'el-switch' in locator:
+        element_count = await page.locator(locator).count()
+        LOG.info(f"    [SWITCH-DEBUG] locator='{locator}' 匹配元素数量: {element_count}")
+        if element_count == 0:
+            LOG.warning(f"    [SWITCH-DEBUG] el-switch 元素不存在！")
+            # 尝试查找所有 el-switch
+            all_switches = await page.locator('.el-switch').count()
+            LOG.info(f"    [SWITCH-DEBUG] 页面上所有 .el-switch 数量: {all_switches}")
 
     # 增强：为 CSS 选择器添加隐藏过滤（防止匹配到 hidden/disabled 按钮）
     from .locator_helpers import safe_css
@@ -1050,13 +1063,46 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
     if multi_step_fields:
         ff = FormFiller(page)
         framework = step.get("framework", "element-ui")
-        ms_filled, _, close_dropdown_actions = await ff.fill_multi_step_fields(multi_step_fields, framework)
-        filled_count += ms_filled
-        LOG.debug(f"    multi_step 完成: {ms_filled}/{len(multi_step_fields)}")
-        if close_dropdown_actions:
-            LOG.info(f"    multi_step 检测到 {len(close_dropdown_actions)} 个下拉框关闭操作")
 
-        # ★ Phase 4b: 处理 el-select 的 cascade_actions
+        # ★ 按 sub_type 分组：特殊处理的 el-select vs 通用字段
+        special_selects = []  # select-remote / select-tree
+        normal_fields = []    # 其他所有 multi_step 字段
+        for f in multi_step_fields:
+            if (f.get("kb_category") == "el-select"
+                and f.get("select_sub_type") in ("select-remote", "select-tree")):
+                special_selects.append(f)
+            else:
+                normal_fields.append(f)
+
+        # 2a. 通用字段：走原有 fill_multi_step_fields
+        if normal_fields:
+            ms_filled, _, close_dropdown_actions = await ff.fill_multi_step_fields(normal_fields, framework)
+            filled_count += ms_filled
+            LOG.debug(f"    multi_step 完成: {ms_filled}/{len(normal_fields)}")
+            if close_dropdown_actions:
+                LOG.info(f"    multi_step 检测到 {len(close_dropdown_actions)} 个下拉框关闭操作")
+
+        # 2b. 特殊类型 el-select：逐个调用子类型专用方法
+        for f in special_selects:
+            selector = f.get("playwright_locator", "")
+            sub_type = f.get("select_sub_type", "")
+            label = f.get("label", "")
+            if not selector:
+                LOG.warning(f"    [sub-type] {label}: 缺少 selector，跳过")
+                continue
+            try:
+                success, detail = await ff.execute_select_by_sub_type(selector, sub_type, label)
+                if success:
+                    filled_count += 1
+                    LOG.info(f"    [sub-type] {label}: {sub_type} 填充成功")
+                    # 更新 option_text 供后续 marker 提取使用
+                    f["option_text"] = detail.get("option_text", "")
+                else:
+                    LOG.warning(f"    [sub-type] {label}: {sub_type} 填充失败: {detail}")
+            except Exception as e:
+                LOG.warning(f"    [sub-type] {label}: {sub_type} 异常: {e}")
+
+        # ★ Phase 4b: 处理 el-select 的 cascade_actions（覆盖所有 multi_step_fields）
         for ms_field in multi_step_fields:
             if ms_field.get("kb_category") == "el-select":
                 cascade_actions = ms_field.get("cascade_actions", [])
@@ -1667,6 +1713,93 @@ async def _step_click_tab(page, step: dict):
         LOG.debug(f"    ✓ 已切换到 tab: {tab_name}")
     except Exception as e:
         LOG.warning(f"    ⚠️ tab 切换失败 ({tab_name}): {e}")
+        raise
+
+
+async def _step_toggle_switch(page, step: dict):
+    """步骤：切换 el-switch 开关。
+
+    直接使用 Stage 1 记录的 locator（如 "#pane-blackUserList .el-switch:not(.el-table__row .el-switch)"），
+    不需要重新搜索按钮元素。Stage 1 已验证此 locator 可成功点击。
+    """
+    sw_locator = step.get("playwright_locator", ".el-switch")
+    sw_text = step.get("text", "状态")
+    is_checked_before = step.get("is_checked_before", False)
+
+    LOG.info(f"    [toggle_switch] 切换 '{sw_text}': {'ON' if is_checked_before else 'OFF'} → {'OFF' if is_checked_before else 'ON'}")
+    LOG.info(f"    [toggle_switch] 使用 Stage 1 locator: {sw_locator}")
+
+    try:
+        # ★ 直接使用 Stage 1 的 locator 点击（不需要重新搜索 button/span/a）
+        click_result = await page.evaluate(f"""() => {{
+            const candidates = document.querySelectorAll('{sw_locator}');
+            // 过滤：排除行级 switch + 排除不可见 tab-pane 的 switch
+            const toolbarSwitches = Array.from(candidates).filter(sw => {{
+                // 排除行级 switch
+                if (sw.closest('.el-table__row, .el-table__body tr, tr.el-table__row')) return false;
+                // 排除不在当前可见 tab-pane 内的 switch
+                const pane = sw.closest('.el-tab-pane');
+                if (pane) {{
+                    const style = window.getComputedStyle(pane);
+                    if (style.display === 'none' || pane.offsetWidth === 0) return false;
+                }}
+                return true;
+            }});
+
+            if (toolbarSwitches.length === 0) {{
+                return {{ clicked: false, reason: 'no_toolbar_switch', total: candidates.length }};
+            }}
+
+            // 点击第一个 toolbar 级的 switch
+            const sw = toolbarSwitches[0];
+            sw.click();
+            return {{ clicked: true, total: candidates.length, filtered: toolbarSwitches.length }};
+        }}""")
+
+        if click_result.get("clicked"):
+            LOG.info(f"    [toggle_switch] 点击成功 (total={click_result.get('total')}, filtered={click_result.get('filtered')})")
+
+            # 等待可能的确认弹框
+            await page.wait_for_timeout(500)
+
+            # 检查是否有确认弹框
+            confirm_box = await page.query_selector('.el-message-box__wrapper:not([style*="display: none"])')
+            if confirm_box:
+                # 点击确认按钮
+                confirm_btn = await page.query_selector('.el-message-box__btns .el-button--primary')
+                if confirm_btn:
+                    await confirm_btn.click()
+                    LOG.info(f"    [toggle_switch] 已点击确认按钮")
+                    # 等待弹框消失
+                    for _ in range(10):
+                        box_still_visible = await page.evaluate("""() => {
+                            const boxes = document.querySelectorAll('.el-message-box__wrapper');
+                            for (const b of boxes) {
+                                if (b.offsetWidth > 0 && b.offsetHeight > 0
+                                    && !b.getAttribute('style')?.includes('display: none')) {
+                                    return true;
+                                }
+                            }
+                            return false;
+                        }""")
+                        if not box_still_visible:
+                            break
+                        await page.wait_for_timeout(300)
+                else:
+                    LOG.warning(f"    [toggle_switch] 确认弹框无 primary 按钮")
+            else:
+                LOG.debug(f"    [toggle_switch] 无确认弹框")
+
+            # 等待 switch 状态稳定
+            await page.wait_for_timeout(500)
+            LOG.info(f"    ✓ switch '{sw_text}' 切换完成")
+        else:
+            reason = click_result.get("reason", "unknown")
+            LOG.warning(f"    [toggle_switch] 点击失败: {reason}")
+            raise Exception(f"无法点击 switch: {sw_text} ({reason})")
+
+    except Exception as e:
+        LOG.warning(f"    ⚠️ switch 切换失败 ({sw_text}): {e}")
         raise
 
 

@@ -35,7 +35,7 @@ def classify_page_type(ui_result: Dict, validated_ops: Optional[Dict] = None) ->
     1. validated_ops 有成功操作或 CRUD 操作名 → crud
     2. toolbar/row 按钮含 CRUD 关键词 → crud
     3. toolbar/row 按钮含非详情类操作按钮 → crud
-    4. 只有 form_actions → form_page
+    4. 只有 form_actions 且非登录页特征 → form_page
     5. 其他 → read_only
 
     Args:
@@ -63,6 +63,18 @@ def classify_page_type(ui_result: Dict, validated_ops: Optional[Dict] = None) ->
     form_actions = ui_result.get("form_actions", [])
 
     all_buttons = toolbar + row_actions
+
+    # ---- 0. 检测登录页特征（防御性检查）----
+    # 如果页面 URL 或文本包含登录特征，直接返回 read_only
+    page_url = ui_result.get("page_url", "")
+    page_text = ui_result.get("page_text", "")
+    login_indicators = ["/login", "/sso", "/cas/", "/oauth2/authorize"]
+    login_text_indicators = ["点击完成认证", "用户名", "登录密码", "login", "sign in"]
+
+    if any(ind in page_url for ind in login_indicators):
+        return "read_only"
+    if any(ind in page_text.lower() for ind in login_text_indicators):
+        return "read_only"
 
     # ---- 1. 检查 validated_ops ----
     if validated_ops:

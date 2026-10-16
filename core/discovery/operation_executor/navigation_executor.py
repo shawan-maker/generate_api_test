@@ -72,9 +72,21 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
     }
 
     try:
+        # ★ DEBUG: 记录进入新页面时的 URL
+        url_before_wait = page.url
+        LOG.info(f"    [EDIT-FLOW-DEBUG] === 进入新页面探索 (depth={depth}) ===")
+        LOG.info(f"    [EDIT-FLOW-DEBUG] 触发操作: {action}")
+        LOG.info(f"    [EDIT-FLOW-DEBUG] 期望 URL: {new_url}")
+        LOG.info(f"    [EDIT-FLOW-DEBUG] 当前 URL (等待前): {url_before_wait}")
+
         # 1. 等待页面加载
         await page.wait_for_load_state("networkidle", timeout=15000)
         await page.wait_for_timeout(1500)
+
+        url_after_wait = page.url
+        LOG.info(f"    [EDIT-FLOW-DEBUG] 当前 URL (等待后): {url_after_wait}")
+        if url_before_wait != url_after_wait:
+            LOG.warning(f"    [EDIT-FLOW-DEBUG] ⚠️ 等待期间 URL 发生变化!")
 
         # [DEBUG] 检查新页面的 order-submit 区域（底部固定操作栏）
         _order_submit_check = await page.evaluate("""() => {
@@ -441,6 +453,13 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
                 nav_info["error_type"] = "no_submit_button"
                 nav_info["error_text"] = "未找到提交按钮"
                 return nav_info
+
+            # ★ DEBUG: 记录提交按钮点击前的 URL
+            url_before_submit = page.url
+            LOG.info(f"    [EDIT-FLOW-DEBUG] === 准备提交表单 ===")
+            LOG.info(f"    [EDIT-FLOW-DEBUG] 提交按钮: {btn_text}")
+            LOG.info(f"    [EDIT-FLOW-DEBUG] URL (提交前): {url_before_submit}")
+
             btn_click_result = await _click_button_escalating(page, btn_text)
 
             if not btn_click_result["clicked"]:
@@ -451,6 +470,14 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
             # 等待前端验证完成（包括表单错误提示）
             await page.wait_for_timeout(1500)
             await wait_for_loading_complete(page)
+
+            # ★ DEBUG: 记录提交后的 URL（检查是否发生跳转）
+            url_after_submit = page.url
+            LOG.info(f"    [EDIT-FLOW-DEBUG] URL (提交后): {url_after_submit}")
+            if url_before_submit != url_after_submit:
+                LOG.warning(f"    [EDIT-FLOW-DEBUG] ⚠️ 提交后 URL 发生变化!")
+                LOG.warning(f"    [EDIT-FLOW-DEBUG]   before: {url_before_submit}")
+                LOG.warning(f"    [EDIT-FLOW-DEBUG]   after:  {url_after_submit}")
 
             # DIAG: 提交后的 DOM 状态诊断
             _post_submit_diag = await page.evaluate("""() => {

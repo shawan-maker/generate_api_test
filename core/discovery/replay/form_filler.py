@@ -658,6 +658,9 @@ class FormFiller:
                         "option_text": detail.get("option_text", ""),
                         "round": round_num,
                     }
+                    # ★ Phase 4a 补漏：复制 select_sub_type（el-select 子类型）
+                    if "select_sub_type" in detail:
+                        detail_entry["select_sub_type"] = detail["select_sub_type"]
                     details.append(detail_entry)
                     LOG.info(f"    ✅ multi_step R{round_num}: {label} ({kb_cat}) → {detail.get('option_text', '')}")
 
@@ -2583,6 +2586,126 @@ class MultiStepExecutor:
                 return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True}
             LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
             return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text)}
+
+    async def _fill_remote_select(self, selector: str, label: str) -> tuple:
+        """远程搜索 el-select：展开后等待远程加载完成，选第一个
+
+        策略：展开 → 等待 option 出现 → 选第一个
+        """
+        LOG.info(f"    [select-remote] {label}: 展开下拉框")
+
+        # 1. 展开下拉框
+        expanded = await self._expand_by_selector(selector, label)
+        if not expanded:
+            return False, {"skipped_reason": "expand_failed"}
+
+        # 2. 等待远程 API 返回（关键差异：通用逻辑不等待）
+        LOG.info(f"    [select-remote] {label}: 等待远程选项加载...")
+        try:
+            await self.page.wait_for_selector(
+                '.el-select-dropdown:not([style*="display: none"]) .el-select-dropdown__item:not(.is-disabled)',
+                state='visible',
+                timeout=5000
+            )
+            LOG.info(f"    [select-remote] {label}: 远程选项已加载")
+        except Exception as e:
+            LOG.warning(f"    [select-remote] {label}: 远程选项未加载 (timeout): {e}")
+            return False, {"skipped_reason": "remote_load_timeout"}
+
+        # 3. 选第一个可见选项（与通用逻辑相同）
+        await self.page.wait_for_timeout(300)
+        option_text = await self._discover_first_option()
+        if not option_text:
+            LOG.warning(f"    [select-remote] {label}: 未发现可选项")
+            return False, {"skipped_reason": "no_options"}
+
+        selected = await self._click_visible_option(option_text)
+        LOG.info(f"    [select-remote] {label}: 选择结果={selected}, option='{option_text}'")
+
+        # 4. 验证
+        await self.page.wait_for_timeout(500)
+        verify = await self._verify_select_filled(label, selector)
+        if not verify.get("filled"):
+            LOG.warning(f"    [select-remote] {label}: 填充后验证失败")
+            return False, {"option_text": option_text, "verify_failed": True}
+
+        return selected, {"option_text": verify.get("displayed_value", option_text)}
+
+    async def _fill_tree_select(self, selector: str, label: str) -> tuple:
+        """树形 el-select：展开第一层节点，选第一个叶子
+
+        策略：展开下拉 → 展开第一层根节点 → 选第一个叶子
+        """
+        LOG.info(f"    [select-tree] {label}: 展开下拉框")
+
+        # 1. 展开下拉框
+        expanded = await self._expand_by_selector(selector, label)
+        if not expanded:
+            return False, {"skipped_reason": "expand_failed"}
+
+        await self.page.wait_for_timeout(500)
+
+        # 2. 找到可见的根节点展开图标（未展开的）
+        LOG.info(f"    [select-tree] {label}: 查找根节点展开图标")
+        expand_icons = await self.page.query_selector_all(
+            '.el-select-dropdown:not([style*="display: none"]) .el-tree-node__expand-icon:not(.is-leaf):not(.expanded)'
+        )
+
+        # 3. 展开第一个未展开的节点
+        if expand_icons:
+            LOG.info(f"    [select-tree] {label}: 展开第一个根节点")
+            try:
+                await expand_icons[0].click()
+                await self.page.wait_for_timeout(500)
+            except Exception as e:
+                LOG.warning(f"    [select-tree] {label}: 展开根节点失败: {e}")
+
+        # 4. 选第一个叶子节点
+        LOG.info(f"    [select-tree] {label}: 查找叶子节点")
+        leaves = await self.page.query_selector_all(
+            '.el-select-dropdown:not([style*="display: none"]) .el-tree-node.is-leaf .el-tree-node__content'
+        )
+
+        if not leaves:
+            LOG.warning(f"    [select-tree] {label}: 未发现叶子节点")
+            return False, {"skipped_reason": "no_leaf_nodes"}
+
+        try:
+            # 获取叶子节点文本
+            leaf_text = await leaves[0].text_content()
+            LOG.info(f"    [select-tree] {label}: 选择叶子节点 '{leaf_text}'")
+            await leaves[0].click()
+
+            # 5. 验证
+            await self.page.wait_for_timeout(500)
+            verify = await self._verify_select_filled(label, selector)
+            if not verify.get("filled"):
+                LOG.warning(f"    [select-tree] {label}: 填充后验证失败")
+                return False, {"option_text": leaf_text, "verify_failed": True}
+
+            return True, {"option_text": verify.get("displayed_value", leaf_text)}
+        except Exception as e:
+            LOG.warning(f"    [select-tree] {label}: 选择叶子节点失败: {e}")
+            return False, {"skipped_reason": "click_failed"}
+
+    async def execute_select_by_sub_type(self, selector: str, sub_type: str, label: str) -> tuple:
+        """根据子类型分发到不同处理方法
+
+        Args:
+            selector: CSS 选择器
+            sub_type: 子类型（select-remote/select-tree/select-single 等）
+            label: 字段标签
+
+        Returns:
+            (success, detail)
+        """
+        if sub_type == "select-remote":
+            return await self._fill_remote_select(selector, label)
+        elif sub_type == "select-tree":
+            return await self._fill_tree_select(selector, label)
+        else:
+            # select-single/multi/searchable/group：走现有通用逻辑
+            return await self._execute_select_with_details(selector, label)
 
     async def _execute_select(self, label: str, option_text: str, _options, selector: str = "") -> bool:
         """el-select 多步交互：使用 Stage 1 提供的 selector 展开"""
