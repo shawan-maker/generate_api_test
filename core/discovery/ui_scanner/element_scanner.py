@@ -111,6 +111,7 @@ async def discover_all(page) -> dict:
         _btn_types_to_mark = [
             "toolbar_buttons", "row_actions", "dropdowns",
             "dialog_buttons", "search_inputs", "menu_items",
+            "switches",  # ★ 包含 switch 开关（如"开启黑名单"）
         ]
         for btn_type in _btn_types_to_mark:
             for item in result.get(btn_type, []):
@@ -208,10 +209,12 @@ def _merge_tab_results(base: dict, tab_result: dict, tab_name: str):
         db["tab"] = tab_name
         base.setdefault("dialog_buttons", []).append(db)
 
-    # switches 合并
+    # switches 合并：去重后追加（同 toolbar_buttons 策略）
     for sw in tab_result.get("switches", []):
         sw["tab"] = tab_name
-        base.setdefault("switches", []).append(sw)
+        sw_list = base.setdefault("switches", [])
+        if not any(b.get("tab") == tab_name and b.get("text") == sw.get("text") for b in sw_list):
+            sw_list.append(sw)
 
 
 async def _discover_once(page, kb: ProbeKB, framework: str) -> dict:
@@ -464,7 +467,18 @@ async def _scan_candidates(page) -> list:
         const all = document.querySelectorAll('{selectors}');
         const results = [];
         const seen = new Set();
-        const table = document.querySelector('.el-table, table, .ant-table');
+        // ★ 查找当前可见的表格（多 Tab 页面有多个 table，需要选激活 Tab 的）
+        const allTables = document.querySelectorAll('.el-table, table, .ant-table');
+        let table = null;
+        for (const t of allTables) {{
+            if (t.offsetWidth > 0 && t.offsetHeight > 0) {{
+                table = t;
+                break;
+            }}
+        }}
+        if (!table && allTables.length > 0) {{
+            table = allTables[0];  // fallback: 没有可见的用第一个
+        }}
         const menu = document.querySelector('.el-menu, .ant-menu, .sidebar-menu');
         const fixedRight = table?.querySelector('.el-table__fixed-right');
         const fixedLeft = table?.querySelector('.el-table__fixed');

@@ -287,56 +287,67 @@ async def _validate_single_tab_crud(
         except Exception as e:
             LOG.debug(f"  marker fallback 失败: {e}")
 
+    # ★ Switch 分类：toolbar/form 级 vs 行级
+    switches = ui_result.get("switches", [])
+    tab_switches = [sw for sw in switches if sw.get("tab") == tab_name]
+    toolbar_switches = [sw for sw in tab_switches if sw.get("location") in ("toolbar", "form")]
+    row_switches = [sw for sw in tab_switches if sw.get("location") == "row"]
+
+    def _sw_action_key(sw):
+        """为 switch 生成唯一的 action key"""
+        return f"switch:{sw.get('text', '状态')}"
+
+    # 将 switch 注册到 buttons_by_action，使其参与统一调度
+    for sw in toolbar_switches + row_switches:
+        key = _sw_action_key(sw)
+        buttons_by_action[key] = {**sw, "action": key, "_is_switch": True}
+
+    tab_prefix = f"[{tab_name}] " if tab_name else ""
+    if tab_switches:
+        LOG.info(f"{tab_prefix}检测到 {len(tab_switches)} 个 switch "
+                 f"(toolbar/form={len(toolbar_switches)}, row={len(row_switches)})")
+
+    # ★ 构建 ordered_actions（按优先级排列）
     ordered_actions = []
+
+    # 1. Toolbar/Form switch 最先（功能前置条件：如"开启黑名单"）
+    for sw in toolbar_switches:
+        ordered_actions.append(_sw_action_key(sw))
+
+    # 2. 新增（create）
     if _create_action:
         ordered_actions.append(_create_action)
+
+    # 3. query
     if _query_action and _query_action != _create_action:
         ordered_actions.append(_query_action)
+
+    # 4. 其他操作（编辑等）
     for action in buttons_by_action:
-        if action != _create_action and action != _query_action and action not in _delete_actions:
+        if (action not in ordered_actions
+                and action not in _delete_actions
+                and not buttons_by_action[action].get("_is_switch")):
             ordered_actions.append(action)
+
+    # 5. Row switch（行内开关，新增之后的普通业务操作）
+    for sw in row_switches:
+        key = _sw_action_key(sw)
+        if key not in ordered_actions:
+            ordered_actions.append(key)
+
+    # 6. 删除最后
     ordered_actions.extend(_delete_actions)
 
     # 记录每个 action 的语义角色
     action_roles = {}
     for action in buttons_by_action:
         btn = buttons_by_action[action]
-        action_roles[action] = _infer_action_role(action, btn, delete_actions=_delete_actions)
+        if btn.get("_is_switch"):
+            action_roles[action] = "switch"
+        else:
+            action_roles[action] = _infer_action_role(action, btn, delete_actions=_delete_actions)
 
-    tab_prefix = f"[{tab_name}] " if tab_name else ""
     LOG.debug(f"{tab_prefix}操作分发: { {a: action_roles[a] for a in ordered_actions} }")
-
-    # ★ Switch 操作验证（在 CRUD 操作之前执行）
-    # Switch 作为独立的业务操作，记录到 validated 中
-    # ★ 过滤掉行级 switch（location='row'），只验证 toolbar/form 级的 switch
-    switches = ui_result.get("switches", [])
-    tab_switches = [
-        sw for sw in switches
-        if sw.get("tab") == tab_name and sw.get("location") != "row"
-    ]
-
-    if tab_switches:
-        LOG.info(f"{tab_prefix}检测到 {len(tab_switches)} 个 switch 操作")
-        for sw in tab_switches:
-            sw_text = sw.get("text", "Switch")
-            sw_locator = sw.get("locator", ".el-switch")
-            LOG.info(f"{tab_prefix}验证操作: {sw_text} (switch)")
-
-            # 执行 switch 切换
-            result = await _do_toggle_switch(page, {"switch_info": sw})
-
-            if result and result.get("success"):
-                # 记录到 validated（使用 switch: 前缀避免与按钮操作冲突）
-                validated[f"switch:{sw_text}"] = result
-                LOG.info(f"{tab_prefix}switch 操作成功: {sw_text}")
-            else:
-                # switch 操作失败，记录但不阻断后续操作
-                error_text = result.get("error_text", "") if result else "未知错误"
-                LOG.warning(f"{tab_prefix}switch 操作失败: {sw_text} ({error_text})")
-                validated[f"switch:{sw_text}"] = result or make_error("switch_failed", error_text)
-
-            # switch 状态变化后，等待页面稳定
-            await page.wait_for_timeout(500)
 
     for action in ordered_actions:
         btn = buttons_by_action.get(action)
@@ -348,6 +359,20 @@ async def _validate_single_tab_crud(
         btn_location = btn.get("location", "toolbar")
         role = action_roles.get(action, "generic")
         LOG.info(f"{tab_prefix}验证操作: {action} (按钮: {btn_text}, 角色: {role})")
+
+        # ★ Switch 操作：统一调度
+        if btn.get("_is_switch"):
+            result = await _do_toggle_switch(page, {"switch_info": btn})
+            if result and result.get("success"):
+                validated[action] = result
+                LOG.info(f"{tab_prefix}{action} 操作成功")
+            else:
+                error_text = result.get("error_text", "") if result else "未知错误"
+                LOG.warning(f"{tab_prefix}{action} 操作失败: {error_text}")
+                validated[action] = result or make_error("switch_failed", error_text)
+            # switch 状态变化后，等待页面稳定
+            await page.wait_for_timeout(500)
+            continue
 
         # 基于角色分发到对应验证函数
         if role == "create":
@@ -1880,7 +1905,9 @@ async def _do_toggle_switch(page, context: dict) -> dict:
 
             if click_result.get("clicked"):
                 clicked = True
-                LOG.debug(f"    [switch] 点击成功: {sw_locator} (toolbar级)")
+                LOG.debug(f"    [switch] 点击成功: {sw_locator} "
+                          f"(toolbar级, total={click_result.get('total')}, "
+                          f"filtered={click_result.get('filtered')})")
             else:
                 reason = click_result.get("reason", "unknown")
                 LOG.warning(f"    [switch] 点击失败: {reason}")
@@ -1900,57 +1927,149 @@ async def _do_toggle_switch(page, context: dict) -> dict:
         # 检查是否出现确认弹框（el-message-box 或 el-dialog）
         confirm_handled = False
         try:
+            # ★ 增强诊断：记录弹框详细状态
+            box_diag = await page.evaluate("""() => {
+                const wrappers = document.querySelectorAll('.el-message-box__wrapper');
+                const result = [];
+                wrappers.forEach((w, i) => {
+                    const style = w.getAttribute('style') || '';
+                    const display = window.getComputedStyle(w).display;
+                    const visible = w.offsetWidth > 0 && w.offsetHeight > 0;
+                    const title = w.querySelector('.el-message-box__title')?.textContent?.trim() || '';
+                    const message = w.querySelector('.el-message-box__message')?.textContent?.trim()?.substring(0, 50) || '';
+                    const btns = Array.from(w.querySelectorAll('.el-message-box__btns button')).map(b => ({
+                        text: b.textContent.trim(),
+                        disabled: b.disabled,
+                        primary: b.classList.contains('el-button--primary')
+                    }));
+                    result.push({
+                        index: i,
+                        display,
+                        visible,
+                        styleDisplay: style.includes('display: none'),
+                        title,
+                        message,
+                        buttons: btns
+                    });
+                });
+                return result;
+            }""")
+            if box_diag:
+                for bd in box_diag:
+                    LOG.debug(f"    [switch] 弹框[{bd.get('index')}]: display={bd.get('display')}, "
+                              f"visible={bd.get('visible')}, styleNone={bd.get('styleDisplay')}, "
+                              f"title='{bd.get('title')}', msg='{bd.get('message')}'")
+
+            # 查找可见的确认弹框
             confirm_box = await page.query_selector('.el-message-box__wrapper:not([style*="display: none"])')
+            if not confirm_box:
+                # 备选：检查是否有可见的弹框（通过尺寸判断）
+                for bd in (box_diag or []):
+                    if bd.get("visible"):
+                        LOG.debug(f"    [switch] 备选弹框检测: 使用 visible box[{bd.get('index')}]")
+                        confirm_box = True  # 标记有弹框
+                        break
+
             if confirm_box:
                 LOG.info(f"    [switch] 检测到确认弹框")
-                # 点击确认按钮
+                # 点击确认按钮（优先 primary 按钮）
                 confirm_btn = await page.query_selector('.el-message-box__btns .el-button--primary')
                 if confirm_btn:
                     await confirm_btn.click()
-                    await page.wait_for_timeout(500)
+                    LOG.info(f"    [switch] 已点击确认按钮 (primary)")
+
+                    # ★ 等待弹框真正消失（轮询，而非固定等待）
+                    for _wait in range(10):  # 最多 3 秒
+                        box_still_visible = await page.evaluate("""() => {
+                            const boxes = document.querySelectorAll('.el-message-box__wrapper');
+                            for (const b of boxes) {
+                                if (b.offsetWidth > 0 && b.offsetHeight > 0
+                                    && !b.getAttribute('style')?.includes('display: none')) {
+                                    return true;
+                                }
+                            }
+                            return false;
+                        }""")
+                        if not box_still_visible:
+                            LOG.debug(f"    [switch] 弹框已消失 (等待 {_wait * 300}ms)")
+                            break
+                        await page.wait_for_timeout(300)
+                    else:
+                        LOG.warning(f"    [switch] 弹框 3 秒后仍未消失")
+
                     confirm_handled = True
-                    LOG.info(f"    [switch] 已点击确认按钮")
                 else:
                     # 尝试其他确认按钮
-                    for btn_selector in ['.el-message-box__btns button:first-child', 'button:has-text("确定")']:
+                    for btn_selector in ['.el-message-box__btns button:last-child',
+                                         '.el-message-box__btns button:first-child']:
                         btn = await page.query_selector(btn_selector)
                         if btn and await btn.is_visible():
+                            btn_text_diag = await btn.text_content()
+                            LOG.debug(f"    [switch] 备选确认按钮: '{btn_text_diag}'")
                             await btn.click()
-                            await page.wait_for_timeout(500)
+                            # 等待弹框消失
+                            for _wait in range(10):
+                                box_still_visible = await page.evaluate("""() => {
+                                    const boxes = document.querySelectorAll('.el-message-box__wrapper');
+                                    for (const b of boxes) {
+                                        if (b.offsetWidth > 0 && b.offsetHeight > 0) return true;
+                                    }
+                                    return false;
+                                }""")
+                                if not box_still_visible:
+                                    break
+                                await page.wait_for_timeout(300)
                             confirm_handled = True
                             LOG.info(f"    [switch] 已点击确认按钮 (fallback)")
                             break
         except Exception as e:
-            LOG.debug(f"    [switch] 确认弹框处理: {e}")
+            LOG.debug(f"    [switch] 确认弹框处理异常: {e}")
 
-        # 4. 等待状态变化
-        await page.wait_for_timeout(800)
+        # 4. ★ 轮询等待 switch 状态变化（最多 5 秒）
+        # 替代原来的固定 800ms + 单次检查
+        status_changed = False
+        after_checked = before_checked
 
-        # 5. 检查 switch 状态是否变化（同样排除表格行内的 switch）
-        after_state = await page.evaluate(f"""() => {{
-            const candidates = document.querySelectorAll('{sw_locator}');
-            const toolbarSwitches = Array.from(candidates).filter(sw => {{
-                return !sw.closest('.el-table__row, .el-table__body tr, tr.el-table__row');
-            }});
+        for attempt in range(10):  # 10 × 500ms = 5 秒
+            after_state = await page.evaluate(f"""() => {{
+                const candidates = document.querySelectorAll('{sw_locator}');
+                const toolbarSwitches = Array.from(candidates).filter(sw => {{
+                    return !sw.closest('.el-table__row, .el-table__body tr, tr.el-table__row');
+                }});
 
-            if (toolbarSwitches.length === 0) {{
-                return {{ found: false, isChecked: false }};
-            }}
+                if (toolbarSwitches.length === 0) {{
+                    return {{ found: false, isChecked: false }};
+                }}
 
-            const sw = toolbarSwitches[0];
-            return {{
-                found: true,
-                isChecked: sw.classList.contains('is-checked')
-            }};
-        }}""")
+                const sw = toolbarSwitches[0];
+                return {{
+                    found: true,
+                    isChecked: sw.classList.contains('is-checked')
+                }};
+            }}""")
 
-        if not after_state.get("found"):
+            if not after_state.get("found"):
+                LOG.debug(f"    [switch] 轮询[{attempt}]: switch 元素未找到")
+                await page.wait_for_timeout(500)
+                continue
+
+            current_checked = after_state.get("isChecked", False)
+            if current_checked != before_checked:
+                status_changed = True
+                after_checked = current_checked
+                LOG.debug(f"    [switch] 轮询[{attempt}]: 状态已变化 → "
+                          f"{'ON' if current_checked else 'OFF'} (等待 {attempt * 500}ms)")
+                break
+            else:
+                LOG.debug(f"    [switch] 轮询[{attempt}]: 状态未变 ({'ON' if current_checked else 'OFF'})")
+
+            await page.wait_for_timeout(500)
+
+        if not status_changed and not after_state.get("found"):
             return make_error("switch_not_found", f"switch 元素消失: {sw_text}",
                             trigger_text=sw_text)
 
-        after_checked = after_state.get("isChecked", False)
-
-        # 6. 验证状态变化
+        # 5. 验证状态变化
         if before_checked == after_checked:
             LOG.warning(f"    [switch] 状态未变化: {'ON' if after_checked else 'OFF'}")
             return make_error("switch_state_unchanged",

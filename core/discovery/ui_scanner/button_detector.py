@@ -27,6 +27,37 @@ LOG = logging.getLogger("button_detector")
 _kb: ProbeKB = None
 
 
+async def _get_active_tab_info(page) -> dict:
+    """获取当前活跃 Tab 的 locator 信息，用于导航后恢复。
+
+    Returns:
+        dict: {"tabId": str, "tabText": str, "locator": str} 或 None
+    """
+    try:
+        return await page.evaluate("""() => {
+            const activeTab = document.querySelector(
+                '.el-tabs__item.is-active, [role="tab"][aria-selected="true"]'
+            );
+            if (!activeTab) return null;
+
+            const tabId = activeTab.id || '';
+            const tabText = activeTab.textContent.trim();
+
+            // 构建 locator
+            let locator = '';
+            if (tabId) {
+                locator = '#' + tabId;
+            } else {
+                locator = `.el-tabs__item:has-text("${tabText}")`;
+            }
+
+            return { tabId, tabText, locator };
+        }""")
+    except Exception as e:
+        LOG.debug(f"    [Tab 恢复] 获取活跃 Tab 失败: {e}")
+        return None
+
+
 async def _prewarm_table_data(page, form_fields: list, toolbar_buttons: list,
                                framework: str = "element-ui") -> dict:
     """数据预热：在空表格时创建临时数据，使行操作按钮渲染。
@@ -66,6 +97,14 @@ async def _prewarm_table_data(page, form_fields: list, toolbar_buttons: list,
     # ★ 保存原始 URL，用于 page-nav 模式下导航回原页面
     original_url = page.url
 
+    # ★ 保存活跃 Tab 信息（用于 page-nav 模式下恢复 Tab 状态）
+    # 问题：两个 Tab 共享同一 URL（如 .../black-list），Tab 切换是前端状态
+    # 导航回来后默认激活第一个 Tab，需要手动恢复
+    active_tab_info = await _get_active_tab_info(page)
+    if active_tab_info:
+        LOG.debug(f"    预热: 保存活跃 Tab: {active_tab_info.get('tabText')} "
+                  f"(locator={active_tab_info.get('locator')})")
+
     async def _navigate_back_if_needed():
         """预热结束后，检查是否需要导航回原页面。
 
@@ -77,6 +116,32 @@ async def _prewarm_table_data(page, form_fields: list, toolbar_buttons: list,
             LOG.info(f"    预热: page-nav 模式，导航回原页面: {original_url}")
             await page.goto(original_url, wait_until="networkidle")
             await page.wait_for_timeout(2000)
+
+            # ★ 恢复活跃 Tab（导航后默认激活第一个 Tab，需要切回原来的 Tab）
+            if active_tab_info and active_tab_info.get("locator"):
+                try:
+                    target_locator = active_tab_info["locator"]
+                    # 检查当前活跃 Tab 是否已经是目标 Tab
+                    current_active = await page.evaluate("""(locator) => {
+                        const el = document.querySelector(locator);
+                        return el ? el.classList.contains('is-active') : false;
+                    }""", target_locator)
+
+                    if not current_active:
+                        LOG.info(f"    预热: 恢复活跃 Tab: {active_tab_info.get('tabText', '')}")
+                        await page.click(target_locator, timeout=5000)
+                        await page.wait_for_timeout(2000)
+                        # 诊断日志：确认 Tab 恢复是否成功
+                        restored = await page.evaluate("""(locator) => {
+                            const el = document.querySelector(locator);
+                            return el ? el.classList.contains('is-active') : false;
+                        }""", target_locator)
+                        if restored:
+                            LOG.debug(f"    预热: Tab 恢复成功")
+                        else:
+                            LOG.warning(f"    预热: Tab 恢复失败，目标 Tab 未激活")
+                except Exception as e:
+                    LOG.warning(f"    预热: 恢复 Tab 失败: {e}")
         else:
             await _close_dialog(page)
 
