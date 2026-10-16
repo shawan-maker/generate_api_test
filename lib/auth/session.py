@@ -42,10 +42,11 @@ class LoginSession:
         """确保认证有效的主流程
 
         流程：
-        1. 检查本地 cookie 新鲜度（TTL 内）
+        1. 尝试加载本地 cookie（不论 TTL）
         2. 服务端探测（访问 probe_url）
-        3. 执行登录（strategy.login，带重试）
-        4. 保存 cookies + localStorage + sessionStorage
+        3. 探测成功 → 刷新 TTL 并返回
+        4. 探测失败 → 执行登录（strategy.login，带重试）
+        5. 登录成功 → 保存 cookies + localStorage + sessionStorage
 
         Args:
             page: Playwright Page 对象
@@ -55,9 +56,9 @@ class LoginSession:
         Returns:
             bool: 是否成功（已认证或登录成功）
         """
-        # Step 1: 检查本地 cookie 新鲜度
-        if self.store.is_fresh(self.project_dir, self.config.fresh_ttl_seconds):
-            cookies = self.store.load(self.project_dir)
+        # Step 1: 尝试加载本地 cookie（不论 TTL 是否过期）
+        cookies = self.store.load(self.project_dir)
+        if cookies:
             filtered = self.store.filter_by_host(cookies, self.config.host)
 
             if filtered:
@@ -68,7 +69,7 @@ class LoginSession:
                 if self.config.persist_localStorage:
                     await self._inject_localStorage(context)
 
-                # Step 2: 服务端探测
+                # Step 2: 服务端探测（即使 TTL 过期也尝试）
                 if self.config.probe_url:
                     probe_url = self.config.base_url.rstrip("/") + self.config.probe_url
                     # 关键：hash SPA 需要先跳到 about:blank 再跳到目标页
@@ -81,16 +82,26 @@ class LoginSession:
                     try:
                         await page.goto(probe_url, wait_until="domcontentloaded", timeout=15000)
                         if await strategy.probe(page, probe_url):
-                            LOG.info("✅ Cookie 有效，复用现有会话")
+                            # Step 3: 探测成功 → 刷新 TTL
+                            is_fresh = self.store.is_fresh(self.project_dir, self.config.fresh_ttl_seconds)
+                            if is_fresh:
+                                LOG.info("✅ Cookie 有效，复用现有会话")
+                            else:
+                                LOG.info("✅ Cookie TTL 已过期，但服务端仍有效，复用会话并刷新 TTL")
+                            # 刷新 savedAt（延长 TTL）
+                            self.store.save(self.project_dir, filtered)
                             return True
                     except Exception as e:
                         LOG.warning(f"探测失败: {e}")
                 else:
-                    # 无 probe_url，直接信任新鲜 cookie
-                    LOG.info("✅ Cookie 新鲜，跳过探测")
-                    return True
+                    # 无 probe_url，依赖 TTL
+                    if self.store.is_fresh(self.project_dir, self.config.fresh_ttl_seconds):
+                        LOG.info("✅ Cookie 新鲜，跳过探测")
+                        return True
+                    else:
+                        LOG.warning("Cookie TTL 已过期，且无 probe_url，执行登录")
 
-        # Step 3: 执行登录（带重试）
+        # Step 4: 探测失败或无 cookie，执行登录（带重试）
         # 关键：登录时不注入 localStorage（避免污染登录表单）
         for attempt in range(self.config.max_login_retries):
             LOG.info(f"执行登录（尝试 {attempt + 1}/{self.config.max_login_retries}）")
