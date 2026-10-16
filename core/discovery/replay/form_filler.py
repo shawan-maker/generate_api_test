@@ -216,6 +216,155 @@ class FormFiller:
         if not new_selectors and not gone_selectors:
             LOG.info(f"    [D6-cascade] 无级联效果 (pre={len(pre_raw)} post={len(post_raw)})")
 
+    async def _detect_and_fill_cascade(self, trigger_label: str, trigger_type: str,
+                                        filled_selectors: set,
+                                        depth: int = 0, max_depth: int = 3) -> Dict:
+        """[Phase 2a] 级联检测 + 自动填充：pre-scan → 等待 → post-scan → 填充新字段。
+
+        与 ``_detect_cascade_debug`` 的区别：
+        - 检测到新字段后自动填充（multi_step 用 executor，简单字段用 fill）
+        - 递归检测（新字段可能触发二级级联），最多 ``max_depth`` 层
+        - 用 ``filled_selectors`` 防止循环级联（A→B→A）
+
+        Args:
+            trigger_label: 触发级联的字段 label
+            trigger_type: 触发字段的 kb_category
+            filled_selectors: 已填充字段的 selector 集合（防循环）
+            depth: 当前递归深度
+            max_depth: 最大递归深度
+
+        Returns:
+            {"cascade_fields": list, "cascade_actions": list, "cascade_filled": int}
+        """
+        from .. import const
+
+        if depth >= max_depth:
+            LOG.info(f"    [cascade-fill] 达到最大递归深度 {max_depth}，停止")
+            return {"cascade_fields": [], "cascade_actions": [], "cascade_filled": 0}
+
+        # 1. Pre/post scan
+        try:
+            pre_scan = await scan_form_fields(self.page)
+            pre_raw = pre_scan.get('fields', []) if isinstance(pre_scan, dict) else pre_scan
+        except Exception as e:
+            LOG.warning(f"    [cascade-fill] pre-scan 失败: {e}")
+            return {"cascade_fields": [], "cascade_actions": [], "cascade_filled": 0}
+
+        LOG.info(f"    [cascade-fill] depth={depth} pre-scan: {len(pre_raw)} 个字段, "
+                 f"等待 2s 检测级联 (trigger={trigger_label})")
+        await self.page.wait_for_timeout(2000)
+
+        try:
+            post_scan = await scan_form_fields(self.page)
+            post_raw = post_scan.get('fields', []) if isinstance(post_scan, dict) else post_scan
+        except Exception as e:
+            LOG.warning(f"    [cascade-fill] post-scan 失败: {e}")
+            return {"cascade_fields": [], "cascade_actions": [], "cascade_filled": 0}
+
+        # 2. 计算新增字段
+        pre_selectors = {f.get('selector') for f in pre_raw if f.get('selector')}
+        post_selectors = {f.get('selector') for f in post_raw if f.get('selector')}
+        new_selectors = post_selectors - pre_selectors - filled_selectors
+
+        new_fields = [f for f in post_raw
+                      if f.get('selector') and f.get('selector') in new_selectors]
+
+        if not new_fields:
+            LOG.info(f"    [cascade-fill] 无级联新字段 (pre={len(pre_raw)} post={len(post_raw)})")
+            return {"cascade_fields": [], "cascade_actions": [], "cascade_filled": 0}
+
+        LOG.info(f"    [cascade-fill] 🆕 检测到 {len(new_fields)} 个级联新字段: "
+                 f"{[f.get('label', '?') for f in new_fields]}")
+
+        # 3. 填充新字段
+        executor = self._get_executor("element-ui")
+        cascade_actions = []
+        cascade_filled = 0
+
+        for field in new_fields:
+            label = field.get('label', '')
+            kb_cat = field.get('kb_category', '')
+            selector = field.get('selector', '')
+
+            # 防循环
+            if selector in filled_selectors:
+                LOG.info(f"    [cascade-fill] 跳过已填充字段: {label}")
+                continue
+
+            action_entry = {
+                "type": "cascade-fill",
+                "trigger_field": trigger_label,
+                "cascade_field": label,
+                "cascade_category": kb_cat,
+                "selector": selector,
+                "success": False,
+            }
+
+            if kb_cat in const.MULTI_STEP_TYPES or kb_cat == "form-checkbox":
+                # 多步字段：用 MultiStepExecutor 填充
+                success, detail = await executor.execute_with_details(
+                    kb_cat, label, option_text="", selector=selector
+                )
+                action_entry["success"] = success
+                action_entry["option_text"] = detail.get("option_text", "")
+                if success:
+                    cascade_filled += 1
+                    filled_selectors.add(selector)
+                    LOG.info(f"    [cascade-fill] ✅ {label} ({kb_cat}) → {detail.get('option_text', '')}")
+
+                    # el-select 下拉框关闭
+                    if kb_cat == "el-select":
+                        await self.page.wait_for_timeout(300)
+                        dropdown_visible = await self.page.evaluate("""() => {
+                            const dropdown = document.querySelector('[x-placement]');
+                            if (!dropdown) return false;
+                            const style = window.getComputedStyle(dropdown);
+                            return style.display !== 'none' && style.visibility !== 'hidden';
+                        }""")
+                        if dropdown_visible:
+                            await self.page.keyboard.press("Escape")
+                else:
+                    LOG.warning(f"    [cascade-fill] ⚠️ {label} ({kb_cat}) 填充失败")
+
+            elif kb_cat in ("input-generic", "textarea-generic"):
+                # 简单输入：生成随机值并填充
+                try:
+                    ts = str(int(time.time()))[-6:]
+                    value = f"cascade_{ts}"
+                    el = self.page.locator(selector).first
+                    if await el.count() > 0:
+                        await el.fill(value)
+                        action_entry["success"] = True
+                        action_entry["fill_value"] = value
+                        cascade_filled += 1
+                        filled_selectors.add(selector)
+                        LOG.info(f"    [cascade-fill] ✅ {label} (input) → {value}")
+                except Exception as e:
+                    LOG.warning(f"    [cascade-fill] ⚠️ {label} (input) 填充失败: {e}")
+            else:
+                LOG.info(f"    [cascade-fill] 跳过不支持的类型: {label} ({kb_cat})")
+
+            cascade_actions.append(action_entry)
+
+        # 4. 递归检测（新字段可能触发二级级联）
+        if cascade_filled > 0 and depth < max_depth - 1:
+            last_filled = new_fields[-1]
+            sub_result = await self._detect_and_fill_cascade(
+                trigger_label=last_filled.get('label', ''),
+                trigger_type=last_filled.get('kb_category', ''),
+                filled_selectors=filled_selectors,
+                depth=depth + 1,
+                max_depth=max_depth,
+            )
+            cascade_actions.extend(sub_result.get("cascade_actions", []))
+            cascade_filled += sub_result.get("cascade_filled", 0)
+
+        return {
+            "cascade_fields": new_fields,
+            "cascade_actions": cascade_actions,
+            "cascade_filled": cascade_filled,
+        }
+
     async def fill_create_form(self, fields: List[Dict], username: str,
                                  fill_data: Dict[str, str] = None) -> Dict:
         """填充创建表单，返回填充结果。
@@ -420,129 +569,99 @@ class FormFiller:
             "radio_selections": radio_selections,  # ★ 记录 radio 实际选择的值
         }
 
-    async def fill_multi_step_fields(self, fields: List[Dict], framework: str = "element-ui") -> Tuple[int, List[Dict], List[Dict]]:
-        """处理 multi_step 类型的表单字段。
+    async def fill_multi_step_fields(self, fields: List[Dict], framework: str = "element-ui",
+                                      max_rounds: int = 5) -> Tuple[int, List[Dict], List[Dict]]:
+        """处理 multi_step 类型的表单字段（N 轮重试 + 级联感知）。
 
         遍历 fields，对 kb_category 在 MULTI_STEP_TYPES 中的字段调用 MultiStepExecutor。
         优先使用 field 中的 selector（来自 Stage 1），KB XPath 作为回退。
-        旧版 select_dropdowns() 作为兜底保留。
 
-        支持级联字段：第一轮填充后，对 no_options 的字段等待 1 秒后重试第二轮
-        （上游字段填充后，下游字段的 API 可能已加载完成）。
+        N 轮重试策略（Phase 1b）：
+        - 每轮尝试填充所有 pending 字段
+        - no_options 的字段延后到下一轮重试（上游填充后下游选项可能加载完成）
+        - 最多 max_rounds 轮，提前退出条件：无 pending 字段 或 连续两轮无进展
+        - 每轮成功后执行 [D6] 级联检测（日志记录）
 
         Args:
             fields: scan_form_fields_v2() 返回的字段列表
             framework: UI 框架
+            max_rounds: 最大重试轮数（默认 5，覆盖 A→B→C→D→E 深度级联）
 
         Returns:
             (成功处理的字段数, 详细信息列表, 下拉框关闭操作列表)
-            详细信息列表包含每个字段的 label, kb_category, selector, is_editable, option_text
-            下拉框关闭操作列表记录 el-select 选择后需要关闭下拉框的操作
         """
         from .. import const
 
         executor = self._get_executor(framework)
         filled = 0
         details = []
-        no_options_fields = []  # 第一轮无选项的字段，等待后重试
-        close_dropdown_actions = []  # ★ 记录 el-select 下拉框关闭操作
+        close_dropdown_actions = []
 
-        # === 第一轮：填充所有字段 ===
+        # 构建待填充队列（仅 multi_step 类型）
+        pending = []
         for field in fields:
             kb_cat = field.get("kb_category", "")
             if kb_cat not in const.MULTI_STEP_TYPES and kb_cat != "form-checkbox":
                 continue
+            pending.append(field)
 
-            label = field.get("label", "")
-            selector = field.get("selector") or field.get("playwright_locator", "")
+        if not pending:
+            return filled, details, close_dropdown_actions
 
-            # 为 ip-input 传递额外参数
-            extra_kwargs = {}
-            if kb_cat == "ip-input":
-                extra_kwargs = {
-                    "sub_selectors": field.get("subSelectors", []),
-                    "input_count": field.get("inputCount", 4),
-                    "ip_version": field.get("ipVersion", "v4"),
-                }
+        LOG.info(f"    [multi-step] 开始 N 轮填充: {len(pending)} 个字段, max_rounds={max_rounds}")
 
-            success, detail = await executor.execute_with_details(
-                kb_cat, label, option_text="", selector=selector, **extra_kwargs
-            )
+        prev_pending_count = -1  # 用于检测无进展
+        filled_selectors = set()  # 已填充字段的 selector 集合（Phase 2a：防循环）
+        all_cascade_actions = []  # Phase 2a：收集所有级联填充记录
 
-            if success:
-                filled += 1
-                details.append({
-                    "label": label,
-                    "kb_category": kb_cat,
-                    "selector": selector,
-                    "is_editable": detail.get("is_editable", False),
-                    "option_text": detail.get("option_text", ""),
-                })
-                LOG.info(f"    ✅ multi_step: {label} ({kb_cat})")
+        for round_num in range(1, max_rounds + 1):
+            if not pending:
+                break
 
-                # ★ el-select 选择后检查下拉框状态，如仍展开则关闭并记录
-                if kb_cat == "el-select":
-                    await self.page.wait_for_timeout(300)  # 等待下拉框动画
-                    dropdown_visible = await self.page.evaluate("""() => {
-                        const dropdown = document.querySelector('[x-placement]');
-                        if (!dropdown) return false;
-                        const style = window.getComputedStyle(dropdown);
-                        return style.display !== 'none' && style.visibility !== 'hidden';
-                    }""")
-                    if dropdown_visible:
-                        LOG.info(f"    [el-select] 下拉框仍展开，发送 ESC 关闭: {label}")
-                        await self.page.keyboard.press("Escape")
-                        close_dropdown_actions.append({
-                            "field_label": label,
-                            "action": "press_escape",
-                        })
+            # 无进展检测：如果本轮 pending 数量与上轮相同，说明卡住了
+            if len(pending) == prev_pending_count:
+                LOG.info(f"    [multi-step] Round {round_num}: 连续无进展（{len(pending)} 个 pending），停止重试")
+                break
+            prev_pending_count = len(pending)
 
-                # ★ [D6] 级联检测：el-select/radio 填充后重新扫描，检测新字段
-                if kb_cat in ("el-select", "radio"):
-                    await self._detect_cascade_debug(label, kb_cat, fields)
-            elif detail.get("skipped_reason") == "no_options":
-                # 记录 no_options 字段，第二轮重试
-                no_options_fields.append({
-                    "field": field,
-                    "detail": {
-                        "label": label,
-                        "kb_category": kb_cat,
-                        "selector": selector,
-                        "is_editable": detail.get("is_editable", False),
-                        "option_text": "",
-                        "skipped_reason": "no_options",
-                    },
-                })
-                LOG.info(f"    ⏭️ multi_step 第一轮跳过(无选项): {label} ({kb_cat})")
-            else:
-                LOG.warning(f"    ⚠️ multi_step 失败: {label} ({kb_cat})")
+            LOG.info(f"    [multi-step] Round {round_num}/{max_rounds}: {len(pending)} 个待填充")
+            still_pending = []
+            round_filled = 0
 
-        # === 第二轮：重试 no_options 的字段 ===
-        if no_options_fields:
-            LOG.info(f"    等待 1 秒后重试 {len(no_options_fields)} 个无选项字段...")
-            await self.page.wait_for_timeout(1000)
+            for field in pending:
+                kb_cat = field.get("kb_category", "")
+                label = field.get("label", "")
+                selector = field.get("selector") or field.get("playwright_locator", "")
 
-            for item in no_options_fields:
-                field = item["field"]
-                prev_detail = item["detail"]
-                kb_cat = prev_detail["kb_category"]
-                label = prev_detail["label"]
-                selector = prev_detail["selector"]
+                # 为 ip-input 传递额外参数
+                extra_kwargs = {}
+                if kb_cat == "ip-input":
+                    extra_kwargs = {
+                        "sub_selectors": field.get("subSelectors", []),
+                        "input_count": field.get("inputCount", 4),
+                        "ip_version": field.get("ipVersion", "v4"),
+                    }
 
-                success, detail = await executor.execute_with_details(kb_cat, label, option_text="", selector=selector)
+                success, detail = await executor.execute_with_details(
+                    kb_cat, label, option_text="", selector=selector, **extra_kwargs
+                )
 
                 if success:
                     filled += 1
-                    details.append({
+                    round_filled += 1
+                    filled_selectors.add(selector)
+                    detail_entry = {
                         "label": label,
                         "kb_category": kb_cat,
                         "selector": selector,
                         "is_editable": detail.get("is_editable", False),
                         "option_text": detail.get("option_text", ""),
-                    })
-                    LOG.info(f"    ✅ multi_step 第二轮成功: {label} ({kb_cat})")
+                        "round": round_num,
+                    }
+                    details.append(detail_entry)
+                    LOG.info(f"    ✅ multi_step R{round_num}: {label} ({kb_cat}) → {detail.get('option_text', '')}")
 
-                    # ★ el-select 第二轮选择后也检查下拉框状态
+                    # ★ el-select 选择后检查下拉框状态，如仍展开则关闭并记录
                     if kb_cat == "el-select":
                         await self.page.wait_for_timeout(300)
                         dropdown_visible = await self.page.evaluate("""() => {
@@ -552,20 +671,78 @@ class FormFiller:
                             return style.display !== 'none' && style.visibility !== 'hidden';
                         }""")
                         if dropdown_visible:
-                            LOG.info(f"    [el-select] 第二轮下拉框仍展开，发送 ESC 关闭: {label}")
+                            LOG.info(f"    [el-select] 下拉框仍展开，发送 ESC 关闭: {label}")
                             await self.page.keyboard.press("Escape")
                             close_dropdown_actions.append({
                                 "field_label": label,
                                 "action": "press_escape",
-                                "round": 2,
+                                "round": round_num,
                             })
+
+                    # ★ [Phase 2a] 级联检测 + 自动填充
+                    if kb_cat in ("el-select", "radio"):
+                        cascade_result = await self._detect_and_fill_cascade(
+                            label, kb_cat, filled_selectors, depth=0, max_depth=3
+                        )
+                        cascade_filled = cascade_result.get("cascade_filled", 0)
+                        if cascade_filled > 0:
+                            filled += cascade_filled
+                            round_filled += cascade_filled
+                            all_cascade_actions.extend(cascade_result.get("cascade_actions", []))
+                            # 将级联产生的 multi_step 字段加入 pending（下一轮处理）
+                            for cf in cascade_result.get("cascade_fields", []):
+                                cf_cat = cf.get("kb_category", "")
+                                if cf_cat in const.MULTI_STEP_TYPES or cf_cat == "form-checkbox":
+                                    cf_selector = cf.get("selector", "")
+                                    if cf_selector not in filled_selectors:
+                                        still_pending.append(cf)
+                                        LOG.info(f"    [cascade] 级联字段加入 pending: {cf.get('label')} ({cf_cat})")
+
+                elif detail.get("skipped_reason") == "no_options":
+                    still_pending.append(field)
+                    if round_num == 1:
+                        LOG.info(f"    ⏭️ multi_step R{round_num} 跳过(无选项): {label} ({kb_cat})")
+                    # 非首轮仍 no_options 时不输出日志（减少噪音，最终汇总）
                 else:
-                    # 仍然失败，保留第一轮的结果
-                    details.append(prev_detail)
-                    if detail.get("skipped_reason") == "no_options":
-                        LOG.info(f"    ⏭️ multi_step 第二轮仍无选项: {label} ({kb_cat})")
-                    else:
-                        LOG.warning(f"    ⚠️ multi_step 第二轮失败: {label} ({kb_cat})")
+                    # 其他失败（非 no_options）：记录但不再重试
+                    details.append({
+                        "label": label,
+                        "kb_category": kb_cat,
+                        "selector": selector,
+                        "is_editable": detail.get("is_editable", False),
+                        "option_text": "",
+                        "skipped_reason": detail.get("skipped_reason", "unknown"),
+                        "round": round_num,
+                    })
+                    LOG.warning(f"    ⚠️ multi_step R{round_num} 失败: {label} ({kb_cat})")
+
+            if round_filled > 0:
+                LOG.info(f"    [multi-step] Round {round_num} 完成: 填充 {round_filled} 个, "
+                         f"剩余 {len(still_pending)} 个待重试")
+
+            pending = still_pending
+
+            # 有 pending 字段时等待后再试
+            if pending and round_num < max_rounds:
+                LOG.info(f"    [multi-step] 等待 1s 后重试 {len(pending)} 个字段...")
+                await self.page.wait_for_timeout(1000)
+
+        # 最终：将始终 no_options 的字段记录到 details
+        for field in pending:
+            label = field.get("label", "")
+            kb_cat = field.get("kb_category", "")
+            selector = field.get("selector") or field.get("playwright_locator", "")
+            details.append({
+                "label": label,
+                "kb_category": kb_cat,
+                "selector": selector,
+                "is_editable": False,
+                "option_text": "",
+                "skipped_reason": "no_options",
+            })
+        if pending:
+            LOG.warning(f"    [multi-step] {len(pending)} 个字段在 {max_rounds} 轮后仍无选项: "
+                        f"{[f.get('label', '?') for f in pending]}")
 
         return filled, details, close_dropdown_actions
 
@@ -2227,6 +2404,46 @@ class MultiStepExecutor:
         is_editable = await self._check_element_visible(editable_patterns, label=label)
         LOG.debug(f"    el-select {label}: is_editable={is_editable}")
 
+        # Step 2.5: Phase 2c - el-select 子类型检测
+        # 在下拉框展开后检测子类型（single/multi/searchable/remote/group/tree）
+        select_sub_type = "select-single"  # 默认值
+        sub_type_info = None
+        try:
+            sub_type_info = await self.page.evaluate("""(selector) => {
+                const sel = document.querySelector(selector);
+                if (!sel) return null;
+                const isMulti = sel.classList.contains('el-select--multiple') || sel.querySelector('.el-select__tags');
+                const input = sel.querySelector('input.el-input__inner');
+                const isFilterable = input && !input.readOnly;
+                const vue = sel.__vue__;
+                const isRemote = vue && vue.remote === true;
+                const dds = document.querySelectorAll('.el-select-dropdown');
+                let hasTree = false, hasGroup = false;
+                for (const dd of dds) {
+                    if (dd.offsetWidth > 0 && dd.offsetHeight > 0) {
+                        if (dd.querySelector('.el-tree')) hasTree = true;
+                        if (dd.querySelector('.el-select-group__wrap')) hasGroup = true;
+                    }
+                }
+                return { isMulti: !!isMulti, isFilterable: !!isFilterable, isRemote: !!isRemote, hasTree, hasGroup };
+            }""", selector)
+        except Exception as e:
+            LOG.debug(f"    el-select {label}: sub-type detection failed: {e}")
+
+        if sub_type_info:
+            if sub_type_info.get("hasTree"):
+                select_sub_type = "select-tree"
+            elif sub_type_info.get("isMulti"):
+                select_sub_type = "select-multi"
+            elif sub_type_info.get("isRemote"):
+                select_sub_type = "select-remote"
+            elif sub_type_info.get("isFilterable"):
+                select_sub_type = "select-searchable"
+            elif sub_type_info.get("hasGroup"):
+                select_sub_type = "select-group"
+
+            LOG.info(f"    el-select {label}: sub_type={select_sub_type}")
+
         # Step 3: 等待选项加载
         await self._wait_for_options_loaded()
 
@@ -2243,6 +2460,7 @@ class MultiStepExecutor:
         detail = {
             "is_editable": is_editable,
             "option_text": option_text or "",
+            "select_sub_type": select_sub_type if sub_type_info else "select-single",
         }
 
         if not option_text:

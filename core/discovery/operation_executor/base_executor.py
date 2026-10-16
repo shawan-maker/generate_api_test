@@ -6,6 +6,7 @@ and other reusable execution primitives used by crud_executor and
 navigation_executor.
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -623,6 +624,249 @@ async def _click_button_escalating(page, btn_text: str) -> dict:
         pass
 
     return result
+
+
+# ============================================================
+# _observe_post_click — 统一的按钮点击后场景检测
+# ============================================================
+
+async def _observe_post_click(page, url_before: str, timeout_ms: int = 3000,
+                               new_page_event: asyncio.Event = None,
+                               new_page_ref: list = None) -> dict:
+    """统一观察按钮点击后发生了什么，返回结构化的场景描述。
+
+    检测优先级：新标签页 → 页面跳转 → 弹窗/抽屉/确认框 → Toast → 无变化
+
+    用法示例::
+
+        # 在 click 前注册新标签页监听
+        new_page_event = asyncio.Event()
+        new_page_ref = [None]
+        def on_page(p):
+            new_page_ref[0] = p
+            new_page_event.set()
+        page.context.on("page", on_page)
+
+        url_before = page.url
+        await click_button(...)
+
+        obs = await _observe_post_click(page, url_before,
+                                         new_page_event=new_page_event,
+                                         new_page_ref=new_page_ref)
+
+    Args:
+        page: Playwright Page 对象
+        url_before: 点击前的 URL（用于检测页面跳转）
+        timeout_ms: 最大等待时间（毫秒），默认 3000
+        new_page_event: asyncio.Event，在 ``context.on("page")`` 回调中 set
+        new_page_ref: ``[Page]`` 列表，在回调中赋值新 Page
+
+    Returns:
+        dict with keys:
+        - scenario: ``"new_tab"`` | ``"page_nav"`` | ``"dialog"`` | ``"toast"`` | ``"none"``
+        - container_type: ``"el-dialog"`` | ``"el-drawer"`` | ``"el-message-box"`` | ``"el-popconfirm"`` | ``""``
+        - container_title: 弹窗标题
+        - has_form: 弹窗/页面内是否有表单
+        - url_changed: bool
+        - new_page: 新标签页的 Page 对象（如有）
+        - toast_text: toast 消息文本
+        - toast_type: ``"success"`` | ``"error"`` | ``"warning"`` | ``""``
+        - dialog_fill_needed: 弹窗中是否有未填充的 el-select
+        - actual_state: 来自 ``_check_precondition_state`` 的原始状态字符串
+    """
+    from core.discovery.ui_scanner.button_detector import _check_precondition_state
+
+    # 初始化默认返回
+    result = {
+        "scenario": "none",
+        "container_type": "",
+        "container_title": "",
+        "has_form": False,
+        "url_changed": False,
+        "new_page": None,
+        "toast_text": "",
+        "toast_type": "",
+        "dialog_fill_needed": False,
+        "actual_state": "",
+    }
+
+    # ── ① 等待场景出现 ──
+    # 分两阶段等待：先短暂等待给快速反应场景（dialog/toast），
+    # 再检查 loading 完成后的最终状态
+    wait_s = min(timeout_ms / 1000.0, 3.0)
+
+    # 如果有新标签页事件，先等它（最多 1.5s，不浪费时间在非新标签场景）
+    if new_page_event is not None:
+        try:
+            await asyncio.wait_for(new_page_event.wait(), timeout=1.5)
+        except (asyncio.TimeoutError, Exception):
+            pass
+
+    # 检查新标签页
+    if new_page_ref and new_page_ref[0] is not None:
+        new_pg = new_page_ref[0]
+        try:
+            await new_pg.wait_for_load_state("domcontentloaded", timeout=5000)
+        except Exception:
+            pass
+        LOG.info(f"    [observe] 检测到新标签页: {new_pg.url[:80]}")
+        result["scenario"] = "new_tab"
+        result["new_page"] = new_pg
+        return result
+
+    # 标准等待（给 dialog/toast/page-nav 渲染时间）
+    await page.wait_for_timeout(min(1500, int(wait_s * 1000)))
+    try:
+        await wait_for_loading_complete(page)
+    except Exception:
+        pass
+
+    # ── ② 页面跳转？ ──
+    url_after = page.url
+    if url_before and url_before != url_after:
+        has_form = await _check_page_has_form(page)
+        LOG.info(f"    [observe] 检测到页面跳转: {url_before[:40]} → {url_after[:40]}, has_form={has_form}")
+        result["scenario"] = "page_nav"
+        result["url_changed"] = True
+        result["has_form"] = has_form
+        return result
+
+    # ── ③ 弹窗/抽屉/确认框？ ──
+    state = await _check_precondition_state(page, {"type": "dialog"})
+    if state.get("success"):
+        actual_state = state.get("actual_state", "")
+        container_type = actual_state.split(":")[0].strip() if actual_state else ""
+        container_title = actual_state.split(":", 1)[1].strip() if ":" in actual_state else ""
+
+        has_form = False
+        dialog_fill_needed = False
+        if container_type in ("drawer", "dialog"):
+            has_form = await _check_dialog_has_form(page, container_type)
+            dialog_fill_needed = await _check_dialog_has_empty_selects(page, container_type)
+
+        LOG.info(f"    [observe] 检测到弹窗: type={container_type}, title='{container_title}', "
+                 f"has_form={has_form}, fill_needed={dialog_fill_needed}")
+        result["scenario"] = "dialog"
+        result["container_type"] = container_type
+        result["container_title"] = container_title
+        result["has_form"] = has_form
+        result["dialog_fill_needed"] = dialog_fill_needed
+        result["actual_state"] = actual_state
+        return result
+
+    # ── ④ Toast/Message？ ──
+    messages = await _get_captured_messages(page)
+    if messages:
+        first_msg = messages[0]
+        msg_text = first_msg.get("text", "")
+        msg_type = first_msg.get("type", "")
+        LOG.info(f"    [observe] 检测到 Toast: type={msg_type}, text='{msg_text[:60]}'")
+        result["scenario"] = "toast"
+        result["toast_text"] = msg_text
+        result["toast_type"] = msg_type
+        # 返回所有捕获的消息供后续分析
+        result["all_messages"] = messages
+        return result
+
+    # ── ⑤ 无变化 ──
+    LOG.info(f"    [observe] 未检测到明显变化（可能是即时操作或需要更长等待时间）")
+    return result
+
+
+async def _check_page_has_form(page) -> bool:
+    """检查当前页面是否包含表单元素。"""
+    try:
+        return await page.evaluate("""() => {
+            return !!(
+                document.querySelector('form') ||
+                document.querySelector('.el-form') ||
+                document.querySelector('.el-form-item') ||
+                document.querySelector('.ant-form') ||
+                document.querySelector('.ant-form-item')
+            );
+        }""")
+    except Exception:
+        return False
+
+
+async def _check_dialog_has_form(page, container_type: str) -> bool:
+    """检查弹窗/抽屉中是否包含表单元素。"""
+    if container_type == "drawer":
+        scope = '.el-drawer:not([style*="display: none"])'
+    else:
+        scope = '.el-dialog__wrapper:not([style*="display: none"])'
+    try:
+        return await page.evaluate(f"""() => {{
+            const container = document.querySelector('{scope}');
+            if (!container || container.offsetWidth === 0) return false;
+            return !!(
+                container.querySelector('form') ||
+                container.querySelector('.el-form') ||
+                container.querySelector('.el-form-item') ||
+                container.querySelector('.ant-form') ||
+                container.querySelector('.ant-form-item')
+            );
+        }}""")
+    except Exception:
+        return False
+
+
+async def _check_dialog_has_empty_selects(page, container_type: str) -> bool:
+    """检查弹窗/抽屉中是否有未填充的 el-select。"""
+    if container_type == "drawer":
+        scope = '.el-drawer:not([style*="display: none"])'
+    else:
+        scope = '.el-dialog__wrapper:not([style*="display: none"])'
+    try:
+        return await page.evaluate(f"""() => {{
+            const container = document.querySelector('{scope}');
+            if (!container || container.offsetWidth === 0) return false;
+            const selects = container.querySelectorAll('.el-select');
+            for (const sel of selects) {{
+                const innerInput = sel.querySelector('.el-input__inner');
+                if (innerInput && innerInput.disabled) continue;
+                const tags = sel.querySelectorAll('.el-tag');
+                const hasTags = tags && tags.length > 0;
+                const hasValue = innerInput && innerInput.value;
+                const selectedLabel = sel.querySelector('.el-select__selected-item, .el-select__tags-text');
+                const hasSelectedText = selectedLabel && selectedLabel.textContent.trim().length > 0;
+                if (!hasTags && !hasValue && !hasSelectedText) return true;
+            }}
+            return false;
+        }}""")
+    except Exception:
+        return False
+
+
+def _setup_new_tab_listener(page) -> tuple:
+    """在按钮点击前注册新标签页监听器。
+
+    Returns:
+        (event, ref, cleanup) — asyncio.Event, [Page] ref, 清理函数
+        使用方式::
+
+            event, ref, cleanup = _setup_new_tab_listener(page)
+            await click_button(...)
+            obs = await _observe_post_click(page, url_before,
+                                             new_page_event=event, new_page_ref=ref)
+            cleanup()  # 移除监听器
+    """
+    event = asyncio.Event()
+    ref = [None]
+
+    def on_page(p):
+        ref[0] = p
+        event.set()
+
+    page.context.on("page", on_page)
+
+    def cleanup():
+        try:
+            page.context.remove_listener("page", on_page)
+        except Exception:
+            pass
+
+    return event, ref, cleanup
 
 
 async def _install_message_capture(page) -> None:

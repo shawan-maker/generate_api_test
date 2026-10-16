@@ -24,7 +24,7 @@ from core.discovery.operation_executor.base_executor import (
     _verify_operation_success, _check_data_changed, _ensure_on_list_page,
     _extract_fallback_marker, _ensure_row_selected, _try_fill_empty_selects,
     _check_create_api_triggered_simple, _ensure_switch_enabled,
-    _extract_business_failure,
+    _extract_business_failure, _observe_post_click, _setup_new_tab_listener,
 )
 from core.discovery.operation_executor.result_factory import (
     make_error, make_success, click_failed, row_not_found, no_dialog,
@@ -1018,16 +1018,65 @@ async def _do_create(page, context: dict) -> dict:
     # 0. 前置条件：确保 switch 开启（某些页面的 switch 控制按钮可用性）
     await _ensure_switch_enabled(page)
 
-    # 1. 点击创建按钮
+    # 1. 点击创建按钮（注册新标签页监听）
+    url_before = page.url
+    new_tab_event, new_tab_ref, cleanup_tab_listener = _setup_new_tab_listener(page)
+
     btn_click_result = await _click_button_escalating(page, btn_text)
     if not btn_click_result["clicked"]:
+        cleanup_tab_listener()
         return click_failed(f"无法点击按钮: {btn_text}",
                            trigger_text=btn_text,
                            trigger_locator_verified=None)
 
-    # 2. 等待弹窗/页面就绪
-    await page.wait_for_timeout(1500)
-    await wait_for_loading_complete(page)
+    # 2. 统一后点击检测（Phase 1a：新标签页 + 页面跳转）
+    obs = await _observe_post_click(
+        page, url_before, timeout_ms=3000,
+        new_page_event=new_tab_event, new_page_ref=new_tab_ref
+    )
+    cleanup_tab_listener()
+
+    # 2a. 新标签页场景
+    if obs["scenario"] == "new_tab":
+        new_page = obs["new_page"]
+        LOG.info(f"    [new-tab] create 在新标签页打开: {new_page.url[:60]}")
+        from core.discovery.operation_executor.navigation_executor import (
+            _explore_and_operate_in_new_page,
+        )
+        nav_info = await _explore_and_operate_in_new_page(
+            page=new_page, action="create", new_url=new_page.url,
+            depth=0, max_depth=3,
+        )
+        try:
+            await new_page.close()
+        except Exception:
+            pass
+        submit_result = nav_info.get("submit_result", {})
+        if submit_result and submit_result.get("success"):
+            return {
+                "success": True,
+                "nav_info": nav_info,
+                "trigger_text": btn_text,
+                "fill_data": nav_info.get("fill_data", {}),
+                "selectors": {"trigger": btn_text},
+                "trigger_locator_verified": btn_click_result.get("locator"),
+                "interaction_mode": "new_tab",
+            }
+        return make_error("new_tab_create_failed",
+                         f"新标签页创建操作未完成: {nav_info.get('error_type', '')}",
+                         trigger_text=btn_text,
+                         nav_info=nav_info,
+                         trigger_locator_verified=btn_click_result.get("locator"))
+
+    # 2b. 页面跳转场景（如 /create, /add）— 让现有流程继续
+    if obs["scenario"] == "page_nav":
+        LOG.info(f"    [page-nav] create 触发页面跳转: {url_before[:40]} → {page.url[:40]}")
+        # 不 return，让后续的 scan_form_fields_v2 在新页面上执行
+
+    # 2c. 等待页面就绪（如果 _observe_post_click 已等待过则跳过）
+    if obs["scenario"] == "none":
+        await page.wait_for_timeout(1500)
+        await wait_for_loading_complete(page)
 
     # 3. 扫描表单字段（如果探测阶段没扫到或需要刷新）
     if not fields:
@@ -1520,11 +1569,17 @@ async def _do_detail(page, context: dict) -> dict:
 
     # 如果是行操作，先找到对应行
     row_selector = None
+    url_before = page.url
+
+    # Phase 3: 注册新标签页监听器
+    new_tab_event, new_tab_ref, cleanup_tab_listener = _setup_new_tab_listener(page)
+
     if btn_location == "row_action" and marker:
         from core.discovery.replay.button_driver import ButtonDriver
         driver = ButtonDriver(page)
         row = await driver.find_data_row(marker)
         if not row:
+            cleanup_tab_listener()
             return row_not_found(f"未找到数据行: {marker}")
         clicked = await driver.click_row_button_v2(row, btn_text)
         row_selector = btn_text
@@ -1533,28 +1588,49 @@ async def _do_detail(page, context: dict) -> dict:
         clicked = btn_click_result["clicked"]
 
     if not clicked:
+        cleanup_tab_listener()
         return click_failed(f"无法点击详情按钮: {btn_text}")
 
-    await page.wait_for_timeout(1500)
-    await wait_for_loading_complete(page)
+    # Phase 3: 使用统一后点击检测
+    obs = await _observe_post_click(
+        page, url_before, timeout_ms=3000,
+        new_page_event=new_tab_event, new_page_ref=new_tab_ref
+    )
+    cleanup_tab_listener()
 
-    # 验证详情打开（弹窗或页面跳转）
-    from core.discovery.ui_scanner.button_detector import _check_precondition_state, _close_dialog
-    state = await _check_precondition_state(page, {"type": "dialog"})
-    url_changed = "/detail" in page.url or "/view" in page.url
+    from core.discovery.ui_scanner.button_detector import _close_dialog
 
-    if state["success"] or url_changed:
-        # 关闭详情
+    selectors = {"trigger": btn_text}
+    if row_selector:
+        selectors["row_selector"] = row_selector
+
+    # 分支处理不同场景
+    if obs["scenario"] == "new_tab":
+        # 新标签页打开详情
+        new_page = obs["new_page"]
+        LOG.info(f"    [detail] 新标签页打开: {new_page.url[:60]}")
+        try:
+            await new_page.close()
+        except Exception:
+            pass
+        return {"success": True, "selectors": selectors, "interaction_mode": "new_tab"}
+
+    elif obs["scenario"] == "page_nav":
+        # 页面跳转模式
+        LOG.info(f"    [detail] 页面跳转: {url_before[:40]} → {page.url[:40]}")
+        await page.go_back()
+        await wait_for_navigation_complete(page)
+        return {"success": True, "selectors": selectors, "interaction_mode": "page_nav"}
+
+    elif obs["scenario"] == "dialog":
+        # 弹窗模式
+        LOG.info(f"    [detail] 弹窗打开: {obs['actual_state']}")
         await _close_dialog(page)
-        if url_changed:
-            await page.go_back()
-            await wait_for_navigation_complete(page)
-        selectors = {"trigger": btn_text}
-        if row_selector:
-            selectors["row_selector"] = row_selector
-        return {"success": True, "selectors": selectors}
+        return {"success": True, "selectors": selectors, "interaction_mode": "dialog"}
 
-    return no_dialog("点击详情后未出现详情页/弹窗")
+    else:
+        # 未检测到详情打开
+        return no_dialog("点击详情后未出现详情页/弹窗")
 
 
 async def _do_edit(page, context: dict) -> dict:
@@ -1570,9 +1646,12 @@ async def _do_edit(page, context: dict) -> dict:
 
     _log.debug(f"    [_do_edit] START: btn_text='{btn_text}', marker='{marker}', location='{btn_location}'")
 
-    # [DEBUG] 记录点击前的 URL
-    url_before_click = await page.evaluate("() => window.location.href")
+    # 记录点击前的 URL
+    url_before_click = page.url
     _log.info(f"    [EDIT-DEBUG] 点击前 URL: {url_before_click}")
+
+    # Phase 3: 注册新标签页监听器
+    new_tab_event, new_tab_ref, cleanup_tab_listener = _setup_new_tab_listener(page)
 
     # 找到行并点击编辑（带重试）
     max_locate_retries = 2
@@ -1588,6 +1667,7 @@ async def _do_edit(page, context: dict) -> dict:
                     LOG.debug(f"    行定位失败，等待后重试 ({attempt + 1}/{max_locate_retries})")
                     await page.wait_for_timeout(1000)
                     continue
+                cleanup_tab_listener()
                 return row_not_found(f"未找到数据行: {marker}",
                                     trigger_text=btn_text,
                                     trigger_locator_verified=None)
@@ -1605,17 +1685,21 @@ async def _do_edit(page, context: dict) -> dict:
             LOG.debug(f"    点击失败，重试 ({attempt + 1}/{max_locate_retries})")
             await page.wait_for_timeout(500)
     else:
+        cleanup_tab_listener()
         return click_failed(f"无法点击编辑按钮: {btn_text}",
                            trigger_text=btn_text,
                            trigger_locator_verified=None)
 
-    await page.wait_for_timeout(1500)
-    await wait_for_loading_complete(page)
+    # Phase 3: 使用统一后点击检测
+    obs = await _observe_post_click(
+        page, url_before_click, timeout_ms=3000,
+        new_page_event=new_tab_event, new_page_ref=new_tab_ref
+    )
+    cleanup_tab_listener()
 
-    # [DEBUG] 记录点击后的 URL 和页面状态
-    url_after_click = await page.evaluate("() => window.location.href")
+    url_after_click = page.url
     _log.info(f"    [EDIT-DEBUG] 点击后 URL: {url_after_click}")
-    _log.info(f"    [EDIT-DEBUG] URL 是否变化: {url_before_click != url_after_click}")
+    _log.info(f"    [EDIT-DEBUG] observe scenario: {obs['scenario']}")
 
     # [DEBUG] 检查是否有 order-submit 区域（底部固定操作栏）
     order_submit_info = await page.evaluate("""() => {
@@ -1702,16 +1786,46 @@ async def _do_edit(page, context: dict) -> dict:
         for i, fe in enumerate(order_submit_info['fixedElements']):
             _log.info(f"    [EDIT-DEBUG]   fixed[{i}]: {fe}")
 
-    # 验证编辑弹窗打开
-    from core.discovery.ui_scanner.button_detector import _check_precondition_state, _close_dialog
-    state = await _check_precondition_state(page, {"type": "dialog"})
+    from core.discovery.ui_scanner.button_detector import _close_dialog
 
-    # [DEBUG] 记录弹窗检测结果
-    _log.info(f"    [EDIT-DEBUG] 弹窗检测结果: success={state.get('success')}, actual_state={state.get('actual_state')}")
-    _log.info(f"    [EDIT-DEBUG] 弹窗详情: {state}")
+    # Phase 3: 分支处理不同场景
+    if obs["scenario"] == "new_tab":
+        # 新标签页编辑模式
+        new_page = obs["new_page"]
+        _log.info(f"    [EDIT-DEBUG] 新标签页打开: {new_page.url[:60]}")
+        from core.discovery.operation_executor.navigation_executor import (
+            _explore_and_operate_in_new_page,
+        )
+        nav_info = await _explore_and_operate_in_new_page(
+            page=new_page, action="edit", new_url=new_page.url, depth=0, max_depth=3
+        )
+        try:
+            await new_page.close()
+        except Exception:
+            pass
 
-    # 分支：页面跳转模式 vs 弹窗模式
-    if url_before_click != url_after_click:
+        nav_submit = nav_info.get("submit_result", {})
+        selectors = {"trigger": btn_text}
+        if row_selector:
+            selectors["row_selector"] = row_selector
+
+        if nav_submit.get("success"):
+            _log.info(f"    [EDIT-DEBUG] 新标签页编辑成功")
+            return make_success(
+                fill_data=nav_info.get("fill_data", {}),
+                selectors=selectors,
+                nav_info=nav_info,
+                trigger_text=btn_text,
+            )
+        else:
+            error_text = nav_info.get("error_text", "") or "新标签页编辑未检测到成功信号"
+            _log.warning(f"    [EDIT-DEBUG] 新标签页编辑失败: {error_text}")
+            return make_error("new_tab_edit_failed", error_text,
+                             trigger_text=btn_text,
+                             trigger_locator_verified=btn_click_result.get("locator"),
+                             nav_info=nav_info)
+
+    elif obs["scenario"] == "page_nav":
         # ── 页面跳转编辑模式 ──
         _log.info(f"    [EDIT-DEBUG] 检测到页面跳转，走跨页面编辑流程")
         from core.discovery.operation_executor.navigation_executor import (
@@ -1742,12 +1856,12 @@ async def _do_edit(page, context: dict) -> dict:
                               trigger_locator_verified=btn_click_result.get("locator"),
                               nav_info=nav_info)
 
-    if not state["success"]:
+    elif obs["scenario"] != "dialog":
         return no_dialog("点击编辑后未出现编辑弹窗",
                         trigger_text=btn_text,
                         trigger_locator_verified=btn_click_result.get("locator"))
 
-    # ── 弹窗编辑模式 ──
+    # ── 弹窗编辑模式 (obs["scenario"] == "dialog") ──
     # 扫描字段并修改
     fields = await form_filler.scan_form_fields_v2()
     modifications = context.get("edit_overrides")
@@ -2517,6 +2631,9 @@ async def _do_generic_operation(page, context: dict) -> dict:
     # 安装消息捕获（在点击按钮之前，防止瞬态 toast 消失）
     await _install_message_capture(page)
 
+    # 注册新标签页监听器（Phase 1a：统一后点击检测）
+    new_tab_event, new_tab_ref, cleanup_tab_listener = _setup_new_tab_listener(page)
+
     # 找到行并点击
     row_selector = None
     btn_click_result = {}  # 默认初始化，row_action/dropdown 分支不设置此变量
@@ -2557,14 +2674,65 @@ async def _do_generic_operation(page, context: dict) -> dict:
         dropdown_click_result = None
 
     if not clicked:
+        cleanup_tab_listener()
         return click_failed(f"无法点击 {action} 按钮: {btn_text}",
                            trigger_text=trigger_text_normalized,
                            trigger_locator_verified=btn_click_result.get("locator") if btn_click_result else None)
 
-    await page.wait_for_timeout(1500)
-    await wait_for_loading_complete(page)
+    # ── Phase 1a：统一后点击检测 ──
+    # 使用 _observe_post_click 检测新标签页场景（现有代码未处理的新能力）
+    # 对于 page_nav/dialog/toast 场景，保持现有检测逻辑以确保向后兼容
+    obs = await _observe_post_click(
+        page, url_before, timeout_ms=3000,
+        new_page_event=new_tab_event, new_page_ref=new_tab_ref
+    )
+    cleanup_tab_listener()
 
-    # 导航保护：检查是否触发了页面跳转
+    # ── 新标签页场景（Phase 1a 新增能力） ──
+    if obs["scenario"] == "new_tab":
+        new_page = obs["new_page"]
+        LOG.info(f"    [new-tab] 检测到新标签页，开始探索: {new_page.url[:60]}")
+
+        nav_info = await _explore_and_operate_in_new_page(
+            page=new_page,
+            action=action,
+            new_url=new_page.url,
+            depth=0,
+            max_depth=3
+        )
+
+        # 关闭新标签页
+        try:
+            await new_page.close()
+        except Exception:
+            pass
+
+        selectors = {"trigger": btn_text}
+        if row_selector:
+            selectors["row_selector"] = row_selector
+
+        submit_result = nav_info.get("submit_result", {})
+        if submit_result and submit_result.get("success"):
+            return {
+                "success": True,
+                "nav_info": nav_info,
+                "trigger_text": trigger_text_normalized,
+                "selectors": selectors,
+                "fill_data": nav_info.get("fill_data", {}),
+                "submit_result": submit_result,
+                "interaction_mode": "new_tab",
+            }
+        else:
+            error_type = nav_info.get("error_type", "cross_page_no_submit")
+            error_text = nav_info.get("error_text", "新标签页操作未完成")
+            return make_error(error_type, error_text,
+                             trigger_text=trigger_text_normalized,
+                             nav_info=nav_info,
+                             selectors=selectors)
+
+    # ── 现有检测逻辑（向后兼容） ──
+    # 注意：_observe_post_click 已做了 wait + loading_complete，
+    # 但 page_nav 分支仍需要原始的 URL 对比
     url_after = page.url
     if url_before != url_after:
         LOG.info(f"    检测到页面跳转: {url_before[:40]} → {url_after[:40]}")
@@ -2941,6 +3109,71 @@ async def _do_generic_operation(page, context: dict) -> dict:
             LOG.warning(f"    确认框存在但未找到确认按钮")
         await wait_for_loading_complete(page)
         await page.wait_for_timeout(1000)
+
+        # ── Phase 2b: 链式确认（确认→表单） ──
+        # 确认框关闭后可能弹出新的表单弹窗，需要检测并处理
+        chain_obs = await _observe_post_click(page, page.url, timeout_ms=2000)
+        if chain_obs["scenario"] == "dialog" and chain_obs["container_type"] in ("drawer", "dialog"):
+            LOG.info(f"    [chain-confirm] 确认后弹出新表单: {chain_obs['actual_state']}")
+            chain_container_type = chain_obs["container_type"]
+            chain_sel_q = '.el-drawer:not([style*="display: none"])' if chain_container_type == 'drawer' else '.el-dialog__wrapper:not([style*="display: none"])'
+
+            # 填充新弹窗中的空 select
+            chain_pre_fill = await page.evaluate(f"""() => {{
+                const container = document.querySelector('{chain_sel_q}');
+                if (!container || container.offsetWidth === 0) return {{ empty_selects: [] }};
+                const emptySelects = [];
+                container.querySelectorAll('.el-select').forEach(sel => {{
+                    const innerInput = sel.querySelector('.el-input__inner');
+                    if (innerInput && innerInput.disabled) return;
+                    const tags = sel.querySelectorAll('.el-tag');
+                    const hasTags = tags && tags.length > 0;
+                    const hasValue = innerInput && innerInput.value;
+                    const selectedLabel = sel.querySelector('.el-select__selected-item, .el-select__tags-text');
+                    const hasSelectedText = selectedLabel && selectedLabel.textContent.trim().length > 0;
+                    if (!hasTags && !hasValue && !hasSelectedText) {{
+                        const label = sel.closest('.el-form-item')
+                            ?.querySelector('.el-form-item__label')
+                            ?.textContent?.trim();
+                        if (label) emptySelects.push(label);
+                    }}
+                }});
+                return {{ empty_selects: empty_selects }};
+            }}""")
+
+            chain_empty_sels = chain_pre_fill.get("empty_selects", [])
+            if chain_empty_sels:
+                LOG.info(f"    [chain-confirm] 新弹窗有 {len(chain_empty_sels)} 个空 select，先填充: {chain_empty_sels}")
+                _, chain_fill_details = await _try_fill_empty_selects(page, chain_empty_sels)
+                dialog_fill_details.extend(chain_fill_details)
+                await page.wait_for_timeout(500)
+
+            # 检查是否有表单
+            chain_has_form = chain_obs.get("has_form", False)
+            if chain_has_form and form_filler:
+                LOG.info(f"    [chain-confirm] 扫描新弹窗表单字段...")
+                chain_fields = await form_filler.scan_form_fields_v2(scope_selector=chain_sel_q)
+                LOG.info(f"    [chain-confirm] 扫描到 {len(chain_fields)} 个字段")
+
+                if chain_fields:
+                    chain_filled = await form_filler.fill_edit_form(chain_fields, context.get("edit_overrides"))
+                    LOG.info(f"    [chain-confirm] 填充了 {chain_filled} 个字段")
+
+                    chain_submit = await form_filler.submit_form_v2(scope_selector=chain_sel_q)
+                    if not chain_submit.get("locator"):
+                        LOG.info(f"    [chain-confirm] 未找到提交按钮，回退到 confirm_dialog")
+                        chain_confirmed = await confirm_dialog(page)
+                        if chain_confirmed:
+                            LOG.info(f"    [chain-confirm] 链式确认按钮: {chain_confirmed}")
+                    await page.wait_for_timeout(2000)
+                    await wait_for_loading_complete(page)
+            else:
+                # 无表单，尝试直接确认
+                chain_confirmed = await confirm_dialog(page)
+                if chain_confirmed:
+                    LOG.info(f"    [chain-confirm] 链式确认按钮: {chain_confirmed}")
+                await wait_for_loading_complete(page)
+                await page.wait_for_timeout(1000)
 
     else:
         # ── 无弹窗：可能是即时操作（状态切换、toast 反馈等） ──
