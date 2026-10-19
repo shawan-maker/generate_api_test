@@ -37,6 +37,15 @@ API_AI_test/
 │       ├── run_parallel.py          并行执行生成的测试脚本
 │       ├── stage2_errors.py         Stage 2 错误分类
 │       ├── const.py                 常量定义
+│       ├── shared/                  ★ Stage 1/2 共享运行时逻辑（统一定义，双阶段调用）
+│       │   ├── constants.py           共享常量（DESTROY_KEYWORDS / SUCCESS_KEYWORDS 等）
+│       │   ├── marker_utils.py        Marker 提取（表格行标识）
+│       │   ├── message_capture.py     MutationObserver 消息捕获 + 通知钉住
+│       │   ├── dialog_helpers.py      弹框/遮罩层检测与关闭
+│       │   ├── form_validation.py     表单验证错误检测
+│       │   ├── success_verifier.py    操作成功验证（六层策略链）
+│       │   ├── switch_ops.py          Switch 切换（含 tab-pane 过滤 + 确认弹框）
+│       │   └── row_interaction.py     行定位 / 勾选 / 点击（含固定列 JS click）
 │       └── replay/                  UI 操作回放引擎
 │           ├── replay_engine.py       Playbook 回放执行器（含通知钉住机制）
 │           ├── button_driver.py       按钮点击驱动（KB 模板 fallback）
@@ -348,6 +357,33 @@ Stage 3 (`field_classifier.py`) 将请求体字段分为 5 个角色，驱动 Ma
 
 **核心依赖**：`ValueIndex`（`field_classifier.py`）存储前置 API 响应 + 创建体 + 创建响应的值索引，Pass 3 的 context 识别完全依赖值相等匹配，不依赖字段名。
 
+### 4.8 Stage 1/Stage 2 共享运行时架构（`shared/`）
+
+> **原则**：Stage 1 负责探测和记录（静态 locator），Stage 2 负责根据 locator 回放。对于无法通过静态 locator 回放的运行时动态逻辑，在 `core/discovery/shared/` 中**只定义一次**，Stage 1 和 Stage 2 同时调用。
+
+**解决的问题**：
+- Stage 1 探测时操作成功，但 Stage 2 回放时因判定标准不同而失败
+- 相同的 Switch 切换/行定位/弹框关闭逻辑在两个阶段各写一份，修改不同步
+- 新增类似逻辑时不确定该放在哪里
+
+**8 个共享模块**：
+
+| 模块 | 功能 | 调用方 |
+|------|------|--------|
+| `success_verifier.py` | 六层策略链验证操作成功 | base_executor + replay_engine |
+| `switch_ops.py` | Switch 切换 + tab-pane 过滤 + 确认弹框 | crud_executor + replay_engine |
+| `message_capture.py` | MutationObserver 注入 + 通知钉住 | base_executor + replay_engine |
+| `row_interaction.py` | 行定位/勾选/点击（含固定列兼容） | crud_executor + replay_engine |
+| `dialog_helpers.py` | 弹框/遮罩层检测与关闭 | base_executor + replay_engine |
+| `form_validation.py` | 表单验证错误检测 | base_executor + replay_engine |
+| `constants.py` | 共享常量（成功/失败关键词等） | crud_executor + replay_engine |
+| `marker_utils.py` | Marker 提取（表格行标识） | crud_executor + replay_engine |
+
+**开发规范**：
+1. 新增运行时动态逻辑时 → 在 `shared/` 中创建模块
+2. 修改已有逻辑时 → 只改 `shared/` 中的实现，Stage 1/2 自动生效
+3. 在 `shared/__init__.py` 中导出，调用方通过 `from core.discovery.shared import xxx` 导入
+
 ---
 
 ## 5. 输出规范
@@ -512,5 +548,6 @@ python -m core.discovery.run --project ecm-compute --module "用户管理" --sta
 | 文档 | 路径 | 说明 |
 |------|------|------|
 | 五阶段引擎实现详解 | `docs/design/stage-improvement.md` | 五阶段实现思路 + 流程图 |
+| Stage B 统一化重构报告 | `docs/stage_b_unified_refactoring.md` | shared/ 模块详细设计 + 10 个问题解决方案 |
 | AI Skill 描述 | `skill.md` | AI 客户端集成的 Skill 配置 |
 | 主管线操作指南 | `.claude/commands/api-ai-test.md` | Claude Code 内部操作指南 |

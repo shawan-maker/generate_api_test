@@ -186,6 +186,18 @@ python projects/<项目名>/v1.0.0/ui/<模块名>.py --operation "创建用户"
 
 ---
 
+## 架构约束：Stage 1/Stage 2 共享运行时
+
+> Stage 1 负责探测和记录（静态 locator），Stage 2 负责根据 locator 回放。
+> 对于**无法通过静态 locator 回放的运行时动态逻辑**（成功验证、Switch 切换、行定位、弹框处理等），在 `core/discovery/shared/` 中**只定义一次**，Stage 1 和 Stage 2 同时调用。
+
+**后续开发规范**：
+1. 新增运行时动态逻辑 → 在 `core/discovery/shared/` 中创建模块
+2. 修改已有逻辑 → 只改 `shared/` 中的实现，两阶段自动生效
+3. 详见 `docs/PROJECT_GUIDE.md §4.8` 和 `docs/stage_b_unified_refactoring.md`
+
+---
+
 ## 常见问题
 
 ### Q: 认证失败怎么办？

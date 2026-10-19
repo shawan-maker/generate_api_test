@@ -228,8 +228,12 @@ async def _validate_single_tab_crud(
     framework = ui_result.get("framework", "element-ui")
     buttons_by_action = tab_buttons
 
-    _DROPDOWN_TRIGGER_TEXTS = {"更多", "操作", "Actions", "More", "批量操作"}
-    _NON_BUSINESS_BUTTONS = {"GO", "Go", "go", "跳转", "跳转至"}
+    # ★ 使用 shared/constants 统一常量（消除重复定义）
+    from core.discovery.shared.constants import (
+        DROPDOWN_TRIGGER_TEXTS, NON_BUSINESS_BUTTONS, BATCH_PREFIXES, DESTROY_KEYWORDS
+    )
+    _DROPDOWN_TRIGGER_TEXTS = DROPDOWN_TRIGGER_TEXTS
+    _NON_BUSINESS_BUTTONS = NON_BUSINESS_BUTTONS
 
     # 收集行级操作文本，用于去重批量操作
     _row_action_texts = {
@@ -237,8 +241,8 @@ async def _validate_single_tab_crud(
         if btn.get("location") in ("row_action", "dropdown")
         and btn.get("text") not in _DROPDOWN_TRIGGER_TEXTS
     }
-    _BATCH_PREFIXES = ["批量", "batch", "bulk"]
-    _DESTROY_KEYWORDS = ["删除", "移除", "delete", "remove", "清空", "clear"]
+    _BATCH_PREFIXES = BATCH_PREFIXES
+    _DESTROY_KEYWORDS = DESTROY_KEYWORDS
 
     # 自动推断 query 操作：如果没有 query 按钮但探测到搜索输入框
     if "query" not in buttons_by_action:
@@ -274,28 +278,14 @@ async def _validate_single_tab_crud(
     _query_action = "query" if "query" in buttons_by_action else None
 
     # marker fallback: 无 create 操作但表格有数据时，从第一行提取标识
+    # ★ 使用 shared/marker_utils（Stage 1/2 统一实现）
     _pre_marker = None
     if not _create_action:
-        try:
-            _pre_marker = await page.evaluate("""() => {
-                const rows = document.querySelectorAll(
-                    '.el-table__body-wrapper .el-table__row');
-                if (rows.length === 0) return null;
-                const cells = rows[0].querySelectorAll('.cell');
-                for (const cell of cells) {
-                    const text = cell.textContent.trim();
-                    if (!text || text.length < 2 || text.length > 50) continue;
-                    if (/^\\d+$/.test(text)) continue;
-                    if (cell.querySelector('.el-checkbox, .el-icon, i[class*="icon"]')) continue;
-                    return text;
-                }
-                return null;
-            }""")
-            if _pre_marker:
-                created_marker = _pre_marker
-                LOG.info(f"  无 create 操作，从表格首行提取 marker: '{_pre_marker}'")
-        except Exception as e:
-            LOG.debug(f"  marker fallback 失败: {e}")
+        from core.discovery.shared.marker_utils import extract_marker_from_row
+        _pre_marker = await extract_marker_from_row(page)
+        if _pre_marker:
+            created_marker = _pre_marker
+            LOG.info(f"  无 create 操作，从表格首行提取 marker: '{_pre_marker}'")
 
     # ★ Switch 分类：toolbar/form 级 vs 行级
     switches = ui_result.get("switches", [])
@@ -669,11 +659,16 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
         + ui_result.get("dropdowns", [])
     )
 
-    _DROPDOWN_TRIGGER_TEXTS = {"更多", "操作", "Actions", "More", "批量操作"}
-    _NON_BUSINESS_BUTTONS = {"GO", "Go", "go", "跳转", "跳转至"}
-    _DESTROY_KEYWORDS = ["删除", "移除", "delete", "remove", "清空", "clear"]
-    _NAVIGATION_CLASS_KEYWORDS = {"breadcrumb", "pagination"}
-    _BATCH_PREFIXES = ["批量", "batch", "bulk"]
+    # ★ 使用 shared/constants 统一常量（消除重复定义）
+    from core.discovery.shared.constants import (
+        DROPDOWN_TRIGGER_TEXTS, NON_BUSINESS_BUTTONS, BATCH_PREFIXES,
+        DESTROY_KEYWORDS, NAVIGATION_CLASS_KEYWORDS
+    )
+    _DROPDOWN_TRIGGER_TEXTS = DROPDOWN_TRIGGER_TEXTS
+    _NON_BUSINESS_BUTTONS = NON_BUSINESS_BUTTONS
+    _DESTROY_KEYWORDS = DESTROY_KEYWORDS
+    _NAVIGATION_CLASS_KEYWORDS = NAVIGATION_CLASS_KEYWORDS
+    _BATCH_PREFIXES = BATCH_PREFIXES
 
     # 收集行级操作文本，用于去重批量操作
     _row_action_texts = {

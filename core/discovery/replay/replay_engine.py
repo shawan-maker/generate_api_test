@@ -9,6 +9,7 @@ replay_engine.py — Playbook 回放引擎
   - form_filler.py: apply_fill_rule, FormFiller
   - wait_helpers.py: wait_for_table_ready
   - const.py: MULTI_STEP_TYPES
+  - shared/*: Stage 1/2 统一实现（marker_utils, success_verifier, switch_ops 等）
 """
 
 import logging
@@ -18,7 +19,15 @@ from .button_driver import ButtonDriver, confirm_dialog
 from .form_filler import apply_fill_rule, FormFiller
 from .wait_helpers import wait_for_table_ready
 from .. import const
-from ..shared.marker_utils import extract_marker_from_row
+from ..shared import (
+    extract_marker_from_row,
+    install_message_capture,
+    get_captured_messages,
+    verify_operation_success,
+    toggle_switch,
+    select_row_checkbox,
+    click_row_button,
+)
 
 LOG = logging.getLogger(__name__)
 
@@ -40,152 +49,10 @@ async def _inject_notification_observer(page):
 
     页面跳转后 JavaScript 上下文会丢失，需要重新注入。
     在 replay_from_playbook 开始和 _step_wait_for_url 页面跳转后调用。
+
+    ★ 已委托给 shared/install_message_capture（Stage 1/2 统一实现）
     """
-    try:
-        await page.evaluate("""() => {
-            if (window.__msg_capture_installed) return;
-            window.__msg_capture_installed = true;
-            window.__captured_messages = [];
-            window.__pinned_notifications = [];
-
-            const observer = new MutationObserver((mutations) => {
-                for (const mutation of mutations) {
-                    for (const node of mutation.addedNodes) {
-                        if (node.nodeType !== 1) continue;
-                        if (!node.classList) continue;
-
-                        const isMessage = (
-                            node.classList.contains('el-message') ||
-                            node.classList.contains('el-notification') ||
-                            node.classList.contains('ant-message-notice') ||
-                            node.classList.contains('ant-notification-notice')
-                        );
-
-                        // el-dialog / el-message-box: 只捕获文本，不钉住（不会自动消失）
-                        const isDialog = (
-                            node.classList.contains('el-dialog') ||
-                            node.classList.contains('el-dialog__body') ||
-                            node.classList.contains('el-message-box__message') ||
-                            node.classList.contains('el-message-box')
-                        );
-
-                        if (isDialog && !isMessage) {
-                            const text = (node.textContent || '').trim().substring(0, 200);
-                            if (text) {
-                                window.__captured_messages.push({
-                                    text: text,
-                                    timestamp: Date.now(),
-                                    className: node.className,
-                                    source: 'dialog'
-                                });
-                            }
-                            continue;
-                        }
-
-                        if (!isMessage) continue;
-
-                        const text = (node.textContent || '').trim().substring(0, 200);
-                        if (!text) continue;
-
-                        window.__captured_messages.push({
-                            text: text,
-                            timestamp: Date.now(),
-                            className: node.className,
-                            source: 'notification'
-                        });
-
-                        // 钉住通知：强制可见 + 阻止自动移除
-                        node.__pinned = true;
-
-                        // 强制可见样式
-                        node.style.setProperty('display', 'block', 'important');
-                        node.style.setProperty('visibility', 'visible', 'important');
-                        node.style.setProperty('opacity', '1', 'important');
-                        node.style.setProperty('transform', 'none', 'important');
-                        node.style.setProperty('transition', 'none', 'important');
-                        node.style.setProperty('animation', 'none', 'important');
-
-                        // 拦截 remove() 调用
-                        const originalRemove = node.remove.bind(node);
-                        node.remove = function() { /* 阻止移除 */ };
-                        node.__originalRemove = originalRemove;
-
-                        // 也拦截 parentNode.removeChild（Vue transition 可能用这个）
-                        const parentNode = node.parentNode;
-                        if (parentNode) {
-                            const origRemoveChild = parentNode.removeChild.bind(parentNode);
-                            parentNode.removeChild = function(child) {
-                                if (child === node && node.__pinned) return child;
-                                return origRemoveChild(child);
-                            };
-                            node.__origRemoveChild = origRemoveChild;
-                            node.__pinnedParent = parentNode;
-                        }
-
-                        // 监听属性变更，覆盖任何隐藏尝试
-                        const pinObserver = new MutationObserver(() => {
-                            if (!node.__pinned) return;
-                            node.style.setProperty('display', 'block', 'important');
-                            node.style.setProperty('visibility', 'visible', 'important');
-                            node.style.setProperty('opacity', '1', 'important');
-                            node.style.setProperty('transform', 'none', 'important');
-                            node.style.setProperty('transition', 'none', 'important');
-                        });
-                        pinObserver.observe(node, {
-                            attributes: true,
-                            attributeFilter: ['style', 'class']
-                        });
-                        node.__pinObserver = pinObserver;
-
-                        // 子元素也强制可见
-                        node.querySelectorAll('*').forEach(el => {
-                            el.style.setProperty('visibility', 'visible', 'important');
-                            el.style.setProperty('opacity', '1', 'important');
-                        });
-
-                        window.__pinned_notifications.push(node);
-                    }
-                }
-            });
-
-            // 释放所有钉住的通知（截图后调用）
-            window.__unpin_notifications = function() {
-                const pinned = window.__pinned_notifications || [];
-                for (const node of pinned) {
-                    node.__pinned = false;
-                    // 恢复 remove 方法
-                    if (node.__originalRemove) {
-                        node.remove = node.__originalRemove;
-                        delete node.__originalRemove;
-                    }
-                    // 恢复 parentNode.removeChild
-                    if (node.__pinnedParent && node.__origRemoveChild) {
-                        node.__pinnedParent.removeChild = node.__origRemoveChild;
-                        delete node.__origRemoveChild;
-                        delete node.__pinnedParent;
-                    }
-                    // 断开属性监听
-                    if (node.__pinObserver) {
-                        node.__pinObserver.disconnect();
-                        delete node.__pinObserver;
-                    }
-                    // 移除钉住样式，让通知自然消失
-                    node.style.removeProperty('display');
-                    node.style.removeProperty('visibility');
-                    node.style.removeProperty('opacity');
-                    node.style.removeProperty('transform');
-                    node.style.removeProperty('transition');
-                    node.style.removeProperty('animation');
-                    // 主动移除（通知已过期，让它消失）
-                    try { node.remove(); } catch(e) {}
-                }
-                window.__pinned_notifications = [];
-            };
-
-            observer.observe(document.body, { childList: true, subtree: true });
-        }""")
-    except Exception as e:
-        LOG.debug(f"消息捕获注入失败（不影响执行）: {e}")
+    await install_message_capture(page)
 
 
 async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
@@ -1357,9 +1224,8 @@ async def _step_find_row(page, step: dict, button_driver: ButtonDriver, marker: 
 async def _step_click_row_button(page, step: dict, button_driver: ButtonDriver, marker: str):
     """步骤：在数据行内点击按钮（JS click，兼容 Element UI 固定列）
 
+    ★ 已委托给 shared/click_row_button（Stage 1/2 统一实现）
     先通过 marker 定位数据行，再在行内查找并点击指定文本的按钮。
-    Element UI 固定列表格中，按钮可能在固定列 wrapper 中，Playwright click
-    要求元素可见，因此使用 JS click 直接触发事件。
     """
     button_text = step.get("button_text")
     if not button_text:
@@ -1371,31 +1237,12 @@ async def _step_click_row_button(page, step: dict, button_driver: ButtonDriver, 
     if not row:
         raise Exception(f"未找到数据行: {marker}")
 
-    # 使用 JS click：兼容 Element UI 固定列
-    clicked = await page.evaluate("""(args) => {
-        const [text, marker] = args;
-        const rows = document.querySelectorAll('.el-table__body tr');
-        for (const row of rows) {
-            if ((row.textContent || '').includes(marker)) {
-                const buttons = row.querySelectorAll('button');
-                for (const btn of buttons) {
-                    if ((btn.textContent || '').trim().includes(text)) {
-                        btn.click();
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
-    }""", [button_text, marker])
-
+    # ★ 使用共享实现
+    clicked = await click_row_button(page, row, button_text)
     if not clicked:
         raise Exception(f"未找到行内按钮: {button_text}")
 
     LOG.debug(f"点击行内按钮: {button_text}")
-    # 等待行内按钮触发的 API 请求完成
-    from .wait_helpers import wait_for_loading_complete
-    await wait_for_loading_complete(page, timeout=10000)
 
 
 async def _step_confirm_dialog(page, step: dict, result: dict = None):
@@ -1458,6 +1305,7 @@ async def _step_close_dialog(page, step: dict):
 async def _step_assert_success(page, step: dict) -> bool:
     """步骤：验证操作成功（软断言，失败仅标记不阻断）
 
+    ★ 已委托给 shared/verify_operation_success（Stage 1/2 统一实现）
     六层语义检测策略依次尝试：
       0.   快速检查可见通知 — 语义分类（防止短暂消息消失）
       0.5. 失败文本优先检测 — 通知组件内搜索"失败"
@@ -1470,235 +1318,20 @@ async def _step_assert_success(page, step: dict) -> bool:
     Returns:
         True 表示检测到成功提示，False 表示检测到失败或未检测到
     """
-    matched_method = None
-    failure_reason = None
-    has_processing = False
+    operation_type = step.get("operation_type", "")
+    success, detail = await verify_operation_success(page, operation_type=operation_type)
 
-    # ── 策略 0: 快速检查可见通知（语义分类） ──
-    try:
-        quick_result = await page.evaluate("""() => {
-            const selectors = [
-                '.el-message', '.el-message--success', '.el-message--error',
-                '.el-notification', '.el-alert',
-                '[role="alert"]'
-            ];
-            for (const sel of selectors) {
-                const el = document.querySelector(sel);
-                if (el && el.offsetParent !== null) {
-                    const text = (el.textContent || '').trim();
-                    if (text) return text.substring(0, 100);
-                }
-            }
-            return null;
-        }""")
-        if quick_result:
-            semantic = const.classify_notification(quick_result)
-            if semantic == "success":
-                matched_method = f"quick_visible:success:{quick_result[:30]}"
-                LOG.info(f"    ✓ 操作成功验证通过: {matched_method}")
-            elif semantic == "failure":
-                failure_reason = quick_result
-                LOG.info(f"    ✗ 检测到失败信号: {quick_result[:60]}")
-            elif semantic == "processing":
-                has_processing = True
-                LOG.debug(f"    [assert_success] 检测到处理中消息: {quick_result[:60]}")
-    except Exception:
-        pass
+    # 更新 step 中的诊断信息
+    if detail.get("matched_method"):
+        step["matched_method"] = detail["matched_method"]
+    if detail.get("failure_reason"):
+        step["failure_reason"] = detail["failure_reason"]
+    if detail.get("failure_type"):
+        step["failure_type"] = detail["failure_type"]
 
-    # ── 策略 0.5: 失败文本优先检测（限定在通知组件范围内） ──
-    if matched_method is None and failure_reason is None:
-        try:
-            failure_text = await page.evaluate("""() => {
-                const failKw = ['失败', '错误', '异常', 'error', '无权', '权限不足'];
-                const selectors = [
-                    '.el-message', '.el-message--error', '.el-message--warning',
-                    '.el-notification', '.el-alert',
-                    '[role="alert"]'
-                ];
-                for (const sel of selectors) {
-                    const el = document.querySelector(sel);
-                    if (el && el.offsetParent !== null) {
-                        const text = (el.textContent || '').trim();
-                        if (text && failKw.some(kw => text.includes(kw))) {
-                            return text.substring(0, 200);
-                        }
-                    }
-                }
-                return null;
-            }""")
-            if failure_text:
-                failure_reason = failure_text
-                LOG.info(f"    ✗ 通知组件中检测到失败: {failure_text[:60]}")
-        except Exception:
-            pass
-
-    # ── 策略 1: 成功文本匹配（限定在通知组件内，降低优先级） ──
-    if matched_method is None and failure_reason is None:
-        try:
-            success_text = await page.evaluate("""() => {
-                const successKw = ['成功', '完成', '已保存', '已添加', '已删除', '已更新'];
-                const selectors = [
-                    '.el-message', '.el-message--success',
-                    '.el-notification', '.el-alert',
-                    '[role="alert"]'
-                ];
-                for (const sel of selectors) {
-                    const el = document.querySelector(sel);
-                    if (el && el.offsetParent !== null) {
-                        const text = (el.textContent || '').trim();
-                        if (text && successKw.some(kw => text.includes(kw))) {
-                            return text.substring(0, 200);
-                        }
-                    }
-                }
-                return null;
-            }""")
-            if success_text:
-                matched_method = f"notification_text:成功:{success_text[:30]}"
-                LOG.info(f"    ✓ 操作成功验证通过: {matched_method}")
-        except Exception:
-            pass
-
-    # ── 策略 2: CSS 选择器 + 文本语义验证 ──
-    if matched_method is None and failure_reason is None:
-        css_selectors = [
-            ".el-message",           # 轻量顶部提示
-            ".el-notification",      # 右上角通知框
-            ".el-alert",             # 内嵌警告框
-            "[role='alert']",        # ARIA alert
-        ]
-        for selector in css_selectors:
-            try:
-                el = await page.wait_for_selector(selector, state="visible", timeout=2000)
-                if el:
-                    text = await el.text_content()
-                    text = (text or "").strip()
-                    semantic = const.classify_notification(text)
-                    if semantic == "success":
-                        matched_method = f"css:{selector}:{text[:30]}"
-                        LOG.info(f"    ✓ 操作成功验证通过: {matched_method}")
-                        break
-                    elif semantic == "failure":
-                        failure_reason = text
-                        LOG.info(f"    ✗ CSS选择器检测到失败: {text[:60]}")
-                        break
-                    elif semantic == "processing":
-                        has_processing = True
-            except Exception:
-                continue
-
-    # ── 策略 2.5: MutationObserver 捕获（语义分类，不 fallback 到任意消息） ──
-    if matched_method is None and failure_reason is None:
-        try:
-            captured_texts = await page.evaluate("""() => {
-                if (!window.__captured_messages) return [];
-                const now = Date.now();
-                return window.__captured_messages
-                    .filter(m => now - m.timestamp < 30000)
-                    .map(m => m.text);
-            }""")
-            if captured_texts:
-                for text in captured_texts:
-                    semantic = const.classify_notification(text)
-                    if semantic == "failure":
-                        failure_reason = text
-                        LOG.info(f"    ✗ 捕获消息中检测到失败: {text[:60]}")
-                        break
-                    elif semantic == "success" and matched_method is None:
-                        matched_method = f"captured:success:{text[:40]}"
-                        LOG.info(f"    ✓ 操作成功验证通过（捕获瞬态消息）: {matched_method}")
-                    elif semantic == "processing":
-                        has_processing = True
-        except Exception:
-            pass
-
-    # ── 策略 F: 主动失败检测 ──
-    if matched_method is None and failure_reason is None:
-        try:
-            failure_signals = await page.evaluate("""() => {
-                const failKw = ['失败', '错误', '异常', 'error', '无权', '权限不足'];
-                const results = [];
-
-                // 1. el-dialog 中的失败文本
-                document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"])')
-                    .forEach(d => {
-                        if (d.offsetWidth === 0) return;
-                        const text = (d.textContent || '').trim();
-                        if (failKw.some(kw => text.includes(kw))) {
-                            results.push({source: 'dialog', text: text.substring(0, 200)});
-                        }
-                    });
-
-                // 2. el-message-box 中的失败文本
-                document.querySelectorAll('.el-message-box__wrapper:not([style*="display: none"])')
-                    .forEach(d => {
-                        if (d.offsetWidth === 0) return;
-                        const text = (d.textContent || '').trim();
-                        if (failKw.some(kw => text.includes(kw))) {
-                            results.push({source: 'message_box', text: text.substring(0, 200)});
-                        }
-                    });
-
-                // 3. el-message--error / el-message--warning
-                const errMsg = document.querySelector('.el-message--error, .el-message--warning');
-                if (errMsg && errMsg.offsetParent !== null) {
-                    results.push({source: 'error_message', text: errMsg.textContent.trim().substring(0, 200)});
-                }
-
-                // 4. 表单校验错误
-                const formErrors = document.querySelectorAll('.el-form-item__error');
-                const errorTexts = [];
-                formErrors.forEach(e => {
-                    if (e.offsetWidth > 0) {
-                        errorTexts.push(e.textContent.trim());
-                    }
-                });
-                if (errorTexts.length > 0) {
-                    results.push({source: 'form_validation', text: errorTexts.join('; ')});
-                }
-
-                return results.length > 0 ? results : null;
-            }""")
-            if failure_signals:
-                failure_reason = failure_signals[0]["text"]
-                step["failure_type"] = failure_signals[0]["source"]
-                LOG.info(f"    ✗ 主动检测发现失败 ({failure_signals[0]['source']}): {failure_reason[:60]}")
-        except Exception:
-            pass
-
-    # ── 最终判定 ──
-    if matched_method:
-        step["matched_method"] = matched_method
-        await _take_assert_screenshot(page, step)
-        return True
-
-    if failure_reason:
-        step["matched_method"] = "failure_detected"
-        step["failure_reason"] = failure_reason
-        if "failure_type" not in step:
-            step["failure_type"] = "backend"
-        await _take_assert_screenshot(page, step)
-        return False
-
-    # 兜底：无任何明确信号
-    if has_processing:
-        # 只有"处理中"类消息，按规则标记为成功
-        step["matched_method"] = "processing_only"
-        LOG.info(f"    ✓ 仅检测到处理中消息，标记为成功")
-        await _take_assert_screenshot(page, step)
-        return True
-
-    # 完全无信号
-    diagnostic = await _diagnose_success_dom(page)
-    LOG.warning(f"    ⚠️ assert_success 未检测到成功/失败提示")
-    if diagnostic:
-        LOG.warning(f"    🔍 DOM 诊断发现 {len(diagnostic)} 个候选元素:")
-        for d in diagnostic[:5]:
-            LOG.warning(f"       {d['selector']}  text={d['text'][:60]}")
-        step["_dom_diagnostic"] = diagnostic
-    step["matched_method"] = "none"
     await _take_assert_screenshot(page, step)
-    return False
+    return success
+
 
 
 async def _take_assert_screenshot(page, step: dict):
@@ -1823,88 +1456,26 @@ async def _step_click_tab(page, step: dict):
 async def _step_toggle_switch(page, step: dict):
     """步骤：切换 el-switch 开关。
 
-    直接使用 Stage 1 记录的 locator（如 "#pane-blackUserList .el-switch:not(.el-table__row .el-switch)"），
-    不需要重新搜索按钮元素。Stage 1 已验证此 locator 可成功点击。
+    ★ 已委托给 shared/toggle_switch（Stage 1/2 统一实现）
+    直接使用 Stage 1 记录的 locator，统一处理确认弹框和状态验证。
     """
     sw_locator = step.get("playwright_locator", ".el-switch")
     sw_text = step.get("text", "状态")
-    is_checked_before = step.get("is_checked_before", False)
+    expect_confirm = step.get("expect_confirm", False)
 
-    LOG.info(f"    [toggle_switch] 切换 '{sw_text}': {'ON' if is_checked_before else 'OFF'} → {'OFF' if is_checked_before else 'ON'}")
-    LOG.info(f"    [toggle_switch] 使用 Stage 1 locator: {sw_locator}")
+    # ★ 使用共享实现
+    success, detail = await toggle_switch(
+        page,
+        locator=sw_locator,
+        text=sw_text,
+        expect_confirm=expect_confirm,
+    )
 
-    try:
-        # ★ 直接使用 Stage 1 的 locator 点击（不需要重新搜索 button/span/a）
-        click_result = await page.evaluate(f"""() => {{
-            const candidates = document.querySelectorAll('{sw_locator}');
-            // 过滤：排除行级 switch + 排除不可见 tab-pane 的 switch
-            const toolbarSwitches = Array.from(candidates).filter(sw => {{
-                // 排除行级 switch
-                if (sw.closest('.el-table__row, .el-table__body tr, tr.el-table__row')) return false;
-                // 排除不在当前可见 tab-pane 内的 switch
-                const pane = sw.closest('.el-tab-pane');
-                if (pane) {{
-                    const style = window.getComputedStyle(pane);
-                    if (style.display === 'none' || pane.offsetWidth === 0) return false;
-                }}
-                return true;
-            }});
+    if not success:
+        error_msg = detail.get("error", "未知错误")
+        raise Exception(f"switch 切换失败 ({sw_text}): {error_msg}")
 
-            if (toolbarSwitches.length === 0) {{
-                return {{ clicked: false, reason: 'no_toolbar_switch', total: candidates.length }};
-            }}
-
-            // 点击第一个 toolbar 级的 switch
-            const sw = toolbarSwitches[0];
-            sw.click();
-            return {{ clicked: true, total: candidates.length, filtered: toolbarSwitches.length }};
-        }}""")
-
-        if click_result.get("clicked"):
-            LOG.info(f"    [toggle_switch] 点击成功 (total={click_result.get('total')}, filtered={click_result.get('filtered')})")
-
-            # 等待可能的确认弹框
-            await page.wait_for_timeout(500)
-
-            # 检查是否有确认弹框
-            confirm_box = await page.query_selector('.el-message-box__wrapper:not([style*="display: none"])')
-            if confirm_box:
-                # 点击确认按钮
-                confirm_btn = await page.query_selector('.el-message-box__btns .el-button--primary')
-                if confirm_btn:
-                    await confirm_btn.click()
-                    LOG.info(f"    [toggle_switch] 已点击确认按钮")
-                    # 等待弹框消失
-                    for _ in range(10):
-                        box_still_visible = await page.evaluate("""() => {
-                            const boxes = document.querySelectorAll('.el-message-box__wrapper');
-                            for (const b of boxes) {
-                                if (b.offsetWidth > 0 && b.offsetHeight > 0
-                                    && !b.getAttribute('style')?.includes('display: none')) {
-                                    return true;
-                                }
-                            }
-                            return false;
-                        }""")
-                        if not box_still_visible:
-                            break
-                        await page.wait_for_timeout(300)
-                else:
-                    LOG.warning(f"    [toggle_switch] 确认弹框无 primary 按钮")
-            else:
-                LOG.debug(f"    [toggle_switch] 无确认弹框")
-
-            # 等待 switch 状态稳定
-            await page.wait_for_timeout(500)
-            LOG.info(f"    ✓ switch '{sw_text}' 切换完成")
-        else:
-            reason = click_result.get("reason", "unknown")
-            LOG.warning(f"    [toggle_switch] 点击失败: {reason}")
-            raise Exception(f"无法点击 switch: {sw_text} ({reason})")
-
-    except Exception as e:
-        LOG.warning(f"    ⚠️ switch 切换失败 ({sw_text}): {e}")
-        raise
+    LOG.info(f"    ✓ switch '{sw_text}' 切换完成: {detail.get('before_state')} → {detail.get('after_state')}")
 
 
 async def _step_assert_table_has_data(page):
@@ -2055,50 +1626,21 @@ async def _step_confirm_dialog_if_present(page, step: dict, result: dict = None)
 async def _step_select_row_checkbox(page, step: dict, button_driver: ButtonDriver, marker: str):
     """步骤：勾选数据行的 checkbox（JS click，兼容 Element UI 固定列）
 
-    Element UI 固定列表格中，主体 wrapper 的 checkbox 是隐藏的占位元素，
-    只有固定列 wrapper 中的 checkbox 可见。Playwright click 要求元素可见，
-    因此使用 JS click 直接触发事件（与 Stage 1 _ensure_row_selected 一致）。
-
-    重要：先检查 checkbox 是否已勾选，已勾选则跳过（避免 toggle 取消勾选）。
+    ★ 已委托给 shared/select_row_checkbox（Stage 1/2 统一实现）
+    幂等操作：先检查是否已勾选，已勾选则跳过。
     """
     if not marker:
         raise Exception("select_row_checkbox 步骤需要 marker")
 
-    # 先检查 checkbox 状态 + 点击（幂等操作：已勾选则跳过）
-    # 对齐 Stage 1 _ensure_row_selected：必须检查 offsetWidth > 0
-    checked = await page.evaluate("""(text) => {
-        const rows = document.querySelectorAll('.el-table__body tr');
-
-        for (const row of rows) {
-            if ((row.textContent || '').includes(text)) {
-                // 检查行是否已勾选（Element UI checkbox 选中状态）
-                const isChecked = row.querySelector('.el-checkbox__input.is-checked') ||
-                                  row.querySelector('.el-checkbox__input input:checked');
-                if (isChecked) {
-                    return {checked: true, already_checked: true};
-                }
-
-                const cb = row.querySelector('.el-checkbox__input, input[type="checkbox"]');
-                if (cb && cb.offsetWidth > 0) {
-                    cb.click();
-                    return {checked: true, already_checked: false};
-                }
-            }
-        }
-        return {checked: false};
-    }""", marker)
-
-    if not checked or not checked.get('checked'):
+    # ★ 使用共享实现
+    result = await select_row_checkbox(page, marker)
+    if not result.get("success"):
         raise Exception(f"未找到含 '{marker}' 的行或无可见 checkbox")
 
-    if checked.get('already_checked'):
+    if result.get("already_checked"):
         LOG.debug(f"    [select_row_checkbox] 行已勾选，跳过")
-        return
-
-    LOG.debug(f"    [select_row_checkbox] 已勾选 marker: {marker}")
-
-    # 等待 Vue 响应式状态更新（checkbox → 按钮启用需要时间）
-    await page.wait_for_timeout(500)
+    else:
+        LOG.debug(f"    [select_row_checkbox] 已勾选 marker: {marker}")
 
 
 async def _step_fill_input(page, step: dict, marker: str):

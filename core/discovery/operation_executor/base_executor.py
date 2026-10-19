@@ -20,6 +20,14 @@ from core.discovery.replay.form_filler import (
     FormFiller, read_form_errors, generate_fill_data, scan_form_fields,
     generate_fill_rules,
 )
+# ★ 统一使用 shared 模块（Stage 1/2 共享）
+from core.discovery.shared import (
+    install_message_capture,
+    get_captured_messages,
+    verify_operation_success,
+    select_row_checkbox,
+    dismiss_overlay,
+)
 
 LOG = logging.getLogger("base_executor")
 
@@ -30,42 +38,11 @@ async def cleanup_ui_overlays(page):
     在 Stage 1 UI 探测前调用。
     只关闭**模态**对话框（el-dialog/el-message-box/el-drawer），
     不关闭内嵌的配置面板。
+
+    ★ 已委托给 shared/dismiss_overlay（Stage 1/2 统一实现）
     """
     try:
-        await page.keyboard.press('Escape')
-        await page.wait_for_timeout(300)
-
-        try:
-            await page.evaluate("""() => {
-                // 只处理有遮罩层的对话框
-                const modals = document.querySelectorAll('.v-modal');
-                modals.forEach(modal => {
-                    const wrapper = modal.nextElementSibling;
-                    if (wrapper && (wrapper.classList.contains('el-dialog__wrapper') ||
-                                    wrapper.classList.contains('el-drawer__wrapper'))) {
-                        const closeBtn = wrapper.querySelector('.el-dialog__headerbtn, .el-drawer__close-btn');
-                        const cancelBtn = wrapper.querySelector('.el-dialog__footer button:not(.el-button--primary)');
-                        if (closeBtn) closeBtn.click();
-                        else if (cancelBtn) cancelBtn.click();
-                    }
-                });
-
-                // 关闭 el-message-box（确认弹窗）
-                document.querySelectorAll('.el-message-box__wrapper').forEach(box => {
-                    if (box.style.display !== 'none') {
-                        const cancelBtn = box.querySelector('.el-message-box__btns button:first-child');
-                        if (cancelBtn) cancelBtn.click();
-                    }
-                });
-
-                // 移除遮罩层
-                document.querySelectorAll('.v-modal').forEach(el => el.remove());
-            }""")
-        except Exception as e:
-            LOG.warning(f"关闭模态对话框失败: {e}")
-
-        await page.wait_for_timeout(500)
-
+        await dismiss_overlay(page)
     except Exception as e:
         LOG.warning(f"清理 UI 残留时出错（不影响后续流程）: {e}")
 
@@ -155,6 +132,8 @@ async def _ensure_row_selected(page, marker: str | None = None) -> bool:
 
     某些系统要求先勾选 checkbox 才能点击工具栏的"锁定/解锁/重置"按钮。
 
+    ★ 已委托给 shared/select_row_checkbox（Stage 1/2 统一实现）
+
     Args:
         page: Playwright Page 对象
         marker: 如果有 marker，勾选包含 marker 的行
@@ -162,37 +141,8 @@ async def _ensure_row_selected(page, marker: str | None = None) -> bool:
     Returns:
         bool: 是否成功勾选
     """
-    try:
-        if marker:
-            # 勾选包含 marker 的行
-            checked = await page.evaluate(f"""(text) => {{
-                const rows = document.querySelectorAll('.el-table__body tr');
-                for (const row of rows) {{
-                    if ((row.textContent || '').includes(text)) {{
-                        const cb = row.querySelector('.el-checkbox__input, input[type="checkbox"]');
-                        if (cb && cb.offsetWidth > 0) {{
-                            cb.click();
-                            return true;
-                        }}
-                    }}
-                }}
-                return false;
-            }}""", marker)
-        else:
-            # 勾选第一行
-            checked = await page.evaluate("""() => {
-                const cb = document.querySelector(
-                    '.el-table__body tr:first-child .el-checkbox__input, '
-                    + '.el-table__body tr:first-child input[type="checkbox"]');
-                if (cb && cb.offsetWidth > 0) {
-                    cb.click();
-                    return true;
-                }
-                return false;
-            }""")
-        return bool(checked)
-    except Exception:
-        return False
+    result = await select_row_checkbox(page, marker)
+    return result.get("success", False)
 
 
 async def _try_fill_empty_selects(page, empty_field_labels: list):
@@ -838,92 +788,15 @@ def _setup_new_tab_listener(page) -> tuple:
 async def _install_message_capture(page) -> None:
     """在页面注入 MutationObserver，捕获瞬态的 ElMessage / ElNotification 文本。
 
-    某些操作（lock/unlock/reset 等）成功后会弹出 ElMessage.success()，
-    但该消息会在 ~3 秒后自动消失。等到 _verify_operation_success 检查时已经消失了。
-
-    此函数在操作前注入，记录所有出现的消息文本到 window.__captured_messages。
-    后续用 _get_captured_messages() 读取。
+    ★ 已委托给 shared/install_message_capture（Stage 1/2 统一实现）
     """
-    await page.evaluate("""() => {
-        // 初始化捕获数组（如果还没有）
-        if (!window.__captured_messages) {
-            window.__captured_messages = [];
-        }
-
-        // 避免重复安装 observer
-        if (window.__msg_capture_observer) return;
-
-        const SUCCESS_KEYWORDS = ['成功', 'success', 'Success', '完成', 'done'];
-        const ERROR_KEYWORDS = ['失败', 'error', 'Error', '异常', '错误'];
-
-        // 辅助函数：分类并存储捕获的消息
-        function _pushCaptured(text) {
-            if (!text) return;
-            const isSuccess = SUCCESS_KEYWORDS.some(kw => text.includes(kw));
-            const isError = ERROR_KEYWORDS.some(kw => text.includes(kw));
-            window.__captured_messages.push({
-                text: text.substring(0, 200),
-                type: isSuccess ? 'success' : (isError ? 'error' : 'info'),
-                time: Date.now()
-            });
-        }
-
-        // 辅助函数：检查是否是 Element UI Message / Notification
-        function _isNotificationNode(node) {
-            if (!node.classList) return false;
-            if (node.classList.contains('el-message') ||
-                node.classList.contains('el-message--success') ||
-                node.classList.contains('el-message--error') ||
-                node.classList.contains('el-message--warning') ||
-                node.classList.contains('el-notification') ||
-                node.classList.contains('ant-message-notice') ||
-                node.classList.contains('ant-notification-notice')) {
-                return true;
-            }
-            // 也检查子节点是否包含消息组件
-            if (node.querySelector && node.querySelector(
-                '.el-message, .el-notification, .ant-message-notice, .ant-notification-notice'
-            )) {
-                return true;
-            }
-            return false;
-        }
-
-        window.__msg_capture_observer = new MutationObserver((mutations) => {
-            for (const mutation of mutations) {
-                for (const node of mutation.addedNodes) {
-                    if (node.nodeType !== 1) continue;
-
-                    if (!_isNotificationNode(node)) continue;
-
-                    const text = (node.textContent || '').trim();
-                    if (text) {
-                        // 同步文本：直接存储
-                        _pushCaptured(text);
-                    } else {
-                        // 异步文本：Element UI $notify 先 appendChild 空 div，
-                        // 后通过 Vue 响应式异步设置 message 文本。
-                        // 延迟 100ms 重读（Vue nextTick 通常 <16ms，
-                        // 但留足余量避免边界情况）。
-                        const targetNode = node;
-                        setTimeout(() => {
-                            const delayedText = (targetNode.textContent || '').trim();
-                            _pushCaptured(delayedText);
-                        }, 100);
-                    }
-                }
-            }
-        });
-
-        window.__msg_capture_observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-    }""")
+    await install_message_capture(page)
 
 
 async def _get_captured_messages(page, msg_type: str = None) -> list:
     """读取被捕获的消息，并清除捕获数组。
+
+    ★ 已委托给 shared/get_captured_messages（Stage 1/2 统一实现）
 
     Args:
         page: Playwright 页面对象
@@ -932,19 +805,14 @@ async def _get_captured_messages(page, msg_type: str = None) -> list:
     Returns:
         list of {"text": str, "type": str, "time": int}
     """
-    messages = await page.evaluate("""(filterType) => {
-        const msgs = window.__captured_messages || [];
-        const filtered = filterType ? msgs.filter(m => m.type === filterType) : msgs;
-        // 清空已捕获的消息
-        window.__captured_messages = [];
-        return filtered;
-    }""", msg_type)
-    return messages or []
+    return await get_captured_messages(page, msg_type, clear=True)
 
 
 async def _verify_operation_success(page, operation_type: str, strict: bool = False,
                                      captured_messages: list = None) -> bool:
     """验证操作是否成功（弹窗关闭 / 成功提示 / 列表变化 / 捕获的消息）。
+
+    ★ 已委托给 shared/verify_operation_success（Stage 1/2 统一实现）
 
     Args:
         page: Playwright Page 对象
@@ -955,214 +823,13 @@ async def _verify_operation_success(page, operation_type: str, strict: bool = Fa
     Returns:
         bool: 是否检测到成功信号
     """
-    # [TOAST-DIAG] 诊断：扫描所有可能的 toast/notification DOM 元素
-    try:
-        toast_diag = await page.evaluate("""() => {
-            const result = { allToasts: [], capturedCount: 0, capturedMessages: [] };
-
-            // 1. 扫描所有可能的 toast/notification 容器
-            const selectors = [
-                '.el-message', '.el-message--success', '.el-message--error', '.el-message--warning',
-                '.el-notification', '.el-notification__content', '.el-notification__title',
-                '.el-message-box', '.el-message-box__wrapper',
-                '[class*="toast"]', '[class*="notice"]', '[class*="message"]'
-            ];
-            const seen = new Set();
-            selectors.forEach(sel => {
-                document.querySelectorAll(sel).forEach(el => {
-                    const key = el.tagName + ':' + el.className.substring(0, 50);
-                    if (seen.has(key)) return;
-                    seen.add(key);
-                    result.allToasts.push({
-                        tag: el.tagName,
-                        className: el.className.substring(0, 200),
-                        text: el.textContent.trim().substring(0, 100),
-                        visible: el.offsetWidth > 0 && el.offsetHeight > 0,
-                        style_display: window.getComputedStyle(el).display,
-                        style_visibility: window.getComputedStyle(el).visibility,
-                        style_opacity: window.getComputedStyle(el).opacity,
-                        rect: {
-                            top: Math.round(el.getBoundingClientRect().top),
-                            left: Math.round(el.getBoundingClientRect().left),
-                            width: Math.round(el.getBoundingClientRect().width),
-                            height: Math.round(el.getBoundingClientRect().height)
-                        }
-                    });
-                });
-            });
-
-            // 2. 扫描 MutationObserver 捕获到的消息
-            result.capturedCount = (window.__captured_messages || []).length;
-            result.capturedMessages = (window.__captured_messages || []).slice(-5).map(m => ({
-                text: m.text,
-                type: m.type,
-                time: m.time
-            }));
-
-            // 3. 扫描 body 直接子元素中可能的 toast 容器
-            for (const child of document.body.children) {
-                if (child.id === 'app') continue;
-                // 处理 SVG 元素的 className（可能是 SVGAnimatedString）
-                const cls = typeof child.className === 'string' ? child.className : (child.className?.baseVal || '');
-                if (cls && (cls.includes('message') || cls.includes('notification') || cls.includes('toast'))) {
-                    result.allToasts.push({
-                        tag: child.tagName,
-                        id: child.id,
-                        className: cls.substring(0, 200),
-                        text: child.textContent.trim().substring(0, 100),
-                        isBodyChild: true,
-                        visible: child.offsetWidth > 0
-                    });
-                }
-            }
-
-            return result;
-        }""")
-        LOG.info(f"    [TOAST-DIAG] found {len(toast_diag.get('allToasts', []))} toast elements, "
-                 f"captured {toast_diag.get('capturedCount', 0)} messages")
-        for t in toast_diag.get('allToasts', [])[:10]:  # 最多输出 10 个
-            visible_str = "✓" if t.get('visible') else "✗"
-            body_str = " [body]" if t.get('isBodyChild') else ""
-            LOG.info(f"    [TOAST-DIAG]   {visible_str} {t.get('tag')} class='{t.get('className', '')[:60]}' "
-                     f"text='{t.get('text', '')[:40]}'{body_str} "
-                     f"rect={t.get('rect', {})}")
-        for m in toast_diag.get('capturedMessages', []):
-            LOG.info(f"    [TOAST-DIAG]   captured: type={m.get('type')} text='{m.get('text', '')[:40]}' "
-                     f"time={m.get('time')}")
-    except Exception as e:
-        LOG.warning(f"    [TOAST-DIAG] 诊断失败: {e}")
-
-    # 0. 检查捕获的消息（使用语义分类器）
-    has_processing = False
-    if captured_messages:
-        _all_texts = [m.get('text', '') for m in captured_messages]
-
-        # 语义分类每条消息，失败优先于成功
-        for t in _all_texts:
-            semantic = const.classify_notification(t)
-            if semantic == "failure":
-                LOG.info(f"    捕获到错误消息: {t[:60]}")
-                return False
-            elif semantic == "processing":
-                has_processing = True
-
-        # 第二轮：检查成功（失败已在第一轮优先处理）
-        for t in _all_texts:
-            semantic = const.classify_notification(t)
-            if semantic == "success":
-                LOG.info(f"    捕获到成功消息: {t[:60]}")
-                return True
-
-    # 1. 检查成功提示 (Element UI / Ant Design) — 正向信号，两种模式都接受
-    has_success = await page.evaluate("""() => {
-        // Element UI success message
-        const successMsg = document.querySelector('.el-message--success, .el-message .el-icon-success');
-        if (successMsg && successMsg.offsetWidth > 0) return true;
-
-        // Ant Design success message
-        const antMsg = document.querySelector('.ant-message-success, .ant-message .anticon-check-circle');
-        if (antMsg && antMsg.offsetWidth > 0) return true;
-
-        // Notification success (icon-based)
-        const notif = document.querySelector('.el-notification .el-icon-success, .ant-notification .anticon-check-circle');
-        if (notif) return true;
-
-        // [Toast Fix B] Notification success (text-based, no icon)
-        // Element UI $notify 可能没有 icon，只有文本
-        const successKw = ['成功', '完成', '已保存', '已添加', '已删除', '已更新'];
-        const notifications = document.querySelectorAll('.el-notification, .ant-notification-notice');
-        for (const n of notifications) {
-            if (n.offsetWidth > 0 && n.offsetHeight > 0) {
-                const text = (n.querySelector('.el-notification__content, .ant-notification-notice-message') || n).textContent.trim();
-                if (successKw.some(kw => text.includes(kw))) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }""")
-    if has_success:
-        return True
-
-    # 1.5 轮询等待 el-dialog / el-message-box 中的成功/错误消息（给服务端响应时间）
-    for _poll in range(5):  # 最多轮询 5 次，每次 1s，共 5s
-        dialog_result = await page.evaluate("""() => {
-            const successKw = ['成功', '完成', '已保存', '已添加', '已删除', '已更新'];
-            const errKw = ['失败', '错误', '异常', 'error', '无权', '权限不足'];
-
-            const containers = [
-                ...document.querySelectorAll('.el-message-box__wrapper:not([style*="display: none"])'),
-                ...document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"])')
-            ];
-
-            for (const container of containers) {
-                if (container.offsetWidth === 0) continue;
-                const content = container.querySelector(
-                    '.el-message-box__message, .el-message-box__content, .el-dialog'
-                );
-                if (!content) continue;
-                const text = content.textContent.trim();
-                if (!text) continue;
-
-                // ★ 检测"0个失败"等否定模式（如"2个成功，0个失败"）
-                const zeroFailurePattern = /0个失败|0个错误|失败[：:]\s*0|失败数为0|无失败/;
-                const hasZeroFailure = zeroFailurePattern.test(text);
-
-                // 失败优先：如果同时包含成功和失败关键词（混合结果），判定为失败
-                const hasSuccess = successKw.some(kw => text.includes(kw));
-                const hasError = errKw.some(kw => text.includes(kw));
-                if (hasError && !hasZeroFailure) {
-                    return { type: 'error', text: text.substring(0, 200) };
-                }
-                if (hasSuccess) {
-                    return { type: 'success', text: text.substring(0, 200) };
-                }
-            }
-            return null;
-        }""")
-        if dialog_result:
-            if dialog_result.get('type') == 'success':
-                LOG.info(f"    弹窗中检测到成功: {dialog_result['text'][:80]}")
-                return True
-            else:
-                LOG.info(f"    弹窗中检测到错误: {dialog_result['text'][:80]}")
-                return False
-
-        # 成功 toast 出现 → 立即跳出，不浪费轮询时间
-        has_success_toast = await page.evaluate("""() => {
-            const el = document.querySelector('.el-message--success, .el-message .el-icon-success');
-            return el && el.offsetWidth > 0;
-        }""")
-        if has_success_toast:
-            break
-        await page.wait_for_timeout(1000)
-
-    # 4. 兜底：检查是否有明确的错误状态
-    # 策略：只检查明确的错误信号，没有错误就认为成功（乐观策略）
-    has_explicit_error = await page.evaluate("""() => {
-        // 明确的错误消息（红色/橙色提示）
-        const errMsg = document.querySelector(
-            '.el-message--error, .ant-message-error, .el-message--warning');
-        if (errMsg && errMsg.offsetWidth > 0) return true;
-
-        // 表单验证错误（红色文字提示）
-        const formErrors = document.querySelectorAll('.el-form-item__error');
-        for (const err of formErrors) {
-            if (err.offsetWidth > 0) return true;
-        }
-
-        return false;
-    }""")
-
-    if has_explicit_error:
-        LOG.info("    检测到明确的错误状态")
-        return False
-
-    # 5. 无信号：没有检测到明确的成功/失败信号 → 标记为失败
-    # 避免"乐观策略"导致的误判（如填充非法值后仍标记为成功）
-    LOG.warning("    ⚠️ 未检测到明确的成功/失败信号，标记为失败（可能是 toast 过快消失或后端无反馈）")
-    return False
+    success, detail = await verify_operation_success(
+        page,
+        operation_type=operation_type,
+        strict=strict,
+        captured_messages=captured_messages,
+    )
+    return success
 
 
 async def _check_data_changed(page, operation_type: str) -> bool:

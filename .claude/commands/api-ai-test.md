@@ -165,6 +165,7 @@ python -m core.discovery.run --project <项目名> --discover-select "all" --hea
 2. **等待用户选择**要执行的模块（输入编号如 "1,3,5" 或 "all"）
 3. **禁止**自动拼接 `--all-modules` 或 `--discover-select "all"`
 4. 用户明确说"全部重新扫描"/"重新扫描所有模块"时，可使用 `--all-modules --force`
+5. **`/compact` 后，ARGUMENTS 仅为历史记录，不代表当前待执行任务** — 只有用户当前消息中明确引用的指令才需要执行
 
 ## 报告生成
 

@@ -577,6 +577,41 @@ config/
 
 跨模块共享前置 API：当多个模块依赖相同的前置数据（如获取租户 ID、组织树），合并为全局前置 API，避免重复执行。执行结果保存到 `.shared_context.json`，所有脚本启动时加载。
 
+### 7.6 Stage 1/Stage 2 共享运行时（`shared/`）
+
+> **原则**：Stage 1 负责探测和记录（静态 locator），Stage 2 负责根据 locator 回放。对于无法通过静态 locator 回放的运行时动态逻辑，在 `core/discovery/shared/` 中**只定义一次**，Stage 1 和 Stage 2 同时调用。
+
+**8 个共享模块**：
+
+| 模块 | 功能 | Stage 1 调用方 | Stage 2 调用方 |
+|------|------|----------------|----------------|
+| `success_verifier.py` | 六层策略链验证操作成功 | `base_executor._verify_operation_success` | `replay_engine._step_assert_success` |
+| `switch_ops.py` | Switch 切换 + tab-pane 过滤 + 确认弹框 | `crud_executor._do_toggle_switch` | `replay_engine._step_toggle_switch` |
+| `message_capture.py` | MutationObserver 注入 + 通知钉住 | `base_executor._install_message_capture` | `replay_engine._inject_notification_observer` |
+| `row_interaction.py` | 行定位/勾选/点击（含固定列兼容） | `crud_executor._do_edit/_do_delete` | `replay_engine._step_find_row/_step_click_row_button` |
+| `dialog_helpers.py` | 弹框/遮罩层检测与关闭 | `base_executor.cleanup_ui_overlays` | `replay_engine._step_close_dialog` |
+| `form_validation.py` | 表单验证错误检测 | `base_executor` | `replay_engine` |
+| `constants.py` | 共享常量（成功/失败关键词等） | `crud_executor` | — |
+| `marker_utils.py` | Marker 提取（表格行标识） | `crud_extractor` | `replay_engine` |
+
+**成功验证六层策略链**（`success_verifier.py`）：
+
+```
+0.   快速检查可见通知 → 语义分类（success/failure/processing）
+0.5. 失败文本优先检测 → 通知组件内搜索"失败"
+1.   成功文本匹配 → 通知组件内搜索"成功"
+2.   CSS 选择器 + 文本语义验证
+2.5. MutationObserver 捕获 → 语义分类
+3.   轮询等待 dialog/message-box 中的成功/错误消息
+F.   主动失败检测 → dialog / error message / form validation
+兜底: 仅 PROCESSING → 成功；无信号 → 失败
+```
+
+**开发规范**：
+1. 新增运行时动态逻辑 → 在 `shared/` 中创建模块，在 `__init__.py` 中导出
+2. 修改已有逻辑 → 只改 `shared/` 中的实现，Stage 1/2 自动生效
+3. 调用方通过 `from core.discovery.shared import xxx` 导入
+
 ---
 
 ## 8. 流程图
@@ -902,6 +937,15 @@ TestRunner(MANIFEST, shared_context)
 | `core/discovery/pre_api_merger.py` | 跨模块前置 API 合并 |
 | `core/discovery/const.py` | 常量定义（选择器、字段名、UI 框架配置） |
 | `core/discovery/run_parallel.py` | 并行测试执行 |
+| `core/discovery/shared/` | ★ Stage 1/2 共享运行时逻辑（8 个模块，见 §9） |
+| `core/discovery/shared/success_verifier.py` | 操作成功验证（六层策略链） |
+| `core/discovery/shared/switch_ops.py` | Switch 切换（tab-pane 过滤 + 确认弹框） |
+| `core/discovery/shared/message_capture.py` | MutationObserver 消息捕获 + 通知钉住 |
+| `core/discovery/shared/row_interaction.py` | 行定位/勾选/点击（固定列兼容） |
+| `core/discovery/shared/dialog_helpers.py` | 弹框/遮罩层检测与关闭 |
+| `core/discovery/shared/form_validation.py` | 表单验证错误检测 |
+| `core/discovery/shared/constants.py` | 共享常量（成功/失败关键词等） |
+| `core/discovery/shared/marker_utils.py` | Marker 提取（表格行标识） |
 | `lib/runtime/test_runtime.py` | 测试运行时（ResponseParser + StepExecutor + TestRunner） |
 | `lib/runtime/global_pre_apis.py` | 全局前置 API 执行器 |
 | `lib/auth/cookie_client.py` | Cookie 管理客户端 |
@@ -909,5 +953,5 @@ TestRunner(MANIFEST, shared_context)
 
 ---
 
-**文档版本**: v2.1  
-**最后更新**: 2026-09-30
+**文档版本**: v2.2  
+**最后更新**: 2026-10-19
