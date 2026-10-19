@@ -172,6 +172,25 @@ def _sync_ui_runtime_lib(ui_dir: Path, project_dir: Path):
                 LOG.info(f"  UI runtime sync: {name}")
             synced.append(name)
 
+    # ---- 2.5. shared/*.py → ui/lib/shared/（含导入转换）----
+    shared_src = src_dir / "shared"
+    if shared_src.exists():
+        dst_shared = dst_lib / "shared"
+        dst_shared.mkdir(exist_ok=True)
+        for src_file in sorted(shared_src.glob("*.py")):
+            if src_file.name == "__init__.py":
+                # 复制 __init__.py 但不转换导入
+                if _write_if_changed(dst_shared / src_file.name,
+                                     src_file.read_text(encoding="utf-8")):
+                    LOG.info(f"  UI runtime sync: shared/{src_file.name}")
+            else:
+                # 转换导入路径
+                content = src_file.read_text(encoding="utf-8")
+                content = _transform_imports(content)
+                if _write_if_changed(dst_shared / src_file.name, content):
+                    LOG.info(f"  UI runtime sync (import-transformed): shared/{src_file.name}")
+            synced.append(f"shared/{src_file.name}")
+
     # ---- 3. lib/report/ui_report.py → ui/lib/ ----
     ui_report_src = lib_dir / "report" / "ui_report.py"
     if ui_report_src.exists():

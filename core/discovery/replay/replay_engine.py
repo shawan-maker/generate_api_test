@@ -18,6 +18,7 @@ from .button_driver import ButtonDriver, confirm_dialog
 from .form_filler import apply_fill_rule, FormFiller
 from .wait_helpers import wait_for_table_ready
 from .. import const
+from ..shared.marker_utils import extract_marker_from_row
 
 LOG = logging.getLogger(__name__)
 
@@ -784,6 +785,78 @@ async def _step_wait_for_dialog(page, step: dict, ctx: dict):
         raise Exception(f"未知的 interaction_mode: {interaction_mode}")
 
 
+async def _fill_ip_input(page, sub_selectors: list, option_text: str, label: str) -> bool:
+    """填充 IP 地址输入框（支持 IPv4 和 IPv6）
+
+    Args:
+        page: Playwright Page 对象
+        sub_selectors: IP 输入框的子选择器列表（通常是 4 个或 8 个 input）
+        option_text: IP 地址值（如 "10.0.0.1", "10.0.0.1/24", "10.0.0.1-10.0.0.10"）
+        label: 字段标签（用于日志）
+
+    Returns:
+        bool: 是否填充成功
+    """
+    import re
+
+    if not sub_selectors or not option_text:
+        return False
+
+    # 判断输入框数量：4 个是 IPv4，8 个是 IPv6
+    input_count = len(sub_selectors)
+
+    # 解析 IP 值
+    # 支持格式：
+    # - "10.0.0.1" (单 IP)
+    # - "10.0.0.1/24" (带掩码)
+    # - "10.0.0.1-10.0.0.10" (范围)
+    # - "fe80::1" (IPv6)
+
+    parts = []
+
+    # IPv6 检测：包含 ":"
+    if ":" in option_text:
+        # IPv6 处理：按 ":" 分割，填充到 8 个输入框
+        # 处理 "::" 缩写（展开为完整的 8 段）
+        ipv6_parts = option_text.replace("::", ":").split(":")
+        ipv6_parts = [p if p else "0" for p in ipv6_parts]
+        # 补齐到 8 段
+        while len(ipv6_parts) < 8:
+            ipv6_parts.insert(1, "0")  # 在 :: 位置插入 0
+        parts = ipv6_parts[:8]
+    else:
+        # IPv4 处理
+        if "-" in option_text:
+            # 范围格式：10.0.0.1-10.0.0.10 → 只取第一部分
+            option_text = option_text.split("-")[0]
+        elif "/" in option_text:
+            # 掩码格式：10.0.0.1/24 → 只取 IP 部分
+            option_text = option_text.split("/")[0]
+
+        # 分割 IP 段
+        parts = option_text.split(".")
+        # 补齐到 4 段
+        while len(parts) < 4:
+            parts.append("0")
+        parts = parts[:4]
+
+    # 填充每个输入框
+    for i, selector in enumerate(sub_selectors[:input_count]):
+        if i < len(parts):
+            value = parts[i]
+        else:
+            value = "0"
+
+        try:
+            await page.fill(selector, value)
+            LOG.debug(f"    [ip-input] {label}[{i}]: {value}")
+        except Exception as e:
+            LOG.warning(f"    [ip-input] {label}[{i}]: 填充失败 - {e}")
+            return False
+
+    return True
+
+
 async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: str = None) -> str | None:
     """步骤：填充表单字段（纯执行，不做推断）
 
@@ -807,25 +880,30 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
         locator = field.get("playwright_locator")
         field_type = field.get("type", "input")
 
-        if not locator:
+        # ★ 方案 A：Stage 1 显式标记不需要 locator 的字段（如 ip-input 使用 sub_selectors）
+        requires_locator = field.get("requires_locator", True)
+
+        # 1. 优先识别 multi-step 类型
+        if kb_category in const.MULTI_STEP_TYPES or kb_category == "form-checkbox":
+            multi_step_fields.append(field)
+            continue
+
+        # 2. 对于非 multi-step 字段，检查 locator（除非显式标记不需要）
+        if requires_locator and not locator:
             LOG.warning(f"    字段 {label} 缺少 locator，跳过")
             continue
 
-        # 如果没有 kb_category 但是普通 input 类型，当作简单字段处理
+        # 3. 如果没有 kb_category 但是普通 input 类型，当作简单字段处理
         if not kb_category and field_type == "input":
             simple_fields.append(field)
             continue
 
-        # Stage 1 必须提供 kb_category，不做推断（除了普通 input）
+        # 4. Stage 1 必须提供 kb_category，不做推断（除了普通 input）
         if not kb_category:
             LOG.warning(f"    字段 {label} 缺少 kb_category（Stage 1 未提供），跳过")
             continue
 
-        if kb_category in const.MULTI_STEP_TYPES or kb_category == "form-checkbox":
-            # 多步字段，后续统一处理
-            multi_step_fields.append(field)
-        else:
-            simple_fields.append(field)
+        simple_fields.append(field)
 
     # --- 1. 处理普通字段 (input/textarea/radio) ---
     from .locator_helpers import safe_css
@@ -1068,7 +1146,23 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
         special_selects = []  # select-remote / select-tree
         normal_fields = []    # 其他所有 multi_step 字段
         for f in multi_step_fields:
-            if (f.get("kb_category") == "el-select"
+            kb_cat = f.get("kb_category", "")
+            # ★ ip-input: 特殊处理（使用 sub_selectors）
+            if kb_cat == "ip-input":
+                sub_selectors = f.get("sub_selectors", [])
+                option_text = f.get("option_text", "")
+                label = f.get("label", "")
+                if sub_selectors and option_text:
+                    try:
+                        success = await _fill_ip_input(page, sub_selectors, option_text, label)
+                        if success:
+                            filled_count += 1
+                            LOG.info(f"    [ip-input] {label}: 填充成功 = {option_text}")
+                        else:
+                            LOG.warning(f"    [ip-input] {label}: 填充失败")
+                    except Exception as e:
+                        LOG.warning(f"    [ip-input] {label}: 异常: {e}")
+            elif (kb_cat == "el-select"
                 and f.get("select_sub_type") in ("select-remote", "select-tree")):
                 special_selects.append(f)
             else:
@@ -1227,10 +1321,15 @@ async def _step_find_row(page, step: dict, button_driver: ButtonDriver, marker: 
         row = await button_driver.find_first_data_row()
         if not row:
             raise Exception("表格无数据行")
-        # 从第一行提取文本作为后续操作的 marker
-        text = await row.inner_text()
-        resolved = text.strip()[:50]  # 截取前 50 字符
-        LOG.info(f"    find_row (first_row): 提取 marker = {resolved}")
+        # ★ 使用统一方法从第一行提取 marker（与 Stage 1 行为一致）
+        resolved = await extract_marker_from_row(button_driver.page)
+        if not resolved:
+            # fallback: 如果统一方法提取失败，使用原始文本
+            text = await row.inner_text()
+            resolved = text.strip()[:50]
+            LOG.warning(f"    ⚠️ extract_marker_from_row 失败，使用 fallback: {resolved}")
+        else:
+            LOG.info(f"    find_row (first_row): 提取 marker = {resolved}")
         return resolved
     else:
         # 有 marker 模式：按 marker 搜索
@@ -1240,9 +1339,14 @@ async def _step_find_row(page, step: dict, button_driver: ButtonDriver, marker: 
             row = await button_driver.find_first_data_row()
             if not row:
                 raise Exception("表格无数据行（marker 不可用且无数据行）")
-            text = await row.inner_text()
-            resolved = text.strip()[:50]
-            LOG.info(f"    find_row (fallback→first_row): 提取 marker = {resolved}")
+            # ★ 使用统一方法从第一行提取 marker（与 Stage 1 行为一致）
+            resolved = await extract_marker_from_row(button_driver.page)
+            if not resolved:
+                text = await row.inner_text()
+                resolved = text.strip()[:50]
+                LOG.warning(f"    ⚠️ extract_marker_from_row 失败，使用 fallback: {resolved}")
+            else:
+                LOG.info(f"    find_row (fallback→first_row): 提取 marker = {resolved}")
             return resolved
         row = await button_driver.find_data_row(marker)
         if not row:

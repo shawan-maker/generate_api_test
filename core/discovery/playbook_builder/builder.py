@@ -753,9 +753,15 @@ def _build_create_steps(op_data: dict) -> list:
 
         # 添加 multi_step 字段（带完整属性）
         for ms_field in multi_step_details:
+            # ★ 方案 A：显式标记不需要 locator 的字段（如 ip-input）
+            if ms_field.get("requires_locator") is False:
+                playwright_locator = None  # 明确标记为 None，表示使用 sub_selectors
+            else:
+                playwright_locator = ms_field.get("selector", "")
+
             field_info = {
                 "label": ms_field["label"],
-                "playwright_locator": ms_field.get("selector", ""),
+                "playwright_locator": playwright_locator,
                 "type": ms_field["kb_category"].replace("el-", "") if ms_field["kb_category"].startswith("el-") else ms_field["kb_category"],
                 "kb_category": ms_field["kb_category"],
                 "fill_rule": ms_field.get("fill_rule", {}),
@@ -765,6 +771,12 @@ def _build_create_steps(op_data: dict) -> list:
             # ★ Phase 4a: 序列化 el-select 子类型
             if "select_sub_type" in ms_field:
                 field_info["select_sub_type"] = ms_field["select_sub_type"]
+            # ★ 方案 A：ip-input 显式标记 requires_locator = False
+            if ms_field.get("kb_category") == "ip-input":
+                field_info["requires_locator"] = False  # 明确标记不需要 playwright_locator
+                field_info["sub_selectors"] = ms_field.get("sub_selectors", [])
+                field_info["input_count"] = ms_field.get("input_count", 4)
+                field_info["ip_version"] = ms_field.get("ip_version", "v4")
             fields_info.append(field_info)
 
         # 添加 radio 字段（带已验证的选项 locator）
@@ -1043,9 +1055,15 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
 
         # 添加 multi_step 字段（带完整属性）
         for ms_field in multi_step_details:
+            # ★ 方案 A：显式标记不需要 locator 的字段（如 ip-input）
+            if ms_field.get("requires_locator") is False:
+                playwright_locator = None  # 明确标记为 None，表示使用 sub_selectors
+            else:
+                playwright_locator = ms_field.get("selector", "")
+
             field_info = {
                 "label": ms_field["label"],
-                "playwright_locator": ms_field.get("selector", ""),
+                "playwright_locator": playwright_locator,
                 "type": ms_field["kb_category"].replace("el-", "") if ms_field["kb_category"].startswith("el-") else ms_field["kb_category"],
                 "kb_category": ms_field["kb_category"],
                 "fill_rule": ms_field.get("fill_rule", {}),
@@ -1055,6 +1073,12 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
             # ★ Phase 4a: 序列化 el-select 子类型
             if "select_sub_type" in ms_field:
                 field_info["select_sub_type"] = ms_field["select_sub_type"]
+            # ★ 方案 A：ip-input 显式标记 requires_locator = False
+            if ms_field.get("kb_category") == "ip-input":
+                field_info["requires_locator"] = False  # 明确标记不需要 playwright_locator
+                field_info["sub_selectors"] = ms_field.get("sub_selectors", [])
+                field_info["input_count"] = ms_field.get("input_count", 4)
+                field_info["ip_version"] = ms_field.get("ip_version", "v4")
             fields_info.append(field_info)
 
         # 添加 radio 字段（带已验证的选项 locator）

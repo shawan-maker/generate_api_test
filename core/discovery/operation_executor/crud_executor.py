@@ -1135,14 +1135,21 @@ async def _do_create(page, context: dict) -> dict:
     for field in fields:
         kb_cat = field.get("kb_category", "")
         if kb_cat in _const.MULTI_STEP_TYPES or kb_cat == "form-checkbox":
-            multi_step_field_details.append({
+            entry = {
                 "label": field.get("label"),
                 "kb_category": kb_cat,
                 "selector": field.get("selector"),
                 "fill_rule": field.get("fill_rule", {}),
                 "is_editable": False,
                 "option_text": "",
-            })
+            }
+            # ★ ip-input: 显式标记为"复合输入字段"（使用 sub_selectors，不需要 locator）
+            if kb_cat == "ip-input":
+                entry["requires_locator"] = False  # 明确标记不需要 playwright_locator
+                entry["sub_selectors"] = field.get("subSelectors", [])
+                entry["input_count"] = field.get("inputCount", 4)
+                entry["ip_version"] = field.get("ipVersion", "v4")
+            multi_step_field_details.append(entry)
 
     # 5. 填充表单（传入预生成的 fill_data）
     fill_result = await form_filler.fill_create_form(fields, username, fill_data)

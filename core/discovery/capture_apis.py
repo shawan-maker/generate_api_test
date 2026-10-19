@@ -31,6 +31,7 @@ from .replay.wait_helpers import (
 )
 from . import const
 from .path_mapper import get_workspace_dir
+from .shared.marker_utils import extract_marker_from_row
 
 LOG = logging.getLogger("capture_apis")
 
@@ -276,15 +277,24 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
 
             # 如果是 create 或 update 类操作且成功，记录/更新 marker
             if op_role in ("create", "update"):
+                # ★ 如果 fill_form 未提取到 marker，尝试从列表页提取（与 Stage 1 行为一致）
+                if not result.get("marker"):
+                    LOG.info(f"  fill_form 未提取到 marker，尝试从列表页提取...")
+                    await wait_for_table_ready(page, timeout=10000)
+                    list_marker = await extract_marker_from_row(page)
+                    if list_marker:
+                        result["marker"] = list_marker
+                        LOG.info(f"  ✓ marker 已从列表页提取: {list_marker}")
+                    else:
+                        if op_role == "create":
+                            LOG.warning(f"  ⚠️ 创建操作完成但未获取 marker（列表页提取失败）")
+
                 if result.get("marker"):
                     created_marker = result["marker"]
                     if op_role == "create":
                         LOG.info(f"  创建成功，marker: {created_marker}")
                     else:
                         LOG.info(f"  编辑成功，marker 已更新为: {created_marker}")
-                else:
-                    if op_role == "create":
-                        LOG.warning(f"  创建操作完成但未获取 marker")
 
                 # 输出所有用户相关请求（诊断 POST /users 是否发出）
                 import sys

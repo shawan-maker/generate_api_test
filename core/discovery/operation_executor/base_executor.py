@@ -136,52 +136,18 @@ async def wait_for_spa_ready(page, max_rounds: int = 6) -> bool:
     return False
 
 
+# ★ 统一使用 shared/marker_utils 中的实现
+# 保留此函数作为兼容层，内部调用统一实现
 async def _extract_fallback_marker(page) -> str | None:
     """从表格中提取第一行的名称作为 fallback marker。
 
     当 create 失败时，行操作可以用已存在的数据行。
+
+    注意：此函数已迁移至 core.discovery.shared.marker_utils.extract_marker_from_row
+    此处保留兼容层，内部调用统一实现。
     """
-    # 操作列相关文本，不应作为 marker
-    _skip_texts = {"操作", "编辑", "删除", "修改", "查看", "详情", "更多",
-                   "冻结", "解冻", "启用", "禁用", "锁定", "解锁", "重置密码",
-                   "批量删除", "导入", "导出", "授权", "迁移"}
-    try:
-        marker = await page.evaluate("""(skipTexts) => {
-            const table = document.querySelector('.el-table__body, table tbody');
-            if (!table) return null;
-            const rows = table.querySelectorAll('tr');
-            if (rows.length === 0) return null;
-            const cells = rows[0].querySelectorAll('td .cell, td');
-            for (const cell of cells) {
-                const text = (cell.textContent || '').trim();
-                if (!text || text.length > 30 || text.length < 2) continue;
-                if (/^\\d+$/.test(text)) continue;
-                if (cell.querySelector('.el-checkbox, .el-radio')) continue;
-                if (cell.querySelector('button, .el-button, .el-dropdown')) continue;
-                if (skipTexts.includes(text)) continue;
-
-                // 优化：如果包含冒号分隔符，只取冒号后面的值部分
-                // 例如 "组织： AT_test_799040" → "AT_test_799040"
-                if (text.includes('：') || text.includes(':')) {
-                    const parts = text.split(/[：:]/);
-                    if (parts.length >= 2) {
-                        const valuePart = parts[1].trim();
-                        if (valuePart.length >= 2 && valuePart.length <= 30) {
-                            return valuePart;
-                        }
-                    }
-                }
-
-                return text;
-            }
-            return null;
-        }""", list(_skip_texts))
-        if marker:
-            LOG.debug(f"    Fallback marker: '{marker}'")
-        return marker
-    except Exception as e:
-        LOG.debug(f"    Fallback marker 提取失败: {e}")
-        return None
+    from core.discovery.shared.marker_utils import extract_marker_from_row
+    return await extract_marker_from_row(page)
 
 
 async def _ensure_row_selected(page, marker: str | None = None) -> bool:
