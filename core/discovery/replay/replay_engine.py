@@ -51,8 +51,9 @@ async def _inject_notification_observer(page):
     在 replay_from_playbook 开始和 _step_wait_for_url 页面跳转后调用。
 
     ★ 已委托给 shared/install_message_capture（Stage 1/2 统一实现）
+    ★ Stage 2 需要钉住通知（pin=True），以便截图验证
     """
-    await install_message_capture(page)
+    await install_message_capture(page, pin=True)
 
 
 async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,

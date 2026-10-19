@@ -120,15 +120,27 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
         }""")
         LOG.info(f"    [NAV-DEBUG] order-submit 区域: {_order_submit_check}")
 
-        # 重新安装消息捕获（页面导航后 JS hook 丢失）
-        await _install_message_capture(page)
-        # DIAG: 验证消息捕获是否安装成功
-        _cap_check = await page.evaluate("() => typeof window.__captured_messages !== 'undefined'")
-        LOG.info(f"    [DIAG-msg-capture-install] 消息捕获安装结果: hasCapture={_cap_check}")
-
         # 2. 探测页面（提取表单字段，忽略菜单栏）
         from core.discovery.ui_scanner.element_scanner import discover_all
         page_result = await discover_all(page)
+
+        # ★ FIX: 统一在 discover_all 之后安装消息捕获
+        # 原因：
+        #   1. 页面跳转后 JS 上下文丢失，需要重新安装
+        #   2. discover_all 可能导致 JS 上下文重置（Vue Router 导航、组件重新挂载）
+        #   3. 只安装一次，避免冗余
+        LOG.info(f"    [page-nav] discover_all 完成，安装消息捕获")
+        await _install_message_capture(page)
+
+        # DIAG: 验证消息捕获是否安装成功（增强版）
+        _cap_check = await page.evaluate("""() => ({
+            hasObserver: typeof window.__msg_capture_observer !== 'undefined' &&
+                         window.__msg_capture_observer !== null,
+            hasCapture: typeof window.__captured_messages !== 'undefined',
+            msgCount: Array.isArray(window.__captured_messages) ? window.__captured_messages.length : -1,
+            observerType: typeof window.__msg_capture_observer
+        })""")
+        LOG.info(f"    [DIAG-msg-capture-install] Observer 状态: {_cap_check}")
         nav_info["page_title"] = await page.title()
 
         # 只提取表单字段和工具栏/对话框按钮（忽略菜单栏）
@@ -877,9 +889,16 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
                 }}
             }}
             return {{
+                // Observer 状态（增强）
+                hasObserver: typeof window.__msg_capture_observer !== 'undefined' &&
+                             window.__msg_capture_observer !== null,
                 hasCapture: typeof window.__captured_messages !== 'undefined',
                 msgCount: typeof window.__captured_messages !== 'undefined'
                     ? window.__captured_messages.length : -1,
+                observerType: typeof window.__msg_capture_observer,
+                observerConnected: window.__msg_capture_observer ?
+                    (typeof window.__msg_capture_observer.disconnect === 'function') : false,
+                // 按钮状态
                 url: location.href,
                 btnDisabled: targetBtn ? targetBtn.disabled : 'not-found',
                 btnCls: targetBtn ? (targetBtn.className || '').substring(0, 60) : 'not-found',
@@ -887,6 +906,10 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
             }};
         }}""")
         LOG.info(f"    [DIAG-submitB-pre] 提交前状态: {_json_p5.dumps(_capture_alive, ensure_ascii=False)}")
+
+        # ★ DIAG: Observer 异常警告
+        if not _capture_alive.get("hasObserver"):
+            LOG.warning(f"    [DIAG-submitB-pre] ⚠️ Observer 不存在，消息捕获可能失效！")
 
         # === DIAG-network: 安装网络请求拦截器，检测提交是否触发 API 调用 ===
         _captured_requests = []
@@ -1132,6 +1155,33 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
         # === DIAG-P5-2: captured_msgs 内容 ===
         LOG.info(f"    [DIAG-submitB-verify] captured_msgs({len(captured_msgs)}): "
                  f"{[m.get('text','')[:30] for m in captured_msgs]}")
+
+        # ★ DIAG: 同时检查 DOM 中残留的通知（用于对比分析）
+        _dom_notifications = await page.evaluate("""() => {
+            const result = { notifications: [], messages: [] };
+            document.querySelectorAll('.el-notification').forEach(n => {
+                if (n.offsetWidth > 0) {
+                    result.notifications.push({
+                        text: n.textContent.trim().substring(0, 50),
+                        cls: n.className.substring(0, 60)
+                    });
+                }
+            });
+            document.querySelectorAll('.el-message').forEach(m => {
+                if (m.offsetWidth > 0) {
+                    result.messages.push({
+                        text: m.textContent.trim().substring(0, 50),
+                        cls: m.className.substring(0, 60)
+                    });
+                }
+            });
+            return result;
+        }""")
+        if _dom_notifications.get("notifications") or _dom_notifications.get("messages"):
+            LOG.info(f"    [DIAG-submitB-verify] DOM 中残留通知: {_json_p5.dumps(_dom_notifications, ensure_ascii=False)}")
+            if not captured_msgs:
+                LOG.warning(f"    [DIAG-submitB-verify] ⚠️ DOM 有通知但 captured_msgs 为空，Observer 可能已失效！")
+
         success = await _verify_operation_success(page, "submit", strict=True,
                                                    captured_messages=captured_msgs)
         # === DIAG-P5-2: verify 结果 ===

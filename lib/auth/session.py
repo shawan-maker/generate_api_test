@@ -80,7 +80,7 @@ class LoginSession:
                         except Exception:
                             pass
                     try:
-                        await page.goto(probe_url, wait_until="domcontentloaded", timeout=15000)
+                        await page.goto(probe_url, wait_until="networkidle", timeout=15000)
                         if await strategy.probe(page, probe_url):
                             # Step 3: 探测成功 → 刷新 TTL
                             is_fresh = self.store.is_fresh(self.project_dir, self.config.fresh_ttl_seconds)
@@ -102,6 +102,10 @@ class LoginSession:
                         LOG.warning("Cookie TTL 已过期，且无 probe_url，执行登录")
 
         # Step 4: 探测失败或无 cookie，执行登录（带重试）
+        # ★ 探测失败后删除旧 cookie，防止登录失败后下次仍复用失效的 cookie
+        if cookies:
+            self.store.clear(self.project_dir)
+            LOG.info("  探测失败，已清除旧 cookie")
         # 关键：登录时不注入 localStorage（避免污染登录表单）
         for attempt in range(self.config.max_login_retries):
             LOG.info(f"执行登录（尝试 {attempt + 1}/{self.config.max_login_retries}）")

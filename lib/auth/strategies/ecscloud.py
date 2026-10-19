@@ -246,18 +246,34 @@ class EcsCloudStrategy(LoginStrategy):
             return LoginResult.FAILED
 
     async def probe(self, page, probe_url: str) -> bool:
-        """探测会话是否有效 — 检查是否被重定向到登录页"""
+        """探测会话是否有效 — 轮询检测 SPA 重定向（最多 8 秒）
+
+        SPA 认证检查是异步的：前端 JS 发 API → 判断 token 有效 → 无效则跳转 /login。
+        单次检查可能在 SPA 完成前就返回，导致误判 cookie 有效。
+        轮询 8 秒给 SPA 足够时间完成认证 + 重定向。
+        """
+        import time
         try:
-            current_url = page.url
-            if "/login" in current_url:
-                return False
-            # 检查是否有登录表单元素
-            has_login = await page.evaluate("""() => {
-              return !!(document.querySelector('input[placeholder="用户名"]')
-                || document.querySelector('.zong-login-page')
-                || document.querySelector('.login-page'));
-            }""")
-            return not has_login
+            deadline = time.time() + 8
+            while time.time() < deadline:
+                current_url = page.url
+                if "/login" in current_url:
+                    return False
+                # 检查是否有登录表单元素（双重验证：URL + DOM）
+                has_login = await page.evaluate("""() => {
+                  return !!(document.querySelector('input[placeholder="用户名"]')
+                    || document.querySelector('.zong-login-page')
+                    || document.querySelector('.login-page')
+                    || document.querySelector('input[placeholder="登录密码"]'));
+                }""")
+                if has_login:
+                    return False
+                # 如果 URL 已离开 probe_url 且不是登录页，说明 SPA 已正常跳转
+                if probe_url not in current_url and "/login" not in current_url:
+                    return True
+                await page.wait_for_timeout(1000)
+            # 超时：最终检查
+            return "/login" not in page.url
         except Exception:
             return "/login" not in page.url
 

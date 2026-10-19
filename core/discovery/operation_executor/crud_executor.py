@@ -108,7 +108,7 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
             LOG.debug(f"  [incremental-scan] 行不存在（可能已删除），跳过扫描")
             return []
 
-        # 2. 扫描当前行的所有操作按钮
+        # 2. 扫描当前行的所有操作按钮（直接可见的 .el-button）
         new_buttons = await page.evaluate(f"""() => {{
             const row = document.querySelector('{row_selector}');
             if (!row) return [];
@@ -133,13 +133,44 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
                 }}
             }});
 
-            // 扫描下拉菜单项（如果有"更多"按钮）
-            const dropdowns = row.querySelectorAll('.el-dropdown');
-            dropdowns.forEach(dd => {{
-                const menu = dd.querySelector('.el-dropdown-menu');
-                if (menu) {{
-                    const items = menu.querySelectorAll('.el-dropdown-menu__item');
-                    items.forEach(item => {{
+            return buttons;
+        }}""")
+
+        # 3. 过滤掉不可见的按钮
+        visible_buttons = [
+            btn for btn in new_buttons
+            if btn.get("rect", {}).get("width", 0) > 0
+        ]
+
+        # 4. ★ FIX-2: 扫描 dropdown 菜单（Element UI 将菜单 teleport 到 body）
+        #    先 hover 触发展开，再查询 document 级别的菜单项
+        dropdown_items = await page.evaluate(f"""() => {{
+            const row = document.querySelector('{row_selector}');
+            if (!row) return {{ hasDropdown: false }};
+
+            const dropdown = row.querySelector('.el-dropdown');
+            if (!dropdown) return {{ hasDropdown: false }};
+
+            // 触发 hover 展开菜单
+            dropdown.dispatchEvent(new MouseEvent('mouseenter', {{ bubbles: false }}));
+            return {{ hasDropdown: true }};
+        }}""")
+
+        if dropdown_items.get("hasDropdown"):
+            # 等待菜单动画完成
+            await page.wait_for_timeout(600)
+
+            # 在 document.body 下查找可见的 dropdown-menu（teleport 渲染）
+            dropdown_buttons = await page.evaluate(f"""() => {{
+                const existingTexts = {list(existing_actions)};
+                const buttons = [];
+
+                // 查找所有可见的 dropdown-menu（Element UI teleport 到 body）
+                const menus = document.querySelectorAll('.el-dropdown-menu');
+                for (const menu of menus) {{
+                    if (menu.offsetWidth === 0 || menu.offsetHeight === 0) continue;
+
+                    menu.querySelectorAll('.el-dropdown-menu__item').forEach(item => {{
                         const text = item.textContent.trim();
                         if (text && !existingTexts.includes(text)) {{
                             buttons.push({{
@@ -152,16 +183,11 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
                         }}
                     }});
                 }}
-            }});
 
-            return buttons;
-        }}""")
+                return buttons;
+            }}""")
 
-        # 3. 过滤掉不可见的按钮
-        visible_buttons = [
-            btn for btn in new_buttons
-            if btn.get("rect", {}).get("width", 0) > 0 or btn.get("tag") == "DROPDOWN_ITEM"
-        ]
+            visible_buttons.extend(dropdown_buttons)
 
         if visible_buttons:
             LOG.info(f"  [incremental-scan] 发现 {len(visible_buttons)} 个新按钮: "

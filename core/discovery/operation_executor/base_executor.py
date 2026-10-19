@@ -785,12 +785,16 @@ def _setup_new_tab_listener(page) -> tuple:
     return event, ref, cleanup
 
 
-async def _install_message_capture(page) -> None:
+async def _install_message_capture(page, pin: bool = False) -> None:
     """在页面注入 MutationObserver，捕获瞬态的 ElMessage / ElNotification 文本。
 
     ★ 已委托给 shared/install_message_capture（Stage 1/2 统一实现）
+
+    Args:
+        page: Playwright Page 对象
+        pin: 是否钉住通知。Stage 1 传 False（默认），Stage 2 传 True
     """
-    await install_message_capture(page)
+    await install_message_capture(page, pin=pin)
 
 
 async def _get_captured_messages(page, msg_type: str = None) -> list:

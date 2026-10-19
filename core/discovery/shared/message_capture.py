@@ -17,7 +17,7 @@ from playwright.async_api import Page
 LOG = logging.getLogger(__name__)
 
 
-async def install_message_capture(page: Page) -> None:
+async def install_message_capture(page: Page, pin: bool = False) -> None:
     """在页面注入 MutationObserver，捕获瞬态的 ElMessage / ElNotification 文本。
 
     某些操作（lock/unlock/reset/delete 等）成功后会弹出 ElMessage.success()，
@@ -29,14 +29,16 @@ async def install_message_capture(page: Page) -> None:
     统一特性：
     - 支持 el-message / el-notification / ant-message / ant-notification
     - 异步文本延迟读取（Vue $notify 先 appendChild 空 div，后设文本）
-    - 钉住通知（阻止自动移除，供 Stage 2 截图使用）
+    - 钉住通知（阻止自动移除，供 Stage 2 截图使用）★ 仅在 pin=True 时生效
     - 幂等安装（重复调用不重复注入）
 
     Args:
         page: Playwright Page 对象
+        pin: 是否钉住通知（阻止自动消失）。Stage 1 传 False（只捕获文本），
+             Stage 2 传 True（截图需要通知保持可见）
     """
     try:
-        await page.evaluate("""() => {
+        await page.evaluate("""(shouldPin) => {
             // 初始化捕获数组（如果还没有）
             if (!window.__captured_messages) {
                 window.__captured_messages = [];
@@ -137,56 +139,60 @@ async def install_message_capture(page: Page) -> None:
                             }, 100);
                         }
 
-                        // 钉住通知：强制可见 + 阻止自动移除
-                        node.__pinned = true;
+                        // ★ FIX-3: 仅在 shouldPin=true 时钉住通知（Stage 2 截图需要）
+                        // Stage 1 传 shouldPin=false，让通知自然消失，避免干扰后续操作
+                        if (shouldPin) {
+                            // 钉住通知：强制可见 + 阻止自动移除
+                            node.__pinned = true;
 
-                        // 强制可见样式
-                        node.style.setProperty('display', 'block', 'important');
-                        node.style.setProperty('visibility', 'visible', 'important');
-                        node.style.setProperty('opacity', '1', 'important');
-                        node.style.setProperty('transform', 'none', 'important');
-                        node.style.setProperty('transition', 'none', 'important');
-                        node.style.setProperty('animation', 'none', 'important');
-
-                        // 拦截 remove() 调用
-                        const originalRemove = node.remove.bind(node);
-                        node.remove = function() { /* 阻止移除 */ };
-                        node.__originalRemove = originalRemove;
-
-                        // 也拦截 parentNode.removeChild（Vue transition 可能用这个）
-                        const parentNode = node.parentNode;
-                        if (parentNode) {
-                            const origRemoveChild = parentNode.removeChild.bind(parentNode);
-                            parentNode.removeChild = function(child) {
-                                if (child === node && node.__pinned) return child;
-                                return origRemoveChild(child);
-                            };
-                            node.__origRemoveChild = origRemoveChild;
-                            node.__pinnedParent = parentNode;
-                        }
-
-                        // 监听属性变更，覆盖任何隐藏尝试
-                        const pinObserver = new MutationObserver(() => {
-                            if (!node.__pinned) return;
+                            // 强制可见样式
                             node.style.setProperty('display', 'block', 'important');
                             node.style.setProperty('visibility', 'visible', 'important');
                             node.style.setProperty('opacity', '1', 'important');
                             node.style.setProperty('transform', 'none', 'important');
                             node.style.setProperty('transition', 'none', 'important');
-                        });
-                        pinObserver.observe(node, {
-                            attributes: true,
-                            attributeFilter: ['style', 'class']
-                        });
-                        node.__pinObserver = pinObserver;
+                            node.style.setProperty('animation', 'none', 'important');
 
-                        // 子元素也强制可见
-                        node.querySelectorAll('*').forEach(el => {
-                            el.style.setProperty('visibility', 'visible', 'important');
-                            el.style.setProperty('opacity', '1', 'important');
-                        });
+                            // 拦截 remove() 调用
+                            const originalRemove = node.remove.bind(node);
+                            node.remove = function() { /* 阻止移除 */ };
+                            node.__originalRemove = originalRemove;
 
-                        window.__pinned_notifications.push(node);
+                            // 也拦截 parentNode.removeChild（Vue transition 可能用这个）
+                            const parentNode = node.parentNode;
+                            if (parentNode) {
+                                const origRemoveChild = parentNode.removeChild.bind(parentNode);
+                                parentNode.removeChild = function(child) {
+                                    if (child === node && node.__pinned) return child;
+                                    return origRemoveChild(child);
+                                };
+                                node.__origRemoveChild = origRemoveChild;
+                                node.__pinnedParent = parentNode;
+                            }
+
+                            // 监听属性变更，覆盖任何隐藏尝试
+                            const pinObserver = new MutationObserver(() => {
+                                if (!node.__pinned) return;
+                                node.style.setProperty('display', 'block', 'important');
+                                node.style.setProperty('visibility', 'visible', 'important');
+                                node.style.setProperty('opacity', '1', 'important');
+                                node.style.setProperty('transform', 'none', 'important');
+                                node.style.setProperty('transition', 'none', 'important');
+                            });
+                            pinObserver.observe(node, {
+                                attributes: true,
+                                attributeFilter: ['style', 'class']
+                            });
+                            node.__pinObserver = pinObserver;
+
+                            // 子元素也强制可见
+                            node.querySelectorAll('*').forEach(el => {
+                                el.style.setProperty('visibility', 'visible', 'important');
+                                el.style.setProperty('opacity', '1', 'important');
+                            });
+
+                            window.__pinned_notifications.push(node);
+                        }
                     }
                 }
             });
@@ -224,8 +230,8 @@ async def install_message_capture(page: Page) -> None:
                 }
                 window.__pinned_notifications = [];
             };
-        }""")
-        LOG.debug("    ✓ MutationObserver 消息捕获已注入")
+        }""", pin)
+        LOG.debug(f"    ✓ MutationObserver 消息捕获已注入 (pin={pin})")
     except Exception as e:
         LOG.debug(f"    ⚠️ 消息捕获注入失败（不影响执行）: {e}")
 

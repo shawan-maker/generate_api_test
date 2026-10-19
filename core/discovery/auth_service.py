@@ -103,6 +103,15 @@ class AuthService:
             or ""
         )
 
+        # 调试日志：显示实际使用的凭据来源和值（密码只显示长度）
+        source = ("override" if self._user_override
+                  else "credentials.yaml" if site_creds
+                  else "env" if os.environ.get(profile_creds.get("username_env", ""))
+                  else "profile")
+        LOG.info(f"  凭据解析: username='{username}', password_len={len(password)}, source={source}")
+        if not username or not password:
+            LOG.warning(f"  ⚠️ 凭据为空: username={'有' if username else '无'}, password={'有' if password else '无'}")
+
         return {"username": username, "password": password}
 
     def _build_login_config(self) -> "LoginConfig":

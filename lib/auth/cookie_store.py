@@ -99,6 +99,25 @@ class CookieStore:
             LOG.warning(f"Meta 读取失败: {e}")
             return False
 
+    def clear(self, project_dir: Path) -> None:
+        """删除所有 cookie 相关文件
+
+        用于：探测失败后清除旧 cookie，防止下次运行仍复用失效的 cookie。
+
+        Args:
+            project_dir: 项目目录
+        """
+        config_dir = project_dir / "output" / "config"
+        for filename in [self.cookie_file, self.meta_file,
+                         self.localstorage_file, self.sessionstorage_file]:
+            path = config_dir / filename
+            if path.exists():
+                try:
+                    path.unlink()
+                except Exception as e:
+                    LOG.warning(f"删除 {filename} 失败: {e}")
+        LOG.info(f"  Cookie 文件已清除: {config_dir}")
+
     def filter_by_host(self, cookies: List[Dict], host: str) -> List[Dict]:
         """域名过滤（RFC 6265）— 只保留匹配当前 host 的 cookie
 
