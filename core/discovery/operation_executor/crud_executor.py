@@ -54,26 +54,53 @@ async def _get_row_selector_by_marker(page, marker: str) -> str:
 
     try:
         row_info = await page.evaluate(f"""() => {{
-            const allRows = document.querySelectorAll('.el-table__body-wrapper .el-table__row');
+            // ★ 先找到可见的 tab-pane（如果有 tab）
+            const panes = document.querySelectorAll('.el-tab-pane');
+            let visiblePane = null;
+            let paneSelector = '';
 
-            // ★ 过滤：只保留可见 tab-pane 内的行（排除隐藏 tab 的行）
-            const visibleRows = Array.from(allRows).filter(row => {{
-                const pane = row.closest('.el-tab-pane');
-                if (!pane) return true;  // 不在 tab-pane 内，保留
-                const style = window.getComputedStyle(pane);
-                return style.display !== 'none' && style.visibility !== 'hidden';
-            }});
+            if (panes.length > 0) {{
+                for (const pane of panes) {{
+                    const style = window.getComputedStyle(pane);
+                    if (style.display !== 'none' && style.visibility !== 'hidden') {{
+                        visiblePane = pane;
+                        // 构建 pane 的选择器，用于限定作用域
+                        if (pane.id) {{
+                            paneSelector = `#${{pane.id}}`;
+                        }} else {{
+                            // 没有 id，使用 class + 索引
+                            const index = Array.from(pane.parentElement.children).indexOf(pane);
+                            paneSelector = `.el-tab-pane:nth-child(${{index + 1}})`;
+                        }}
+                        break;
+                    }}
+                }}
+            }}
 
-            for (let i = 0; i < visibleRows.length; i++) {{
-                const row = visibleRows[i];
+            // ★ 在可见 pane 的 table 内查找行
+            const table = visiblePane
+                ? visiblePane.querySelector('.el-table__body-wrapper')
+                : document.querySelector('.el-table__body-wrapper');
+
+            if (!table) return {{ found: false }};
+
+            const rows = table.querySelectorAll('.el-table__row');
+
+            for (let i = 0; i < rows.length; i++) {{
+                const row = rows[i];
                 const cells = row.querySelectorAll('.cell');
                 for (const cell of cells) {{
                     const text = cell.textContent.trim();
                     if (text.includes('{marker}')) {{
+                        // ★ 使用 pane 限定的选择器
+                        const selector = paneSelector
+                            ? `${{paneSelector}} .el-table__body-wrapper .el-table__row:nth-child(${{i + 1}})`
+                            : `.el-table__body-wrapper .el-table__row:nth-child(${{i + 1}})`;
                         return {{
                             found: true,
                             rowIndex: i,
-                            selector: `.el-table__body-wrapper .el-table__row:nth-child(${{i + 1}})`
+                            paneId: visiblePane ? visiblePane.id : null,
+                            selector: selector
                         }};
                     }}
                 }}
@@ -82,11 +109,13 @@ async def _get_row_selector_by_marker(page, marker: str) -> str:
         }}""")
 
         if row_info.get("found"):
+            LOG.info(f"  [get-row-selector] 找到行: rowIndex={row_info.get('rowIndex')}, "
+                     f"paneId={row_info.get('paneId')}, selector={row_info.get('selector')}")
             return row_info.get("selector", "")
         return ""
 
     except Exception as e:
-        LOG.debug(f"  [get-row-selector] 失败: {e}")
+        LOG.warning(f"  [get-row-selector] 失败: {e}")
         return ""
 
 
@@ -107,11 +136,15 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
         list: 新发现的按钮列表，格式同 element_scanner 的按钮格式
     """
     try:
+        LOG.info(f"  [INCREMENTAL-SCAN-DEBUG] 开始扫描: row_selector={row_selector}, marker={marker}")
+
         # 1. 验证行仍然存在
         row_exists = await page.evaluate(f"""() => {{
             const row = document.querySelector('{row_selector}');
             return row ? true : false;
         }}""")
+
+        LOG.info(f"  [INCREMENTAL-SCAN-DEBUG] row_exists={row_exists}")
 
         if not row_exists:
             LOG.debug(f"  [incremental-scan] 行不存在（可能已删除），跳过扫描")
@@ -145,30 +178,60 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
             return buttons;
         }}""")
 
+        LOG.info(f"  [INCREMENTAL-SCAN-DEBUG] direct_buttons_found={[b.get('text') for b in new_buttons]}")
+
         # 3. 过滤掉不可见的按钮
         visible_buttons = [
             btn for btn in new_buttons
             if btn.get("rect", {}).get("width", 0) > 0
         ]
 
+        LOG.info(f"  [INCREMENTAL-SCAN-DEBUG] visible_buttons={[b.get('text') for b in visible_buttons]}")
+
         # 4. ★ FIX-2: 扫描 dropdown 菜单（Element UI 将菜单 teleport 到 body）
-        #    先 hover 触发展开，再查询 document 级别的菜单项
-        dropdown_items = await page.evaluate(f"""() => {{
+        #    使用 Vue 实例的 show() 方法展开菜单（与 click_row_more_item 相同方式）
+        dropdown_locator_str = f"{row_selector} .el-dropdown"
+
+        expand_result = await page.evaluate(f"""() => {{
             const row = document.querySelector('{row_selector}');
-            if (!row) return {{ hasDropdown: false }};
+            if (!row) return {{ expanded: false, reason: 'no_row' }};
 
             const dropdown = row.querySelector('.el-dropdown');
-            if (!dropdown) return {{ hasDropdown: false }};
+            if (!dropdown) return {{ expanded: false, reason: 'no_dropdown' }};
 
-            // 触发 hover 展开菜单
+            // 方法 1: 调用 Vue 实例的 show/handleMouseEnter
+            if (dropdown.__vue__) {{
+                const vm = dropdown.__vue__;
+                if (typeof vm.show === 'function') {{
+                    vm.show();
+                    return {{ expanded: true, method: 'vue_show' }};
+                }}
+                if (typeof vm.handleMouseEnter === 'function') {{
+                    vm.handleMouseEnter();
+                    return {{ expanded: true, method: 'vue_handleMouseEnter' }};
+                }}
+            }}
+
+            // 方法 2: 派发 mouseenter + mouseover 事件
             dropdown.dispatchEvent(new MouseEvent('mouseenter', {{ bubbles: false }}));
-            return {{ hasDropdown: true }};
+            dropdown.dispatchEvent(new MouseEvent('mouseover', {{ bubbles: true }}));
+            return {{ expanded: true, method: 'dispatchEvent' }};
         }}""")
 
-        if dropdown_items.get("hasDropdown"):
-            # 等待菜单动画完成
-            await page.wait_for_timeout(600)
+        LOG.info(f"  [INCREMENTAL-SCAN-DEBUG] dropdown_expand={expand_result}")
 
+        # 等待菜单动画完成
+        await page.wait_for_timeout(800)
+
+        # 检查是否有可见的 dropdown 菜单
+        has_visible_menu = await page.evaluate("""() => {
+            const menus = document.querySelectorAll('.el-dropdown-menu');
+            return Array.from(menus).some(m => m.offsetWidth > 0 && m.offsetHeight > 0);
+        }""")
+
+        LOG.info(f"  [INCREMENTAL-SCAN-DEBUG] has_visible_menu={has_visible_menu}")
+
+        if has_visible_menu:
             # 在 document.body 下查找可见的 dropdown-menu（teleport 渲染）
             dropdown_buttons = await page.evaluate(f"""() => {{
                 const existingTexts = {list(existing_actions)};
@@ -176,6 +239,21 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
 
                 // 查找所有可见的 dropdown-menu（Element UI teleport 到 body）
                 const menus = document.querySelectorAll('.el-dropdown-menu');
+                const menuInfo = [];
+                menus.forEach((menu, idx) => {{
+                    const items = [];
+                    menu.querySelectorAll('.el-dropdown-menu__item').forEach(item => {{
+                        items.push(item.textContent.trim());
+                    }});
+                    menuInfo.push({{
+                        idx: idx,
+                        visible: menu.offsetWidth > 0 && menu.offsetHeight > 0,
+                        width: menu.offsetWidth,
+                        height: menu.offsetHeight,
+                        items: items
+                    }});
+                }});
+
                 for (const menu of menus) {{
                     if (menu.offsetWidth === 0 || menu.offsetHeight === 0) continue;
 
@@ -193,10 +271,15 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
                     }});
                 }}
 
-                return buttons;
+                return {{ buttons: buttons, menuInfo: menuInfo, existingTexts: existingTexts }};
             }}""")
 
-            visible_buttons.extend(dropdown_buttons)
+            LOG.info(f"  [INCREMENTAL-SCAN-DEBUG] dropdown_scan_result={dropdown_buttons}")
+
+            if isinstance(dropdown_buttons, dict):
+                visible_buttons.extend(dropdown_buttons.get('buttons', []))
+            else:
+                visible_buttons.extend(dropdown_buttons)
 
         if visible_buttons:
             LOG.info(f"  [incremental-scan] 发现 {len(visible_buttons)} 个新按钮: "
@@ -603,14 +686,23 @@ async def _validate_single_tab_crud(
                 and created_marker  # 有明确的行标识
             )
 
+            LOG.info(f"{tab_prefix}[INCREMENTAL-SCAN] 操作成功，检查是否触发增量扫描: "
+                     f"role={role}, btn_location={btn_location}, created_marker={created_marker}, "
+                     f"should_scan={should_scan}")
+
             if should_scan:
                 # 获取当前行的选择器（基于 marker）
                 row_selector = await _get_row_selector_by_marker(page, created_marker)
+                LOG.info(f"{tab_prefix}[INCREMENTAL-SCAN] row_selector={row_selector}")
+
                 if row_selector:
                     existing_actions = set(buttons_by_action.keys())
+                    LOG.info(f"{tab_prefix}[INCREMENTAL-SCAN] existing_actions={existing_actions}")
+
                     new_buttons = await _scan_row_after_operation(
                         page, row_selector, created_marker, existing_actions
                     )
+                    LOG.info(f"{tab_prefix}[INCREMENTAL-SCAN] new_buttons={[b.get('text') for b in new_buttons] if new_buttons else []}")
 
                     if new_buttons:
                         LOG.info(f"{tab_prefix}增量发现 {len(new_buttons)} 个新按钮")
@@ -622,6 +714,7 @@ async def _validate_single_tab_crud(
 
                             # 去重检查
                             if new_action in buttons_by_action:
+                                LOG.info(f"{tab_prefix}  [SKIP] {new_action} 已在 buttons_by_action 中，跳过")
                                 continue
 
                             buttons_by_action[new_action] = new_btn
@@ -634,15 +727,48 @@ async def _validate_single_tab_crud(
                             # delete 类操作放最后，其他操作放当前位置后面
                             if new_role == "delete":
                                 ordered_actions.append(new_action)
+                                insert_pos = len(ordered_actions) - 1
                             else:
-                                # 在当前 action 后面插入
-                                try:
-                                    current_idx = ordered_actions.index(action)
-                                    ordered_actions.insert(current_idx + 1, new_action)
-                                except ValueError:
-                                    ordered_actions.append(new_action)
+                                # ★ 状态切换类按钮（启用/暂停/禁用等）特殊处理：
+                                # 如果 existing_actions 中已有同类按钮，延迟到所有现有 generic 操作之后执行
+                                # 例如：已有"暂停"，新发现"启用"，则"启用"应在"暂停"之后执行
+                                STATE_TOGGLE_BUTTONS = ['启用', '暂停', '禁用', '激活', '开启', '关闭']
+                                is_state_toggle = new_action in STATE_TOGGLE_BUTTONS
+                                has_existing_toggle = any(btn in existing_actions for btn in STATE_TOGGLE_BUTTONS)
 
-                            LOG.info(f"{tab_prefix}  + {new_action} (角色: {new_role})")
+                                if is_state_toggle and has_existing_toggle:
+                                    # 找到最后一个 generic 操作的位置（在 delete 之前）
+                                    last_generic_idx = -1
+                                    for idx, act in enumerate(ordered_actions):
+                                        if action_roles.get(act) == "generic":
+                                            last_generic_idx = idx
+
+                                    if last_generic_idx >= 0:
+                                        # 插入到最后一个 generic 操作之后
+                                        insert_pos = last_generic_idx + 1
+                                        ordered_actions.insert(insert_pos, new_action)
+                                        LOG.info(f"{tab_prefix}  + {new_action} (状态切换按钮，延迟到 generic 之后执行)")
+                                    else:
+                                        # 没有 generic 操作，放到 delete 之前
+                                        delete_idx = len(ordered_actions)
+                                        for idx, act in enumerate(ordered_actions):
+                                            if action_roles.get(act) == "delete":
+                                                delete_idx = idx
+                                                break
+                                        insert_pos = delete_idx
+                                        ordered_actions.insert(insert_pos, new_action)
+                                else:
+                                    # 在当前 action 后面插入
+                                    try:
+                                        current_idx = ordered_actions.index(action)
+                                        ordered_actions.insert(current_idx + 1, new_action)
+                                        insert_pos = current_idx + 1
+                                    except ValueError:
+                                        ordered_actions.append(new_action)
+                                        insert_pos = len(ordered_actions) - 1
+
+                            LOG.info(f"{tab_prefix}  + {new_action} (角色: {new_role}, 插入位置: {insert_pos}, "
+                                     f"ordered_actions={ordered_actions})")
 
         # 操作后确保回到列表页
         try:
