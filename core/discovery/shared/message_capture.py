@@ -38,17 +38,24 @@ async def install_message_capture(page: Page, pin: bool = False) -> None:
              Stage 2 传 True（截图需要通知保持可见）
     """
     try:
+        LOG.info(f"    [DIAG-install-capture] 安装消息捕获器 pin={pin}")
         await page.evaluate("""(shouldPin) => {
-            // 初始化捕获数组（如果还没有）
-            if (!window.__captured_messages) {
-                window.__captured_messages = [];
-            }
+            // ★ 每次安装都重置捕获数组（方案 A：操作开始时清空，保证操作间隔离）
+            // 上一个操作结束时可能还有残留 toast 文本，但 DOM 已消失不会重新捕获
+            const oldCount = (window.__captured_messages || []).length;
+            window.__captured_messages = [];
+            console.log(`[MSG-CAPTURE] 清空消息数组 (之前有 ${oldCount} 条)`);
+
             if (!window.__pinned_notifications) {
                 window.__pinned_notifications = [];
             }
 
             // 避免重复安装 observer
-            if (window.__msg_capture_observer) return;
+            if (window.__msg_capture_observer) {
+                console.log('[MSG-CAPTURE] Observer 已存在，跳过安装');
+                return;
+            }
+            console.log('[MSG-CAPTURE] 安装新的 MutationObserver');
 
             const SUCCESS_KEYWORDS = ['成功', 'success', 'Success', '完成', 'done'];
             const ERROR_KEYWORDS = ['失败', 'error', 'Error', '异常', '错误'];
@@ -58,14 +65,17 @@ async def install_message_capture(page: Page, pin: bool = False) -> None:
                 if (!text) return;
                 const isSuccess = SUCCESS_KEYWORDS.some(kw => text.includes(kw));
                 const isError = ERROR_KEYWORDS.some(kw => text.includes(kw));
-                window.__captured_messages.push({
+                const msgType = isSuccess ? 'success' : (isError ? 'error' : 'info');
+                const msg = {
                     text: text.substring(0, 200),
-                    type: isSuccess ? 'success' : (isError ? 'error' : 'info'),
+                    type: msgType,
                     time: Date.now(),
                     timestamp: Date.now(),
                     className: className || '',
                     source: 'notification'
-                });
+                };
+                window.__captured_messages.push(msg);
+                console.log(`[MSG-CAPTURE] 捕获通知: type=${msgType}, text="${text.substring(0, 60)}", total=${window.__captured_messages.length}`);
             }
 
             // 辅助函数：检查是否是 Message / Notification 组件节点
@@ -98,14 +108,19 @@ async def install_message_capture(page: Page, pin: bool = False) -> None:
             }
 
             window.__msg_capture_observer = new MutationObserver((mutations) => {
+                console.log(`[MSG-CAPTURE] Observer 触发，共 ${mutations.length} 个 mutation`);
                 for (const mutation of mutations) {
                     for (const node of mutation.addedNodes) {
                         if (node.nodeType !== 1) continue;
                         if (!node.classList) continue;
 
+                        const isDialog = _isDialogNode(node);
+                        const isNotification = _isNotificationNode(node);
+
                         // Dialog 节点：只捕获文本
-                        if (_isDialogNode(node) && !_isNotificationNode(node)) {
+                        if (isDialog && !isNotification) {
                             const text = (node.textContent || '').trim();
+                            console.log(`[MSG-CAPTURE] 检测到 Dialog 节点: text="${text.substring(0, 60)}"`);
                             if (text) {
                                 window.__captured_messages.push({
                                     text: text.substring(0, 200),
@@ -115,19 +130,23 @@ async def install_message_capture(page: Page, pin: bool = False) -> None:
                                     className: node.className,
                                     source: 'dialog'
                                 });
+                                console.log(`[MSG-CAPTURE] 捕获 Dialog 消息，total=${window.__captured_messages.length}`);
                             }
                             continue;
                         }
 
-                        if (!_isNotificationNode(node)) continue;
+                        if (!isNotification) continue;
 
+                        console.log(`[MSG-CAPTURE] 检测到 Notification 节点: className="${node.className}"`);
                         const text = (node.textContent || '').trim();
                         const cls = node.className || '';
 
                         if (text) {
+                            console.log(`[MSG-CAPTURE] Notification 同步文本: "${text.substring(0, 60)}"`);
                             // 同步文本：直接存储
                             _pushCaptured(text, cls);
                         } else {
+                            console.log(`[MSG-CAPTURE] Notification 异步文本，100ms 后读取`);
                             // 异步文本：Element UI $notify 先 appendChild 空 div，
                             // 后通过 Vue 响应式异步设置 message 文本。
                             // 延迟 100ms 重读。
@@ -135,6 +154,7 @@ async def install_message_capture(page: Page, pin: bool = False) -> None:
                             const targetCls = cls;
                             setTimeout(() => {
                                 const delayedText = (targetNode.textContent || '').trim();
+                                console.log(`[MSG-CAPTURE] Notification 延迟读取: "${delayedText.substring(0, 60)}"`);
                                 _pushCaptured(delayedText, targetCls);
                             }, 100);
                         }
@@ -236,13 +256,16 @@ async def install_message_capture(page: Page, pin: bool = False) -> None:
         LOG.debug(f"    ⚠️ 消息捕获注入失败（不影响执行）: {e}")
 
 
-async def get_captured_messages(page: Page, msg_type: str = None, clear: bool = True) -> list:
-    """读取被捕获的消息，并可选择清除捕获数组。
+async def get_captured_messages(page: Page, msg_type: str = None, clear: bool = False) -> list:
+    """读取被捕获的消息。
+
+    ★ 默认不清空（方案 A：只在下一个操作 _install_message_capture 时重置）
+    操作过程中可多次读取同一 toast 信号，不丢失。
 
     Args:
         page: Playwright 页面对象
         msg_type: 过滤类型 ('success' / 'error' / 'info' / None=全部)
-        clear: 是否清除已读取的消息（默认 True）
+        clear: 是否清除已读取的消息（默认 False，操作间隔离由 _install_message_capture 保证）
 
     Returns:
         list of {"text": str, "type": str, "time": int, "source": str}

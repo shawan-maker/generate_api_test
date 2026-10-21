@@ -1266,7 +1266,7 @@ async def _handle_cross_page_operation(page, context: dict, result: dict) -> dic
                          selectors={"trigger": btn_text})
 
 
-async def _navigate_back_to_list(page, original_url: str):
+async def _navigate_back_to_list(page, original_url: str, tab_name: str = "", tab_locator: str = ""):
     """安全导航回原始列表页。
 
     优先使用 page.goto()，失败则尝试 page.go_back()。
@@ -1274,6 +1274,8 @@ async def _navigate_back_to_list(page, original_url: str):
     Args:
         page: Playwright Page 对象
         original_url: 原始列表页 URL
+        tab_name: 目标 Tab 名称（可选，用于多 Tab 页面恢复）
+        tab_locator: 目标 Tab 的 Playwright locator（可选）
     """
     try:
         await page.goto(original_url, wait_until="domcontentloaded", timeout=30000)
@@ -1288,3 +1290,8 @@ async def _navigate_back_to_list(page, original_url: str):
             LOG.info(f"    已通过 go_back 返回")
         except Exception as e2:
             LOG.error(f"    导航回原始页面失败: {e2}")
+
+    # ★ Tab 恢复：导航后可能跳回默认 Tab，需要恢复到目标 Tab
+    if tab_name and tab_locator:
+        from core.discovery.operation_executor.base_executor import _restore_active_tab
+        await _restore_active_tab(page, tab_name, tab_locator)

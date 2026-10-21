@@ -797,19 +797,21 @@ async def _install_message_capture(page, pin: bool = False) -> None:
     await install_message_capture(page, pin=pin)
 
 
-async def _get_captured_messages(page, msg_type: str = None) -> list:
-    """读取被捕获的消息，并清除捕获数组。
+async def _get_captured_messages(page, msg_type: str = None, clear: bool = False) -> list:
+    """读取被捕获的消息（默认不清空）。
 
     ★ 已委托给 shared/get_captured_messages（Stage 1/2 统一实现）
+    ★ 默认 clear=False（方案 A：操作间隔离由 _install_message_capture 保证）
 
     Args:
         page: Playwright 页面对象
         msg_type: 过滤类型 ('success' / 'error' / None=全部)
+        clear: 是否清除已读取的消息（默认 False）
 
     Returns:
         list of {"text": str, "type": str, "time": int}
     """
-    return await get_captured_messages(page, msg_type, clear=True)
+    return await get_captured_messages(page, msg_type, clear=clear)
 
 
 async def _verify_operation_success(page, operation_type: str, strict: bool = False,
@@ -928,8 +930,14 @@ async def _extract_business_failure(page) -> dict | None:
         return None
 
 
-async def _ensure_on_list_page(page):
-    """确保当前在列表页（如果不在，导航回去）。"""
+async def _ensure_on_list_page(page, tab_name: str = "", tab_locator: str = ""):
+    """确保当前在列表页（如果不在，导航回去），并恢复正确的 Tab。
+
+    Args:
+        page: Playwright Page 对象
+        tab_name: 目标 Tab 名称（可选，用于多 Tab 页面恢复）
+        tab_locator: 目标 Tab 的 Playwright locator（可选）
+    """
     try:
         url = page.url
         # 检查是否在创建/编辑页面
@@ -941,9 +949,40 @@ async def _ensure_on_list_page(page):
         # 关闭可能残留的弹窗
         from core.discovery.ui_scanner.button_detector import _close_dialog
         await _close_dialog(page)
+
+        # ★ Tab 恢复：检查当前激活的 Tab 是否匹配
+        if tab_name and tab_locator:
+            await _restore_active_tab(page, tab_name, tab_locator)
     except Exception as e:
         # 浏览器可能已关闭（如 Target page, context or browser has been closed）
         LOG.debug(f"    _ensure_on_list_page: {e}")
+
+
+async def _restore_active_tab(page, tab_name: str, tab_locator: str):
+    """检查当前激活的 Tab，如果不是目标 Tab，点击切换。
+
+    多 Tab 页面（如黑白名单）在 create/edit 操作后可能跳回默认 Tab，
+    需要重新切换到目标 Tab 才能继续操作。
+
+    Args:
+        page: Playwright Page 对象
+        tab_name: 目标 Tab 名称
+        tab_locator: 目标 Tab 的 Playwright locator
+    """
+    try:
+        current_tab = await page.evaluate("""() => {
+            const activeItem = document.querySelector('.el-tabs__item.is-active');
+            return activeItem ? activeItem.textContent.trim() : '';
+        }""")
+        if current_tab and current_tab != tab_name:
+            LOG.info(f"    [TAB-RESTORE] 当前 Tab '{current_tab}' ≠ 目标 '{tab_name}'，重新切换")
+            await page.click(tab_locator, timeout=5000)
+            await page.wait_for_timeout(1500)
+        elif not current_tab:
+            # 页面可能没有 tabs 或 tabs 未渲染完成，跳过
+            pass
+    except Exception as e:
+        LOG.debug(f"    _restore_active_tab: {e}")
 
 
 async def _check_create_api_triggered_simple(page, timeout: int = 3000) -> bool:

@@ -654,14 +654,14 @@ async def _discover_switches(page) -> list:
                     // 行级 switch：不需要精确 selector（不参与验证）
                     selector = '.el-table__row .el-switch';
                 } else if (location === 'toolbar' || location === 'form') {
-                    // toolbar/form 级 switch：需要精确排除表格行内的 switch
+                    // toolbar/form 级 switch：使用 tab pane ID 精确限定
+                    // ★ 修复：避免使用 :not(.el-table__row .el-switch)（CSS :not() 不支持复杂选择器）
+                    // 改为只使用 paneId 限定，switch_ops.py 的 JS 过滤会排除行级 switch
                     if (tabPane) {
                         const paneId = tabPane.id || '';
                         if (paneId) {
-                            // 使用 :not() 排除表格行内的 switch
-                            selector = `#${paneId} .el-switch:not(.el-table__row .el-switch)`;
-                            // 备选：如果 :not() 不支持复杂选择器，使用更简单的方案
-                            // 实际使用时会 fallback 到 JS 过滤
+                            // 简化选择器：只限定 tab pane，switch_ops.py 会做行级过滤
+                            selector = `#${paneId} .el-switch`;
                         }
                     }
                 }

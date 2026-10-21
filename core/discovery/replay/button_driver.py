@@ -335,9 +335,10 @@ class ButtonDriver:
         """点击行内按钮（v2 版本，使用 KB XPath 模板）
 
         使用 probe_knowledge.json 的 table-action-button 模板的 fallback 链：
-        1. fixed-right 列
-        2. body-wrapper 主体
-        3. fixed-body-wrapper
+        1. 行内直接定位（最优先，避免双 tab 取错行）
+        2. fixed-right 列
+        3. body-wrapper 主体
+        4. fixed-body-wrapper
 
         支持：
         - 隐藏元素过滤（display:none, is-hidden）
@@ -351,6 +352,31 @@ class ButtonDriver:
             LOG.warning("无法获取行索引，使用默认值 0")
             row_index = 0
 
+        # ★ 修复双 tab bug：优先行内直接定位，避免全局 XPath 取错行
+        button_text_escaped = button_text.replace('\\', '\\\\').replace("'", "\\'")
+        try:
+            clicked = await row.evaluate(f"""(rowEl) => {{
+                const buttons = rowEl.querySelectorAll('button, .el-button, a, span');
+                for (const btn of buttons) {{
+                    const text = btn.textContent.trim();
+                    if (text.includes('{button_text_escaped}')) {{
+                        if (btn.offsetWidth === 0 || btn.offsetHeight === 0) continue;
+                        if (btn.disabled || btn.classList.contains('is-disabled')) continue;
+                        if (btn.closest('.is-hidden') || btn.closest('[style*="display: none"]')) continue;
+                        btn.click();
+                        return true;
+                    }}
+                }}
+                return false;
+            }}""")
+            if clicked:
+                LOG.debug(f"    ✓ 行内直接点击按钮 '{button_text}' (行索引={row_index})")
+                from .wait_helpers import wait_for_loading_complete
+                await wait_for_loading_complete(self.page)
+                return True
+        except Exception as e:
+            LOG.debug(f"行内点击失败: {e}")
+
         # 加载 KB 模板
         kb = get_kb()
         patterns = kb.get_patterns("table-action-button", framework=self.framework)
@@ -358,7 +384,7 @@ class ButtonDriver:
         # 检测活跃覆盖层
         overlay_prefix = await self._detect_active_overlay()
 
-        # 按 fallback 顺序尝试
+        # 按 fallback 顺序尝试（全局 XPath）
         for pattern in patterns:
             xpath = kb.expand_step(
                 pattern,
@@ -377,34 +403,6 @@ class ButtonDriver:
             # 全局定位
             if await self._click_by_xpath_with_wait(xpath):
                 return True
-
-        # 最终 fallback: 直接在行内用 JavaScript 查找并点击按钮
-        LOG.debug(f"XPath 全部失败，尝试 JavaScript fallback")
-        try:
-            # 转义按钮文本
-            button_text_escaped = button_text.replace('\\', '\\\\').replace("'", "\\'")
-            clicked = await row.evaluate(f"""(row) => {{
-                const buttons = row.querySelectorAll('button, .el-button, a, span');
-                for (const btn of buttons) {{
-                    const text = btn.textContent.trim();
-                    if (text.includes('{button_text_escaped}')) {{
-                        // Skip hidden/disabled elements
-                        if (btn.offsetWidth === 0 || btn.offsetHeight === 0) continue;
-                        if (btn.disabled || btn.classList.contains('is-disabled')) continue;
-                        if (btn.closest('.is-hidden') || btn.closest('[style*="display: none"]')) continue;
-                        btn.click();
-                        return true;
-                    }}
-                }}
-                return false;
-            }}""")
-            if clicked:
-                LOG.debug(f"JavaScript fallback 成功点击按钮 '{button_text}'")
-                from .wait_helpers import wait_for_loading_complete
-                await wait_for_loading_complete(self.page)
-                return True
-        except Exception as e:
-            LOG.debug(f"JavaScript fallback 失败: {e}")
 
         LOG.warning(f"未找到按钮 '{button_text}' (行索引={row_index})")
         return False
@@ -491,23 +489,30 @@ class ButtonDriver:
         expanded = False
         expand_strategy = "failed"
 
+        # [DEBUG] 诊断 row 和 more_btn 的类型
+        LOG.info(f"    [DIAG-row-type] row: type={type(row).__name__}, "
+                 f"has_element_handle={hasattr(row, 'element_handle')}, "
+                 f"module={type(row).__module__}")
+        LOG.info(f"    [DIAG-more_btn-type] more_btn: type={type(more_btn).__name__}, "
+                 f"has_element_handle={hasattr(more_btn, 'element_handle')}, "
+                 f"module={type(more_btn).__module__}")
+
         # ★ 优先尝试：直接使用 scoped 到当前行的 .el-dropdown 展开
-        if more_btn and row:
+        # ★ 修复双 tab bug：直接传递行 DOM 元素，不再通过全局 querySelectorAll + rowIndex
+        # row 可能是 ElementHandle (query_selector_all 返回) 或 Locator，需兼容
+        row_el = row  # ElementHandle 可直接传给 page.evaluate
+        if more_btn and row_el:
             try:
                 # 获取当前行的 .el-dropdown 元素
-                scoped_dropdown = await self.page.evaluate("""(rowIndex) => {
-                    const rows = document.querySelectorAll('.el-table__body-wrapper .el-table__row');
-                    const targetRow = rows[rowIndex];
+                scoped_dropdown = await self.page.evaluate("""(targetRow) => {
                     if (!targetRow) return null;
                     const dropdown = targetRow.querySelector('.el-dropdown');
                     return dropdown ? true : null;
-                }""", row_index)
+                }""", row_el)
 
                 if scoped_dropdown:
                     # 通过 JS 直接触发当前行的 dropdown
-                    expanded = await self.page.evaluate("""(rowIndex) => {
-                        const rows = document.querySelectorAll('.el-table__body-wrapper .el-table__row');
-                        const targetRow = rows[rowIndex];
+                    expanded = await self.page.evaluate("""(targetRow) => {
                         if (!targetRow) return false;
                         const dropdown = targetRow.querySelector('.el-dropdown');
                         if (!dropdown) return false;
@@ -529,14 +534,12 @@ class ButtonDriver:
                         dropdown.dispatchEvent(new MouseEvent('mouseenter', {bubbles: false}));
                         dropdown.dispatchEvent(new MouseEvent('mouseover', {bubbles: true}));
                         return true;
-                    }""", row_index)
+                    }""", row_el)
 
                     if expanded:
                         await self.page.wait_for_timeout(600)
                         # 检查菜单是否真正展开
-                        expanded = await self.page.evaluate("""(rowIndex) => {
-                            const rows = document.querySelectorAll('.el-table__body-wrapper .el-table__row');
-                            const targetRow = rows[rowIndex];
+                        expanded = await self.page.evaluate("""(targetRow) => {
                             if (!targetRow) return false;
 
                             // 查找与当前行 dropdown 关联的 popper
@@ -545,7 +548,7 @@ class ButtonDriver:
                                 p.offsetWidth > 0 && p.offsetHeight > 0
                             );
                             return visiblePoppers.length > 0;
-                        }""", row_index)
+                        }""", row_el)
 
                         if expanded:
                             LOG.debug(f"    ✓ scoped hover 展开成功 (行索引={row_index})")
@@ -636,17 +639,16 @@ class ButtonDriver:
 
         # 展开成功后，限定在当前行的下拉菜单中查找并点击目标项
         # 不再调用全局的 click_dropdown_option（它可能找到其他已关闭菜单的项）
-        clicked_item = await self.page.evaluate(f"""(rowIndex) => {{
+        # ★ 修复双 tab bug：直接传递行 DOM 元素，不再通过全局 querySelectorAll + rowIndex
+        clicked_item = await self.page.evaluate(f"""(targetRow) => {{
             // 步骤 1: 定位当前行的 .el-dropdown 元素
-            const rows = document.querySelectorAll('.el-table__body-wrapper .el-table__row');
-            const targetRow = rows[rowIndex];
             if (!targetRow) {{
-                return {{ clicked: false, error: 'Row not found', rowIndex: rowIndex }};
+                return {{ clicked: false, error: 'Row not found' }};
             }}
 
             const rowDropdown = targetRow.querySelector('.el-dropdown');
             if (!rowDropdown) {{
-                return {{ clicked: false, error: 'No dropdown in row', rowIndex: rowIndex }};
+                return {{ clicked: false, error: 'No dropdown in row' }};
             }}
 
             // 步骤 2: 找到与当前行 dropdown 关联的 popper
@@ -706,15 +708,211 @@ class ButtonDriver:
                 target = visibleItems.find(el => el.textContent.trim().includes('{item_text}'));
             }}
 
+            // [DEBUG] 列出所有菜单项及其状态
+            const allItemsInfo = items.map(el => ({{
+                text: el.textContent.trim(),
+                cls: el.className,
+                visible: el.offsetWidth > 0 && el.offsetHeight > 0,
+                disabled: el.classList.contains('cmss-disabled') || el.classList.contains('is-disabled')
+            }}));
+
             if (target) {{
                 const text = target.textContent.trim();
-                target.click();
+                const cls = target.className;
+                const hasDisabledClass = cls.includes('cmss-disabled') || cls.includes('is-disabled') || cls.includes('disabled');
+
+                // ★ 深度诊断：检查 Vue 组件链上的事件绑定 + cmss-disabled 来源
+                const diagInfo = {{ targetHasVue: false, targetListeners: [], parentChain: [], cmssSource: null }};
+
+                // 检查 target 自身的 Vue 实例
+                if (target.__vue__) {{
+                    diagInfo.targetHasVue = true;
+                    const vm = target.__vue__;
+                    diagInfo.targetListeners = Object.keys(vm.$listeners || {{}});
+                    diagInfo.targetProps = {{
+                        command: vm.command,
+                        disabled: vm.disabled,
+                        divided: vm.divided
+                    }};
+                }}
+
+                // ★ 查找 cmss-disabled 的来源：
+                // 1. 检查 ElDropdownItem 的 mixin 内容（computed、methods、updated/mounted）
+                // 2. 检查 Vuex store 状态
+                // 3. 检查 provide/inject 链
+                // 4. 检查父组件（非 Vue）的 data-* 属性
+
+                // Step 1: 检查 ElDropdownItem 的 mixin 内容
+                if (target.__vue__ && target.__vue__.$options.mixins) {{
+                    const mixins = target.__vue__.$options.mixins;
+                    diagInfo.mixinDetails = mixins.map((mixin, idx) => {{
+                        const computed = mixin.computed ? Object.keys(mixin.computed) : [];
+                        const methods = mixin.methods ? Object.keys(mixin.methods) : [];
+                        const hasUpdated = typeof mixin.updated === 'function';
+                        const hasMounted = typeof mixin.mounted === 'function';
+                        const hasCreated = typeof mixin.created === 'function';
+
+                        // 检查 computed 中是否有 cmss/disabled 相关的
+                        const cmssRelatedComputed = computed.filter(k =>
+                            k.toLowerCase().includes('cmss') ||
+                            k.toLowerCase().includes('disabled') ||
+                            k.toLowerCase().includes('enable') ||
+                            k.toLowerCase().includes('status') ||
+                            k.toLowerCase().includes('switch')
+                        );
+
+                        return {{
+                            idx,
+                            computed,
+                            methods,
+                            hasUpdated,
+                            hasMounted,
+                            hasCreated,
+                            cmssRelatedComputed
+                        }};
+                    }});
+                }}
+
+                // Step 2: 检查 Vuex store
+                const vm = target.__vue__;
+                if (vm && vm.$store) {{
+                    const store = vm.$store;
+                    const stateKeys = store.state ? Object.keys(store.state) : [];
+                    const gettersKeys = store.getters ? Object.keys(store.getters) : [];
+
+                    // 查找 store 中与 cmss/disabled/switch/status 相关的
+                    const cmssRelatedState = stateKeys.filter(k =>
+                        k.toLowerCase().includes('cmss') ||
+                        k.toLowerCase().includes('disabled') ||
+                        k.toLowerCase().includes('enable') ||
+                        k.toLowerCase().includes('status') ||
+                        k.toLowerCase().includes('switch') ||
+                        k.toLowerCase().includes('black') ||
+                        k.toLowerCase().includes('white')
+                    );
+
+                    // 深入检查 blackList 状态
+                    const blackListState = store.state.blackList || {{}};
+                    const blackListKeys = Object.keys(blackListState);
+                    const blackListDetails = {{}};
+                    for (const key of blackListKeys) {{
+                        const val = blackListState[key];
+                        if (val === null || val === undefined) {{
+                            blackListDetails[key] = null;
+                        }} else if (typeof val === 'boolean' || typeof val === 'number' || typeof val === 'string') {{
+                            blackListDetails[key] = val;
+                        }} else if (Array.isArray(val)) {{
+                            blackListDetails[key] = `Array(${{val.length}})`;
+                        }} else if (typeof val === 'object') {{
+                            // ★ 特殊处理：打印 blackWhiteConfig 的完整内容
+                            if (key === 'blackWhiteConfig') {{
+                                blackListDetails[key] = JSON.stringify(val);
+                            }} else {{
+                                blackListDetails[key] = Object.keys(val).slice(0, 10);
+                            }}
+                        }}
+                    }}
+
+                    diagInfo.vuexStore = {{
+                        hasStore: true,
+                        stateKeys: stateKeys.slice(0, 20),
+                        gettersKeys: gettersKeys.slice(0, 20),
+                        cmssRelatedState,
+                        totalStateKeys: stateKeys.length,
+                        blackListKeys,
+                        blackListDetails
+                    }};
+                }}
+
+                // Step 3: 检查 provide/inject 链
+                if (vm) {{
+                    const injectChain = [];
+                    let current = vm;
+                    while (current) {{
+                        if (current._provided) {{
+                            const providedKeys = Object.keys(current._provided);
+                            if (providedKeys.length > 0) {{
+                                injectChain.push({{
+                                    name: current.$options.name || 'anonymous',
+                                    providedKeys
+                                }});
+                            }}
+                        }}
+                        current = current.$parent;
+                    }}
+                    if (injectChain.length > 0) {{
+                        diagInfo.provideChain = injectChain;
+                    }}
+                }}
+
+                // Step 4: 检查父组件（非 Vue）的 data-* 属性
+                const parentChain = [];
+                let el = target.parentElement;
+                let depth = 0;
+                while (el && depth < 10) {{
+                    const dataAttrs = {{}};
+                    for (const attr of el.attributes) {{
+                        if (attr.name.startsWith('data-')) {{
+                            dataAttrs[attr.name] = attr.value.substring(0, 50);
+                        }}
+                    }}
+                    if (Object.keys(dataAttrs).length > 0) {{
+                        parentChain.push({{
+                            depth,
+                            tag: el.tagName,
+                            cls: (el.className || '').substring(0, 50),
+                            dataAttrs
+                        }});
+                    }}
+                    el = el.parentElement;
+                    depth++;
+                }}
+                if (parentChain.length > 0) {{
+                    diagInfo.parentDataAttributes = parentChain;
+                }}
+
+                // ★ 检查按钮是否被禁用（cmss-disabled 或 is-disabled）
+                // 如果按钮被禁用，不执行点击，返回 disabled 状态
+                if (hasDisabledClass) {{
+                    return {{
+                        clicked: false,
+                        reason: 'button-disabled',
+                        text: text,
+                        cls: cls,
+                        hasDisabledClass: hasDisabledClass,
+                        diagInfo: diagInfo,
+                        visibleCount: visibleItems.length,
+                        allItems: allItemsInfo,
+                        scopedToRow: true,
+                        popperMethod: targetPopper ? 'matched' : 'fallback',
+                        postClickState: {{}}
+                    }};
+                }}
+
+                // ★ 使用 dispatchEvent 确保事件冒泡
+                target.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true, view: window}}));
+
+                // [DEBUG] 点击后立即检查 DOM 状态变化
+                const postClickState = {{
+                    messageBoxVisible: document.querySelector('.el-message-box__wrapper:not([style*="display: none"])') ? true : false,
+                    messageBoxText: document.querySelector('.el-message-box__message')?.textContent?.trim()?.substring(0, 100) || '',
+                    elMessageVisible: document.querySelector('.el-message:not([style*="display: none"])') ? true : false,
+                    elMessageText: document.querySelector('.el-message__content')?.textContent?.trim()?.substring(0, 100) || '',
+                    elNotificationVisible: document.querySelector('.el-notification:not([style*="display: none"])') ? true : false,
+                    elNotificationText: document.querySelector('.el-notification__content')?.textContent?.trim()?.substring(0, 100) || ''
+                }};
+
                 return {{
                     clicked: true,
                     text: text,
+                    cls: cls,
+                    hasDisabledClass: hasDisabledClass,
+                    diagInfo: diagInfo,
                     visibleCount: visibleItems.length,
+                    allItems: allItemsInfo,
                     scopedToRow: true,
-                    popperMethod: targetPopper ? 'matched' : 'fallback'
+                    popperMethod: targetPopper ? 'matched' : 'fallback',
+                    postClickState: postClickState
                 }};
             }}
 
@@ -725,14 +923,13 @@ class ButtonDriver:
                 visibleCount: visibleItems.length,
                 totalItems: items.length,
                 scopedToRow: true,
-                rowIndex: rowIndex,
                 allItems: items.map(el => ({{
                     text: el.textContent.trim(),
                     visible: el.offsetWidth > 0 && el.offsetHeight > 0,
                     parentDisplay: el.parentElement ? window.getComputedStyle(el.parentElement).display : ''
                 }}))
             }};
-        }}""", row_index)
+        }}""", row_el)
 
         LOG.info(f"    [dropdown-click] 结果: {clicked_item}")
 

@@ -175,7 +175,10 @@ async def verify_operation_success(
     if matched_method is None and failure_reason is None:
         # 优先使用传入的 captured_messages
         if captured_messages:
-            _all_texts = [m.get('text', '') for m in captured_messages]
+            # ★ 修复：过滤掉 dialog 来源的消息，只检查通知类消息
+            # 确认框文本（如"确定开启黑名单功能，开启后将禁止..."）不应被当作失败信号
+            _notification_msgs = [m for m in captured_messages if m.get('source') != 'dialog']
+            _all_texts = [m.get('text', '') for m in _notification_msgs]
             # 失败优先
             for t in _all_texts:
                 semantic = const.classify_notification(t)
@@ -200,8 +203,9 @@ async def verify_operation_success(
                 captured_texts = await page.evaluate("""() => {
                     if (!window.__captured_messages) return [];
                     const now = Date.now();
+                    // ★ 修复：过滤掉 dialog 来源的消息
                     return window.__captured_messages
-                        .filter(m => now - m.timestamp < 30000)
+                        .filter(m => now - m.timestamp < 30000 && m.source !== 'dialog')
                         .map(m => m.text);
                 }""")
                 if captured_texts:

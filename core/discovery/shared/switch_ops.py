@@ -301,7 +301,7 @@ async def toggle_switch(
 
         # 6. 检查成功消息（可选）
         from .message_capture import get_captured_messages
-        captured_msgs = await get_captured_messages(page, clear=True)
+        captured_msgs = await get_captured_messages(page, clear=False)
         success_msg = None
         for msg in captured_msgs:
             msg_text = msg.get("text", "")

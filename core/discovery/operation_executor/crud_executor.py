@@ -235,7 +235,8 @@ async def _validate_single_tab_crud(
     tab_buttons: dict,
     ui_result: dict,
     username: str,
-    tab_name: str = ""
+    tab_name: str = "",
+    tab_locator: str = "",
 ) -> dict:
     """在单个 Tab 上下文中执行完整 CRUD 验证。
 
@@ -389,8 +390,52 @@ async def _validate_single_tab_crud(
         # ★ Switch 操作：统一调度
         if btn.get("_is_switch"):
             LOG.info(f"{tab_prefix}[SWITCH-DEBUG] 检测到 switch 操作: text='{btn.get('text')}', locator='{btn.get('locator')}', is_checked={btn.get('is_checked')}")
+
+            # ★ 修改点 3：toggle 前用 JS 验证实际状态（诊断用）
+            try:
+                _pre_toggle_diag = await page.evaluate(f"""(locator) => {{
+                    const switches = document.querySelectorAll(locator);
+                    const visible = Array.from(switches).filter(s => s.offsetWidth > 0);
+                    if (visible.length === 0) return {{ error: 'no visible switch', locator: locator }};
+                    const sw = visible[0];
+                    return {{
+                        locator: locator,
+                        selfChecked: sw.classList.contains('is-checked'),
+                        ariaChecked: sw.getAttribute('aria-checked'),
+                        paneId: sw.closest('.el-tab-pane')?.id || 'none'
+                    }};
+                }}""", btn.get('locator'))
+                LOG.info(f"{tab_prefix}[SWITCH-PRE-TOGGLE] 实际 DOM 状态: {_pre_toggle_diag}")
+            except Exception as e:
+                LOG.warning(f"{tab_prefix}[SWITCH-PRE-TOGGLE] 诊断失败: {e}")
+
             result = await _do_toggle_switch(page, {"switch_info": btn})
             LOG.info(f"{tab_prefix}[SWITCH-DEBUG] toggle 结果: success={result.get('success') if result else None}, before={result.get('before_checked') if result else None}, after={result.get('after_checked') if result else None}")
+
+            # ★ 修改点 3：toggle 后验证实际状态变化
+            try:
+                _post_toggle_diag = await page.evaluate(f"""(locator) => {{
+                    const switches = document.querySelectorAll(locator);
+                    const visible = Array.from(switches).filter(s => s.offsetWidth > 0);
+                    if (visible.length === 0) return {{ error: 'no visible switch', locator: locator }};
+                    const sw = visible[0];
+                    return {{
+                        locator: locator,
+                        selfChecked: sw.classList.contains('is-checked'),
+                        ariaChecked: sw.getAttribute('aria-checked'),
+                        paneId: sw.closest('.el-tab-pane')?.id || 'none'
+                    }};
+                }}""", btn.get('locator'))
+                LOG.info(f"{tab_prefix}[SWITCH-POST-TOGGLE] 实际 DOM 状态: {_post_toggle_diag}")
+
+                # 验证状态是否真的变化
+                _pre_checked = _pre_toggle_diag.get('selfChecked')
+                _post_checked = _post_toggle_diag.get('selfChecked')
+                if _pre_checked == _post_checked and _pre_checked is not None:
+                    LOG.warning(f"{tab_prefix}[SWITCH-WARN] ⚠️ switch 状态未变化！pre={_pre_checked}, post={_post_checked}")
+            except Exception as e:
+                LOG.warning(f"{tab_prefix}[SWITCH-POST-TOGGLE] 诊断失败: {e}")
+
             if result and result.get("success"):
                 # ★ 传递 _is_switch 标记到 validated，供 builder 识别
                 validated[action] = {**result, "_is_switch": True, "locator": btn.get("locator"), "text": btn.get("text"), "is_checked": btn.get("is_checked")}
@@ -409,6 +454,7 @@ async def _validate_single_tab_crud(
                 page, _do_create, {
                     "btn": btn, "fields": form_fields, "username": username,
                     "form_filler": form_filler, "framework": framework,
+                    "tab_name": tab_name, "tab_locator": tab_locator,
                 }
             )
             if result and result.get("success"):
@@ -449,6 +495,7 @@ async def _validate_single_tab_crud(
             result = await _error_driven_retry(
                 page, _do_detail, {
                     "btn": btn, "marker": created_marker,
+                    "tab_name": tab_name, "tab_locator": tab_locator,
                 }
             )
             if result and result.get("success"):
@@ -464,6 +511,7 @@ async def _validate_single_tab_crud(
                         page, _do_edit, {
                             "btn": btn, "marker": created_marker,
                             "form_filler": form_filler, "framework": framework,
+                            "tab_name": tab_name, "tab_locator": tab_locator,
                         }
                     )
                     if result and result.get("success"):
@@ -475,6 +523,7 @@ async def _validate_single_tab_crud(
                     page, _do_generic_operation, {
                         "btn": btn, "action": action, "marker": created_marker,
                         "form_filler": form_filler,
+                        "tab_name": tab_name, "tab_locator": tab_locator,
                     }
                 )
                 if result and result.get("success"):
@@ -508,6 +557,7 @@ async def _validate_single_tab_crud(
                     page, _do_generic_operation, {
                         "btn": btn, "action": action, "marker": created_marker,
                         "form_filler": form_filler,
+                        "tab_name": tab_name, "tab_locator": tab_locator,
                     }
                 )
                 if result and result.get("success"):
@@ -527,6 +577,7 @@ async def _validate_single_tab_crud(
                 page, _do_generic_operation, {
                     "btn": btn, "action": action, "marker": created_marker,
                     "form_filler": form_filler,
+                    "tab_name": tab_name, "tab_locator": tab_locator,
                 }
             )
             if result and result.get("success"):
@@ -586,7 +637,7 @@ async def _validate_single_tab_crud(
 
         # 操作后确保回到列表页
         try:
-            await _ensure_on_list_page(page)
+            await _ensure_on_list_page(page, tab_name, tab_locator)
         except Exception as e:
             LOG.error(f"{tab_prefix}_ensure_on_list_page 异常: {e}")
             if "has been closed" in str(e):
@@ -785,9 +836,46 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
                     LOG.warning(f"  ⚠️ Tab 切换失败: {e}")
                     continue
 
+            # ★ DIAG: 切换 Tab 后检查该 Tab 的 Switch 状态
+            try:
+                _switch_diag = await page.evaluate("""(tabName) => {
+                    const panes = document.querySelectorAll('.el-tab-pane');
+                    let activePane = null;
+                    for (const p of panes) {
+                        const style = window.getComputedStyle(p);
+                        if (style.display !== 'none' && p.offsetWidth > 0) {
+                            activePane = p;
+                            break;
+                        }
+                    }
+                    if (!activePane) return {error: 'no visible pane'};
+
+                    const switches = activePane.querySelectorAll('.el-switch');
+                    const switchInfo = Array.from(switches).map((sw, i) => ({
+                        index: i,
+                        isChecked: sw.classList.contains('is-checked'),
+                        ariaChecked: sw.querySelector('input')?.getAttribute('aria-checked'),
+                        text: sw.closest('.el-form-item')?.querySelector('.el-form-item__label')?.textContent?.trim()
+                              || sw.closest('.toolbar')?.textContent?.trim()?.substring(0, 30)
+                              || `switch-${i}`,
+                        inRow: !!sw.closest('.el-table__row'),
+                    }));
+
+                    return {
+                        paneId: activePane.id || '',
+                        paneName: activePane.getAttribute('aria-label') || '',
+                        switchCount: switches.length,
+                        switches: switchInfo,
+                    };
+                }""", tab_name)
+                LOG.info(f"    [TAB-SWITCH-DIAG] Tab '{tab_name}' 切换后 Switch 状态: {_switch_diag}")
+            except Exception as e:
+                LOG.warning(f"    [TAB-SWITCH-DIAG] 诊断失败: {e}")
+
         # 在该 Tab 上下文中执行完整 CRUD 验证
         tab_result = await _validate_single_tab_crud(
-            page, tab_buttons, ui_result, username, tab_name
+            page, tab_buttons, ui_result, username, tab_name,
+            tab_locator=tab_info.get("locator", "") if tab_name and tab_info else "",
         )
 
         # 合并结果（多 Tab 时加前缀）
@@ -1371,7 +1459,7 @@ async def _do_create(page, context: dict) -> dict:
         LOG.info(f"    marker: None (无 input 类型字段)")
 
     # 确保回到列表页
-    await _ensure_on_list_page(page)
+    await _ensure_on_list_page(page, context.get("tab_name", ""), context.get("tab_locator", ""))
 
     # 使用 submit_form_v2 返回的已验证 locator（Stage 1 探测成功的那个）
     submit_text = submit_result["text"]
@@ -1678,6 +1766,12 @@ async def _do_detail(page, context: dict) -> dict:
         LOG.info(f"    [detail] 页面跳转: {url_before[:40]} → {page.url[:40]}")
         await page.go_back()
         await wait_for_navigation_complete(page)
+        # ★ 导航后恢复 Tab
+        _tab_name = context.get("tab_name", "")
+        _tab_locator = context.get("tab_locator", "")
+        if _tab_name and _tab_locator:
+            from core.discovery.operation_executor.base_executor import _restore_active_tab
+            await _restore_active_tab(page, _tab_name, _tab_locator)
         return {"success": True, "selectors": selectors, "interaction_mode": "page_nav"}
 
     elif obs["scenario"] == "dialog":
@@ -1701,6 +1795,8 @@ async def _do_edit(page, context: dict) -> dict:
     framework = context.get("framework", "element-ui")
     btn_text = btn.get("text", "")
     btn_location = btn.get("location", "toolbar")
+    _tab_name = context.get("tab_name", "")
+    _tab_locator = context.get("tab_locator", "")
 
     _log.debug(f"    [_do_edit] START: btn_text='{btn_text}', marker='{marker}', location='{btn_location}'")
 
@@ -1903,7 +1999,7 @@ async def _do_edit(page, context: dict) -> dict:
         nav_info = await _explore_and_operate_in_new_page(
             page=page, action="edit", new_url=url_after_click, depth=0, max_depth=3
         )
-        await _navigate_back_to_list(page, url_before_click)
+        await _navigate_back_to_list(page, url_before_click, tab_name=_tab_name, tab_locator=_tab_locator)
 
         nav_submit = nav_info.get("submit_result", {})
         if nav_submit.get("success"):
@@ -2681,6 +2777,8 @@ async def _do_generic_operation(page, context: dict) -> dict:
 
     btn = context["btn"]
     action = context["action"]
+    _tab_name = context.get("tab_name", "")
+    _tab_locator = context.get("tab_locator", "")
     LOG.info(f"  [ROUTE] → _do_generic_operation 被调用, action='{action}', btn_text='{btn.get('text', '')}', location='{btn.get('location', '')}'")
     marker = context.get("marker")
     btn_text = btn.get("text", "")
@@ -2698,10 +2796,89 @@ async def _do_generic_operation(page, context: dict) -> dict:
     url_before = page.url
 
     # 安装消息捕获（在点击按钮之前，防止瞬态 toast 消失）
+    LOG.info(f"  [DIAG-generic-start] 开始 _do_generic_operation，安装消息捕获器")
     await _install_message_capture(page)
+
+    # 立即检查消息数组状态
+    _initial_msgs = await page.evaluate("() => (window.__captured_messages || []).length")
+    LOG.info(f"  [DIAG-after-install] 安装后消息数组长度: {_initial_msgs}")
+
+    # ★ 添加浏览器 console 监听器，捕获 [MSG-CAPTURE] 日志（幂等）
+    if not getattr(page, "_msg_capture_console_listener_added", False):
+        def _on_console_msg(msg):
+            text = msg.text
+            if "[MSG-CAPTURE]" in text:
+                LOG.info(f"    [BROWSER-CONSOLE] {text}")
+        page.on("console", _on_console_msg)
+        page._msg_capture_console_listener_added = True
+        LOG.info(f"  [DIAG-console] 已添加浏览器 console 监听器")
 
     # 注册新标签页监听器（Phase 1a：统一后点击检测）
     new_tab_event, new_tab_ref, cleanup_tab_listener = _setup_new_tab_listener(page)
+
+    # ★ 修改点 4：Generic 操作前检查当前 tab 的 switch 状态
+    # 如果 toolbar/form 级 switch 是 OFF，自动开启（避免按钮被 cmss-disabled）
+    try:
+        _switch_pre_check = await page.evaluate("""() => {
+            // 查找当前可见 tab-pane 内的 toolbar/form 级 switch
+            const visiblePanes = Array.from(document.querySelectorAll('.el-tab-pane'))
+                .filter(p => p.offsetWidth > 0 && window.getComputedStyle(p).display !== 'none');
+
+            const results = [];
+
+            for (const pane of visiblePanes) {
+                const switches = pane.querySelectorAll('.el-switch');
+                for (const sw of switches) {
+                    // 排除行级 switch
+                    if (sw.closest('.el-table__row, .el-table__body tr')) continue;
+
+                    const isChecked = sw.classList.contains('is-checked');
+                    const paneId = pane.id || 'none';
+
+                    results.push({
+                        paneId: paneId,
+                        isChecked: isChecked,
+                        locator: `#${paneId} .el-switch`,
+                        selfChecked: sw.classList.contains('is-checked')
+                    });
+
+                    // 如果 switch 是 OFF，记录需要开启
+                    if (!isChecked) {
+                        results[results.length - 1].needsToggle = true;
+                    }
+                }
+            }
+
+            return results;
+        }""")
+
+        if _switch_pre_check:
+            for sw_info in _switch_pre_check:
+                # ★ 增强诊断：始终打印完整 switch 状态（含 Vue 内部值）
+                LOG.info(f"  [GENERIC-SWITCH-PRECHECK] {sw_info['paneId']}: "
+                         f"selfChecked={sw_info.get('selfChecked')}, "
+                         f"vueValue={sw_info.get('vueValue')}, "
+                         f"vueActiveValue={sw_info.get('vueActiveValue')}, "
+                         f"isChecked={sw_info.get('isChecked')}")
+
+                if sw_info.get('needsToggle'):
+                    LOG.info(f"  [GENERIC-SWITCH-PRECHECK] 检测到 {sw_info['paneId']} 的 switch 为 OFF，尝试开启")
+
+                    # 复用 _ensure_switch_enabled 逻辑
+                    from core.discovery.shared.switch_ops import get_switch_state, toggle_switch
+
+                    locator = sw_info['locator']
+                    state = await get_switch_state(page, locator)
+
+                    if state['element_found'] and not state['is_checked']:
+                        result = await toggle_switch(page, locator)
+                        if result.get('success'):
+                            LOG.info(f"  [GENERIC-SWITCH-PRECHECK] ✓ 已开启 {sw_info['paneId']} 的 switch")
+                            await page.wait_for_timeout(500)
+                        else:
+                            LOG.warning(f"  [GENERIC-SWITCH-PRECHECK] ✗ 开启失败: {result.get('error_text')}")
+    except Exception as e:
+        LOG.warning(f"  [GENERIC-SWITCH-PRECHECK] 预检失败: {e}")
 
     # 找到行并点击
     row_selector = None
@@ -2734,6 +2911,48 @@ async def _do_generic_operation(page, context: dict) -> dict:
         dropdown_click_result = await driver.click_row_more_item(row, btn_text)
         clicked = dropdown_click_result.get("clicked", False)
         LOG.info(f"    [DEBUG-dropdown] click_row_more_item 返回: {dropdown_click_result}")
+
+        # ★ 诊断：检查点击后 500ms 内下拉菜单是否关闭 + 是否有 API 请求
+        await page.wait_for_timeout(500)
+        _post_click_diag = await page.evaluate("""(btnText) => {
+            // 检查下拉菜单是否仍然可见
+            const poppers = document.querySelectorAll('.el-dropdown-menu');
+            const stillVisible = Array.from(poppers).some(p => p.offsetWidth > 0 && p.offsetHeight > 0);
+
+            // 检查父 el-dropdown 的 Vue 实例是否有 command 事件监听
+            const dropdowns = document.querySelectorAll('.el-dropdown');
+            const commandListeners = [];
+            dropdowns.forEach(dd => {
+                if (dd.__vue__) {
+                    const vm = dd.__vue__;
+                    commandListeners.push({
+                        hasCommand: !!vm.$listeners?.command,
+                        hasHandleCommand: typeof vm.handleCommand === 'function',
+                        listeners: Object.keys(vm.$listeners || {})
+                    });
+                }
+            });
+
+            // 检查最近的网络请求
+            const entries = performance.getEntriesByType('resource');
+            const recentXhr = entries
+                .filter(e => (e.initiatorType === 'xmlhttprequest' || e.initiatorType === 'fetch')
+                         && !e.name.includes('menu')
+                         && !e.name.includes('favorite')
+                         && !e.name.includes('access-log')
+                         && !e.name.includes('notice')
+                         && !e.name.includes('authority'))
+                .slice(-3)
+                .map(e => ({ url: e.name.substring(0, 80), duration: Math.round(e.duration) }));
+
+            return {
+                dropdownStillVisible: stillVisible,
+                commandListeners: commandListeners,
+                recentXhr: recentXhr
+            };
+        }""", btn_text)
+        LOG.info(f"    [DIAG-dropdown-click] 点击后诊断: {_post_click_diag}")
+
         row_selector = f"{btn.get('parent', '更多')} > {btn_text}"
     else:
         # toolbar 按钮：checkbox 已由调用方 (_validate_business_flow) 勾选，
@@ -2744,6 +2963,12 @@ async def _do_generic_operation(page, context: dict) -> dict:
 
     if not clicked:
         cleanup_tab_listener()
+        # ★ 检查是否因为按钮被禁用而跳过（cmss-disabled / is-disabled）
+        _disable_reason = (dropdown_click_result or {}).get("reason", "")
+        if _disable_reason == "button-disabled":
+            LOG.info(f"    跳过 {action} 操作: 按钮被禁用 (cmss-disabled/is-disabled)")
+            return skipped(f"按钮被禁用: {action}",
+                          trigger_text=trigger_text_normalized)
         return click_failed(f"无法点击 {action} 按钮: {btn_text}",
                            trigger_text=trigger_text_normalized,
                            trigger_locator_verified=btn_click_result.get("locator") if btn_click_result else None)
@@ -2756,6 +2981,10 @@ async def _do_generic_operation(page, context: dict) -> dict:
         new_page_event=new_tab_event, new_page_ref=new_tab_ref
     )
     cleanup_tab_listener()
+
+    # DIAG: _observe_post_click 后检查消息数组
+    _msgs_after_observe = await page.evaluate("() => (window.__captured_messages || []).length")
+    LOG.info(f"    [DIAG-after-observe] _observe_post_click 后，消息数组长度: {_msgs_after_observe}")
 
     # ── 新标签页场景（Phase 1a 新增能力） ──
     if obs["scenario"] == "new_tab":
@@ -2816,7 +3045,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
         )
 
         # 导航回原始页面
-        await _navigate_back_to_list(page, url_before)
+        await _navigate_back_to_list(page, url_before, tab_name=_tab_name, tab_locator=_tab_locator)
 
         selectors = {"trigger": btn_text}
         if row_selector:
@@ -2899,6 +3128,10 @@ async def _do_generic_operation(page, context: dict) -> dict:
     # message-box/popconfirm → 确认框模式（填充 select → 点确认）
     # 无弹窗 → 即时操作模式（检查 toast/数据变化）
     # ============================================================
+    # DIAG: 在调用 _check_precondition_state 前，先检查消息数组状态
+    _msgs_before_dialog = await page.evaluate("() => (window.__captured_messages || []).length")
+    LOG.info(f"    [DIAG-before-dialog-check] 弹窗检测前，消息数组长度: {_msgs_before_dialog}")
+
     # DIAG: 在调用 _check_precondition_state 前，先 dump 当前 DOM 弹窗状态
     _pre_diag = await page.evaluate("""() => {
         const result = { msgBox: false, popconfirm: false, dialog: false, drawer: false };
@@ -2922,6 +3155,10 @@ async def _do_generic_operation(page, context: dict) -> dict:
     state = await _check_precondition_state(page, {"type": "dialog"})
     actual_state = state.get("actual_state", "") if state["success"] else ""
     LOG.info(f"    [DIAG-generic-precheck] _check_precondition_state → success={state['success']}, actual_state='{actual_state}'")
+
+    # DIAG: 弹窗检测后，检查消息数组
+    _msgs_after_dialog_check = await page.evaluate("() => (window.__captured_messages || []).length")
+    LOG.info(f"    [DIAG-after-dialog-check] 弹窗检测后，消息数组长度: {_msgs_after_dialog_check}")
     # actual_state 可能是 "drawer: 标题" 或 "dialog: 标题"，提取类型部分
     _container_type = actual_state.split(":")[0].strip() if actual_state else ""
     confirmed = ""
@@ -3006,8 +3243,12 @@ async def _do_generic_operation(page, context: dict) -> dict:
 
             from core.discovery.replay.button_driver import confirm_dialog
             LOG.info(f"    [DIAG-generic-path1] drawer/dialog 无表单，调用 confirm_dialog...")
+            _msgs_before_confirm = await page.evaluate("() => (window.__captured_messages || []).length")
+            LOG.info(f"    [DIAG-before-confirm] 调用 confirm_dialog 前，消息数组长度: {_msgs_before_confirm}")
             confirmed = await confirm_dialog(page)
             LOG.info(f"    [DIAG-generic-path1] confirm_dialog 返回: '{confirmed}'")
+            _msgs_after_confirm = await page.evaluate("() => (window.__captured_messages || []).length")
+            LOG.info(f"    [DIAG-after-confirm] confirm_dialog 后，消息数组长度: {_msgs_after_confirm}")
             if confirmed:
                 LOG.info(f"    已点击确认按钮: {confirmed}")
             else:
@@ -3170,8 +3411,12 @@ async def _do_generic_operation(page, context: dict) -> dict:
 
         from core.discovery.replay.button_driver import confirm_dialog
         LOG.info(f"    [DIAG-generic-path3] 确认框模式，调用 confirm_dialog...")
+        _msgs_before_confirm = await page.evaluate("() => (window.__captured_messages || []).length")
+        LOG.info(f"    [DIAG-path3-before-confirm] 调用 confirm_dialog 前，消息数组长度: {_msgs_before_confirm}")
         confirmed = await confirm_dialog(page)
         LOG.info(f"    [DIAG-generic-path3] confirm_dialog 返回: '{confirmed}'")
+        _msgs_after_confirm = await page.evaluate("() => (window.__captured_messages || []).length")
+        LOG.info(f"    [DIAG-path3-after-confirm] confirm_dialog 后，消息数组长度: {_msgs_after_confirm}")
         if confirmed:
             LOG.info(f"    已点击确认按钮: {confirmed}")
         else:
@@ -3247,68 +3492,200 @@ async def _do_generic_operation(page, context: dict) -> dict:
     else:
         # ── 无弹窗：可能是即时操作（状态切换、toast 反馈等） ──
         LOG.debug(f"    未检测到弹窗 (state: {state.get('actual_state', 'none')})")
+        _msgs_no_dialog = await page.evaluate("() => (window.__captured_messages || []).length")
+        LOG.info(f"    [DIAG-no-dialog] 无弹窗路径，消息数组长度: {_msgs_no_dialog}")
 
-        # [DEBUG-暂停] 检测按钮状态变化（如"暂停"→"启用"）
-        if marker and btn_location in ("row_action", "dropdown"):
-            _btn_state_after = await page.evaluate("""(args) => {
-                const marker = args.marker;
-                const originalBtnText = args.originalBtnText;
-                const rows = document.querySelectorAll('.el-table__body-wrapper .el-table__row');
-                for (const row of rows) {
-                    const cells = row.querySelectorAll('.cell');
-                    let rowText = '';
-                    cells.forEach(c => rowText += c.textContent.trim() + ' ');
-                    if (!rowText.includes(marker)) continue;
+        # ★ [DIAG] 全面 DOM 诊断：检查点击后页面实际状态
+        _dom_diag = await page.evaluate("""() => {
+            const result = {
+                // 1. 所有可见的 message/notification/dialog 元素
+                messages: [],
+                notifications: [],
+                dialogs: [],
+                messageBoxes: [],
+                popconfirms: [],
+                // 2. body 直接子元素中的弹出层
+                bodyPopups: [],
+                // 3. 最近的网络请求
+                recentRequests: [],
+                // 4. 按钮所在行的状态
+                targetRow: null
+            };
 
-                    // 找到目标行，收集所有操作按钮
-                    const buttons = [];
-                    row.querySelectorAll('button, .el-button, a').forEach(btn => {
-                        const text = btn.textContent.trim();
-                        const visible = btn.offsetWidth > 0 && btn.offsetHeight > 0;
-                        const disabled = btn.disabled || btn.classList.contains('is-disabled');
-                        buttons.push({ text, visible, disabled });
+            // 检查 el-message
+            document.querySelectorAll('.el-message, .el-message--success, .el-message--error, .el-message--warning, .el-message--info').forEach(el => {
+                const rect = el.getBoundingClientRect();
+                result.messages.push({
+                    text: (el.textContent || '').trim().substring(0, 100),
+                    cls: el.className,
+                    visible: rect.width > 0 && rect.height > 0,
+                    rect: {top: rect.top, left: rect.left, width: rect.width, height: rect.height}
+                });
+            });
+
+            // 检查 el-notification（含 alert 类型）
+            document.querySelectorAll('.el-notification, [class*="el-notification"], [class*="alert"]').forEach(el => {
+                const rect = el.getBoundingClientRect();
+                result.notifications.push({
+                    text: (el.textContent || '').trim().substring(0, 100),
+                    cls: el.className,
+                    visible: rect.width > 0 && rect.height > 0,
+                    rect: {top: Math.round(rect.top), left: Math.round(rect.left), width: Math.round(rect.width), height: Math.round(rect.height)}
+                });
+            });
+
+            // 检查 el-dialog
+            document.querySelectorAll('.el-dialog__wrapper, .el-dialog').forEach(el => {
+                const rect = el.getBoundingClientRect();
+                const style = window.getComputedStyle(el);
+                result.dialogs.push({
+                    text: (el.textContent || '').trim().substring(0, 100),
+                    cls: el.className,
+                    visible: rect.width > 0 && rect.height > 0,
+                    display: style.display,
+                    visibility: style.visibility
+                });
+            });
+
+            // 检查 el-message-box
+            document.querySelectorAll('.el-message-box__wrapper, .el-message-box').forEach(el => {
+                const rect = el.getBoundingClientRect();
+                const style = window.getComputedStyle(el);
+                result.messageBoxes.push({
+                    text: (el.textContent || '').trim().substring(0, 100),
+                    cls: el.className,
+                    visible: rect.width > 0 && rect.height > 0,
+                    display: style.display,
+                    visibility: style.visibility
+                });
+            });
+
+            // 检查 el-popconfirm
+            document.querySelectorAll('.el-popconfirm, [class*="popconfirm"]').forEach(el => {
+                const rect = el.getBoundingClientRect();
+                result.popconfirms.push({
+                    text: (el.textContent || '').trim().substring(0, 100),
+                    cls: el.className,
+                    visible: rect.width > 0 && rect.height > 0
+                });
+            });
+
+            // 检查 body 直接子元素中的弹出层（z-index 高的元素）
+            document.body.querySelectorAll(':scope > *').forEach(el => {
+                const style = window.getComputedStyle(el);
+                const zIndex = parseInt(style.zIndex) || 0;
+                if (zIndex > 100) {
+                    const rect = el.getBoundingClientRect();
+                    result.bodyPopups.push({
+                        tag: el.tagName,
+                        cls: el.className.substring(0, 50),
+                        zIndex: zIndex,
+                        visible: rect.width > 0 && rect.height > 0,
+                        text: (el.textContent || '').trim().substring(0, 50)
                     });
-
-                    // 检查"更多"菜单中的按钮（需先展开才能看到，这里只检查已渲染的）
-                    const dropdownMenus = row.querySelectorAll('.el-dropdown-menu');
-                    dropdownMenus.forEach(dd => {
-                        dd.querySelectorAll('.el-dropdown-menu__item').forEach(item => {
-                            const text = item.textContent.trim();
-                            buttons.push({ text, visible: true, disabled: false, inDropdown: true });
-                        });
-                    });
-
-                    // 检查原始按钮是否还在
-                    const originalStillExists = buttons.some(b =>
-                        b.text === originalBtnText && b.visible && !b.disabled
-                    );
-
-                    return {
-                        found: true,
-                        marker: marker,
-                        buttons: buttons,
-                        originalBtnStillExists: originalStillExists
-                    };
                 }
-                return { found: false };
-            }""", {"marker": marker, "originalBtnText": btn_text})
-            LOG.info(f"    [DEBUG-暂停] 点击后按钮状态: {_btn_state_after}")
+            });
 
-            # 如果原始按钮不再存在（如"暂停"消失，变成"启用"），视为成功
-            if _btn_state_after.get('found') and not _btn_state_after.get('originalBtnStillExists'):
-                LOG.info(f"    [DEBUG-暂停] 检测到按钮状态变化: '{btn_text}' 已消失，操作可能成功")
-                return {"success": True, "trigger_text": trigger_text_normalized,
-                        "selectors": {"trigger": btn_text},
-                        "button_state_changed": True}
+            // 最近的网络请求（performance API）
+            const entries = performance.getEntriesByType('resource');
+            const xhrEntries = entries.filter(e => e.initiatorType === 'xmlhttprequest' || e.initiatorType === 'fetch');
+            result.recentRequests = xhrEntries.slice(-5).map(e => ({
+                url: e.name.substring(0, 80),
+                duration: Math.round(e.duration)
+            }));
 
-        # 先检查是否已经产生了成功信号（toast/数据变化）
+            return result;
+        }""")
+        LOG.info(f"    [DIAG-DOM] 点击后 DOM 状态: {_dom_diag}")
+
+        # ★ 优先检查 toast（页面通知是最准确的成功信号）
+        # 大多数操作（如黑白名单的暂停/启用/删除）都有明确的成功 toast，
+        # 直接根据 toast 判断成功，不需要通过按钮状态推断。
         _instant_msgs = await _get_captured_messages(page)
-        _instant_success = await _verify_operation_success(
-            page, action, strict=True, captured_messages=_instant_msgs)
-        if _instant_success:
-            LOG.info(f"    即时操作成功（无弹框）")
+
+        # [DIAG] 诊断 __captured_messages 状态
+        _diag_cap = await page.evaluate("""() => ({
+            hasObserver: !!window.__msg_capture_observer,
+            observerConnected: window.__msg_capture_observer ?
+                (typeof window.__msg_capture_observer.takeRecords === 'function') : false,
+            msgs: window.__captured_messages || [],
+            msgCount: (window.__captured_messages || []).length
+        })""")
+        LOG.info(f"    [DIAG-toast] __captured_messages 状态: {_diag_cap}")
+
+        if _instant_msgs:
+            LOG.info(f"    [toast-first] 检测到 {len(_instant_msgs)} 条捕获消息")
+            _instant_success = await _verify_operation_success(
+                page, action, strict=True, captured_messages=_instant_msgs)
+            if _instant_success:
+                LOG.info(f"    [toast-first] 检测到成功 toast，直接标记成功")
+                return {"success": True, "trigger_text": trigger_text_normalized,
+                        "selectors": {"trigger": btn_text}}
+
+        # ★ toast 轮询：等待 API 响应完成后的成功 toast
+        # 某些操作（如黑白名单暂停/启用）API 响应较慢，toast 在 observe 窗口后才出现。
+        # 轮询只检查 toast/DOM 通知，不依赖按钮状态推断。
+        _poll_success = False
+        _poll_toast_text = ""
+        for _poll_round in range(6):  # 6 轮 × 2s = 最多 12s
+            await page.wait_for_timeout(2000)
+
+            # 检查 1: __captured_messages（MutationObserver 捕获）
+            _poll_msgs = await _get_captured_messages(page)
+            if _poll_msgs:
+                LOG.info(f"    [toast-poll] 第 {_poll_round+1} 轮：captured {len(_poll_msgs)} 条: "
+                         f"{[m.get('text','')[:40] for m in _poll_msgs]}")
+                from core.discovery import const as _pc
+                for m in _poll_msgs:
+                    if _pc.classify_notification(m.get('text', '')) == "success":
+                        _poll_toast_text = m.get('text', '')
+                        _poll_success = True
+                        break
+                if _poll_success:
+                    break
+                # 检查失败信号
+                for m in _poll_msgs:
+                    if _pc.classify_notification(m.get('text', '')) == "failure":
+                        LOG.warning(f"    [toast-poll] 第 {_poll_round+1} 轮：检测到失败 toast: {m.get('text','')[:60]}")
+                        return make_error("operation_failed",
+                                        f"{action} 操作失败: {m.get('text', '')}",
+                                        trigger_text=trigger_text_normalized)
+
+            # 检查 2: 直接查询 DOM 中当前可见的通知（兜底，防止 MutationObserver 遗漏）
+            _dom_toast = await page.evaluate("""() => {
+                const selectors = [
+                    '.el-message--success', '.el-message', '.el-notification',
+                    '.el-alert', '[role="alert"]'
+                ];
+                for (const sel of selectors) {
+                    const els = document.querySelectorAll(sel);
+                    for (const el of els) {
+                        if (el.offsetWidth > 0 && el.offsetHeight > 0) {
+                            const text = (el.textContent || '').trim();
+                            if (text) return { text: text.substring(0, 200), cls: el.className };
+                        }
+                    }
+                }
+                return null;
+            }""")
+            if _dom_toast:
+                LOG.info(f"    [toast-poll] 第 {_poll_round+1} 轮：DOM 可见通知: {_dom_toast}")
+                from core.discovery import const as _pc2
+                if _pc2.classify_notification(_dom_toast.get('text', '')) == "success":
+                    _poll_toast_text = _dom_toast.get('text', '')
+                    _poll_success = True
+                    break
+            else:
+                LOG.debug(f"    [toast-poll] 第 {_poll_round+1} 轮：无可见 toast，继续等待...")
+
+        if _poll_success:
+            LOG.info(f"    [toast-poll] 检测到成功 toast: '{_poll_toast_text[:60]}'")
             return {"success": True, "trigger_text": trigger_text_normalized,
-                    "selectors": {"trigger": btn_text}}
+                    "selectors": {"trigger": btn_text},
+                    "toast_signal": _poll_toast_text}
+
+        # 12s 后仍无 toast，返回失败以触发重试
+        LOG.warning(f"    [toast-poll] 12s 后仍未检测到成功 toast")
 
     # P1: 确认按钮未点击（仅对确认框路径生效，表单路径和即时操作已提前处理）
     if not confirmed and actual_state in ("message-box", "popconfirm"):
@@ -3477,6 +3854,11 @@ async def _do_generic_operation(page, context: dict) -> dict:
 
     # 读取捕获的消息（操作后可能已消失）
     captured_msgs = await _get_captured_messages(page)
+
+    # [DIAG] 诊断：打印捕获到的所有消息
+    LOG.info(f"    [DIAG-captured-msgs] 共捕获 {len(captured_msgs)} 条消息:")
+    for i, msg in enumerate(captured_msgs):
+        LOG.info(f"      [{i}] text='{msg.get('text', '')[:80]}', type={msg.get('type')}, source={msg.get('source')}")
 
     # 验证操作是否真的成功（严格模式：需要正向成功信号）
     success = await _verify_operation_success(page, action, strict=True, captured_messages=captured_msgs)
