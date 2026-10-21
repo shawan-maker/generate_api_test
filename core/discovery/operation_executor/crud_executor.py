@@ -54,9 +54,18 @@ async def _get_row_selector_by_marker(page, marker: str) -> str:
 
     try:
         row_info = await page.evaluate(f"""() => {{
-            const rows = document.querySelectorAll('.el-table__body-wrapper .el-table__row');
-            for (let i = 0; i < rows.length; i++) {{
-                const row = rows[i];
+            const allRows = document.querySelectorAll('.el-table__body-wrapper .el-table__row');
+
+            // ★ 过滤：只保留可见 tab-pane 内的行（排除隐藏 tab 的行）
+            const visibleRows = Array.from(allRows).filter(row => {{
+                const pane = row.closest('.el-tab-pane');
+                if (!pane) return true;  // 不在 tab-pane 内，保留
+                const style = window.getComputedStyle(pane);
+                return style.display !== 'none' && style.visibility !== 'hidden';
+            }});
+
+            for (let i = 0; i < visibleRows.length; i++) {{
+                const row = visibleRows[i];
                 const cells = row.querySelectorAll('.cell');
                 for (const cell of cells) {{
                     const text = cell.textContent.trim();

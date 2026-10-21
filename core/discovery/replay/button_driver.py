@@ -154,7 +154,23 @@ class ButtonDriver:
             for attempt in range(5):  # 3 → 5
                 # 1. 优先在主体 wrapper 中查找
                 main_rows = await self.page.query_selector_all(MAIN_SEL)
+
+                # ★ 过滤：只保留可见 tab-pane 内的行（排除隐藏 tab 的行）
+                visible_rows = []
                 for row in main_rows:
+                    in_visible_pane = await self.page.evaluate("""(el) => {
+                        const pane = el.closest('.el-tab-pane');
+                        if (!pane) return true;  // 不在 tab-pane 内，保留
+                        const style = window.getComputedStyle(pane);
+                        return style.display !== 'none' && style.visibility !== 'hidden';
+                    }""", row)
+                    if in_visible_pane:
+                        visible_rows.append(row)
+
+                if len(visible_rows) < len(main_rows):
+                    LOG.debug(f"    [TAB-SCOPE-FILTER] 过滤隐藏 tab 行: {len(main_rows)} → {len(visible_rows)}")
+
+                for row in visible_rows:
                     text = await row.inner_text()
                     if marker in text:
                         LOG.info(f"找到数据行(主体): {text[:100]}")
@@ -167,10 +183,10 @@ class ButtonDriver:
                         text = await row.inner_text()
                         if marker in text:
                             LOG.info(f"在固定列找到行(索引{idx})，回主体取对应行")
-                            if idx < len(main_rows):
-                                return main_rows[idx]
+                            if idx < len(visible_rows):
+                                return visible_rows[idx]
                             else:
-                                LOG.warning(f"行索引{idx}超出主体行数{len(main_rows)}")
+                                LOG.warning(f"行索引{idx}超出主体行数{len(visible_rows)}")
 
                 # 未找到，渐进式等待后重试
                 if attempt < 4:
@@ -939,6 +955,13 @@ class ButtonDriver:
             result["actual_item_text"] = clicked_item.get("text", item_text)
             from .wait_helpers import wait_for_loading_complete
             await wait_for_loading_complete(self.page)
+        elif clicked_item and clicked_item.get("reason") == "button-disabled":
+            # ★ 按钮被禁用（cmss-disabled/is-disabled），直接返回，不走全局 fallback
+            # 全局 fallback 会绕过 cmss-disabled 检查，导致点错按钮
+            LOG.info(f"    [dropdown-click] 按钮被禁用 (cmss-disabled/is-disabled)，跳过")
+            result["clicked"] = False
+            result["reason"] = "button-disabled"
+            result["actual_item_text"] = clicked_item.get("text", item_text)
         else:
             # 可见菜单中没有找到，尝试全局 fallback
             click_result = await click_dropdown_option(self.page, item_text)

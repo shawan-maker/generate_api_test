@@ -548,6 +548,14 @@ def build_playbook(ui_result: dict) -> dict:
             # replayable: 有步骤的操作都可回放（无论成功失败）
             # 失败操作仍需回放以捕获 API 并在报告中展示实际结果
             replayable = bool(op_steps)
+            # detection_status: 区分 success/failed/skipped
+            if is_success:
+                detection_status = "success"
+            elif error_type == "skipped":
+                detection_status = "skipped"
+            else:
+                detection_status = "failed"
+
             entry = {
                 "display_name": display_name,
                 "description": op_data.get("description", action),
@@ -555,7 +563,7 @@ def build_playbook(ui_result: dict) -> dict:
                 "steps": op_steps,
                 "marker": marker,
                 "marker_source": op_data.get("marker_source") if steps_type == "create" else None,
-                "detection_status": "success" if is_success else "failed",
+                "detection_status": detection_status,
                 "replayable": replayable,
             }
             # ★ 多 Tab 页面：记录操作归属的 tab
