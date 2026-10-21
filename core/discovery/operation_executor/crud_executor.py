@@ -639,6 +639,22 @@ async def _validate_single_tab_crud(
 
                             buttons_by_action[new_action] = new_btn
 
+                            # ★ 回写到 ui_result["dropdowns"]：确保增量发现的下拉菜单项
+                            # 写入 _ui.json，供 Stage 2 回放时使用
+                            if new_btn.get("location") == "dropdown":
+                                dropdowns_list = ui_result.setdefault("dropdowns", [])
+                                if not any(d.get("text") == new_action and d.get("tab") == tab_name
+                                           for d in dropdowns_list):
+                                    dropdowns_list.append({
+                                        "text": new_action,
+                                        "parent": new_btn.get("parent", "更多"),
+                                        "tag": "DROPDOWN_ITEM",
+                                        "location": "dropdown",
+                                        "action": new_action,
+                                        "tab": tab_name,
+                                    })
+                                    LOG.info(f"{tab_prefix}  [WRITEBACK] {new_action} → ui_result.dropdowns")
+
                             # 推断角色
                             new_role = _infer_action_role(new_action, new_btn, delete_actions=_delete_actions)
                             action_roles[new_action] = new_role

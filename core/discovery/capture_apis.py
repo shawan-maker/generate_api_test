@@ -213,6 +213,11 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
 
     LOG.info(f"Playbook 操作序列: {list(operations.keys())}")
 
+    # 3.5 构建 tab_name → tab_locator 映射（用于 navigate_back 后恢复 Tab）
+    page_structure = playbook.get("page_structure", {})
+    tabs_info = page_structure.get("tabs", [])
+    tab_locator_map = {t.get("name"): t.get("locator", "") for t in tabs_info}
+
     # 4. 按 playbook 操作顺序回放（Stage 1 探测顺序即为正确的依赖顺序）
     created_marker = None
     replay_windows = {"init": {"start": init_start, "end": init_end}}  # ★ init 窗口 + 操作窗口
@@ -251,7 +256,15 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
                 or any("{marker_name}" in str(s.get("value", "")) for s in steps)
             )
             pass_marker = op_marker if needs_marker else None
-            result = await replay_from_playbook(page, steps, button_driver, pass_marker, interceptor, role=op_role)
+
+            # ★ 多 Tab 页面：传递 tab 信息供 navigate_back 后恢复
+            op_tab = op.get("tab", "")
+            op_tab_locator = tab_locator_map.get(op_tab, "")
+
+            result = await replay_from_playbook(
+                page, steps, button_driver, pass_marker, interceptor,
+                role=op_role, tab_name=op_tab, tab_locator=op_tab_locator
+            )
 
             # 检查 assert_success 标记（软断言，不影响 marker 提取和 replay_windows）
             if result.get("assertion_failed"):

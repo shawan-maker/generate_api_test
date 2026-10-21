@@ -53,6 +53,8 @@ from .row_interaction import (
     get_row_selector_by_marker,
 )
 
+from .tab_helpers import restore_active_tab
+
 __all__ = [
     # marker
     "extract_marker_from_row",
@@ -80,4 +82,6 @@ __all__ = [
     "select_row_checkbox",
     "click_row_button",
     "get_row_selector_by_marker",
+    # tab helpers
+    "restore_active_tab",
 ]

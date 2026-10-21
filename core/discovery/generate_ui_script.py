@@ -466,7 +466,7 @@ async def _cleanup_dialogs(page):
 # 操作失败原因（由 Stage 1 标记）
 _OPERATION_STATUS = {operation_status_json}
 
-async def run_operation(page, operation_name, operations_data, marker=None):
+async def run_operation(page, operation_name, operations_data, marker=None, tab_locator_map=None):
     """使用回放引擎执行单个操作"""
     op = operations_data.get(operation_name)
     if not op:
@@ -520,8 +520,15 @@ async def run_operation(page, operation_name, operations_data, marker=None):
     button_driver = ButtonDriver(page)
     op_start = time.time()
 
+    # ★ 多 Tab 页面：传递 tab 信息供 navigate_back 后恢复
+    op_tab = op.get("tab", "")
+    op_tab_locator = (tab_locator_map or {{}}).get(op_tab, "")
+
     try:
-        result = await replay_from_playbook(page, steps, button_driver, op_marker, role=op.get("role"))
+        result = await replay_from_playbook(
+            page, steps, button_driver, op_marker,
+            role=op.get("role"), tab_name=op_tab, tab_locator=op_tab_locator
+        )
         duration = time.time() - op_start
 
         new_marker = result.get("marker", op_marker)
@@ -678,6 +685,11 @@ async def main():
 
     operations_data = playbook.get("operations", {{}})
 
+    # ★ 构建 tab_name → tab_locator 映射（用于 navigate_back 后恢复 Tab）
+    page_structure = playbook.get("page_structure", {{}})
+    tabs_info = page_structure.get("tabs", [])
+    tab_locator_map = {{t.get("name"): t.get("locator", "") for t in tabs_info}}
+
     # 确定要执行的操作
     ops = args.operations if args.operations else AVAILABLE_OPERATIONS
 
@@ -737,7 +749,7 @@ async def main():
                 except Exception as e:
                     print(f"  ⚠️ 导航失败: {{e}}，继续执行")
 
-            marker, op_result = await run_operation(page, op_name, operations_data, marker)
+            marker, op_result = await run_operation(page, op_name, operations_data, marker, tab_locator_map)
             results.append(op_result)
 
         report_path = generate_html_report(results, "{module_name}"{_report_group_args})

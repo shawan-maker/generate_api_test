@@ -27,6 +27,7 @@ from ..shared import (
     toggle_switch,
     select_row_checkbox,
     click_row_button,
+    restore_active_tab,
 )
 
 LOG = logging.getLogger(__name__)
@@ -57,7 +58,8 @@ async def _inject_notification_observer(page):
 
 
 async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
-                               marker: str = None, interceptor=None, role: str = None) -> dict:
+                               marker: str = None, interceptor=None, role: str = None,
+                               tab_name: str = "", tab_locator: str = "") -> dict:
     """执行 playbook 中的步骤序列（泛化版本）
 
     自适应两种交互模式：
@@ -71,6 +73,8 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
         marker: 已创建的记录标识（用于行级操作）
         interceptor: RequestInterceptor 实例（可选，用于标记提交时间戳）
         role: 操作类型（create/query/update/delete/generic），用于控制 marker 提取逻辑
+        tab_name: 目标 Tab 名称（多 Tab 页面用于 navigate_back 后恢复）
+        tab_locator: 目标 Tab 的 Playwright locator
 
     Returns:
         dict: 执行结果，包含 marker（如果是 create 操作）
@@ -90,6 +94,8 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
         "url_before_click": page.url,
         "original_url": page.url,
         "interaction_mode": None,  # "dialog" | "page-nav"
+        "tab_name": tab_name,      # 多 Tab 页面恢复用
+        "tab_locator": tab_locator,
     }
 
     for i, step in enumerate(steps):
@@ -282,7 +288,7 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
                 await _step_wait_for_url(page, step, ctx)
 
             elif action == "navigate_back":
-                await _step_navigate_back(page, step)
+                await _step_navigate_back(page, step, ctx)
 
             elif action == "assert_success":
                 passed = await _step_assert_success(page, step)
@@ -1165,8 +1171,12 @@ async def _step_wait_for_url(page, step: dict, ctx: dict):
     raise Exception(f"等待页面跳转超时，URL 未变化: {page.url}")
 
 
-async def _step_navigate_back(page, step: dict):
-    """步骤：导航回指定 URL（用于 authorize 等页面跳转操作）"""
+async def _step_navigate_back(page, step: dict, ctx: dict = None):
+    """步骤：导航回指定 URL（用于 authorize 等页面跳转操作）
+
+    多 Tab 页面（如黑白名单）导航回列表页后，默认激活的可能是第一个 Tab，
+    需要恢复到操作前的 Tab 状态。
+    """
     url = step.get("url")
     if not url:
         raise Exception("navigate_back 步骤缺少 url（Stage 1 未提供）")
@@ -1174,6 +1184,13 @@ async def _step_navigate_back(page, step: dict):
     await page.goto(url, wait_until="domcontentloaded", timeout=30000)
     # 等待表格重新加载
     await wait_for_table_ready(page, timeout=15000)
+
+    # ★ Tab 恢复：多 Tab 页面导航回后需要重新激活正确的 Tab
+    if ctx:
+        tab_name = ctx.get("tab_name", "")
+        tab_locator = ctx.get("tab_locator", "")
+        if tab_name:
+            await restore_active_tab(page, tab_name, tab_locator)
 
 
 async def _step_find_row(page, step: dict, button_driver: ButtonDriver, marker: str) -> Optional[str]:
