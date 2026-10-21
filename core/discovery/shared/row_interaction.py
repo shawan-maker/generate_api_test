@@ -24,6 +24,20 @@ from playwright.async_api import Page, ElementHandle
 
 LOG = logging.getLogger(__name__)
 
+# 所有表格行 JS 查询共享的作用域前缀
+# 使用方式：在 JS evaluate 字符串开头嵌入，然后用 _scope 代替 document
+_TAB_SCOPE_JS = """
+    const _panes = document.querySelectorAll('.el-tab-pane');
+    let _scope = document;
+    for (const _p of _panes) {
+        const _s = window.getComputedStyle(_p);
+        if (_s.display !== 'none' && _s.visibility !== 'hidden') {
+            _scope = _p;
+            break;
+        }
+    }
+"""
+
 
 async def locate_row_with_retry(
     page: Page,
@@ -86,42 +100,44 @@ async def select_row_checkbox(
     """
     try:
         if marker:
-            checked = await page.evaluate("""(text) => {
-                const rows = document.querySelectorAll('.el-table__body tr');
-                for (const row of rows) {
-                    if ((row.textContent || '').includes(text)) {
+            checked = await page.evaluate(f"""(text) => {{
+                {_TAB_SCOPE_JS}
+                const rows = _scope.querySelectorAll('.el-table__body tr');
+                for (const row of rows) {{
+                    if ((row.textContent || '').includes(text)) {{
                         // 检查行是否已勾选
                         const isChecked = row.querySelector('.el-checkbox__input.is-checked') ||
                                           row.querySelector('.el-checkbox__input input:checked');
-                        if (isChecked) {
-                            return {checked: true, already_checked: true};
-                        }
+                        if (isChecked) {{
+                            return {{checked: true, already_checked: true}};
+                        }}
                         const cb = row.querySelector('.el-checkbox__input, input[type="checkbox"]');
-                        if (cb && cb.offsetWidth > 0) {
+                        if (cb && cb.offsetWidth > 0) {{
                             cb.click();
-                            return {checked: true, already_checked: false};
-                        }
-                    }
-                }
-                return {checked: false, already_checked: false};
-            }""", marker)
+                            return {{checked: true, already_checked: false}};
+                        }}
+                    }}
+                }}
+                return {{checked: false, already_checked: false}};
+            }}""", marker)
         else:
             # 勾选第一行
-            checked = await page.evaluate("""() => {
-                const firstRow = document.querySelector('.el-table__body tr:first-child');
-                if (!firstRow) return {checked: false, already_checked: false};
+            checked = await page.evaluate(f"""() => {{
+                {_TAB_SCOPE_JS}
+                const firstRow = _scope.querySelector('.el-table__body tr:first-child');
+                if (!firstRow) return {{checked: false, already_checked: false}};
                 const isChecked = firstRow.querySelector('.el-checkbox__input.is-checked') ||
                                   firstRow.querySelector('.el-checkbox__input input:checked');
-                if (isChecked) {
-                    return {checked: true, already_checked: true};
-                }
+                if (isChecked) {{
+                    return {{checked: true, already_checked: true}};
+                }}
                 const cb = firstRow.querySelector('.el-checkbox__input, input[type="checkbox"]');
-                if (cb && cb.offsetWidth > 0) {
+                if (cb && cb.offsetWidth > 0) {{
                     cb.click();
-                    return {checked: true, already_checked: false};
-                }
-                return {checked: false, already_checked: false};
-            }""")
+                    return {{checked: true, already_checked: false}};
+                }}
+                return {{checked: false, already_checked: false}};
+            }}""")
 
         result = {
             "success": bool(checked and checked.get('checked')),
@@ -180,22 +196,23 @@ async def click_row_button(
 
     # 降级：JS click（兼容 Element UI 固定列）
     if marker:
-        clicked = await page.evaluate("""(args) => {
+        clicked = await page.evaluate(f"""(args) => {{
             const [text, markerText] = args;
-            const rows = document.querySelectorAll('.el-table__body tr');
-            for (const row of rows) {
-                if ((row.textContent || '').includes(markerText)) {
+            {_TAB_SCOPE_JS}
+            const rows = _scope.querySelectorAll('.el-table__body tr');
+            for (const row of rows) {{
+                if ((row.textContent || '').includes(markerText)) {{
                     const buttons = row.querySelectorAll('button');
-                    for (const btn of buttons) {
-                        if ((btn.textContent || '').trim().includes(text)) {
+                    for (const btn of buttons) {{
+                        if ((btn.textContent || '').trim().includes(text)) {{
                             btn.click();
                             return true;
-                        }
-                    }
-                }
-            }
+                        }}
+                    }}
+                }}
+            }}
             return false;
-        }""", [btn_text, marker])
+        }}""", [btn_text, marker])
     else:
         clicked = await page.evaluate("""(text) => {
             const buttons = arguments[0].querySelectorAll('button');
@@ -219,27 +236,42 @@ async def click_row_button(
 
 
 async def get_row_selector_by_marker(page: Page, marker: str) -> str:
-    """根据 marker 文本获取所在行的 CSS 选择器。
+    """根据 marker 文本获取所在行的 CSS 选择器（限定在可见 tab-pane 内查找）。
 
     Args:
         page: Playwright Page 对象
         marker: 行标识文本
 
     Returns:
-        str: 行的 CSS 选择器，如 ".el-table__body-wrapper .el-table__row:nth-child(1)"
+        str: 行的 CSS 选择器，如 "#pane1 .el-table__body-wrapper .el-table__row:nth-child(1)"
              如果未找到，返回空字符串
     """
+    if not marker:
+        return ""
+
     try:
-        selector = await page.evaluate("""(text) => {
-            const rows = document.querySelectorAll('.el-table__body-wrapper .el-table__row');
-            for (let i = 0; i < rows.length; i++) {
+        row_info = await page.evaluate(f"""(text) => {{
+            {_TAB_SCOPE_JS}
+            const table = _scope !== document
+                ? _scope.querySelector('.el-table__body-wrapper')
+                : document.querySelector('.el-table__body-wrapper');
+            if (!table) return {{ found: false }};
+
+            const rows = table.querySelectorAll('.el-table__row');
+            for (let i = 0; i < rows.length; i++) {{
                 const rowText = rows[i].textContent || '';
-                if (rowText.includes(text)) {
-                    return `.el-table__body-wrapper .el-table__row:nth-child(${i + 1})`;
-                }
-            }
-            return '';
-        }""", marker)
-        return selector or ""
+                if (rowText.includes(text)) {{
+                    const paneId = (_scope !== document && _scope.id) ? _scope.id : null;
+                    const selector = paneId
+                        ? `#${{paneId}} .el-table__body-wrapper .el-table__row:nth-child(${{i + 1}})`
+                        : `.el-table__body-wrapper .el-table__row:nth-child(${{i + 1}})`;
+                    return {{ found: true, selector: selector }};
+                }}
+            }}
+            return {{ found: false }};
+        }}""", marker)
+        if row_info and row_info.get("found"):
+            return row_info.get("selector", "")
+        return ""
     except Exception:
         return ""

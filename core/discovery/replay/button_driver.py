@@ -14,6 +14,7 @@ from playwright.async_api import Page, Locator
 from typing import List, Dict, Optional
 
 from .. import const
+from ..shared.row_interaction import _TAB_SCOPE_JS
 
 LOG = logging.getLogger("button_driver")
 
@@ -58,7 +59,7 @@ class ButtonDriver:
         return await self._find_row_with_pagination(marker)
 
     async def find_first_data_row(self) -> Optional[Locator]:
-        """定位表格第一行数据（无需 marker）
+        """定位表格第一行数据（无需 marker，限定在可见 tab-pane 内查找）
 
         用于无 marker 场景（表单无 input 字段时），直接取第一行进行操作。
         """
@@ -68,10 +69,23 @@ class ButtonDriver:
                 ".el-table__body-wrapper tbody tr",
                 timeout=10000
             )
-            # 获取第一行
-            first_row = self.page.locator(".el-table__body-wrapper tbody tr").first
-            if await first_row.count() > 0:
-                return first_row
+            # 在可见 tab-pane 内查找第一行，获取带 pane scope 的选择器
+            row_info = await self.page.evaluate(f"""() => {{
+                {_TAB_SCOPE_JS}
+                const row = _scope.querySelector('.el-table__body-wrapper tbody tr');
+                if (!row) return null;
+                const allRows = _scope.querySelectorAll('.el-table__body-wrapper tbody tr');
+                const idx = Array.from(allRows).indexOf(row);
+                const paneId = (_scope !== document && _scope.id) ? _scope.id : null;
+                return {{
+                    selector: paneId
+                        ? `#${{paneId}} .el-table__body-wrapper tbody tr:nth-child(${{idx + 1}})`
+                        : `.el-table__body-wrapper tbody tr:nth-child(${{idx + 1}})`,
+                    paneId: paneId
+                }};
+            }}""")
+            if row_info and row_info.get("selector"):
+                return self.page.locator(row_info["selector"]).first
         except Exception:
             pass
         return None
@@ -592,10 +606,13 @@ class ButtonDriver:
                     }
                 }""", await more_btn.element_handle())
                 await self.page.wait_for_timeout(600)
-                # 检查菜单是否展开（子项可见）
+                # 检查菜单是否展开（限定在可见菜单容器内查找子项）
                 expanded = await self.page.evaluate("""() => {
-                    const items = document.querySelectorAll('.el-dropdown-menu__item');
-                    return Array.from(items).some(el => el.offsetWidth > 0);
+                    const _menus = document.querySelectorAll('.el-dropdown-menu');
+                    const _visibleMenu = Array.from(_menus).find(m => m.offsetWidth > 0 && m.offsetHeight > 0);
+                    if (!_visibleMenu) return false;
+                    return Array.from(_visibleMenu.querySelectorAll('.el-dropdown-menu__item'))
+                        .some(el => el.offsetWidth > 0);
                 }""")
                 if expanded:
                     LOG.debug(f"    ✓ hover 展开成功 (行索引={row_index})")
@@ -610,8 +627,11 @@ class ButtonDriver:
                 await more_btn.click()
                 await self.page.wait_for_timeout(600)
                 expanded = await self.page.evaluate("""() => {
-                    const items = document.querySelectorAll('.el-dropdown-menu__item');
-                    return Array.from(items).some(el => el.offsetWidth > 0);
+                    const _menus = document.querySelectorAll('.el-dropdown-menu');
+                    const _visibleMenu = Array.from(_menus).find(m => m.offsetWidth > 0 && m.offsetHeight > 0);
+                    if (!_visibleMenu) return false;
+                    return Array.from(_visibleMenu.querySelectorAll('.el-dropdown-menu__item'))
+                        .some(el => el.offsetWidth > 0);
                 }""")
                 if expanded:
                     LOG.debug(f"    ✓ click 展开成功 (行索引={row_index})")
@@ -1211,44 +1231,6 @@ async def click_button(page: Page, text: str, max_retries: int = 3, ui_framework
     return False
 
 
-async def click_row_button(page: Page, row_index: int, button_text: str, ui_framework: str = "element-ui") -> bool:
-    """点击表格行操作按钮。
-
-    点击成功后等待加载完成。
-    """
-    from .wait_helpers import wait_for_loading_complete
-    selectors = const.get_ui_selectors(ui_framework)
-    table_body_tr = selectors["table"]["body_tr"]
-    button_base = selectors["button"]["base"]
-
-    try:
-        rows = await page.query_selector_all(f'tbody tr, {table_body_tr}')
-        if row_index >= len(rows):
-            return False
-
-        row = rows[row_index]
-        cells = await row.query_selector_all('td')
-        for cell in cells:
-            buttons = await cell.query_selector_all(f'button, {button_base}, a')
-            for btn in buttons:
-                text = await btn.inner_text()
-                if button_text in text:
-                    try:
-                        await btn.click()
-                        await wait_for_loading_complete(page)
-                        return True
-                    except Exception as e:
-                        LOG.debug(f"Playwright click failed, trying JS click: {e}")
-                        await btn.evaluate('el => el.click()')
-                        await wait_for_loading_complete(page)
-                        return True
-
-        return False
-    except Exception as e:
-        LOG.warning(f"点击行按钮失败: {e}")
-        return False
-
-
 async def expand_dropdown(page: Page, trigger_text: str, ui_framework: str = "element-ui") -> List[str]:
     """展开下拉菜单并获取选项列表。
 
@@ -1302,9 +1284,12 @@ async def click_dropdown_option(page: Page, option_text: str, ui_framework: str 
     select_dropdown_item = selectors["select"]["dropdown_item"]
 
     try:
-        # 快速检查：元素是否存在且可见
+        # 快速检查：元素是否存在且可见（限定在可见菜单容器内）
         visible_info = await page.evaluate(f"""() => {{
-            const items = Array.from(document.querySelectorAll(
+            const _menus = document.querySelectorAll('.el-dropdown-menu, .el-select-dropdown');
+            const _visibleMenu = Array.from(_menus).find(m => m.offsetWidth > 0 && m.offsetHeight > 0);
+            if (!_visibleMenu) return {{ status: 'not_found', details: null }};
+            const items = Array.from(_visibleMenu.querySelectorAll(
                 '{dropdown_menu_item}, {select_dropdown_item}'));
             const target = items.find(
                 item => item.textContent.trim().includes('{option_text}'));
@@ -1351,10 +1336,13 @@ async def click_dropdown_option(page: Page, option_text: str, ui_framework: str 
                 except Exception as e:
                     LOG.warning(f"    [DEBUG-dropdown-option] Playwright click 失败: {e}")
 
-        # 不可见或 Playwright click 失败 → JS click（强制触发）
+        # 不可见或 Playwright click 失败 → JS click（限定在可见菜单内，强制触发）
         clicked_text = await page.evaluate(f"""
             () => {{
-                const items = Array.from(document.querySelectorAll(
+                const _menus = document.querySelectorAll('.el-dropdown-menu, .el-select-dropdown');
+                const _visibleMenu = Array.from(_menus).find(m => m.offsetWidth > 0 && m.offsetHeight > 0);
+                if (!_visibleMenu) return null;
+                const items = Array.from(_visibleMenu.querySelectorAll(
                     '.el-dropdown-menu__item, .el-select-dropdown__item'));
                 const target = items.find(
                     item => item.textContent.trim().includes('{option_text}'));
@@ -1481,11 +1469,14 @@ async def confirm_dialog(page: Page, confirm: bool = True, ui_framework: str = "
             else:
                 button = page.locator(f"xpath={scope}//button[{cancel_xpath_pred} and {hidden_filter}]").first
 
-        else:  # generic-dialog
+        else:  # generic-dialog — 限定在可见对话框容器内查找
+            dialog_scope = ".el-dialog__wrapper:not([style*='display: none']), .ant-modal-wrap:not([style*='display: none'])"
             if confirm:
-                button = page.locator(f"xpath=//button[{confirm_xpath_pred} and {hidden_filter}]").first
+                button = page.locator(f'{dialog_scope} button.el-button--primary').first
+                if await button.count() == 0:
+                    button = page.locator(f"xpath={dialog_scope}//button[{confirm_xpath_pred} and {hidden_filter}]").first
             else:
-                button = page.locator(f"xpath=//button[{cancel_xpath_pred} and {hidden_filter}]").first
+                button = page.locator(f"xpath={dialog_scope}//button[{cancel_xpath_pred} and {hidden_filter}]").first
 
         if button and await button.count() > 0:
             button_text = await button.inner_text()
@@ -1519,12 +1510,18 @@ async def confirm_dialog(page: Page, confirm: bool = True, ui_framework: str = "
 
             return button_text
 
-        # JS 兜底：去空格匹配所有可见按钮
+        # JS 兜底：优先在可见对话框内查找，无对话框时退回全局
         target_texts = const.CONFIRM_TEXTS if confirm else const.CANCEL_TEXTS
         target_json = json.dumps(target_texts, ensure_ascii=False)
         clicked = await page.evaluate(f"""() => {{
             const targetTexts = {target_json};
-            const buttons = Array.from(document.querySelectorAll('button'));
+            const _dialog = document.querySelector(
+                '.el-message-box__wrapper:not([style*="display: none"]), ' +
+                '.el-dialog__wrapper:not([style*="display: none"]), ' +
+                '.ant-modal-wrap:not([style*="display: none"])');
+            const buttons = _dialog
+                ? Array.from(_dialog.querySelectorAll('button'))
+                : Array.from(document.querySelectorAll('button'));
             for (const btn of buttons) {{
                 if (btn.offsetWidth === 0 || btn.offsetHeight === 0) continue;
                 if (btn.disabled || btn.classList.contains('is-disabled')) continue;

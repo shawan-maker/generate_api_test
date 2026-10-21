@@ -34,89 +34,9 @@ from core.discovery.operation_executor.result_factory import (
 from core.discovery.ui_scanner.button_detector import (
     _infer_action_role, _find_create_delete_actions,
 )
+from core.discovery.shared import get_row_selector_by_marker
 
 LOG = logging.getLogger("crud_executor")
-
-
-async def _get_row_selector_by_marker(page, marker: str) -> str:
-    """根据 marker 文本获取所在行的 CSS 选择器。
-
-    Args:
-        page: Playwright Page 对象
-        marker: 行标识文本
-
-    Returns:
-        str: 行的 CSS 选择器，如 ".el-table__body-wrapper .el-table__row:nth-child(1)"
-             如果未找到，返回空字符串
-    """
-    if not marker:
-        return ""
-
-    try:
-        row_info = await page.evaluate(f"""() => {{
-            // ★ 先找到可见的 tab-pane（如果有 tab）
-            const panes = document.querySelectorAll('.el-tab-pane');
-            let visiblePane = null;
-            let paneSelector = '';
-
-            if (panes.length > 0) {{
-                for (const pane of panes) {{
-                    const style = window.getComputedStyle(pane);
-                    if (style.display !== 'none' && style.visibility !== 'hidden') {{
-                        visiblePane = pane;
-                        // 构建 pane 的选择器，用于限定作用域
-                        if (pane.id) {{
-                            paneSelector = `#${{pane.id}}`;
-                        }} else {{
-                            // 没有 id，使用 class + 索引
-                            const index = Array.from(pane.parentElement.children).indexOf(pane);
-                            paneSelector = `.el-tab-pane:nth-child(${{index + 1}})`;
-                        }}
-                        break;
-                    }}
-                }}
-            }}
-
-            // ★ 在可见 pane 的 table 内查找行
-            const table = visiblePane
-                ? visiblePane.querySelector('.el-table__body-wrapper')
-                : document.querySelector('.el-table__body-wrapper');
-
-            if (!table) return {{ found: false }};
-
-            const rows = table.querySelectorAll('.el-table__row');
-
-            for (let i = 0; i < rows.length; i++) {{
-                const row = rows[i];
-                const cells = row.querySelectorAll('.cell');
-                for (const cell of cells) {{
-                    const text = cell.textContent.trim();
-                    if (text.includes('{marker}')) {{
-                        // ★ 使用 pane 限定的选择器
-                        const selector = paneSelector
-                            ? `${{paneSelector}} .el-table__body-wrapper .el-table__row:nth-child(${{i + 1}})`
-                            : `.el-table__body-wrapper .el-table__row:nth-child(${{i + 1}})`;
-                        return {{
-                            found: true,
-                            rowIndex: i,
-                            paneId: visiblePane ? visiblePane.id : null,
-                            selector: selector
-                        }};
-                    }}
-                }}
-            }}
-            return {{ found: false }};
-        }}""")
-
-        if row_info.get("found"):
-            LOG.info(f"  [get-row-selector] 找到行: rowIndex={row_info.get('rowIndex')}, "
-                     f"paneId={row_info.get('paneId')}, selector={row_info.get('selector')}")
-            return row_info.get("selector", "")
-        return ""
-
-    except Exception as e:
-        LOG.warning(f"  [get-row-selector] 失败: {e}")
-        return ""
 
 
 async def _scan_row_after_operation(page, row_selector: str, marker: str, existing_actions: set) -> list:
@@ -692,7 +612,7 @@ async def _validate_single_tab_crud(
 
             if should_scan:
                 # 获取当前行的选择器（基于 marker）
-                row_selector = await _get_row_selector_by_marker(page, created_marker)
+                row_selector = await get_row_selector_by_marker(page, created_marker)
                 LOG.info(f"{tab_prefix}[INCREMENTAL-SCAN] row_selector={row_selector}")
 
                 if row_selector:
