@@ -755,8 +755,16 @@ def _parse_body(ep_or_sample) -> dict | list:
     """
     sample = None
     if isinstance(ep_or_sample, dict):
-        sample = ep_or_sample.get("request_body_sample") or (
-            (ep_or_sample.get("bodies") or [None])[0])
+        # 优先级：request_body_sample > bodies[0] > requests[0].body
+        sample = ep_or_sample.get("request_body_sample")
+        if not sample:
+            bodies = ep_or_sample.get("bodies")
+            if bodies and bodies[0]:
+                sample = bodies[0]
+            else:
+                requests = ep_or_sample.get("requests")
+                if requests and requests[0].get("body"):
+                    sample = requests[0]["body"]
     else:
         sample = ep_or_sample
 

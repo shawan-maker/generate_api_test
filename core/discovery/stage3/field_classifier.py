@@ -431,6 +431,33 @@ def classify_fields(body_sample: dict, value_index: ValueIndex,
             roles[key] = {"role": "mutable"}
             continue
 
+        # ── Pass 2.5: 数组型系统 ID 检测 ──
+        # 适用于 xxxIds、xxxIdList 等数组型 ID 字段（如 blackWhiteListIds、roleIds）
+        # 先尝试精确值匹配，找不到时才回退到 create.id
+        if isinstance(value, list) and value:
+            first_elem = value[0]
+            if isinstance(first_elem, str) and _is_system_id_value(first_elem):
+                # 先尝试精确值匹配（如来自预 API 的租户 ID）
+                array_match = value_index.lookup(value, request_field_name=key,
+                                                 current_action=current_action,
+                                                 exclude_sources=exclude_sources)
+                if array_match:
+                    roles[key] = {
+                        "role": "context",
+                        "source": array_match["source_path"],
+                        "is_array": True,
+                    }
+                    LOG.debug(f"    classify_fields: {key} → context/{array_match['source_path']} (array, value match)")
+                    continue
+                # 回退：假设来自 create.id
+                roles[key] = {
+                    "role": "context",
+                    "source": "create.id",
+                    "is_array": True,
+                }
+                LOG.debug(f"    classify_fields: {key} → context/create.id (array fallback, {_classify_value_type(first_elem)})")
+                continue
+
         # ── Pass 3a: context（精确值匹配） ──
         match = value_index.lookup(value, request_field_name=key,
                                    current_action=current_action,

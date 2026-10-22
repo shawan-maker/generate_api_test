@@ -90,7 +90,7 @@ def _find_pre_api_body(api_info: dict, all_endpoints: list) -> dict:
     """从 all_endpoints 中查找前置 API 的请求体。
 
     pre_api_candidates 只保留了响应数据（response_sample, extracted_fields），
-    没有保留请求体。但 all_endpoints 中有完整的捕获请求体（bodies 数组）。
+    没有保留请求体。但 all_endpoints 中有完整的捕获请求体（requests 数组）。
 
     Args:
         api_info: 前置 API 信息（来自 pre_api_chain）
@@ -106,11 +106,12 @@ def _find_pre_api_body(api_info: dict, all_endpoints: list) -> dict:
 
     for ep in all_endpoints:
         if ep.get("method") == method and ep.get("pathname") == pathname:
-            bodies = ep.get("bodies", [])
-            if bodies:
+            requests = ep.get("requests", [])
+            if requests:
                 try:
-                    body_text = bodies[0]
-                    return json.loads(body_text) if isinstance(body_text, str) else body_text
+                    body_text = requests[0].get("body", "")
+                    if body_text:
+                        return json.loads(body_text) if isinstance(body_text, str) else body_text
                 except (json.JSONDecodeError, TypeError) as e:
                     LOG.warning(f"  ⚠️ 解析前置 API body 失败 ({pathname}): {e}")
                     return {}
@@ -307,8 +308,8 @@ def build_manifest(analysis: dict, capture_result: dict,
     # contexts 包含 "replay:" 说明是 CRUD 操作后自动触发的刷新查询，优先于 init
     if verify_ep is None:
         for ep in capture_result.get("all_endpoints", []):
-            ctx_list = ep.get("contexts", [])
-            has_replay = any("replay:" in str(c) for c in ctx_list)
+            requests = ep.get("requests", [])
+            has_replay = any("replay:" in str(req.get("context", "")) for req in requests)
             if not has_replay:
                 continue
             pn = ep.get("pathname", "")
@@ -406,8 +407,9 @@ def build_manifest(analysis: dict, capture_result: dict,
 
         # 再检查 POST body（POST 列表查询）
         if not search_value:
-            bodies = query_ep.get("bodies", [])
-            for b in bodies:
+            requests = query_ep.get("requests", [])
+            for req in requests:
+                b = req.get("body", "")
                 parsed = None
                 if isinstance(b, str):
                     try:
@@ -446,16 +448,27 @@ def build_manifest(analysis: dict, capture_result: dict,
         # 收集实际被收集的前置 API ID（用于限制嵌套 static 提升范围）
         collected_pre_api_ids = {api["id"] for api in pre_api_chain["pre_apis"] if "id" in api}
 
-    def _get_create_pre_api_ref_source(field_name):
+    def _get_create_pre_api_ref_source(field_name, current_action=None):
         """检查 create 步骤中指定字段的 context 来源，返回其 source 或 None。
 
         用于 verify 步骤的 query_params 生成：如果 create body 中某字段使用了
         context（如 tenantId ← current_user.entity_tenantId），verify 步骤
         的 query_params 也应引用相同来源，确保 tenantId 一致。
+
+        Args:
+            field_name: 字段名
+            current_action: 当前操作名（用于多 Tab 支持，确定使用哪个 create action）
         """
+        # 确定要查找的 create action（多 Tab 支持）
+        target_create_action = id_producer
+        if current_action:
+            create_action = _get_create_action_for_tab(current_action)
+            if create_action:
+                target_create_action = create_action
+
         # 在 steps 中找到 create 步骤的 body_field_roles
         for step in steps:
-            if step.get("action") == id_producer:
+            if step.get("action") == target_create_action:
                 field_roles = step.get("body_field_roles", {})
                 role_info = field_roles.get(field_name, {})
                 if role_info.get("role") == "context":
@@ -691,36 +704,195 @@ def build_manifest(analysis: dict, capture_result: dict,
                 cleaned[key] = value
         return cleaned
 
-    def _make_step(action, ep, body_sample, assertion=None):
-        """构建单个步骤 dict。"""
+    def _get_body_for_action(ep, action_name):
+        """从 ep.requests 中按 context 精确匹配当前 action 的 body。
+
+        利用 Stage 2 保留的 context-body 关联性，直接找到属于当前 tab 的 body。
+        不需要任何猜测或语义映射。
+
+        Args:
+            ep: 端点数据（含 requests 数组）
+            action_name: 当前操作名（如 "黑名单/新增"）
+
+        Returns:
+            匹配的 body dict/list/None
+        """
+        requests = ep.get("requests", [])
+        if not requests:
+            return None
+
+        target_context = f"replay:{action_name}"
+        for req in requests:
+            if req.get("context") == target_context:
+                body_text = req.get("body", "")
+                return _parse_body(body_text) if body_text else None
+
+        return None
+
+    def _get_query_params_for_action(ep, action_name):
+        """从 ep.requests 中按 context 精确匹配当前 action 的 query_params。
+
+        Args:
+            ep: 端点数据（含 requests 数组）
+            action_name: 当前操作名
+
+        Returns:
+            匹配的 query_params dict，找不到返回空 dict
+        """
+        requests = ep.get("requests", [])
+        if not requests:
+            return {}
+
+        target_context = f"replay:{action_name}"
+        for req in requests:
+            if req.get("context") == target_context:
+                return req.get("query_params", {}) or {}
+
+        return {}
+
+    def _detect_tab_specific_fields_PLACEHOLDER(action_name, ep):
+        """占位函数 — 已废弃，保留签名以避免调用处报错。
+
+        新版使用 _get_body_for_action() 精确匹配 body，不再需要语义映射。
+        """
+        return {}
+
+    def _is_create_like_action(action_name, ep):
+        """判断是否为创建类操作（用于多 Tab 模块的多个创建操作）。
+
+        判断条件（满足任一即可）：
+        1. 是 id_producer（主要创建操作）
+        2. POST 方法 + 响应包含 ID + 操作名含创建关键词
+
+        Args:
+            action_name: 操作名
+            ep: 端点 dict
+
+        Returns:
+            bool
+        """
+        if action_name == id_producer:
+            return True
+        method = ep.get("method", "")
+        has_id = ep.get("response_has_id", False)
+        if method == "POST" and has_id:
+            action_lower = action_name.lower()
+            create_keywords = ["新增", "创建", "添加", "create", "add"]
+            if any(kw in action_lower for kw in create_keywords):
+                return True
+        return False
+
+    def _get_tab_prefix(action_name):
+        """从操作名中提取 tab 前缀（多 Tab 支持）。
+
+        例如：
+        - "黑名单/新增" → "黑名单"
+        - "白名单/编辑" → "白名单"
+        - "编辑" → None
+
+        Args:
+            action_name: 操作名
+
+        Returns:
+            tab 前缀字符串，如果没有 "/" 则返回 None
+        """
+        if "/" not in action_name:
+            return None
+        return action_name.split("/")[0]
+
+    def _get_create_action_for_tab(action_name):
+        """为多 Tab 模块确定操作依赖的 create action。
+
+        对于多 Tab 模块（如黑白名单），每个 Tab 有自己的 create 操作：
+        - "黑名单/编辑" 依赖 "黑名单/新增"
+        - "白名单/编辑" 依赖 "白名单/新增"
+
+        通过操作名前缀（"/" 分隔）匹配对应的 create action。
+
+        Args:
+            action_name: 当前操作名（如 "黑名单/编辑"）
+
+        Returns:
+            对应的 create action 名称（如 "黑名单/新增"），找不到则返回 id_producer
+        """
+        if "/" not in action_name:
+            return id_producer
+
+        prefix = action_name.split("/")[0]
+
+        # 在 core_apis 中查找同前缀的 create action
+        for other_action, other_eps in core_apis.items():
+            if not other_action.startswith(prefix + "/"):
+                continue
+            if _is_create_like_action(other_action, other_eps[0] if other_eps else {}):
+                return other_action
+
+        return id_producer
+
+    def _make_step(action, ep, body_sample, assertion=None, action_create_body_sample=None):
+        """构建单个步骤 dict。
+
+        Args:
+            action: 操作名
+            ep: 端点数据
+            body_sample: 请求体样本（已优先使用精确匹配的 body）
+            assertion: 断言类型
+            action_create_body_sample: 当前 action 对应的 create body（用于字段分类）
+        """
+        # ★ 多 Tab 感知：按 context 精确匹配 body
+        precise_body = _get_body_for_action(ep, action)
+        if precise_body is not None:
+            body_sample = precise_body
+            LOG.debug(f"  精确匹配 body: {action}")
+
+        # ★ 使用当前 action 的 create body（如果有），否则使用全局 create_body_sample
+        effective_create_body = action_create_body_sample if action_create_body_sample else create_body_sample
+
+        # ★ 多 Tab 支持：计算当前 action 对应的 create action 的 state key
+        # 只有当 action 有 tab 前缀（如 "黑名单/新增"）时才使用 action-specific key
+        tab_prefix = _get_tab_prefix(action)
+        if tab_prefix:
+            create_action = _get_create_action_for_tab(action)
+            create_id_key = f"{create_action}_id" if create_action else "id"
+        else:
+            # 单 Tab 模块：使用全局 "id"
+            create_id_key = "id"
+
         # 处理数组格式请求体（如 batch delete ["id1", "id2"]）
         if isinstance(body_sample, list):
             field_roles = {
-                "__array_items__": {"role": "context", "source": f"create.id", "is_array": True}
+                "__array_items__": {"role": "context", "source": f"{create_id_key}", "is_array": True}
             }
         else:
             # For create step, exclude create_body sources to prevent self-reference
             exclude = {"create_body"} if action == id_producer else None
             field_roles = classify_fields_recursive(
-                body_sample, value_index, create_body_sample, current_action=action,
+                body_sample, value_index, effective_create_body, current_action=action,
                 exclude_sources=exclude
             )
 
+        # ★ 多创建操作检测：不仅限于 id_producer
+        # ★ 多 Tab 支持：每个 create 操作使用唯一的 state key（如 "黑名单/新增_id"）
         extract = None
-        if action == id_producer:
+        if _is_create_like_action(action, ep):
             envelope_keys = response_contract["envelope_keys"]
             extract_fields = {}
+            # ★ 只有多 Tab 模块才使用 action-specific state key
+            if tab_prefix:
+                action_id_key = f"{action}_id"
+            else:
+                action_id_key = "id"
             # 从 id_field_details 获取实际 ID 字段名和路径
             for field_name, field_info in id_field_details.items():
                 extract_fields[field_name] = field_info["path"]
-            # 兼容：也存一份 "id" key
+            # 使用 action-specific key 或全局 "id"
             if id_field_details:
                 first_info = next(iter(id_field_details.values()))
-                extract_fields["id"] = first_info["path"]
+                extract_fields[action_id_key] = first_info["path"]
             else:
                 # 回退：使用全局 id_field
                 id_field = response_contract["id_field"]
-                extract_fields["id"] = f"{envelope_keys[0]}.{id_field}" if envelope_keys else id_field
+                extract_fields[action_id_key] = f"{envelope_keys[0]}.{id_field}" if envelope_keys else id_field
             extract_fields["names"] = [k for k, v in field_roles.items() if v.get("role") == "name" and "." not in k]
             extract = extract_fields
 
@@ -749,9 +921,25 @@ def build_manifest(analysis: dict, capture_result: dict,
                                 field_roles[body_key] = {"role": "context", "source": pp_source}
                                 LOG.info(f"  body.{body_key} 角色修正: {old_role} → context (source={pp_source})")
 
+        # ★ 多 Tab 支持：将 field_roles 中的 "create.id" 替换为 action-specific key
+        # 这样每个 Tab 的操作会引用自己 Tab 的 create 提取的 ID
+        if create_id_key != "id":
+            for field_name, role_info in field_roles.items():
+                if role_info.get("source") == "create.id":
+                    role_info["source"] = create_id_key
+            # 同样处理 path_params
+            for pp_key, pp_info in (path_params or {}).items():
+                if pp_info.get("source") == "create.id":
+                    pp_info["source"] = create_id_key
+
         # requires: 非 create 操作需要 id（确保 create 已成功）
         # 当 id_producer 为 None 时（纯查询模块，无创建操作），不添加 id 依赖
-        requires = [] if (id_producer is None or action == id_producer) else ["id"]
+        # ★ 多 Tab 支持：使用 action-specific key
+        is_create = id_producer is None or action == id_producer or _is_create_like_action(action, ep)
+        if is_create:
+            requires = []
+        else:
+            requires = [create_id_key]
 
         step = {
             "action": action,
@@ -767,6 +955,10 @@ def build_manifest(analysis: dict, capture_result: dict,
             "body_field_roles": field_roles,
             "requires": requires,
         }
+
+        # ★ 标记 create step（用于 test_runtime 在执行时更新 create_body）
+        if is_create:
+            step["is_create"] = True
         if extract:
             step["extract"] = extract
         if assertion:
@@ -955,22 +1147,33 @@ def build_manifest(analysis: dict, capture_result: dict,
 
         return extracts
 
-    def _make_verify_step(verify_action, label, assertion):
-        """构建验证步骤（基于可用的验证端点）。"""
+    def _make_verify_step(verify_action, label, assertion, action=None, action_create_body_sample=None):
+        """构建验证步骤（基于可用的验证端点）。
+
+        Args:
+            verify_action: 验证端点的 action 名称
+            label: 步骤标签
+            assertion: 断言类型
+            action: 当前 CRUD 操作名（用于确定依赖的 create_id_key）
+            action_create_body_sample: 当前 tab 对应的 create body（多 Tab 支持）
+        """
         if verify_action not in verify_endpoints:
             return None
 
         ep = verify_endpoints[verify_action]["ep"]
         body_sample = verify_endpoints[verify_action]["body_sample"]
 
+        # 使用 action-specific create body（多 Tab 支持）
+        effective_create_body = action_create_body_sample if action_create_body_sample else create_body_sample
+
         field_roles = classify_fields_recursive(
-            body_sample, value_index, create_body_sample, current_action=verify_action
+            body_sample, value_index, effective_create_body, current_action=verify_action
         )
 
         # 分析 pathname 中的动态关联参数
         path_result = _analyze_path_params(
             ep["pathname"], body_sample, field_roles, value_index,
-            create_body_sample, verify_action, id_producer
+            effective_create_body, verify_action, id_producer
         )
 
         # 构建 query_params：从 samples 提取固定参数，映射到 state 引用
@@ -986,7 +1189,7 @@ def build_manifest(analysis: dict, capture_result: dict,
                     continue
                 # 优先检查 create step 中同名字段是否为 pre_api_ref
                 # 如果 create 使用了 pre_api_ref 来源，verify 步骤也应使用相同来源
-                create_ref_source = _get_create_pre_api_ref_source(pk)
+                create_ref_source = _get_create_pre_api_ref_source(pk, action)
                 if create_ref_source:
                     query_params[pk] = f"${create_ref_source}"
                 elif pk in context_field_names:
@@ -994,6 +1197,18 @@ def build_manifest(analysis: dict, capture_result: dict,
                 else:
                     # 保持原始值（如 pageNum=1, pageSize=10）
                     query_params[pk] = pv
+
+        # 确定验证步骤依赖的 create_id_key（多 Tab 支持）
+        verify_requires = []
+        if id_producer is not None and action:
+            create_action = _get_create_action_for_tab(action)
+            if create_action:
+                create_id_key = f"{create_action}_id"
+                verify_requires = [create_id_key]
+            else:
+                verify_requires = ["id"]
+        elif id_producer is not None:
+            verify_requires = ["id"]
 
         step = {
             "action": ep["method"].lower(),
@@ -1006,7 +1221,7 @@ def build_manifest(analysis: dict, capture_result: dict,
             },
             "body_template": _clean_body_template(body_sample or {}, field_roles, value_index, verify_action, collected_pre_api_ids),
             "body_field_roles": field_roles,
-            "requires": [] if id_producer is None else ["id"],
+            "requires": verify_requires,
             "assertion": assertion,
         }
         # search_verify / search_not_found 需要携带搜索参数名
@@ -1153,10 +1368,24 @@ def build_manifest(analysis: dict, capture_result: dict,
             }
             LOG.info(f"  更新验证端点为: {query_ep['method']} {query_ep['pathname']}")
 
+    # ★ 多 Tab 支持：跟踪每个 tab 的 create body
+    # 用于确保验证步骤使用正确的 create body（而非全局的）
+    tab_create_bodies = {}  # {tab_prefix: create_body_sample}
+
     for action in crud_order:
         eps = core_apis.get(action, [])
         if not eps:
+            LOG.warning(f"  ⚠️ 操作 '{action}' 在 core_apis 中无端点，跳过")
             continue
+
+        # 详细日志：输出每个操作的端点信息
+        LOG.info(f"  处理操作: {action} ({len(eps)} 个端点)")
+        for i, ep in enumerate(eps):
+            method = ep.get("method", "UNKNOWN")
+            pathname = ep.get("pathname", "")
+            body_field_count = ep.get("body_field_count", 0)
+            is_list_query = _is_post_list_query(ep) if method == "POST" else False
+            LOG.info(f"    端点[{i}]: {method} {pathname} (fields={body_field_count}, list_query={is_list_query})")
 
         # 跳过只读操作：它们应作为验证端点（verify_endpoints），不作为 CRUD 步骤
         # GET → 只读；POST 用请求体特征判断（避免 response_samples 混合导致误判）；
@@ -1167,7 +1396,7 @@ def build_manifest(analysis: dict, capture_result: dict,
             for ep in eps
         )
         if all_read_only:
-            LOG.info(f"  跳过只读操作 '{action}'（将作为验证端点使用）")
+            LOG.info(f"  ⏭️ 跳过只读操作 '{action}'（将作为验证端点使用）")
             continue
 
         # 分支：单 API vs 多 API 操作链
@@ -1176,16 +1405,38 @@ def build_manifest(analysis: dict, capture_result: dict,
             ep = eps[0]
             body_sample = _parse_body(ep)
 
+            # ★ 多 Tab 感知：为当前 action 准备独立的 create_body_sample
+            # 如果当前 action 是 create-like，使用它自己的 body 作为 create_body_sample
+            # 否则使用 None（会回退到全局 create_body_sample）
+            action_create_body = None
+            if _is_create_like_action(action, ep):
+                action_create_body = body_sample
+                # 记录此 tab 的 create body（用于后续验证步骤）
+                tab_prefix = _get_tab_prefix(action)
+                if tab_prefix:
+                    tab_create_bodies[tab_prefix] = action_create_body
+                    LOG.info(f"  多 Tab 创建操作: {action} (tab={tab_prefix}) 使用独立 create_body_sample")
+                else:
+                    LOG.info(f"  多 Tab 创建操作: {action} 使用独立 create_body_sample")
+
             # 主步骤
-            steps.append(_make_step(action, ep, body_sample))
+            steps.append(_make_step(action, ep, body_sample,
+                                   action_create_body_sample=action_create_body))
         else:
             # 多 API 操作链：生成带 phases 的 step
             phased_step = _make_phased_step(action, eps)
             steps.append(phased_step)
 
         # 根据可用端点自动规划验证步骤
+        # ★ 多 Tab 支持：为验证步骤找到对应 tab 的 create body
+        action_create_body_for_verify = None
+        tab_prefix = _get_tab_prefix(action)
+        if tab_prefix and tab_prefix in tab_create_bodies:
+            action_create_body_for_verify = tab_create_bodies[tab_prefix]
+
         for verify_action, label, assertion in _plan_verify_steps(action):
-            verify = _make_verify_step(verify_action, label, assertion)
+            verify = _make_verify_step(verify_action, label, assertion, action,
+                                      action_create_body_sample=action_create_body_for_verify)
             if verify:
                 steps.append(verify)
 

@@ -554,8 +554,12 @@ class TestInfrastructureAPIs:
     def test_infra_only_contexts(self):
         """只在 init 上下文中出现的 API 被标记为基础设施"""
         endpoints = [
-            {"pathname": "/api/users/create", "contexts": ["replay:create"]},
-            {"pathname": "/api/current-user", "contexts": ["init"]},
+            {"pathname": "/api/users/create", "requests": [
+     {"context": 'replay:create', "body": "", "query_params": {}, "ts": 0}
+ ]},
+            {"pathname": "/api/current-user", "requests": [
+     {"context": 'init', "body": "", "query_params": {}, "ts": 0}
+ ]},
         ]
         result = _identify_infrastructure_apis(endpoints, threshold=0.6)
         assert "/api/current-user" in result
@@ -564,10 +568,15 @@ class TestInfrastructureAPIs:
     def test_high_frequency_infra(self):
         """高频出现的 API 被标记为基础设施"""
         endpoints = [
-            {"pathname": "/api/users/create", "contexts": ["replay:create"]},
-            {"pathname": "/api/menu/tree", "contexts": [
-                "replay:create", "replay:query", "replay:edit", "replay:delete"
-            ]},
+            {"pathname": "/api/users/create", "requests": [
+     {"context": 'replay:create', "body": "", "query_params": {}, "ts": 0}
+ ]},
+            {"pathname": "/api/menu/tree", "requests": [
+     {"context": 'replay:create', "body": "", "query_params": {}, "ts": 0},
+     {"context": 'replay:query', "body": "", "query_params": {}, "ts": 1},
+     {"context": 'replay:edit', "body": "", "query_params": {}, "ts": 2},
+     {"context": 'replay:delete', "body": "", "query_params": {}, "ts": 3}
+ ]},
         ]
         result = _identify_infrastructure_apis(endpoints, threshold=0.6)
         assert "/api/menu/tree" in result

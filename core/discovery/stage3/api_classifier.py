@@ -45,10 +45,11 @@ def _identify_infrastructure_apis(all_endpoints: list, threshold: float = 0.6) -
 
     for ep in all_endpoints:
         pathname = ep.get("pathname", "")
-        contexts = ep.get("contexts", [])
+        requests = ep.get("requests", [])
 
         has_replay = False
-        for ctx in contexts:
+        for req in requests:
+            ctx = req.get("context", "")
             if ctx.startswith("replay:"):
                 has_replay = True
                 action = ctx.split(":", 1)[1]
@@ -260,7 +261,8 @@ def _map_buttons_to_apis(core_apis: dict, all_endpoints: list,
     mapping = {}
     for category, endpoints in core_apis.items():
         for ep in endpoints:
-            for ctx in ep.get("contexts", []):
+            for req in ep.get("requests", []):
+                ctx = req.get("context", "")
                 # ctx 格式: "click:新增用户" 或 "dropdown:更多:锁定"
                 parts = ctx.split(":")
                 if len(parts) >= 2:
@@ -271,8 +273,8 @@ def _map_buttons_to_apis(core_apis: dict, all_endpoints: list,
                         "category": category,
                         "method": ep["method"],
                         "pathname": ep["pathname"],
-                        "body_sample": ep.get("request_body_sample"),
-                        "query_params": ep.get("query_params", {}),
+                        "body_sample": req.get("body"),
+                        "query_params": req.get("query_params", {}),
                     })
 
     return mapping

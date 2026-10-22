@@ -420,7 +420,7 @@ class TestMapButtonsToApis:
             "create": [{
                 "method": "POST",
                 "pathname": "/api/users",
-                "contexts": ["click:新增用户"],
+                "requests": [{"context": "click:新增用户", "body": '{"name":"test"}', "query_params": {}, "ts": 0}],
                 "request_body_sample": '{"name":"test"}',
                 "query_params": {},
             }],
@@ -441,7 +441,7 @@ class TestMapButtonsToApis:
             "delete": [{
                 "method": "DELETE",
                 "pathname": "/api/users/1",
-                "contexts": ["click:删除"],
+                "requests": [{"context": "click:删除", "body": "", "query_params": {}, "ts": 0}],
                 "query_params": {},
             }],
         }
@@ -460,7 +460,7 @@ class TestMapButtonsToApis:
             "state_change": [{
                 "method": "POST",
                 "pathname": "/api/users/lock",
-                "contexts": ["click:锁定"],
+                "requests": [{"context": "click:锁定", "body": "", "query_params": {}, "ts": 0}],
                 "query_params": {},
             }],
         }
@@ -478,7 +478,7 @@ class TestMapButtonsToApis:
             "create": [{
                 "method": "POST",
                 "pathname": "/api/users",
-                "contexts": ["click:新增"],
+                "requests": [{"context": "click:新增", "body": "", "query_params": {}, "ts": 0}],
                 "query_params": {},
             }],
         }
@@ -495,7 +495,10 @@ class TestMapButtonsToApis:
             "create": [{
                 "method": "POST",
                 "pathname": "/api/users",
-                "contexts": ["click:新增", "click:创建"],
+                "requests": [
+                    {"context": "click:新增", "body": "", "query_params": {}, "ts": 0},
+                    {"context": "click:创建", "body": "", "query_params": {}, "ts": 1},
+                ],
                 "query_params": {},
             }],
         }
@@ -514,7 +517,11 @@ class TestMapButtonsToApis:
             "create": [{
                 "method": "POST",
                 "pathname": "/api/users",
-                "contexts": ["replay_create"],  # 无冒号
+                "requests": [
+
+                    {"context": 'replay_create', "body": "", "query_params": {}, "ts": 0}
+
+                ],  # 无冒号
                 "query_params": {},
             }],
         }
@@ -773,10 +780,15 @@ class TestIdentifyInfrastructureApis:
         mock_get_kb.return_value = mock_kb
 
         endpoints = [
-            {"pathname": "/api/current-user", "contexts": [
-                "replay:create", "replay:query", "replay:update", "replay:delete"
-            ]},
-            {"pathname": "/api/users", "contexts": ["replay:create"]},
+            {"pathname": "/api/current-user", "requests": [
+     {"context": 'replay:create', "body": "", "query_params": {}, "ts": 0},
+     {"context": 'replay:query', "body": "", "query_params": {}, "ts": 1},
+     {"context": 'replay:update', "body": "", "query_params": {}, "ts": 2},
+     {"context": 'replay:delete', "body": "", "query_params": {}, "ts": 3}
+ ]},
+            {"pathname": "/api/users", "requests": [
+     {"context": 'replay:create', "body": "", "query_params": {}, "ts": 0}
+ ]},
         ]
         result = _identify_infrastructure_apis(endpoints, threshold=0.6)
         assert "/api/current-user" in result
@@ -790,10 +802,18 @@ class TestIdentifyInfrastructureApis:
         mock_get_kb.return_value = mock_kb
 
         endpoints = [
-            {"pathname": "/api/display-unit-tree", "contexts": ["replay:migrate"]},
-            {"pathname": "/api/users", "contexts": ["replay:create"]},
-            {"pathname": "/api/roles", "contexts": ["replay:query"]},
-            {"pathname": "/api/departments", "contexts": ["replay:update"]},
+            {"pathname": "/api/display-unit-tree", "requests": [
+     {"context": 'replay:migrate', "body": "", "query_params": {}, "ts": 0}
+ ]},
+            {"pathname": "/api/users", "requests": [
+     {"context": 'replay:create', "body": "", "query_params": {}, "ts": 0}
+ ]},
+            {"pathname": "/api/roles", "requests": [
+     {"context": 'replay:query', "body": "", "query_params": {}, "ts": 0}
+ ]},
+            {"pathname": "/api/departments", "requests": [
+     {"context": 'replay:update', "body": "", "query_params": {}, "ts": 0}
+ ]},
         ]
         result = _identify_infrastructure_apis(endpoints, threshold=0.6)
         assert "/api/display-unit-tree" not in result
@@ -806,9 +826,15 @@ class TestIdentifyInfrastructureApis:
         mock_get_kb.return_value = mock_kb
 
         endpoints = [
-            {"pathname": "/api/system-config", "contexts": ["init"]},
-            {"pathname": "/api/theme", "contexts": ["init"]},
-            {"pathname": "/api/users", "contexts": ["replay:create"]},
+            {"pathname": "/api/system-config", "requests": [
+     {"context": 'init', "body": "", "query_params": {}, "ts": 0}
+ ]},
+            {"pathname": "/api/theme", "requests": [
+     {"context": 'init', "body": "", "query_params": {}, "ts": 0}
+ ]},
+            {"pathname": "/api/users", "requests": [
+     {"context": 'replay:create', "body": "", "query_params": {}, "ts": 0}
+ ]},
         ]
         result = _identify_infrastructure_apis(endpoints, threshold=0.6)
         assert "/api/system-config" in result
@@ -827,8 +853,12 @@ class TestIdentifyInfrastructureApis:
         mock_get_kb.return_value = mock_kb
 
         endpoints = [
-            {"pathname": "/api/current-user", "contexts": ["replay:create"]},
-            {"pathname": "/api/users", "contexts": ["replay:create"]},
+            {"pathname": "/api/current-user", "requests": [
+     {"context": 'replay:create', "body": "", "query_params": {}, "ts": 0}
+ ]},
+            {"pathname": "/api/users", "requests": [
+     {"context": 'replay:create', "body": "", "query_params": {}, "ts": 0}
+ ]},
         ]
         result = _identify_infrastructure_apis(endpoints, threshold=0.6)
         assert "/api/current-user" in result
@@ -842,9 +872,15 @@ class TestIdentifyInfrastructureApis:
         mock_get_kb.return_value = mock_kb
 
         endpoints = [
-            {"pathname": "/current-user", "contexts": ["replay:create"]},
-            {"pathname": "/access-log", "contexts": ["replay:create"]},
-            {"pathname": "/api/users", "contexts": ["replay:create"]},
+            {"pathname": "/current-user", "requests": [
+     {"context": 'replay:create', "body": "", "query_params": {}, "ts": 0}
+ ]},
+            {"pathname": "/access-log", "requests": [
+     {"context": 'replay:create', "body": "", "query_params": {}, "ts": 0}
+ ]},
+            {"pathname": "/api/users", "requests": [
+     {"context": 'replay:create', "body": "", "query_params": {}, "ts": 0}
+ ]},
         ]
         result = _identify_infrastructure_apis(endpoints, threshold=0.6)
         # 兜底 generic_infra = ["/current-user", "/access-log", "/system-theme"]
@@ -859,8 +895,12 @@ class TestIdentifyInfrastructureApis:
         mock_get_kb.return_value = mock_kb
 
         endpoints = [
-            {"pathname": "/api/init-data", "contexts": ["init"]},
-            {"pathname": "/api/config", "contexts": ["init"]},
+            {"pathname": "/api/init-data", "requests": [
+     {"context": 'init', "body": "", "query_params": {}, "ts": 0}
+ ]},
+            {"pathname": "/api/config", "requests": [
+     {"context": 'init', "body": "", "query_params": {}, "ts": 0}
+ ]},
         ]
         result = _identify_infrastructure_apis(endpoints, threshold=0.6)
         # 两个都是 init-only → 基础设施
@@ -875,11 +915,18 @@ class TestIdentifyInfrastructureApis:
         mock_get_kb.return_value = mock_kb
 
         endpoints = [
-            {"pathname": "/api/current-user", "contexts": [
-                "init", "replay:create", "replay:query", "replay:update"
-            ]},
-            {"pathname": "/api/theme", "contexts": ["init"]},
-            {"pathname": "/api/users", "contexts": ["replay:create"]},
+            {"pathname": "/api/current-user", "requests": [
+     {"context": 'init', "body": "", "query_params": {}, "ts": 0},
+     {"context": 'replay:create', "body": "", "query_params": {}, "ts": 1},
+     {"context": 'replay:query', "body": "", "query_params": {}, "ts": 2},
+     {"context": 'replay:update', "body": "", "query_params": {}, "ts": 3}
+ ]},
+            {"pathname": "/api/theme", "requests": [
+     {"context": 'init', "body": "", "query_params": {}, "ts": 0}
+ ]},
+            {"pathname": "/api/users", "requests": [
+     {"context": 'replay:create', "body": "", "query_params": {}, "ts": 0}
+ ]},
         ]
         result = _identify_infrastructure_apis(endpoints, threshold=0.6)
         # /api/current-user 在 3 个 replay 操作中出现（3/3=1.0 >= 0.6）
@@ -898,9 +945,16 @@ class TestIdentifyInfrastructureApis:
 
         # 3 个 replay context，端点出现在 2 个中（2/3 ≈ 0.67 >= 0.6）
         endpoints = [
-            {"pathname": "/api/shared", "contexts": ["replay:create", "replay:update"]},
-            {"pathname": "/api/users", "contexts": ["replay:create"]},
-            {"pathname": "/api/roles", "contexts": ["replay:query"]},
+            {"pathname": "/api/shared", "requests": [
+     {"context": 'replay:create', "body": "", "query_params": {}, "ts": 0},
+     {"context": 'replay:update', "body": "", "query_params": {}, "ts": 1}
+ ]},
+            {"pathname": "/api/users", "requests": [
+     {"context": 'replay:create', "body": "", "query_params": {}, "ts": 0}
+ ]},
+            {"pathname": "/api/roles", "requests": [
+     {"context": 'replay:query', "body": "", "query_params": {}, "ts": 0}
+ ]},
         ]
         result = _identify_infrastructure_apis(endpoints, threshold=0.6)
         assert "/api/shared" in result  # 2/3 >= 0.6
@@ -914,10 +968,19 @@ class TestIdentifyInfrastructureApis:
 
         # 4 个 replay context，端点出现在 2 个中（2/4 = 0.5 < 0.6）
         endpoints = [
-            {"pathname": "/api/shared", "contexts": ["replay:create", "replay:update"]},
-            {"pathname": "/api/users", "contexts": ["replay:create"]},
-            {"pathname": "/api/roles", "contexts": ["replay:query"]},
-            {"pathname": "/api/depts", "contexts": ["replay:delete"]},
+            {"pathname": "/api/shared", "requests": [
+     {"context": 'replay:create', "body": "", "query_params": {}, "ts": 0},
+     {"context": 'replay:update', "body": "", "query_params": {}, "ts": 1}
+ ]},
+            {"pathname": "/api/users", "requests": [
+     {"context": 'replay:create', "body": "", "query_params": {}, "ts": 0}
+ ]},
+            {"pathname": "/api/roles", "requests": [
+     {"context": 'replay:query', "body": "", "query_params": {}, "ts": 0}
+ ]},
+            {"pathname": "/api/depts", "requests": [
+     {"context": 'replay:delete', "body": "", "query_params": {}, "ts": 0}
+ ]},
         ]
         result = _identify_infrastructure_apis(endpoints, threshold=0.6)
         assert "/api/shared" not in result  # 2/4 < 0.6

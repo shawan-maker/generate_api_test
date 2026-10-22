@@ -350,7 +350,15 @@ class TestBuildManifestCRUDSteps:
         all_endpoints = [
             {
                 "method": "POST", "pathname": "/api/items/list",
-                "contexts": ["replay:create", "replay:update", "replay:delete"],
+                "requests": [
+
+                    {"context": 'replay:create', "body": "", "query_params": {}, "ts": 0},
+
+                    {"context": 'replay:update', "body": "", "query_params": {}, "ts": 1},
+
+                    {"context": 'replay:delete', "body": "", "query_params": {}, "ts": 2}
+
+                ],
             },
         ]
 
@@ -801,7 +809,11 @@ class TestVerifyStepPlanning:
         all_endpoints = [
             {
                 "method": "POST", "pathname": "/api/items/list",
-                "contexts": ["replay:create"],
+                "requests": [
+
+                    {"context": 'replay:create', "body": "", "query_params": {}, "ts": 0}
+
+                ],
             },
         ]
 
@@ -957,7 +969,13 @@ class TestVerifyStepPlanning:
         all_endpoints = [
             {
                 "method": "POST", "pathname": "/api/items/list",
-                "contexts": ["replay:create", "replay:delete"],
+                "requests": [
+
+                    {"context": 'replay:create', "body": "", "query_params": {}, "ts": 0},
+
+                    {"context": 'replay:delete', "body": "", "query_params": {}, "ts": 1}
+
+                ],
             },
         ]
 

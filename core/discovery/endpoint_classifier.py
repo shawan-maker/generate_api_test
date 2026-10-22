@@ -201,7 +201,7 @@ def _build_candidate(call: dict, uniq_ep: dict, samples: dict) -> dict:
 
     Args:
         call: API 调用信息 {method, pathname, body, ...}
-        uniq_ep: 去重后的端点数据 {contexts, bodies, query_params_list, ...}
+        uniq_ep: 去重后的端点数据 {requests: [{context, body, query_params, ts}, ...]}
         samples: 响应样本字典
 
     Returns:
@@ -220,19 +220,31 @@ def _build_candidate(call: dict, uniq_ep: dict, samples: dict) -> dict:
                 return 0
         return 0
 
-    all_bodies = uniq_ep.get("bodies", [])
+    requests = uniq_ep.get("requests", [])
+    all_bodies = [r["body"] for r in requests if r.get("body")]
     best_body = max(all_bodies, key=_body_field_count) if all_bodies else None
+
+    # 从 requests 提取去重后的 query_params 列表
+    qp_list = []
+    seen_qp = set()
+    for r in requests:
+        qp = r.get("query_params", {})
+        if qp:
+            qp_key = json.dumps(qp, sort_keys=True)
+            if qp_key not in seen_qp:
+                seen_qp.add(qp_key)
+                qp_list.append(qp)
 
     candidate = {
         "method": call["method"],
         "pathname": call["pathname"],
         "body_field_count": _request_body_field_count(call),
         "response_has_id": _call_has_business_data(call, samples),
-        "contexts": sorted(uniq_ep.get("contexts", set())),
-        "bodies": all_bodies,
+        "requests": requests,
+        "bodies": all_bodies,  # 用于 POST body 搜索参数提取
         "request_body_sample": best_body,
-        "query_params": uniq_ep["query_params_list"][0] if len(uniq_ep.get("query_params_list", [])) == 1 else {},
-        "query_params_samples": uniq_ep.get("query_params_list", []),
+        "query_params": qp_list[0] if len(qp_list) == 1 else {},
+        "query_params_samples": qp_list,
     }
 
     # 提取搜索参数名（Stage 3 用于判断 search_verify vs contains_id）
@@ -398,7 +410,9 @@ def _score_core_candidate(call: dict, uniq: dict) -> int:
     # 2. 跨上下文惩罚
     key = f"{method} {pathname}"
     ep = uniq.get(key, {})
-    context_count = len(ep.get("contexts", set()))
+    # 从 requests 数组提取唯一 context 数量
+    unique_contexts = set(r.get("context", "?") for r in ep.get("requests", []))
+    context_count = len(unique_contexts)
     score -= context_count * 20
 
     # 3. 请求体字段数
@@ -419,19 +433,27 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict,
     Returns:
         {classified, all_endpoints, response_samples, stats}
     """
-    # 去重合并
+    # 去重合并 — 保留 context-body 关联性
+    # 旧版 contexts/bodies 拆成两个独立集合，丢失了"哪个 body 属于哪个 context"的关联，
+    # 导致多 Tab 共享端点时 Stage 3 只能猜测匹配。新版用 requests 数组保持关联。
     uniq = {}
     for api in all_calls:
         key = api["method"] + " " + api["pathname"]
         if key not in uniq:
             uniq[key] = {"method": api["method"], "pathname": api["pathname"],
-                         "contexts": set(), "bodies": [], "query_params_list": []}
-        uniq[key]["contexts"].add(api.get("context", "?"))
-        if api.get("body") and api["body"] not in uniq[key]["bodies"]:
-            uniq[key]["bodies"].append(api["body"])
-        qp = api.get("query_params", {})
-        if qp and qp not in uniq[key]["query_params_list"]:
-            uniq[key]["query_params_list"].append(qp)
+                         "requests": []}
+        # 追加关联记录（去重：同一 context+body 只记一次）
+        req_entry = {
+            "context": api.get("context", "?"),
+            "body": api.get("body", ""),
+            "query_params": api.get("query_params", {}),
+            "ts": api.get("ts", 0),
+        }
+        existing = [r for r in uniq[key]["requests"]
+                    if r["context"] == req_entry["context"]
+                    and r["body"] == req_entry["body"]]
+        if not existing:
+            uniq[key]["requests"].append(req_entry)
 
     # ★ 基于时间窗口构建 core_api_map（数组格式，每项包含完整端点数据）
     # 三层过滤：频率排除 → 响应特征排除 → 时间戳优先（取第一个）
@@ -466,7 +488,9 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict,
                 pathname = call.get("pathname", "")
 
                 # Layer 1: 排除周期性消息（出现在大部分窗口中）
-                if pathname_window_count.get(pathname, 0) > frequency_threshold:
+                # ★ 例外：query 操作不过滤（POST 列表查询在每个操作后都会出现）
+                action_is_query = action.endswith("/query")
+                if not action_is_query and pathname_window_count.get(pathname, 0) > frequency_threshold:
                     # 例外：如果该调用携带其他同路径调用没有的独有参数（搜索参数），
                     # 说明是有意触发的业务请求，不受频率限制
                     if not _call_has_distinctive_params(call, all_calls):
@@ -506,23 +530,22 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict,
                               f"{best['method']} {best['pathname']} "
                               f"(评分={_score_core_candidate(best, uniq)}, 共{len(candidates)}个候选)")
 
-    # 后校验：非 query 操作必须有写操作 API（POST/PUT/PATCH/DELETE）
+    # 后校验：非 query 操作应该有写操作 API（POST/PUT/PATCH/DELETE）
+    # ★ 只警告不清空，保留候选供 Stage 3 判断
     for action, candidates in list(core_api_map.items()):
-        if action in ("init", "query"):
+        if action in ("init",):
             continue
         has_write = any(
             c.get("method", "").upper() in ("POST", "PUT", "PATCH", "DELETE")
             for c in candidates
         )
         if not has_write:
-            LOG.warning(f"  ⚠️ {action} 只有 GET 请求，无写操作 API，标记为 capture_incomplete")
-            core_api_map[action] = []
+            LOG.warning(f"  ⚠️ {action} 只有 GET 请求，无写操作 API")
 
     return {
         "core_api_map": core_api_map,
         "all_endpoints": [{"method": e["method"], "pathname": e["pathname"],
-                           "contexts": sorted(e["contexts"]), "bodies": e["bodies"],
-                           "query_params_list": e.get("query_params_list", [])}
+                           "requests": e["requests"]}
                           for e in uniq.values()],
         "response_samples": samples,
         "stats": {"total_calls": len(all_calls), "unique_endpoints": len(uniq)},
@@ -649,7 +672,8 @@ def _extract_search_param(ep_data: dict) -> str:
         return result
 
     # 检查 POST body（POST-based list 端点）
-    bodies = ep_data.get("bodies", [])
+    requests = ep_data.get("requests", [])
+    bodies = [req.get("body") for req in requests if req.get("body")]
     result = _pick_from_params(bodies)
     if result:
         return result
