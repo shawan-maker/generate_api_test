@@ -64,11 +64,20 @@ class ButtonDriver:
         用于无 marker 场景（表单无 input 字段时），直接取第一行进行操作。
         """
         try:
-            # 等待表格主体行出现
-            await self.page.wait_for_selector(
-                ".el-table__body-wrapper tbody tr",
-                timeout=10000
-            )
+            # ★ 等待可见 tab-pane 内的表格主体行出现（限定作用域，避免匹配隐藏 Tab）
+            import time as _t
+            _deadline = _t.time() + 10  # 10s timeout
+            _found = False
+            while _t.time() < _deadline:
+                _found = await self.page.evaluate(f"""() => {{
+                    {_TAB_SCOPE_JS}
+                    return !!_scope.querySelector('.el-table__body-wrapper tbody tr');
+                }}""")
+                if _found:
+                    break
+                await self.page.wait_for_timeout(300)
+            if not _found:
+                return None
             # 在可见 tab-pane 内查找第一行，获取带 pane scope 的选择器
             row_info = await self.page.evaluate(f"""() => {{
                 {_TAB_SCOPE_JS}

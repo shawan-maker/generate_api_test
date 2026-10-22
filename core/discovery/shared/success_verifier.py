@@ -21,7 +21,7 @@ shared/success_verifier.py — 操作成功验证（Stage 1/2 统一实现）
 
 import logging
 from playwright.async_api import Page
-from core.discovery import const
+from .. import const
 
 LOG = logging.getLogger(__name__)
 

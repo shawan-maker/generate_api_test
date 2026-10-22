@@ -64,25 +64,55 @@ def generate_ui_script(playbook: dict, module_name: str, project_dir: Path,
     return script_path
 
 
-def _transform_imports(content: str) -> str:
+def _transform_imports(content: str, is_subpackage: bool = False) -> str:
     """将 replay/ 子包的父级导入转换为 flat 包导入。
 
+    Args:
+        content: 文件内容
+        is_subpackage: 是否是子包（如 shared/），决定 .. 导入的转换方式
+          - False (replay/*.py → ui/lib/*.py): from .. import X → from . import X
+          - True  (shared/*.py → ui/lib/shared/*.py): from .. import X → 保持不变
+
     转换规则:
-      from .. import const       → from . import const
-      from ..kb_loader import X  → from .kb_loader import X
-      from . import X            → 不变（兄弟引用）
-      from .button_driver import → 不变（兄弟引用）
+      from .. import const (replay/)  → from . import const
+      from .. import const (shared/)  → from .. import const (不变)
+      from ..kb_loader import X       → from .kb_loader import X (replay/ only)
+      from . import X                 → 不变（兄弟引用）
+      from .button_driver import      → 不变（兄弟引用）
+      from core.discovery import X    → from . import X (replay/) / from .. import X (shared/)
+      from core.discovery.replay.X    → from ..X import Y (both)
     """
     lines = content.split("\n")
     result = []
     for line in lines:
         stripped = line.lstrip()
-        # from .. import const → from . import const
+        # from .. import const
         if stripped.startswith("from .. import "):
-            line = line.replace("from .. import ", "from . import ", 1)
-        # from ..kb_loader import → from .kb_loader import
+            if not is_subpackage:
+                # replay/ 扁平到 ui/lib/，const 在同级
+                line = line.replace("from .. import ", "from . import ", 1)
+            # shared/ 保持在子包，from .. 访问上级 ui/lib/，保持不变
+        # from ..kb_loader import → from .kb_loader import (仅 replay/)
         elif stripped.startswith("from .."):
-            line = line.replace("from ..", "from .", 1)
+            if not is_subpackage:
+                line = line.replace("from ..", "from .", 1)
+            # shared/ 保持不变
+        # from core.discovery.replay.X import Y → from ..X import Y
+        elif stripped.startswith("from core.discovery.replay."):
+            if is_subpackage:
+                # shared/ 在子包，需要 .. 访问 ui/lib/replay 同级
+                line = line.replace("from core.discovery.replay.", "from ..", 1)
+            else:
+                # replay/ 扁平，访问兄弟模块
+                line = line.replace("from core.discovery.replay.", "from .", 1)
+        # from core.discovery import X
+        elif stripped.startswith("from core.discovery import "):
+            if is_subpackage:
+                # shared/ 在子包，需要 .. 访问上级 ui/lib/const
+                line = line.replace("from core.discovery import ", "from .. import ", 1)
+            else:
+                # replay/ 扁平，const 在同级
+                line = line.replace("from core.discovery import ", "from . import ", 1)
         result.append(line)
     return "\n".join(result)
 
@@ -149,7 +179,7 @@ def _sync_ui_runtime_lib(ui_dir: Path, project_dir: Path):
 
     synced = []
 
-    # ---- 1. replay/*.py → ui/lib/（含导入转换）----
+    # ---- 1. replay/*.py → ui/lib/（含导入转换，扁平化）----
     if not replay_dir.exists():
         raise RuntimeError(f"replay 目录不存在: {replay_dir}")
 
@@ -158,7 +188,7 @@ def _sync_ui_runtime_lib(ui_dir: Path, project_dir: Path):
             continue
         dst_file = dst_lib / src_file.name
         content = src_file.read_text(encoding="utf-8")
-        content = _transform_imports(content)
+        content = _transform_imports(content, is_subpackage=False)
         if _write_if_changed(dst_file, content):
             LOG.info(f"  UI runtime sync (import-transformed): {src_file.name}")
         synced.append(src_file.name)
@@ -172,7 +202,7 @@ def _sync_ui_runtime_lib(ui_dir: Path, project_dir: Path):
                 LOG.info(f"  UI runtime sync: {name}")
             synced.append(name)
 
-    # ---- 2.5. shared/*.py → ui/lib/shared/（含导入转换）----
+    # ---- 2.5. shared/*.py → ui/lib/shared/（含导入转换，保持子包结构）----
     shared_src = src_dir / "shared"
     if shared_src.exists():
         dst_shared = dst_lib / "shared"
@@ -184,9 +214,9 @@ def _sync_ui_runtime_lib(ui_dir: Path, project_dir: Path):
                                      src_file.read_text(encoding="utf-8")):
                     LOG.info(f"  UI runtime sync: shared/{src_file.name}")
             else:
-                # 转换导入路径
+                # 转换导入路径（子包模式，from .. 保持不变）
                 content = src_file.read_text(encoding="utf-8")
-                content = _transform_imports(content)
+                content = _transform_imports(content, is_subpackage=True)
                 if _write_if_changed(dst_shared / src_file.name, content):
                     LOG.info(f"  UI runtime sync (import-transformed): shared/{src_file.name}")
             synced.append(f"shared/{src_file.name}")

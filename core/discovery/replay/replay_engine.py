@@ -292,7 +292,9 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
 
             elif action == "assert_success":
                 passed = await _step_assert_success(page, step)
-                if not passed:
+                if passed:
+                    result["assertion_passed"] = True  # ★ 标记 toast 验证已通过
+                else:
                     result["assertion_failed"] = True
                     step["success"] = False  # 同步标记步骤失败，供报告正确显示
                     # 传递失败详情到 result，供 capture_apis.py 和 generate_ui_script.py 使用
@@ -311,7 +313,15 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
                         result["assert_methods"][f"{desc}_diagnostic"] = step["_dom_diagnostic"]
 
             elif action == "assert_row_disappeared":
-                await _step_assert_row_disappeared(page, step, button_driver, marker)
+                try:
+                    await _step_assert_row_disappeared(page, step, button_driver, marker)
+                except Exception as e:
+                    # ★ 如果 assert_success 已通过（有 toast 确认），行消失验证降级为警告
+                    if result.get("assertion_passed"):
+                        LOG.warning(f"    ⚠️ 删除后行仍存在（但 toast 已确认成功）: {e}")
+                        result["row_disappear_warning"] = str(e)
+                    else:
+                        raise
 
             elif action == "select_row_checkbox":
                 await _step_select_row_checkbox(page, step, button_driver, marker)
@@ -1464,7 +1474,37 @@ async def _step_click_tab(page, step: dict):
         else:
             LOG.warning("    click_tab: 无 tab_name 和 playwright_locator")
             return
-        await page.wait_for_timeout(1500)  # 等待 tab panel 切换和数据加载
+        await page.wait_for_timeout(1500)  # 等待 tab panel CSS transition
+
+        # ★ 等待目标 tab 内的表格数据加载完成
+        # 解决多 Tab 页面切换后，表格 API 数据尚未返回的时序问题
+        # _TAB_SCOPE_JS 模式：只在可见的 tab-pane 内查找表格行
+        try:
+            import time as _t
+            _deadline = _t.time() + 10  # 10s timeout
+            _found = False
+            while _t.time() < _deadline:
+                _found = await page.evaluate("""() => {
+                    const panes = document.querySelectorAll('.el-tab-pane');
+                    let scope = document;
+                    for (const p of panes) {
+                        const s = window.getComputedStyle(p);
+                        if (s.display !== 'none' && s.visibility !== 'hidden') {
+                            scope = p;
+                            break;
+                        }
+                    }
+                    return !!(scope.querySelector('.el-table__body-wrapper tbody tr') ||
+                              scope.querySelector('.ant-table-tbody tr'));
+                }""")
+                if _found:
+                    break
+                await page.wait_for_timeout(300)
+            if _found:
+                await page.wait_for_timeout(300)  # 等渲染稳定
+        except Exception:
+            pass  # 非所有 tab 都有表格，允许超时
+
         LOG.debug(f"    ✓ 已切换到 tab: {tab_name}")
     except Exception as e:
         LOG.warning(f"    ⚠️ tab 切换失败 ({tab_name}): {e}")

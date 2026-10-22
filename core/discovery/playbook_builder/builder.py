@@ -912,7 +912,15 @@ def _build_delete_steps(op_data: dict, create_marker=None) -> list:
             "description": "关闭残留对话框"
         })
 
-    # Step 5: 验证行消失
+    # Step 4.6: ★ 先检查 toast 成功提示（软断言）
+    # 用于处理"同名数据仍存在"等场景：toast 已确认成功，行消失验证降级为警告
+    steps.append({
+        "action": "assert_success",
+        "playwright_locator": ".el-message--success, .el-notification__content:has-text('成功'), [role='alert']:has-text('成功')",
+        "description": "验证操作成功",
+    })
+
+    # Step 5: 验证行消失（如果 toast 已通过，降级为软断言）
     steps.append({
         "action": "assert_row_disappeared",
         "description": "验证数据行已消失"

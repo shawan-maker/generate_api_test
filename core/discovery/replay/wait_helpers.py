@@ -5,6 +5,7 @@ wait_helpers.py — 事件驱动等待辅助函数
 """
 
 import logging
+import time as _time
 from playwright.async_api import Page, TimeoutError as PlaywrightTimeout
 from .. import const
 
@@ -28,10 +29,47 @@ async def wait_for_table_ready(page: Page, timeout: int = 10000, ui_framework: s
         pass  # 可能没有 loading mask
 
     try:
-        # 等待表格行出现
+        # ★ 等待表格行出现（限定在可见 Tab pane 内，避免匹配隐藏 Tab 的行）
+        # _TAB_SCOPE_JS 模式：先找可见 tab-pane，无 tab 时退回 document
         table_row = selectors["table"]["body_row"]
+        found = await page.evaluate(f"""() => {{
+            const panes = document.querySelectorAll('.el-tab-pane');
+            let scope = document;
+            for (const p of panes) {{
+                const s = window.getComputedStyle(p);
+                if (s.display !== 'none' && s.visibility !== 'hidden') {{
+                    scope = p;
+                    break;
+                }}
+            }}
+            return !!scope.querySelector('{table_row}');
+        }}""")
+        if found:
+            return True
+
+        # 可见 tab 内暂无行，轮询等待（最多 timeout ms）
+        _deadline = _time.time() + timeout / 1000
+        while _time.time() < _deadline:
+            await page.wait_for_timeout(300)
+            found = await page.evaluate(f"""() => {{
+                const panes = document.querySelectorAll('.el-tab-pane');
+                let scope = document;
+                for (const p of panes) {{
+                    const s = window.getComputedStyle(p);
+                    if (s.display !== 'none' && s.visibility !== 'hidden') {{
+                        scope = p;
+                        break;
+                    }}
+                }}
+                return !!scope.querySelector('{table_row}');
+            }}""")
+            if found:
+                await page.wait_for_timeout(300)  # 等渲染稳定
+                return True
+
+        # 轮询超时，fallback 到全局选择器
         await page.wait_for_selector(
-            table_row, state='visible', timeout=timeout
+            table_row, state='visible', timeout=3000
         )
         return True
     except PlaywrightTimeout:
