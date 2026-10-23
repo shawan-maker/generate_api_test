@@ -448,6 +448,15 @@ def build_manifest(analysis: dict, capture_result: dict,
         # 收集实际被收集的前置 API ID（用于限制嵌套 static 提升范围）
         collected_pre_api_ids = {api["id"] for api in pre_api_chain["pre_apis"] if "id" in api}
 
+    # ★ 收集所有 pre_api_candidates 的 ID（用于 create-like action 的字段分类排除）
+    # 这包括所有 init 阶段捕获的 API，不仅是被选为 pre-API 的
+    all_pre_api_ids = {api.get("id", "") for api in pre_api_candidates if api.get("id")}
+
+    # ★ 未被收集的 pre-API ID（在 candidates 中但不在 pre_api_chain 中）
+    # 这些 pre-API 不会在运行时执行，引用它们的字段应视为 static
+    uncollected_pre_api_ids = all_pre_api_ids - collected_pre_api_ids
+    LOG.debug(f"  pre-API 收集状态: 全部={all_pre_api_ids}, 已收集={collected_pre_api_ids}, 未收集={uncollected_pre_api_ids}")
+
     def _get_create_pre_api_ref_source(field_name, current_action=None):
         """检查 create 步骤中指定字段的 context 来源，返回其 source 或 None。
 
@@ -829,6 +838,20 @@ def build_manifest(analysis: dict, capture_result: dict,
 
         return id_producer
 
+    def _is_switch_action(action_name):
+        """判断是否为 switch 切换操作。
+
+        Switch 操作（如 "黑名单/switch:状态"）只是切换全局配置开关，
+        不依赖任何记录的 ID，不应添加 requires 依赖。
+
+        Args:
+            action_name: 操作名
+
+        Returns:
+            bool
+        """
+        return "switch:" in action_name.lower()
+
     def _make_step(action, ep, body_sample, assertion=None, action_create_body_sample=None):
         """构建单个步骤 dict。
 
@@ -864,8 +887,14 @@ def build_manifest(analysis: dict, capture_result: dict,
                 "__array_items__": {"role": "context", "source": f"{create_id_key}", "is_array": True}
             }
         else:
-            # For create step, exclude create_body sources to prevent self-reference
-            exclude = {"create_body"} if action == id_producer else None
+            # For create-like actions, exclude create_body sources to prevent self-reference
+            # This applies to both id_producer and other create-like actions (multi-Tab support)
+            # Also exclude uncollected pre-APIs (won't be executed at runtime)
+            is_create_like = _is_create_like_action(action, ep)
+            if is_create_like:
+                exclude = {"create_body"} | uncollected_pre_api_ids
+            else:
+                exclude = None
             field_roles = classify_fields_recursive(
                 body_sample, value_index, effective_create_body, current_action=action,
                 exclude_sources=exclude
@@ -932,11 +961,27 @@ def build_manifest(analysis: dict, capture_result: dict,
                 if pp_info.get("source") == "create.id":
                     pp_info["source"] = create_id_key
 
+        # ★ Switch 操作特殊处理：tab-discriminator 字段标记为 static
+        # Switch 操作在 create 之前执行，不能引用 create_body 或 create ID
+        # Switch 的 body 字段通常都是 tab 区分符（如 bwlType="BLACK"/"WHITE"），应为 static
+        if _is_switch_action(action):
+            for field_name, role_info in list(field_roles.items()):
+                if role_info.get("role") == "context":
+                    source = role_info.get("source", "")
+                    # 任何 context 来源都不适用于 switch（create_body、pre-API 等都不可用）
+                    # 改为 static（使用实际捕获的值）
+                    actual_value = body_sample.get(field_name) if isinstance(body_sample, dict) else None
+                    if actual_value is not None:
+                        field_roles[field_name] = {"role": "static"}
+                        LOG.info(f"  switch.{field_name} 角色修正: context({source}) → static (tab-discriminator, value={actual_value})")
+
         # requires: 非 create 操作需要 id（确保 create 已成功）
         # 当 id_producer 为 None 时（纯查询模块，无创建操作），不添加 id 依赖
         # ★ 多 Tab 支持：使用 action-specific key
+        # ★ Switch 操作不依赖 create ID（只是切换全局配置开关）
         is_create = id_producer is None or action == id_producer or _is_create_like_action(action, ep)
-        if is_create:
+        is_switch = _is_switch_action(action)
+        if is_create or is_switch:
             requires = []
         else:
             requires = [create_id_key]
@@ -1199,8 +1244,11 @@ def build_manifest(analysis: dict, capture_result: dict,
                     query_params[pk] = pv
 
         # 确定验证步骤依赖的 create_id_key（多 Tab 支持）
+        # ★ Switch 操作及其验证步骤不依赖 create ID
         verify_requires = []
-        if id_producer is not None and action:
+        if _is_switch_action(action):
+            verify_requires = []
+        elif id_producer is not None and action:
             create_action = _get_create_action_for_tab(action)
             if create_action:
                 create_id_key = f"{create_action}_id"
@@ -1255,16 +1303,25 @@ def build_manifest(analysis: dict, capture_result: dict,
         action_label = (ui_result or {}).get("button_labels", {}).get(action) \
                        or action
 
-        # 写操作后验证：基于 HTTP method 判断，不硬编码操作名
+        # 写操作后验证：基于 HTTP method + pathname 判断
         # 检查该 action 对应的端点是否为写操作
         is_write_op = False
         is_delete_op = False
         if action in core_apis:
             for ep in core_apis[action]:
                 method = ep.get("method", "GET")
+                pathname = ep.get("pathname", "")
                 if method in ("POST", "PUT", "PATCH", "DELETE"):
                     is_write_op = True
+                # ★ 扩展删除检测：HTTP DELETE 或 POST /remove /delete /batch-delete
                 if method == "DELETE":
+                    is_delete_op = True
+                elif method == "POST" and any(kw in pathname.lower() for kw in
+                    ["/remove", "/delete", "/batch-delete", "/batch-remove"]):
+                    is_delete_op = True
+                # ★ 也检查 action name 中的关键词
+                action_lower = action.lower()
+                if any(kw in action_lower for kw in ["移除", "删除", "remove", "delete"]):
                     is_delete_op = True
 
         if is_write_op:

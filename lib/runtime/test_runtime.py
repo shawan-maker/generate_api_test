@@ -530,12 +530,17 @@ class StepExecutor:
                 - "create.id" → self.state["id"]
                 - "display_by_role.entity_0_children_0_id" → self.state["entity_0_children_0_id"]
                 - "auth.xxx" → self.state["xxx"]
+                - "黑名单/新增_id" → self.state["黑名单/新增_id"] (action-specific key)
 
         Returns:
             解析后的值，找不到则返回空字符串
         """
-        if not source or "." not in source:
+        if not source:
             return ""
+
+        # ★ 支持 action-specific key（如 "黑名单/新增_id"）— 无 "." 时直接查找 state
+        if "." not in source:
+            return self.state.get(source, "")
 
         parts = source.split(".", 1)
         prefix = parts[0]
@@ -881,7 +886,18 @@ class StepExecutor:
             return ""
 
         entity = self.parser.extract_entity(resp_json)
+
+        # ★ 多 Tab 支持：优先从 requires 中提取 action-specific ID key
+        # 这样每个 Tab 的验证步骤使用自己 Tab 的 ID，而非全局 "id"
         target_id = self.state.get("id", "")
+        requires = step_def.get("requires", [])
+        for req in requires:
+            if req.endswith("_id") and "/" in req:
+                # action-specific key (如 "黑名单/新增_id")
+                tid = self.state.get(req, "")
+                if tid:
+                    target_id = tid
+                    break
 
         # 当无 id_producer（纯查询模块）时，验证步骤只需确认 API 返回成功即可
         if not target_id and assertion in ("search_verify", "contains_id", "not_contains_id", "search_not_found"):
