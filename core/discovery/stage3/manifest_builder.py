@@ -852,6 +852,63 @@ def build_manifest(analysis: dict, capture_result: dict,
         """
         return "switch:" in action_name.lower()
 
+    def _normalize_tab_discriminator_fields(field_roles, body_sample,
+                                            action_create_body_sample,
+                                            is_switch=False):
+        """多 Tab 模块的 tab-discriminator 字段角色归一化。
+
+        Tab-discriminator 字段：区分不同 Tab 数据的标识字段（如 type=BLACK/WHITE），
+        在每个 Tab 内值固定，不应引用全局 create_body（多 Tab 时会被覆盖）。
+
+        两种场景：
+        1. Switch 操作（is_switch=True）：
+           所有 context 字段都改为 static，因为 switch 在 create 之前执行，
+           不能引用任何运行时状态。
+
+        2. 多 Tab 验证/操作步骤（is_switch=False）：
+           对 context 字段，如果当前步骤捕获的值与 tab-specific create body 中
+           同名字段的值一致，则改为 static（因为运行时 create_body 是全局的，多 Tab 时会错）。
+
+        Args:
+            field_roles: 字段角色 dict（会被原地修改）
+            body_sample: 当前步骤的请求体样本
+            action_create_body_sample: 当前 Tab 的 create body 样本
+                （多 Tab 时为 tab-specific，单 Tab 时为 None）
+            is_switch: 是否为 switch 切换操作
+        """
+        if not isinstance(body_sample, dict) or not isinstance(field_roles, dict):
+            return
+
+        for field_name, role_info in list(field_roles.items()):
+            if role_info.get("role") != "context":
+                continue
+
+            source = role_info.get("source", "")
+            actual_value = body_sample.get(field_name)
+
+            if actual_value is None:
+                continue
+
+            should_normalize = False
+
+            if is_switch:
+                # switch: 所有 context 都不可用 → static
+                should_normalize = True
+            elif action_create_body_sample:
+                # 多 Tab: 检查当前步骤的值是否与 tab-specific create body 中的值一致
+                # 如果一致，说明这是 tab-discriminator 字段，应该用 static
+                create_value = (action_create_body_sample.get(field_name)
+                                if isinstance(action_create_body_sample, dict) else None)
+                if create_value is not None and create_value == actual_value:
+                    should_normalize = True
+
+            if should_normalize:
+                field_roles[field_name] = {"role": "static"}
+                LOG.info(
+                    f"  tab-discriminator.{field_name}: "
+                    f"context({source}) → static (value={actual_value})"
+                )
+
     def _make_step(action, ep, body_sample, assertion=None, action_create_body_sample=None):
         """构建单个步骤 dict。
 
@@ -961,19 +1018,9 @@ def build_manifest(analysis: dict, capture_result: dict,
                 if pp_info.get("source") == "create.id":
                     pp_info["source"] = create_id_key
 
-        # ★ Switch 操作特殊处理：tab-discriminator 字段标记为 static
-        # Switch 操作在 create 之前执行，不能引用 create_body 或 create ID
-        # Switch 的 body 字段通常都是 tab 区分符（如 bwlType="BLACK"/"WHITE"），应为 static
+        # ★ Switch 操作：tab-discriminator 字段归一化为 static
         if _is_switch_action(action):
-            for field_name, role_info in list(field_roles.items()):
-                if role_info.get("role") == "context":
-                    source = role_info.get("source", "")
-                    # 任何 context 来源都不适用于 switch（create_body、pre-API 等都不可用）
-                    # 改为 static（使用实际捕获的值）
-                    actual_value = body_sample.get(field_name) if isinstance(body_sample, dict) else None
-                    if actual_value is not None:
-                        field_roles[field_name] = {"role": "static"}
-                        LOG.info(f"  switch.{field_name} 角色修正: context({source}) → static (tab-discriminator, value={actual_value})")
+            _normalize_tab_discriminator_fields(field_roles, body_sample, None, is_switch=True)
 
         # requires: 非 create 操作需要 id（确保 create 已成功）
         # 当 id_producer 为 None 时（纯查询模块，无创建操作），不添加 id 依赖
@@ -1213,12 +1260,26 @@ def build_manifest(analysis: dict, capture_result: dict,
         ep = verify_endpoints[verify_action]["ep"]
         body_sample = verify_endpoints[verify_action]["body_sample"]
 
+        # ★ 多 Tab 支持：按 context 精确匹配当前 Tab 的验证请求 body
+        # 验证端点的默认 body_sample 可能来自第一个 Tab，需要用精确匹配覆盖
+        precise_body = _get_body_for_action(ep, action) if action else None
+        if precise_body is not None:
+            body_sample = precise_body
+
         # 使用 action-specific create body（多 Tab 支持）
         effective_create_body = action_create_body_sample if action_create_body_sample else create_body_sample
 
         field_roles = classify_fields_recursive(
             body_sample, value_index, effective_create_body, current_action=verify_action
         )
+
+        # ★ 多 Tab 支持：tab-discriminator 字段归一化
+        # 对于 switch 操作，即使没有 tab-specific create body，也需要归一化
+        action_is_switch = _is_switch_action(action) if action else False
+        if action_create_body_sample or action_is_switch:
+            _normalize_tab_discriminator_fields(
+                field_roles, body_sample, action_create_body_sample, is_switch=action_is_switch
+            )
 
         # 分析 pathname 中的动态关联参数
         path_result = _analyze_path_params(
@@ -1307,6 +1368,11 @@ def build_manifest(analysis: dict, capture_result: dict,
         plans = []
         action_label = (ui_result or {}).get("button_labels", {}).get(action) \
                        or action
+
+        # ★ Switch 操作不规划验证步骤
+        # Switch 只是切换全局配置，不创建或修改特定记录，无需搜索验证
+        if _is_switch_action(action):
+            return plans
 
         # 写操作后验证：基于 HTTP method + pathname 判断
         # 检查该 action 对应的端点是否为写操作
@@ -1472,7 +1538,10 @@ def build_manifest(analysis: dict, capture_result: dict,
             # 否则使用 None（会回退到全局 create_body_sample）
             action_create_body = None
             if _is_create_like_action(action, ep):
-                action_create_body = body_sample
+                # ★ 多 Tab 支持：按 context 精确匹配当前 action 的 body
+                # 避免共享端点时使用第一个请求的 body（可能是其他 tab 的）
+                precise_body = _get_body_for_action(ep, action)
+                action_create_body = precise_body if precise_body is not None else body_sample
                 # 记录此 tab 的 create body（用于后续验证步骤）
                 tab_prefix = _get_tab_prefix(action)
                 if tab_prefix:
