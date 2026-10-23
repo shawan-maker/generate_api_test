@@ -986,6 +986,11 @@ def build_manifest(analysis: dict, capture_result: dict,
         else:
             requires = [create_id_key]
 
+        # ★ query_params 优先使用 per-request 级别（按 context 精确匹配）
+        # ep 级别的 query_params 是聚合结果，可能丢失（如 switch 操作）
+        per_request_qp = _get_query_params_for_action(ep, action)
+        step_query_params = per_request_qp if per_request_qp else ep.get("query_params", {})
+
         step = {
             "action": action,
             "label": (ui_result or {}).get("button_labels", {}).get(action)
@@ -994,7 +999,7 @@ def build_manifest(analysis: dict, capture_result: dict,
                 "method": ep["method"],
                 "pathname": pathname,
                 "path_params": _strip_path_params_original(path_params),
-                "query_params": ep.get("query_params", {}),
+                "query_params": step_query_params,
             },
             "body_template": body_sample if isinstance(body_sample, list) else _clean_body_template(body_sample or {}, field_roles, value_index, action, collected_pre_api_ids),
             "body_field_roles": field_roles,
