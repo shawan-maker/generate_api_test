@@ -1256,7 +1256,7 @@ class TestRunner:
         auth_profile = self.manifest.get("auth_profile", {})
         probe_url = auth_profile.get("probe_url", "")
         context_fields = auth_profile.get("context_fields", {})
-        if not probe_url:
+        if not probe_url or not context_fields:
             return
 
         url = self.base_url + probe_url
