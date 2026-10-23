@@ -1315,10 +1315,16 @@ def build_manifest(analysis: dict, capture_result: dict,
         if _is_switch_action(action):
             verify_requires = []
         elif id_producer is not None and action:
-            create_action = _get_create_action_for_tab(action)
-            if create_action:
-                create_id_key = f"{create_action}_id"
-                verify_requires = [create_id_key]
+            # ★ 修复回归：只有多 Tab 模块（action 含 "/"）才使用 action-specific key
+            # 单 Tab 模块（如用户管理/编辑）没有 tab_prefix，必须用全局 "id"
+            verify_tab_prefix = _get_tab_prefix(action)
+            if verify_tab_prefix:
+                create_action = _get_create_action_for_tab(action)
+                if create_action:
+                    create_id_key = f"{create_action}_id"
+                    verify_requires = [create_id_key]
+                else:
+                    verify_requires = ["id"]
             else:
                 verify_requires = ["id"]
         elif id_producer is not None:
@@ -1385,9 +1391,14 @@ def build_manifest(analysis: dict, capture_result: dict,
                 if method in ("POST", "PUT", "PATCH", "DELETE"):
                     is_write_op = True
                 # ★ 扩展删除检测：HTTP DELETE 或 POST /remove /delete /batch-delete
-                if method == "DELETE":
+                # ★ 排除非删除语义的 DELETE 操作（如 unlock、enable 等状态恢复操作）
+                _non_delete_path_kws = ["/unlock", "/enable", "/resume", "/recover",
+                                        "/restore", "/activate", "/解锁", "/启用"]
+                _path_lower = pathname.lower()
+                _is_non_delete_method = any(kw in _path_lower for kw in _non_delete_path_kws)
+                if method == "DELETE" and not _is_non_delete_method:
                     is_delete_op = True
-                elif method == "POST" and any(kw in pathname.lower() for kw in
+                elif method == "POST" and any(kw in _path_lower for kw in
                     ["/remove", "/delete", "/batch-delete", "/batch-remove"]):
                     is_delete_op = True
                 # ★ 也检查 action name 中的关键词
