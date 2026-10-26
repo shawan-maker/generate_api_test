@@ -1280,22 +1280,30 @@ def _build_generic_steps(op_data: dict, create_marker=None) -> list:
     # 如果 Stage 1 在弹窗中填充了 select 字段，生成 fill_form 步骤（在 confirm 之前执行）
     dialog_fills = op_data.get("dialog_fills", [])
     if dialog_fills:
+        # 过滤掉无效的占位符 option_text（如 "(已选中)"），替换为空字符串以触发 Stage 2 自动发现
+        _PLACEHOLDER_TEXTS = {"(已选中)", "(selected)"}
         fill_fields = []
         for d in dialog_fills:
-            if d.get("option_text") and d.get("selector"):
-                fill_field = {
-                    "label": d.get("label", ""),
-                    "playwright_locator": d["selector"],
-                    "type": "select",
-                    "kb_category": d.get("kb_category", "el-select"),
-                    "fill_rule": {},
-                    "is_editable": d.get("is_editable", False),
-                    "option_text": d["option_text"],
-                }
-                # ★ Phase 4a: 序列化 el-select 子类型
-                if "select_sub_type" in d:
-                    fill_field["select_sub_type"] = d["select_sub_type"]
-                fill_fields.append(fill_field)
+            if not d.get("selector"):
+                continue
+
+            option_text = d.get("option_text", "")
+            if option_text in _PLACEHOLDER_TEXTS:
+                option_text = ""  # 清空占位符，让 Stage 2 自动发现并选择第一个
+
+            fill_field = {
+                "label": d.get("label", ""),
+                "playwright_locator": d["selector"],
+                "type": "select",
+                "kb_category": d.get("kb_category", "el-select"),
+                "fill_rule": {},
+                "is_editable": d.get("is_editable", False),
+                "option_text": option_text,
+            }
+            # ★ Phase 4a: 序列化 el-select 子类型
+            if "select_sub_type" in d:
+                fill_field["select_sub_type"] = d["select_sub_type"]
+            fill_fields.append(fill_field)
         if fill_fields:
             steps.append({
                 "action": "fill_form",

@@ -1052,6 +1052,9 @@ async def _discover_dropdowns(page, parent_buttons: list, kb: ProbeKB = None, fr
             return Array.from(items)
                 .filter(el => {
                     if (el.offsetWidth <= 0) return false;
+                    // ★ 过滤 disabled 项（cmss-disabled class 或 Vue disabled prop）
+                    if (el.classList.contains('cmss-disabled') || el.classList.contains('is-disabled')) return false;
+                    if (el.__vue__ && el.__vue__.disabled === true) return false;
                     const navParent = el.closest('.el-menu, .ant-menu, .sidebar-menu, nav');
                     return !navParent;
                 })

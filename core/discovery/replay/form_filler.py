@@ -261,13 +261,19 @@ class FormFiller:
             LOG.warning(f"    [cascade-fill] post-scan 失败: {e}")
             return {"cascade_fields": [], "cascade_actions": [], "cascade_filled": 0}
 
-        # 2. 计算新增字段
+        # 2. 计算新增字段（selector + label 双重去重）
         pre_selectors = {f.get('selector') for f in pre_raw if f.get('selector')}
         post_selectors = {f.get('selector') for f in post_raw if f.get('selector')}
         new_selectors = post_selectors - pre_selectors - filled_selectors
 
+        # ★ label 去重：selector 可能因 DOM 微变（nth-of-type 索引偏移）而不同，
+        # 但 label 文本是语义标识，不随 DOM 结构变化。
+        # 如果 post 中某字段的 label 在 pre 中已存在，不算新字段。
+        pre_labels = {f.get('label', '') for f in pre_raw if f.get('label')}
+
         new_fields = [f for f in post_raw
-                      if f.get('selector') and f.get('selector') in new_selectors]
+                      if f.get('selector') and f.get('selector') in new_selectors
+                      and f.get('label', '') not in pre_labels]
 
         if not new_fields:
             LOG.info(f"    [cascade-fill] 无级联新字段 (pre={len(pre_raw)} post={len(post_raw)})")
@@ -329,10 +335,16 @@ class FormFiller:
             elif kb_cat in ("input-generic", "textarea-generic"):
                 # 简单输入：生成随机值并填充
                 try:
-                    ts = str(int(time.time()))[-6:]
-                    value = f"cascade_{ts}"
                     el = self.page.locator(selector).first
                     if await el.count() > 0:
+                        # ★ 安全护栏：如果字段已有值，不覆盖（防止 selector 误判覆盖正确数据）
+                        current_value = await el.input_value()
+                        if current_value and current_value.strip():
+                            LOG.info(f"    [cascade-fill] 跳过已有值字段: {label} = '{current_value[:20]}'")
+                            continue
+
+                        ts = str(int(time.time()))[-6:]
+                        value = f"cascade_{ts}"
                         await el.fill(value)
                         action_entry["success"] = True
                         action_entry["fill_value"] = value
@@ -2447,6 +2459,13 @@ class MultiStepExecutor:
 
             LOG.info(f"    el-select {label}: sub_type={select_sub_type}")
 
+            # ★ FIX: tree-select 路由到专用处理器
+            # 通用选择路径使用 .el-select-dropdown__item，但 tree-select 的选项是
+            # .custom-tree-node / .el-tree-node__content，选择器不匹配
+            if select_sub_type == "select-tree":
+                LOG.info(f"    [FIX] el-select {label}: 检测到 tree-select，路由到 _fill_tree_select 专用处理器")
+                return await self._fill_tree_select(selector, label)
+
         # Step 3: 等待选项加载
         await self._wait_for_options_loaded()
 
@@ -2632,61 +2651,212 @@ class MultiStepExecutor:
         return selected, {"option_text": verify.get("displayed_value", option_text)}
 
     async def _fill_tree_select(self, selector: str, label: str) -> tuple:
-        """树形 el-select：展开第一层节点，选第一个叶子
+        """树形 el-select：诊断并选择树节点
 
-        策略：展开下拉 → 展开第一层根节点 → 选第一个叶子
+        步骤：先详细诊断 Vue 组件结构和事件链，再选择正确的操作方式。
         """
-        LOG.info(f"    [select-tree] {label}: 展开下拉框")
+        LOG.info(f"    [select-tree] {label}: 开始诊断")
 
-        # 1. 展开下拉框
-        expanded = await self._expand_by_selector(selector, label)
-        if not expanded:
-            return False, {"skipped_reason": "expand_failed"}
+        # 1. 详细诊断：el-select Vue 实例 + 页面所有 el-tree 的事件绑定
+        diag = await self.page.evaluate("""(selector) => {
+            const result = {};
 
-        await self.page.wait_for_timeout(500)
+            // 1a. el-select Vue 实例分析
+            const selectEl = document.querySelector(selector);
+            if (selectEl && selectEl.__vue__) {
+                const v = selectEl.__vue__;
+                result.select = {
+                    cls: selectEl.className,
+                    // v-model 值
+                    value: v.value,
+                    selectedLabel: v.selectedLabel,
+                    // 可用方法
+                    methods: Object.keys(v).filter(k => typeof v[k] === 'function').filter(k => !k.startsWith('_') && !k.startsWith('$')).slice(0, 20),
+                    // 事件监听
+                    events: Object.keys(v.$listeners || {}),
+                    // 内部状态
+                    visible: v.visible,
+                    // 关联的 popper
+                    popperEl: v.popperEl ? v.popperEl.className : null,
+                    // 检查是否有 tree 相关的 prop 或 ref
+                    treeRef: v.$refs.tree ? 'exists' : null,
+                    treeRefMethods: v.$refs.tree ? Object.keys(v.$refs.tree).filter(k => typeof v.$refs.tree[k] === 'function').slice(0, 10) : null,
+                };
+            } else {
+                result.select = { found: false };
+            }
 
-        # 2. 找到可见的根节点展开图标（未展开的）
-        LOG.info(f"    [select-tree] {label}: 查找根节点展开图标")
-        expand_icons = await self.page.query_selector_all(
-            '.el-select-dropdown:not([style*="display: none"]) .el-tree-node__expand-icon:not(.is-leaf):not(.expanded)'
-        )
+            // 1b. 页面所有 el-tree 分析
+            const trees = Array.from(document.querySelectorAll('.el-tree'));
+            result.trees = trees.map((t, idx) => {
+                const visible = t.offsetWidth > 0 && t.offsetHeight > 0;
+                const inDisabled = !!t.closest('.is-disabled');
+                const inDropdown = !!t.closest('.el-select-dropdown');
+                const vue = t.__vue__;
 
-        # 3. 展开第一个未展开的节点
-        if expand_icons:
-            LOG.info(f"    [select-tree] {label}: 展开第一个根节点")
-            try:
-                await expand_icons[0].click()
-                await self.page.wait_for_timeout(500)
-            except Exception as e:
-                LOG.warning(f"    [select-tree] {label}: 展开根节点失败: {e}")
+                // 查找父组件链（检查是否有 el-select 祖先）
+                let parentChain = [];
+                let p = t.parentElement;
+                for (let i = 0; i < 8 && p; i++) {
+                    let desc = p.tagName.toLowerCase();
+                    if (p.className && typeof p.className === 'string') {
+                        desc += '.' + p.className.substring(0, 50);
+                    }
+                    if (p.__vue__) desc += '[vue]';
+                    parentChain.push(desc);
+                    p = p.parentElement;
+                }
 
-        # 4. 选第一个叶子节点
-        LOG.info(f"    [select-tree] {label}: 查找叶子节点")
-        leaves = await self.page.query_selector_all(
-            '.el-select-dropdown:not([style*="display: none"]) .el-tree-node.is-leaf .el-tree-node__content'
-        )
+                return {
+                    idx,
+                    visible,
+                    inDisabled,
+                    inDropdown,
+                    nodeCount: t.querySelectorAll('.custom-tree-node').length,
+                    parentClasses: t.parentElement ? t.parentElement.className.substring(0, 80) : '',
+                    // Vue 事件
+                    vueListeners: vue ? Object.keys(vue.$listeners || {}) : [],
+                    vueEvents: vue && vue._events ? Object.keys(vue._events) : [],
+                    hasNodeClick: vue ? typeof vue.handleNodeClick === 'function' : false,
+                    hasSetCurrentKey: vue ? typeof vue.setCurrentKey === 'function' : false,
+                    parentChain: parentChain.slice(0, 5),
+                };
+            });
 
-        if not leaves:
-            LOG.warning(f"    [select-tree] {label}: 未发现叶子节点")
-            return False, {"skipped_reason": "no_leaf_nodes"}
+            return result;
+        }""", selector)
 
-        try:
-            # 获取叶子节点文本
-            leaf_text = await leaves[0].text_content()
-            LOG.info(f"    [select-tree] {label}: 选择叶子节点 '{leaf_text}'")
-            await leaves[0].click()
+        LOG.info(f"    [select-tree] {label}: el-select 诊断: {diag.get('select')}")
+        for ti in diag.get('trees', []):
+            LOG.info(f"    [select-tree] {label}: tree[{ti['idx']}]: visible={ti['visible']}, disabled={ti['inDisabled']}, "
+                     f"inDropdown={ti['inDropdown']}, nodes={ti['nodeCount']}, parent={ti['parentClasses'][:60]}, "
+                     f"listeners={ti.get('vueListeners')}, events={ti.get('vueEvents', [])[:10]}")
 
-            # 5. 验证
-            await self.page.wait_for_timeout(500)
-            verify = await self._verify_select_filled(label, selector)
-            if not verify.get("filled"):
-                LOG.warning(f"    [select-tree] {label}: 填充后验证失败")
-                return False, {"option_text": leaf_text, "verify_failed": True}
+        # 2. 通过 el-select 的 handleNodeClick 事件回调设置值
+        # handleNodeClick 在 $listeners 中（父组件传入的事件回调）
+        has_handleNodeClick = 'handleNodeClick' in diag.get('select', {}).get('events', [])
+        if has_handleNodeClick:
+            LOG.info(f"    [select-tree] {label}: 通过 handleNodeClick 事件回调设置值")
+            set_result = await self.page.evaluate("""(selector) => {
+                const selectEl = document.querySelector(selector);
+                if (!selectEl || !selectEl.__vue__) return { success: false, reason: 'no_select_vue' };
+                const sv = selectEl.__vue__;
 
-            return True, {"option_text": verify.get("displayed_value", leaf_text)}
-        except Exception as e:
-            LOG.warning(f"    [select-tree] {label}: 选择叶子节点失败: {e}")
-            return False, {"skipped_reason": "click_failed"}
+                // ★ 修复：强制优先选择 dropdown 内的树（el-select-dropdown 弹出层）
+                // 页面上可能有多个 el-tree（如组织架构面板），必须选择正确的下拉树
+                const allTrees = Array.from(document.querySelectorAll('.el-tree'));
+
+                // 优先级：1) inDropdown + visible（不管 disabled）  2) visible only
+                // 注意：inDropdown 的树可能在 disabled 容器内，但节点本身可交互
+                const visibleTree = allTrees.find(t => {
+                    if (t.offsetWidth <= 0 || t.offsetHeight <= 0) return false;
+                    // 优先选择 dropdown 内的树（即使父容器 disabled）
+                    if (t.closest('.el-select-dropdown')) return true;
+                    return false;
+                }) || allTrees.find(t => {
+                    // Fallback: 任何可见的树（不在 disabled 容器内）
+                    if (t.offsetWidth <= 0 || t.offsetHeight <= 0) return false;
+                    if (t.closest('.is-disabled')) return false;
+                    return true;
+                });
+                if (!visibleTree) return { success: false, reason: 'no_visible_tree' };
+
+                const spans = visibleTree.querySelectorAll('.custom-tree-node span');
+                let nodeData = null;
+                let text = '';
+
+                for (const span of spans) {
+                    const content = span.closest('.el-tree-node__content');
+                    if (!content) continue;
+                    const cb = content.querySelector('.el-checkbox');
+                    if (cb && cb.classList.contains('is-checked')) continue;
+                    const treeNodeEl = content.closest('.el-tree-node');
+                    if (treeNodeEl && treeNodeEl.__vue__) {
+                        nodeData = treeNodeEl.__vue__.node.data;
+                        text = span.textContent.trim();
+                        break;
+                    }
+                }
+
+                if (!nodeData && spans.length > 0) {
+                    const content = spans[0].closest('.el-tree-node__content');
+                    const treeNodeEl = content ? content.closest('.el-tree-node') : null;
+                    if (treeNodeEl && treeNodeEl.__vue__) {
+                        nodeData = treeNodeEl.__vue__.node.data;
+                        text = spans[0].textContent.trim();
+                    }
+                }
+
+                if (!nodeData) return { success: false, reason: 'no_node_data' };
+
+                // 调用 $listeners 中的 handleNodeClick 回调
+                const listener = sv.$listeners && sv.$listeners.handleNodeClick;
+                if (listener) {
+                    // $listeners 中的回调可能是函数或函数数组
+                    if (typeof listener === 'function') {
+                        listener(nodeData);
+                    } else if (Array.isArray(listener)) {
+                        listener.forEach(fn => { if (typeof fn === 'function') fn(nodeData); });
+                    }
+                    return { success: true, text, dataKeys: Object.keys(nodeData).slice(0, 8) };
+                }
+
+                // 也尝试用 $emit
+                sv.$emit('handleNodeClick', nodeData);
+                return { success: true, text, via: 'emit', dataKeys: Object.keys(nodeData).slice(0, 8) };
+            }""", selector)
+            LOG.info(f"    [select-tree] {label}: handleNodeClick 结果: {set_result}")
+
+            if set_result.get('success'):
+                await self.page.wait_for_timeout(800)
+                verify = await self._verify_select_filled(label, selector)
+                if verify.get("filled"):
+                    return True, {"option_text": verify.get("displayed_value", set_result['text'])}
+                else:
+                    LOG.warning(f"    [select-tree] {label}: handleNodeClick 后验证失败, displayed='{verify.get('displayed_value', '')}'")
+
+        # 3. Fallback: 直接 Playwright click
+        LOG.info(f"    [select-tree] {label}: 尝试 Playwright click")
+        node_info = await self.page.evaluate("""() => {
+            const allTrees = Array.from(document.querySelectorAll('.el-tree'));
+
+            // ★ 修复：强制优先选择 dropdown 内的树（与 handleNodeClick 路径一致）
+            const visibleTree = allTrees.find(t => {
+                if (t.offsetWidth <= 0 || t.offsetHeight <= 0) return false;
+                // 优先选择 dropdown 内的树（即使父容器 disabled）
+                if (t.closest('.el-select-dropdown')) return true;
+                return false;
+            }) || allTrees.find(t => {
+                // Fallback: 任何可见的树（不在 disabled 容器内）
+                if (t.offsetWidth <= 0 || t.offsetHeight <= 0) return false;
+                if (t.closest('.is-disabled')) return false;
+                return true;
+            });
+            if (!visibleTree) return { found: false, reason: 'no_visible_tree' };
+
+            const spans = visibleTree.querySelectorAll('.custom-tree-node span');
+            for (const span of spans) {
+                const content = span.closest('.el-tree-node__content');
+                if (!content) continue;
+                const cb = content.querySelector('.el-checkbox');
+                if (cb && cb.classList.contains('is-checked')) continue;
+                return { found: true, text: span.textContent.trim(), selector: '.custom-tree-node span' };
+            }
+            return { found: false, reason: 'all_selected' };
+        }""")
+
+        if node_info.get('found'):
+            locator = self.page.locator(f"{node_info['selector']}:visible").first
+            if await locator.count() > 0:
+                await locator.click(force=True, timeout=5000)
+                LOG.info(f"    [select-tree] {label}: click '{node_info['text']}'")
+                await self.page.wait_for_timeout(800)
+
+        verify = await self._verify_select_filled(label, selector)
+        if not verify.get("filled"):
+            return False, {"skipped_reason": "verify_failed", "option_text": node_info.get('text', '')}
+
+        return True, {"option_text": verify.get("displayed_value", node_info.get('text', ''))}
 
     async def execute_select_by_sub_type(self, selector: str, sub_type: str, label: str) -> tuple:
         """根据子类型分发到不同处理方法
@@ -3585,7 +3755,46 @@ class MultiStepExecutor:
                     }
                 }
 
-                // 策略4: 检查 input 的 placeholder
+                // 策略3.5: 通过 Vue $refs.tree 获取当前选中节点的标签文本
+                // 比策略4更可靠：直接从树组件读取，不依赖 placeholder
+                if (!hasTreeSelected && sel.__vue__) {
+                    const v = sel.__vue__;
+                    if (v.$refs && v.$refs.tree) {
+                        const tree = v.$refs.tree;
+                        let nodeText = '';
+                        // 尝试 getCurrentNode（单选树）
+                        if (typeof tree.getCurrentNode === 'function') {
+                            try {
+                                const cur = tree.getCurrentNode();
+                                if (cur && cur.label) nodeText = cur.label;
+                                else if (cur && typeof cur === 'object') {
+                                    nodeText = cur.name || cur.text || cur.title || '';
+                                }
+                            } catch(e) {}
+                        }
+                        // 尝试 getCheckedNodes（复选树）
+                        if (!nodeText && typeof tree.getCheckedNodes === 'function') {
+                            try {
+                                const checked = tree.getCheckedNodes(false, true);
+                                if (checked && checked.length > 0) {
+                                    nodeText = checked.map(n => n.label || n.name || '').filter(t => t).join(', ');
+                                }
+                            } catch(e) {}
+                        }
+                        if (nodeText) {
+                            hasTreeSelected = true;
+                            treeSelectedText = nodeText;
+                        }
+                    }
+                    // 补充: 从 input.value 读取（tree-select 选中后 input 可能显示节点文本）
+                    if (!hasTreeSelected && input && input.value && input.value.trim()
+                        && input.value.trim() !== '请选择') {
+                        hasTreeSelected = true;
+                        treeSelectedText = input.value.trim();
+                    }
+                }
+
+                // 策略4: 检查 input 的 placeholder（兜底检测）
                 // tree-select 选中后 placeholder 变为空字符串（默认值是"请选择"）
                 // 空字符串说明已选中，非"请选择"的文本也说明已选中
                 if (!hasTreeSelected && input) {
@@ -3593,7 +3802,7 @@ class MultiStepExecutor:
                     if (ph !== null && ph !== undefined) {
                         if (ph === '' || (!ph.includes('请选择') && !ph.includes('选择'))) {
                             hasTreeSelected = true;
-                            treeSelectedText = ph || '(已选中)';
+                            treeSelectedText = ph || '';
                         }
                     }
                 }

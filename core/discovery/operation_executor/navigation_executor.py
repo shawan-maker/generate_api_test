@@ -207,6 +207,21 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
                         if matching_closes:
                             field["close_dropdown"] = matching_closes
 
+            # ★ FIX: 将 form_field_details 更新到 nav_info（与 Path B line 628 对齐）
+            # 修复 Bug: discover_all 返回的 form_fields 可能不完整（如 prewarm 阶段的字段）
+            # form_field_details 来自 scan_form_fields_v2()，包含 cascade_actions 等完整信息
+            if form_field_details != form_fields:
+                LOG.info(f"    [FIX] 更新 nav_info.form_fields: {len(form_fields)} → {len(form_field_details)} 个字段")
+                old_labels = {f.get("label") for f in form_fields}
+                new_labels = {f.get("label") for f in form_field_details}
+                added = new_labels - old_labels
+                removed = old_labels - new_labels
+                if added:
+                    LOG.info(f"    [FIX]   新增字段: {added}")
+                if removed:
+                    LOG.info(f"    [FIX]   移除字段: {removed}")
+            nav_info["form_fields"] = form_field_details
+
             # 检查必填字段是否填写成功
             # 核心逻辑：fill 完后重新读 DOM，检查必填字段是否已有值（包括默认值）
             unfilled_required = []
@@ -1277,6 +1292,23 @@ async def _navigate_back_to_list(page, original_url: str, tab_name: str = "", ta
         tab_name: 目标 Tab 名称（可选，用于多 Tab 页面恢复）
         tab_locator: 目标 Tab 的 Playwright locator（可选）
     """
+    # ★ 修复：关闭多余的 tab（tab 泄露问题）
+    # 当操作打开新 tab 后，context.pages 可能 > 1，需要关闭多余的 tab
+    try:
+        all_pages = page.context.pages
+        if len(all_pages) > 1:
+            LOG.info(f"    [TAB-CLEANUP] 检测到 {len(all_pages)} 个 tab，关闭多余的 {len(all_pages) - 1} 个")
+            # 保留当前 page，关闭其他所有 tab
+            for other_page in all_pages:
+                if other_page != page:
+                    try:
+                        await other_page.close()
+                        LOG.info(f"    [TAB-CLEANUP] 已关闭多余 tab: {other_page.url[:60]}")
+                    except Exception as e:
+                        LOG.warning(f"    [TAB-CLEANUP] 关闭 tab 失败: {e}")
+    except Exception as e:
+        LOG.warning(f"    [TAB-CLEANUP] 清理多余 tab 失败: {e}")
+
     try:
         await page.goto(original_url, wait_until="domcontentloaded", timeout=30000)
         await wait_for_table_ready(page, timeout=15000)

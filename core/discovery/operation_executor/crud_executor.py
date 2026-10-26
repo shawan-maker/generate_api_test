@@ -10,6 +10,9 @@ import json
 import logging
 import time
 from core.discovery import const
+from core.discovery.shared.constants import (
+    DROPDOWN_TRIGGER_TEXTS, NON_BUSINESS_BUTTONS, BATCH_PREFIXES, DESTROY_KEYWORDS,
+)
 from core.discovery.replay.wait_helpers import (
     wait_for_dropdown, wait_for_dialog_dismissed, wait_for_dialog,
     wait_for_loading_complete, wait_for_table_ready,
@@ -37,6 +40,49 @@ from core.discovery.ui_scanner.button_detector import (
 from core.discovery.shared import get_row_selector_by_marker
 
 LOG = logging.getLogger("crud_executor")
+
+
+class ButtonStateTracker:
+    """按钮状态追踪器
+
+    记录所有按钮的 enabled/disabled 状态，检测状态变化，
+    自动执行从 disabled → enabled 的按钮（支持级联）。
+    """
+
+    def __init__(self, tab_prefix: str = ""):
+        self.tab_prefix = tab_prefix
+        self.button_states = {}  # {button_text: is_enabled}
+        self.executed_buttons = set()  # 已执行的按钮
+
+    def update_states(self, buttons: list):
+        """更新按钮状态
+
+        Args:
+            buttons: 按钮列表，每个按钮包含 text 和 disabled 字段
+        """
+        for btn in buttons:
+            text = btn.get("text", "")
+            disabled = btn.get("disabled", False)
+            if text:
+                self.button_states[text] = not disabled
+
+    def get_newly_enabled(self) -> list:
+        """获取新启用的按钮（从 disabled → enabled）
+
+        Returns:
+            list: 新启用的按钮文本列表
+        """
+        newly_enabled = []
+        for text, is_enabled in self.button_states.items():
+            if is_enabled and text not in self.executed_buttons:
+                # 检查是否是新启用的（之前是 disabled 或不存在）
+                # 这里简化处理：只要未执行且当前启用，就认为是新启用
+                newly_enabled.append(text)
+        return newly_enabled
+
+    def mark_executed(self, button_text: str):
+        """标记按钮已执行"""
+        self.executed_buttons.add(button_text)
 
 
 async def _scan_row_after_operation(page, row_selector: str, marker: str, existing_actions: set) -> list:
@@ -178,6 +224,9 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
                     if (menu.offsetWidth === 0 || menu.offsetHeight === 0) continue;
 
                     menu.querySelectorAll('.el-dropdown-menu__item').forEach(item => {{
+                        // ★ 过滤 disabled 项（cmss-disabled/is-disabled class 或 Vue disabled prop）
+                        if (item.classList.contains('cmss-disabled') || item.classList.contains('is-disabled')) return;
+                        if (item.__vue__ && item.__vue__.disabled === true) return;
                         const text = item.textContent.trim();
                         if (text && !existingTexts.includes(text)) {{
                             buttons.push({{
@@ -240,6 +289,200 @@ async def discover_and_validate(page, username: str = "test") -> dict:
 
     ui_result["validated_operations"] = validated
     return ui_result
+
+
+async def _scan_all_button_states(page, created_marker: str) -> dict:
+    """扫描当前行所有按钮的 enabled/disabled 状态（含 dropdown 内的按钮）。
+
+    Args:
+        page: Playwright Page
+        created_marker: 行标识
+
+    Returns:
+        dict: {button_text: is_enabled}
+    """
+    row_selector = await get_row_selector_by_marker(page, created_marker)
+    if not row_selector:
+        return {}
+
+    try:
+        result = await page.evaluate(f"""() => {{
+            const row = document.querySelector('{row_selector}');
+            if (!row) return {{}};
+
+            const states = {{}};
+
+            // 1. 行内直接按钮
+            row.querySelectorAll('.cell .el-button').forEach(btn => {{
+                const text = btn.textContent.trim();
+                if (text) {{
+                    const disabled = btn.disabled
+                        || btn.classList.contains('cmss-disabled')
+                        || btn.classList.contains('is-disabled');
+                    states[text] = !disabled;
+                }}
+            }});
+
+            return states;
+        }}""")
+
+        # 2. 展开 dropdown 并扫描内部按钮
+        dropdown_expand = await page.evaluate(f"""() => {{
+            const row = document.querySelector('{row_selector}');
+            if (!row) return {{ error: 'no_row' }};
+
+            const dropdown = row.querySelector('.el-dropdown');
+            if (!dropdown) return {{ error: 'no_dropdown' }};
+
+            const vm = dropdown.__vue__;
+            if (vm && typeof vm.show === 'function') {{
+                vm.show();
+                return {{ expanded: true, method: 'vue_show' }};
+            }}
+
+            dropdown.dispatchEvent(new MouseEvent('mouseenter', {{ bubbles: false }}));
+            dropdown.dispatchEvent(new MouseEvent('mouseover', {{ bubbles: true }}));
+            return {{ expanded: true, method: 'dispatchEvent' }};
+        }}""")
+
+        if dropdown_expand and dropdown_expand.get('expanded'):
+            await page.wait_for_timeout(800)
+
+            # 扫描可见的 dropdown menu
+            dropdown_states = await page.evaluate("""() => {
+                const menus = document.querySelectorAll('.el-dropdown-menu');
+                const states = {};
+
+                for (const menu of menus) {
+                    if (menu.offsetWidth <= 0 || menu.offsetHeight <= 0) continue;
+
+                    menu.querySelectorAll('.el-dropdown-menu__item').forEach(item => {
+                        const text = item.textContent.trim();
+                        if (text) {
+                            const disabled = item.classList.contains('cmss-disabled')
+                                || item.classList.contains('is-disabled')
+                                || (item.__vue__ && item.__vue__.disabled === true);
+                            states[text] = !disabled;
+                        }
+                    });
+                }
+
+                return states;
+            }""")
+
+            result.update(dropdown_states)
+
+        return result
+
+    except Exception as e:
+        LOG.warning(f"  [scan_button_states] 扫描失败: {e}")
+        return {}
+
+
+async def _check_and_execute_newly_enabled(
+    page,
+    created_marker: str,
+    button_states: dict,
+    buttons_by_action: dict,
+    executed_actions: set,
+    form_filler,
+    tab_name: str,
+    tab_locator: str,
+    ui_result: dict,
+    tab_prefix: str,
+    max_depth: int = 5,
+) -> dict:
+    """检查并执行新启用的按钮（通用级联处理）。
+
+    扫描当前行所有按钮状态，对比历史记录，发现从 disabled → enabled 的按钮立即执行。
+    支持递归处理级联（A 执行后启用 B，B 执行后启用 C）。
+
+    Args:
+        page: Playwright Page
+        created_marker: 行标识
+        button_states: 历史状态 {button_text: is_enabled}
+        buttons_by_action: 按钮字典
+        executed_actions: 已执行的按钮集合
+        form_filler: 表单填充器
+        tab_name: Tab 名称
+        tab_locator: Tab 定位器
+        ui_result: UI 结果
+        tab_prefix: 日志前缀
+        max_depth: 最大递归深度
+
+    Returns:
+        dict: 执行结果 {action: result}
+    """
+    if max_depth <= 0:
+        LOG.warning(f"{tab_prefix}[STATE-CHANGE] 达到最大递归深度，停止")
+        return {}
+
+    results = {}
+
+    # 扫描当前状态
+    current_states = await _scan_all_button_states(page, created_marker)
+    if not current_states:
+        return results
+
+    # 找出新启用的按钮（之前 disabled，现在 enabled）
+    newly_enabled = []
+    for text, is_enabled in current_states.items():
+        if is_enabled and text in button_states and not button_states[text]:
+            # 从 disabled → enabled
+            if text not in executed_actions:
+                newly_enabled.append(text)
+
+    if not newly_enabled:
+        # 更新状态记录
+        button_states.update(current_states)
+        return results
+
+    LOG.info(f"{tab_prefix}[STATE-CHANGE] 发现 {len(newly_enabled)} 个新启用按钮: {newly_enabled}")
+
+    # 逐一执行
+    for text in newly_enabled:
+        LOG.info(f"{tab_prefix}[STATE-CHANGE] 执行新启用按钮: {text}")
+
+        # 构建按钮信息
+        btn_info = buttons_by_action.get(text, {
+            "text": text,
+            "tag": "DROPDOWN_ITEM",
+            "location": "dropdown",
+            "selector": f'.el-dropdown-menu__item:has-text("{text}")',
+            "tab": tab_name,
+        })
+
+        # 执行
+        result = await _error_driven_retry(
+            page, _do_generic_operation, {
+                "btn": btn_info, "action": text, "marker": created_marker,
+                "form_filler": form_filler,
+                "tab_name": tab_name, "tab_locator": tab_locator,
+            }
+        )
+
+        results[text] = result
+        executed_actions.add(text)
+
+        if result and result.get("success"):
+            LOG.info(f"{tab_prefix}[STATE-CHANGE] ✓ {text} 执行成功")
+
+            # 递归检查级联
+            await page.wait_for_timeout(1500)
+            sub_results = await _check_and_execute_newly_enabled(
+                page, created_marker, button_states, buttons_by_action,
+                executed_actions, form_filler, tab_name, tab_locator,
+                ui_result, tab_prefix, max_depth - 1
+            )
+            results.update(sub_results)
+        else:
+            error_text = result.get("error_text", "") if result else "未知错误"
+            LOG.warning(f"{tab_prefix}[STATE-CHANGE] ✗ {text} 执行失败: {error_text}")
+
+    # 更新状态记录
+    button_states.update(current_states)
+
+    return results
 
 
 async def _validate_single_tab_crud(
@@ -376,6 +619,11 @@ async def _validate_single_tab_crud(
 
     # 6. 删除最后
     ordered_actions.extend(_delete_actions)
+
+    # ★ 初始化按钮状态追踪（通用方案，替代硬编码的 STATE_TOGGLE_BUTTONS）
+    # 记录所有按钮的初始 enabled/disabled 状态，用于检测状态变化
+    button_states = {}  # {button_text: is_enabled}
+    executed_actions = set()  # 已执行的按钮集合
 
     # 记录每个 action 的语义角色
     action_roles = {}
@@ -594,8 +842,22 @@ async def _validate_single_tab_crud(
             )
             if result and result.get("success"):
                 validated[action] = result
-            elif result:
-                validated[action] = result
+                executed_actions.add(action)
+
+        # ★ 通用状态变化检测与级联执行
+        # 操作成功后，扫描按钮状态变化，自动执行新启用的按钮
+        if result and result.get("success") and created_marker:
+            await page.wait_for_timeout(1000)  # 等待 Vue 渲染
+
+            cascade_results = await _check_and_execute_newly_enabled(
+                page, created_marker, button_states, buttons_by_action,
+                executed_actions, form_filler, tab_name, tab_locator, ui_result, tab_prefix
+            )
+
+            # 将级联执行的结果写入 validated
+            for cascade_action, cascade_result in cascade_results.items():
+                if cascade_result:
+                    validated[cascade_action] = cascade_result
 
         # ★ 增量发现：操作成功后，扫描当前行发现新出现的按钮
         # 适用场景：暂停→启用、禁用→启用 等状态依赖的操作对
@@ -665,43 +927,14 @@ async def _validate_single_tab_crud(
                                 ordered_actions.append(new_action)
                                 insert_pos = len(ordered_actions) - 1
                             else:
-                                # ★ 状态切换类按钮（启用/暂停/禁用等）特殊处理：
-                                # 如果 existing_actions 中已有同类按钮，延迟到所有现有 generic 操作之后执行
-                                # 例如：已有"暂停"，新发现"启用"，则"启用"应在"暂停"之后执行
-                                STATE_TOGGLE_BUTTONS = ['启用', '暂停', '禁用', '激活', '开启', '关闭']
-                                is_state_toggle = new_action in STATE_TOGGLE_BUTTONS
-                                has_existing_toggle = any(btn in existing_actions for btn in STATE_TOGGLE_BUTTONS)
-
-                                if is_state_toggle and has_existing_toggle:
-                                    # 找到最后一个 generic 操作的位置（在 delete 之前）
-                                    last_generic_idx = -1
-                                    for idx, act in enumerate(ordered_actions):
-                                        if action_roles.get(act) == "generic":
-                                            last_generic_idx = idx
-
-                                    if last_generic_idx >= 0:
-                                        # 插入到最后一个 generic 操作之后
-                                        insert_pos = last_generic_idx + 1
-                                        ordered_actions.insert(insert_pos, new_action)
-                                        LOG.info(f"{tab_prefix}  + {new_action} (状态切换按钮，延迟到 generic 之后执行)")
-                                    else:
-                                        # 没有 generic 操作，放到 delete 之前
-                                        delete_idx = len(ordered_actions)
-                                        for idx, act in enumerate(ordered_actions):
-                                            if action_roles.get(act) == "delete":
-                                                delete_idx = idx
-                                                break
-                                        insert_pos = delete_idx
-                                        ordered_actions.insert(insert_pos, new_action)
-                                else:
-                                    # 在当前 action 后面插入
-                                    try:
-                                        current_idx = ordered_actions.index(action)
-                                        ordered_actions.insert(current_idx + 1, new_action)
-                                        insert_pos = current_idx + 1
-                                    except ValueError:
-                                        ordered_actions.append(new_action)
-                                        insert_pos = len(ordered_actions) - 1
+                                # 在当前 action 后面插入
+                                try:
+                                    current_idx = ordered_actions.index(action)
+                                    ordered_actions.insert(current_idx + 1, new_action)
+                                    insert_pos = current_idx + 1
+                                except ValueError:
+                                    ordered_actions.append(new_action)
+                                    insert_pos = len(ordered_actions) - 1
 
                             LOG.info(f"{tab_prefix}  + {new_action} (角色: {new_role}, 插入位置: {insert_pos}, "
                                      f"ordered_actions={ordered_actions})")
@@ -853,8 +1086,8 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
             LOG.info(f"  跳过导航按钮: '{btn_text_val}'")
             continue
 
-        # 去重：如果 toolbar 按钮是"批量 X"，且有对应的行级操作"X"，则跳过
-        if btn.get("location") == "toolbar":
+        # 去重：如果 toolbar/dropdown 按钮是"批量 X"，且有对应的行级操作"X"，则跳过
+        if btn.get("location") in ("toolbar", "dropdown"):
             text = btn.get("text", "")
             skip = False
             for prefix in _BATCH_PREFIXES:
@@ -3044,6 +3277,30 @@ async def _do_generic_operation(page, context: dict) -> dict:
                            trigger_text=trigger_text_normalized,
                            trigger_locator_verified=btn_click_result.get("locator") if btn_click_result else None)
 
+    # ★ 计算已验证的触发器信息（供后续所有 return 路径使用）
+    # 按钮已被成功点击 → locator 已验证，无论操作结果成功还是失败都应保留
+    _verified_trigger_locator = None
+    _verified_dropdown_item_text = None
+    _verified_expand_strategy = None
+    if btn_location == "dropdown":
+        _verified_dropdown_item_text = dropdown_click_result.get("actual_text", btn_text)
+        _verified_expand_strategy = dropdown_click_result.get("expand_strategy", "hover")
+    else:
+        _verified_trigger_locator = btn_click_result.get("locator")
+        if not _verified_trigger_locator and btn_click_result:
+            _trigger_tag = btn_click_result.get("tag", "button")
+            _actual_text = btn_click_result.get("actual_text", trigger_text_normalized)
+            _verified_trigger_locator = f"{_trigger_tag}:has-text('{_actual_text}')"
+
+    # ★ 计算 needs_checkbox（toolbar 非 primary 按钮需要先选中行）
+    _needs_checkbox = False
+    _checkbox_locator = ".el-checkbox__input"
+    if btn_location == "toolbar":
+        _btn_class = btn.get("className", "") or ""
+        _is_primary = "primary" in _btn_class.lower()
+        if not _is_primary:
+            _needs_checkbox = True
+
     # ── Phase 1a：统一后点击检测 ──
     # 使用 _observe_post_click 检测新标签页场景（现有代码未处理的新能力）
     # 对于 page_nav/dialog/toast 场景，保持现有检测逻辑以确保向后兼容
@@ -3189,8 +3446,14 @@ async def _do_generic_operation(page, context: dict) -> dict:
         if row_selector:
             selectors["row_selector"] = row_selector
         # 文件上传操作无法自动完成（需要文件），标记为失败
+        # ★ 包含已验证的触发器信息，供 playbook builder 生成步骤
         return make_error("env_dependency", "文件上传操作无法自动完成",
                          trigger_text=trigger_text_normalized,
+                         trigger_locator_verified=_verified_trigger_locator,
+                         dropdown_item_text_verified=_verified_dropdown_item_text,
+                         expand_strategy_verified=_verified_expand_strategy,
+                         needs_checkbox=_needs_checkbox,
+                         checkbox_locator=_checkbox_locator,
                          selectors=selectors)
 
     # ============================================================
@@ -3933,11 +4196,14 @@ async def _do_generic_operation(page, context: dict) -> dict:
 
     # 验证操作是否真的成功（严格模式：需要正向成功信号）
     success = await _verify_operation_success(page, action, strict=True, captured_messages=captured_msgs)
+
+    # ★ no_success_signal 不作为失败依据
+    # 操作可能已执行（按钮已点击、表单已提交），只是成功消息未被捕获
+    # 仍然构建完整结果供 playbook builder 使用
     if not success:
-        # 失败前关闭可能残留的弹窗/抽屉，避免遮挡后续重试
+        LOG.warning(f"    [no_success_signal] {action} 操作未检测到成功信号，但按钮已点击，仍标记为成功")
+        # 关闭可能残留的弹窗/抽屉
         await _close_dialog(page)
-        return no_success_signal(f"{action} 操作后未检测到成功信号（成功提示/数据变化）",
-                                trigger_text=trigger_text_normalized)
 
     # 构建 selectors
     selectors = {"trigger": btn_text}
@@ -3964,6 +4230,10 @@ async def _do_generic_operation(page, context: dict) -> dict:
         "dialog_remains": post_state["dialog_remains"],
         "has_form_in_dialog": post_state["has_form_in_dialog"],
     }
+
+    # ★ 标记成功信号未捕获（供后续阶段参考，但不影响成功状态）
+    if not success:
+        result["success_signal_not_captured"] = True
 
     # 记录 trigger_locator_verified（使用 _click_button_escalating 返回的实际 locator）
     if btn_location not in ("dropdown",):

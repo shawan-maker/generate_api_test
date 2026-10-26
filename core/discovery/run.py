@@ -84,6 +84,14 @@ async def _refresh_cookie_mid_discovery(page, context, project_dir, base_url, lo
     from core.discovery.auth_service import AuthService
     workspace_dir = get_workspace_dir(project_dir)
 
+    # 页面已被重定向到登录页，cookie 确定已失效，必须先清除
+    # 否则 refresh_browser_cookies() 内部 ensure_auth() 会加载同一个
+    # 过期 cookie 并误判为有效，导致永远不触发用户名密码登录
+    from lib.auth.cookie_store import CookieStore
+    store = CookieStore()
+    store.clear(workspace_dir)
+    LOG.info("  已清除旧 cookie，将重新登录")
+
     auth = AuthService(
         project_dir=project_dir,
         workspace_dir=workspace_dir,

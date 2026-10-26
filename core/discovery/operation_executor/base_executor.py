@@ -69,7 +69,16 @@ async def wait_for_spa_ready(page, max_rounds: int = 6) -> bool:
 
     for wait_round in range(max_rounds):
         state = await page.evaluate("""() => {
-            const table = document.querySelector('.el-table');
+            // 找到第一个可见的 el-table（跳过 display:none 的 tab 中的空表格）
+            const tables = document.querySelectorAll('.el-table');
+            let table = null;
+            for (const t of tables) {
+                if (t.offsetWidth > 0 && t.offsetHeight > 0) {
+                    table = t;
+                    break;
+                }
+            }
+            // 只查主表格体的行（固定列是 DOM 克隆，避免重复计数）
             const rows = table ? table.querySelectorAll('.el-table__body-wrapper tbody tr') : [];
             const hasCreateBtn = !!Array.from(document.querySelectorAll('button, .el-button'))
                 .find(b => {
@@ -613,10 +622,14 @@ async def _observe_post_click(page, url_before: str, timeout_ms: int = 3000,
 
     # 如果有新标签页事件，先等它（最多 1.5s，不浪费时间在非新标签场景）
     if new_page_event is not None:
+        LOG.info(f"    [observe] new_tab_event 状态: is_set={new_page_event.is_set()}, "
+                 f"context.pages={len(page.context.pages)}")
         try:
             await asyncio.wait_for(new_page_event.wait(), timeout=1.5)
         except (asyncio.TimeoutError, Exception):
             pass
+        LOG.info(f"    [observe] new_tab_event 等待后: is_set={new_page_event.is_set()}, "
+                 f"ref={'有' if (new_page_ref and new_page_ref[0]) else '无'}")
 
     # 检查新标签页
     if new_page_ref and new_page_ref[0] is not None:
@@ -771,16 +784,28 @@ def _setup_new_tab_listener(page) -> tuple:
     ref = [None]
 
     def on_page(p):
+        LOG.info(f"  [NEW-TAB-EVENT] 检测到新 page: url={p.url[:80]}")
         ref[0] = p
         event.set()
 
     page.context.on("page", on_page)
+
+    # ★ 新增：记录注册时的 page 状态
+    _current_pages = page.context.pages
+    LOG.info(f"  [TAB-DIAG] 注册监听: context.pages={len(_current_pages)}, "
+             f"urls={[p.url[:40] for p in _current_pages]}")
 
     def cleanup():
         try:
             page.context.remove_listener("page", on_page)
         except Exception:
             pass
+        # ★ 新增：cleanup 时检查 page 数量变化
+        _after_pages = page.context.pages
+        if len(_after_pages) != len(_current_pages):
+            LOG.warning(f"  [TAB-DIAG] ⚠️ page 数量变化: {len(_current_pages)} → {len(_after_pages)}")
+            for i, pg in enumerate(_after_pages):
+                LOG.warning(f"  [TAB-DIAG]   page[{i}]: {pg.url[:60]}")
 
     return event, ref, cleanup
 
