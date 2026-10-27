@@ -2359,6 +2359,7 @@ class MultiStepExecutor:
             Tuple[bool, Dict]: (是否成功, {"is_editable": bool, "option_text": str})
         """
         steps = self.kb.get_steps("el-select", self.framework)
+        select_sub_type = "select-single"  # 默认值，后续检测后覆盖
         if not steps:
             return False, {}
 
@@ -2402,11 +2403,11 @@ class MultiStepExecutor:
                 if mode == "multiple":
                     vals = has_default.get("values", [])
                     LOG.info(f"    el-select {label}: 多选已有默认值 {vals}，跳过")
-                    return True, {"is_editable": False, "option_text": ", ".join(vals)}
+                    return True, {"is_editable": False, "option_text": ", ".join(vals), "select_sub_type": select_sub_type}
                 else:
                     val = has_default.get("value", "")
                     LOG.info(f"    el-select {label}: 单选已有默认值 '{val}'，跳过")
-                    return True, {"is_editable": False, "option_text": val}
+                    return True, {"is_editable": False, "option_text": val, "select_sub_type": select_sub_type}
 
         expanded = await self._expand_by_selector(selector, label)
         if not expanded:
@@ -2421,7 +2422,6 @@ class MultiStepExecutor:
 
         # Step 2.5: Phase 2c - el-select 子类型检测
         # 在下拉框展开后检测子类型（single/multi/searchable/remote/group/tree）
-        select_sub_type = "select-single"  # 默认值
         sub_type_info = None
         try:
             sub_type_info = await self.page.evaluate("""(selector) => {
@@ -2582,9 +2582,9 @@ class MultiStepExecutor:
                 debug_info = verify.get("debug", {})
                 LOG.warning(f"    ⚠️ select 填充后验证失败: {label} 仍为空 "
                            f"debug={debug_info}")
-                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True}
+                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "select_sub_type": select_sub_type}
             LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
-            return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text)}
+            return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text), "select_sub_type": select_sub_type}
         else:
             # 不可编辑：等待选项加载，再选择第一个选项
             await self._wait_for_options_loaded()
@@ -2602,9 +2602,9 @@ class MultiStepExecutor:
                 debug_info = verify.get("debug", {})
                 LOG.warning(f"    ⚠️ select 填充后验证失败: {label} 仍为空 "
                            f"debug={debug_info}")
-                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True}
+                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "select_sub_type": select_sub_type}
             LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
-            return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text)}
+            return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text), "select_sub_type": select_sub_type}
 
     async def _fill_remote_select(self, selector: str, label: str) -> tuple:
         """远程搜索 el-select：展开后等待远程加载完成，选第一个
@@ -2654,6 +2654,10 @@ class MultiStepExecutor:
         """树形 el-select：诊断并选择树节点
 
         步骤：先详细诊断 Vue 组件结构和事件链，再选择正确的操作方式。
+
+        Returns:
+            tuple: (success: bool, detail: dict)
+                detail 包含 "option_text"（选中的节点文本）
         """
         LOG.info(f"    [select-tree] {label}: 开始诊断")
 
@@ -2811,7 +2815,10 @@ class MultiStepExecutor:
                 await self.page.wait_for_timeout(800)
                 verify = await self._verify_select_filled(label, selector)
                 if verify.get("filled"):
-                    return True, {"option_text": verify.get("displayed_value", set_result['text'])}
+                    return True, {
+                        "option_text": verify.get("displayed_value", set_result['text']),
+                        "select_sub_type": "select-tree"
+                    }
                 else:
                     LOG.warning(f"    [select-tree] {label}: handleNodeClick 后验证失败, displayed='{verify.get('displayed_value', '')}'")
 
@@ -2854,9 +2861,16 @@ class MultiStepExecutor:
 
         verify = await self._verify_select_filled(label, selector)
         if not verify.get("filled"):
-            return False, {"skipped_reason": "verify_failed", "option_text": node_info.get('text', '')}
+            return False, {
+                "skipped_reason": "verify_failed",
+                "option_text": node_info.get('text', ''),
+                "select_sub_type": "select-tree"
+            }
 
-        return True, {"option_text": verify.get("displayed_value", node_info.get('text', ''))}
+        return True, {
+            "option_text": verify.get("displayed_value", node_info.get('text', '')),
+            "select_sub_type": "select-tree"
+        }
 
     async def execute_select_by_sub_type(self, selector: str, sub_type: str, label: str) -> tuple:
         """根据子类型分发到不同处理方法

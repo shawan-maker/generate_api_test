@@ -1069,7 +1069,10 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
                 LOG.warning(f"    [sub-type] {label}: 缺少 selector，跳过")
                 continue
             try:
-                success, detail = await ff.execute_select_by_sub_type(selector, sub_type, label)
+                # execute_select_by_sub_type 是 MultiStepExecutor 的方法
+                from .form_filler import MultiStepExecutor
+                executor = MultiStepExecutor(page, None, ui_framework)
+                success, detail = await executor.execute_select_by_sub_type(selector, sub_type, label)
                 if success:
                     filled_count += 1
                     LOG.info(f"    [sub-type] {label}: {sub_type} 填充成功")

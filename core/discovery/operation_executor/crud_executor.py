@@ -282,12 +282,13 @@ async def discover_and_validate(page, username: str = "test") -> dict:
     ui_result = await discover_all(page)
 
     # Phase B: 业务闭环验证
-    validated = await _validate_business_flow(page, ui_result, username)
+    validated, execution_order = await _validate_business_flow(page, ui_result, username)
     if validated is None:
         # 关键操作验证失败
         return None
 
     ui_result["validated_operations"] = validated
+    ui_result["execution_order"] = execution_order
     return ui_result
 
 
@@ -492,7 +493,7 @@ async def _validate_single_tab_crud(
     username: str,
     tab_name: str = "",
     tab_locator: str = "",
-) -> dict:
+) -> tuple:
     """在单个 Tab 上下文中执行完整 CRUD 验证。
 
     Args:
@@ -625,6 +626,9 @@ async def _validate_single_tab_crud(
     button_states = {}  # {button_text: is_enabled}
     executed_actions = set()  # 已执行的按钮集合
 
+    # ★ 初始化执行顺序追踪（记录实际执行的操作序列，包括级联操作）
+    execution_order = []
+
     # 记录每个 action 的语义角色
     action_roles = {}
     for action in buttons_by_action:
@@ -724,6 +728,8 @@ async def _validate_single_tab_crud(
                     if created_marker:
                         LOG.info(f"{tab_prefix}create 成功但 marker 为空，使用 fallback marker: {created_marker}")
                 validated[action] = result
+                # ★ 记录执行顺序
+                execution_order.append({"action": action, "phase": "main", "role": "create"})
             else:
                 fallback = await _extract_fallback_marker(page)
                 if fallback:
@@ -739,6 +745,8 @@ async def _validate_single_tab_crud(
                 LOG.info(f"{tab_prefix}[QUERY-DEBUG] search_input 结果: success={result.get('success') if result else None}, error={result.get('error') if result else 'None'}")
                 if result and result.get("success"):
                     validated[action] = result
+                    # ★ 记录执行顺序
+                    execution_order.append({"action": action, "phase": "main", "role": "query"})
                 else:
                     LOG.warning(f"{tab_prefix}[QUERY-DEBUG] query 验证失败（search_input）: {result}")
             else:
@@ -748,6 +756,8 @@ async def _validate_single_tab_crud(
                 LOG.info(f"{tab_prefix}[QUERY-DEBUG] button 结果: success={result.get('success') if result else None}, error={result.get('error') if result else 'None'}")
                 if result and result.get("success"):
                     validated[action] = result
+                    # ★ 记录执行顺序
+                    execution_order.append({"action": action, "phase": "main", "role": "query"})
                 else:
                     LOG.warning(f"{tab_prefix}[QUERY-DEBUG] query 验证失败（button）: {result}")
 
@@ -760,6 +770,8 @@ async def _validate_single_tab_crud(
             )
             if result and result.get("success"):
                 validated[action] = result
+                # ★ 记录执行顺序
+                execution_order.append({"action": action, "phase": "main", "role": "detail"})
 
         elif role == "update":
             if btn_location in ("row_action", "dropdown"):
@@ -776,6 +788,8 @@ async def _validate_single_tab_crud(
                     )
                     if result and result.get("success"):
                         validated[action] = result
+                        # ★ 记录执行顺序
+                        execution_order.append({"action": action, "phase": "main", "role": "update"})
                     elif result:
                         validated[action] = result
             else:
@@ -788,6 +802,8 @@ async def _validate_single_tab_crud(
                 )
                 if result and result.get("success"):
                     validated[action] = result
+                    # ★ 记录执行顺序
+                    execution_order.append({"action": action, "phase": "main", "role": "update"})
                 elif result:
                     validated[action] = result
 
@@ -805,6 +821,8 @@ async def _validate_single_tab_crud(
                     if result and result.get("success"):
                         validated[action] = result
                         created_marker = None
+                        # ★ 记录执行顺序
+                        execution_order.append({"action": action, "phase": "main", "role": "delete"})
                     elif result:
                         validated[action] = result
             else:
@@ -823,6 +841,8 @@ async def _validate_single_tab_crud(
                 if result and result.get("success"):
                     validated[action] = result
                     created_marker = None
+                    # ★ 记录执行顺序
+                    execution_order.append({"action": action, "phase": "main", "role": "delete"})
                 elif result:
                     validated[action] = result
 
@@ -843,6 +863,15 @@ async def _validate_single_tab_crud(
             if result and result.get("success"):
                 validated[action] = result
                 executed_actions.add(action)
+                # ★ 记录执行顺序
+                execution_order.append({"action": action, "phase": "main", "role": "generic"})
+            elif result and result.get("nav_info"):
+                # ★ 部分成功的操作（如授权）：有 nav_info 但 success=False
+                # 记录到 validated 但标记为 partial_success
+                result["partial_success"] = True
+                validated[action] = result
+                executed_actions.add(action)
+                execution_order.append({"action": action, "phase": "main", "role": "generic", "partial_success": True})
 
         # ★ 通用状态变化检测与级联执行
         # 操作成功后，扫描按钮状态变化，自动执行新启用的按钮
@@ -854,10 +883,17 @@ async def _validate_single_tab_crud(
                 executed_actions, form_filler, tab_name, tab_locator, ui_result, tab_prefix
             )
 
-            # 将级联执行的结果写入 validated
+            # 将级联执行的结果写入 validated，并记录执行顺序
             for cascade_action, cascade_result in cascade_results.items():
                 if cascade_result:
                     validated[cascade_action] = cascade_result
+                    # ★ 记录级联操作的执行顺序
+                    execution_order.append({
+                        "action": cascade_action,
+                        "phase": "cascade",
+                        "triggered_by": action,
+                        "role": action_roles.get(cascade_action, "generic")
+                    })
 
         # ★ 增量发现：操作成功后，扫描当前行发现新出现的按钮
         # 适用场景：暂停→启用、禁用→启用 等状态依赖的操作对
@@ -948,10 +984,10 @@ async def _validate_single_tab_crud(
                 LOG.error(f"{tab_prefix}浏览器已关闭，停止后续操作验证")
                 break
 
-    return validated
+    return validated, execution_order
 
 
-async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
+async def _validate_business_flow(page, ui_result: dict, username: str) -> tuple:
     """按动态顺序逐一验证按钮的业务闭环。
 
     支持多 Tab 页面：检测到多个 tab 时，逐一切换 tab 并独立验证每个 tab 的 CRUD 操作。
@@ -1125,6 +1161,7 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
 
     # 按 Tab 独立验证
     validated = {}
+    all_execution_order = []  # ★ 聚合所有 tab 的执行顺序
     tabs_info = page_structure.get("tabs", [])
 
     for tab_name, tab_buttons in buttons_by_tab.items():
@@ -1177,13 +1214,16 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
                 LOG.warning(f"    [TAB-SWITCH-DIAG] 诊断失败: {e}")
 
         # 在该 Tab 上下文中执行完整 CRUD 验证
-        tab_result = await _validate_single_tab_crud(
+        tab_validated, tab_exec_order = await _validate_single_tab_crud(
             page, tab_buttons, ui_result, username, tab_name,
             tab_locator=tab_info.get("locator", "") if tab_name and tab_info else "",
         )
 
+        # 聚合 execution_order
+        all_execution_order.extend(tab_exec_order)
+
         # 合并结果（多 Tab 时加前缀）
-        for action, result in tab_result.items():
+        for action, result in tab_validated.items():
             result["tab"] = tab_name
             if tab_name and len(tabs_info) > 1:
                 # 多 Tab 页面：操作名加 tab 前缀（避免冲突）
@@ -1227,10 +1267,10 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> dict:
     if failed_critical:
         LOG.error(f"  Stage 1 关键操作验证失败: {failed_critical}")
         LOG.info(f"  返回 {len(validated)} 个已验证操作（含失败操作）供 Stage 2 使用")
-        return validated
+        return validated, all_execution_order
 
     LOG.info(f"  Stage 1 验证完成: {len(validated)} 个操作通过")
-    return validated
+    return validated, all_execution_order
 
 
 
