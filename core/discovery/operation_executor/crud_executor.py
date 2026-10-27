@@ -42,6 +42,34 @@ from core.discovery.shared import get_row_selector_by_marker
 LOG = logging.getLogger("crud_executor")
 
 
+def _extract_radio_fields_from_nav(nav_info: dict) -> list:
+    """从 nav_info.form_fields 中提取 radio 字段到顶层。
+
+    Args:
+        nav_info: 导航探索返回的信息字典
+
+    Returns:
+        radio_field_details 列表
+    """
+    radio_details = []
+    form_fields = nav_info.get("form_fields", [])
+
+    for field in form_fields:
+        if field.get("kb_category") == "radio":
+            radio_details.append({
+                "label": field.get("label"),
+                "kb_category": "radio",
+                "option_locator": field.get("selector"),
+                "option_text": field.get("firstOptionText", ""),
+                "fill_rule": field.get("fill_rule", {}),
+            })
+            # 传递 cascade_actions（如 radio 触发 transfer-box）
+            if "cascade_actions" in field:
+                radio_details[-1]["cascade_actions"] = field["cascade_actions"]
+
+    return radio_details
+
+
 class ButtonStateTracker:
     """按钮状态追踪器
 
@@ -289,6 +317,12 @@ async def discover_and_validate(page, username: str = "test") -> dict:
 
     ui_result["validated_operations"] = validated
     ui_result["execution_order"] = execution_order
+
+    # 清理空 tab 字段（不污染输出）
+    for op_name, op_data in validated.items():
+        if isinstance(op_data, dict) and "tab" in op_data and not op_data["tab"]:
+            del op_data["tab"]
+
     return ui_result
 
 
@@ -629,6 +663,50 @@ async def _validate_single_tab_crud(
     # ★ 初始化执行顺序追踪（记录实际执行的操作序列，包括级联操作）
     execution_order = []
 
+    def _record_execution(action_name: str, phase: str, role: str,
+                         triggered_by: str = "", partial_success: bool = False):
+        """记录执行顺序，自动去重 cascade 和 main 阶段的重复操作。
+
+        当同一操作既作为 cascade（状态恢复）又作为 main（业务验证）执行时，
+        会合并为一条记录，用 intent 字段区分意图。
+        """
+        # 查找是否已存在同名 cascade 记录
+        existing_cascade = next(
+            (e for e in execution_order
+             if e["action"] == action_name and e.get("phase") == "cascade"),
+            None
+        )
+
+        if phase == "cascade" and existing_cascade:
+            # 已存在 cascade 记录，更新
+            existing_cascade["triggered_by"] = triggered_by
+            existing_cascade["role"] = role
+            existing_cascade["intent"] = "state_restore"
+        elif phase == "main" and existing_cascade:
+            # main 阶段遇到已有 cascade 的操作，升级为主操作
+            existing_cascade["phase"] = "main"
+            existing_cascade["role"] = role
+            existing_cascade["intent"] = "business_validate"
+            # 移除 triggered_by（不再是纯 cascade）
+            existing_cascade.pop("triggered_by", None)
+            if partial_success:
+                existing_cascade["partial_success"] = True
+        else:
+            # 新增记录
+            entry = {
+                "action": action_name,
+                "phase": phase,
+                "role": role,
+            }
+            if phase == "cascade" and triggered_by:
+                entry["triggered_by"] = triggered_by
+                entry["intent"] = "state_restore"
+            else:
+                entry["intent"] = "business_validate"
+            if partial_success:
+                entry["partial_success"] = True
+            execution_order.append(entry)
+
     # 记录每个 action 的语义角色
     action_roles = {}
     for action in buttons_by_action:
@@ -729,7 +807,7 @@ async def _validate_single_tab_crud(
                         LOG.info(f"{tab_prefix}create 成功但 marker 为空，使用 fallback marker: {created_marker}")
                 validated[action] = result
                 # ★ 记录执行顺序
-                execution_order.append({"action": action, "phase": "main", "role": "create"})
+                _record_execution(action, "main", "create")
             else:
                 fallback = await _extract_fallback_marker(page)
                 if fallback:
@@ -746,7 +824,7 @@ async def _validate_single_tab_crud(
                 if result and result.get("success"):
                     validated[action] = result
                     # ★ 记录执行顺序
-                    execution_order.append({"action": action, "phase": "main", "role": "query"})
+                    _record_execution(action, "main", "query")
                 else:
                     LOG.warning(f"{tab_prefix}[QUERY-DEBUG] query 验证失败（search_input）: {result}")
             else:
@@ -757,7 +835,7 @@ async def _validate_single_tab_crud(
                 if result and result.get("success"):
                     validated[action] = result
                     # ★ 记录执行顺序
-                    execution_order.append({"action": action, "phase": "main", "role": "query"})
+                    _record_execution(action, "main", "query")
                 else:
                     LOG.warning(f"{tab_prefix}[QUERY-DEBUG] query 验证失败（button）: {result}")
 
@@ -771,7 +849,7 @@ async def _validate_single_tab_crud(
             if result and result.get("success"):
                 validated[action] = result
                 # ★ 记录执行顺序
-                execution_order.append({"action": action, "phase": "main", "role": "detail"})
+                _record_execution(action, "main", "detail")
 
         elif role == "update":
             if btn_location in ("row_action", "dropdown"):
@@ -789,7 +867,7 @@ async def _validate_single_tab_crud(
                     if result and result.get("success"):
                         validated[action] = result
                         # ★ 记录执行顺序
-                        execution_order.append({"action": action, "phase": "main", "role": "update"})
+                        _record_execution(action, "main", "update")
                     elif result:
                         validated[action] = result
             else:
@@ -803,7 +881,7 @@ async def _validate_single_tab_crud(
                 if result and result.get("success"):
                     validated[action] = result
                     # ★ 记录执行顺序
-                    execution_order.append({"action": action, "phase": "main", "role": "update"})
+                    _record_execution(action, "main", "update")
                 elif result:
                     validated[action] = result
 
@@ -822,7 +900,7 @@ async def _validate_single_tab_crud(
                         validated[action] = result
                         created_marker = None
                         # ★ 记录执行顺序
-                        execution_order.append({"action": action, "phase": "main", "role": "delete"})
+                        _record_execution(action, "main", "delete")
                     elif result:
                         validated[action] = result
             else:
@@ -842,7 +920,7 @@ async def _validate_single_tab_crud(
                     validated[action] = result
                     created_marker = None
                     # ★ 记录执行顺序
-                    execution_order.append({"action": action, "phase": "main", "role": "delete"})
+                    _record_execution(action, "main", "delete")
                 elif result:
                     validated[action] = result
 
@@ -864,14 +942,14 @@ async def _validate_single_tab_crud(
                 validated[action] = result
                 executed_actions.add(action)
                 # ★ 记录执行顺序
-                execution_order.append({"action": action, "phase": "main", "role": "generic"})
+                _record_execution(action, "main", "generic")
             elif result and result.get("nav_info"):
                 # ★ 部分成功的操作（如授权）：有 nav_info 但 success=False
                 # 记录到 validated 但标记为 partial_success
                 result["partial_success"] = True
                 validated[action] = result
                 executed_actions.add(action)
-                execution_order.append({"action": action, "phase": "main", "role": "generic", "partial_success": True})
+                _record_execution(action, "main", "generic", partial_success=True)
 
         # ★ 通用状态变化检测与级联执行
         # 操作成功后，扫描按钮状态变化，自动执行新启用的按钮
@@ -888,12 +966,7 @@ async def _validate_single_tab_crud(
                 if cascade_result:
                     validated[cascade_action] = cascade_result
                     # ★ 记录级联操作的执行顺序
-                    execution_order.append({
-                        "action": cascade_action,
-                        "phase": "cascade",
-                        "triggered_by": action,
-                        "role": action_roles.get(cascade_action, "generic")
-                    })
+                    _record_execution(cascade_action, "cascade", action_roles.get(cascade_action, "generic"), triggered_by=action)
 
         # ★ 增量发现：操作成功后，扫描当前行发现新出现的按钮
         # 适用场景：暂停→启用、禁用→启用 等状态依赖的操作对
@@ -983,6 +1056,21 @@ async def _validate_single_tab_crud(
             if "has been closed" in str(e):
                 LOG.error(f"{tab_prefix}浏览器已关闭，停止后续操作验证")
                 break
+
+    # ★ 记录未验证的 toolbar 按钮
+    validated_actions = set(validated.keys())
+    toolbar_buttons = ui_result.get("toolbar_buttons", [])
+    for btn in toolbar_buttons:
+        btn_text = btn.get("text", "")
+        if btn_text and btn_text not in validated_actions:
+            execution_order.append({
+                "action": btn_text,
+                "phase": "main",
+                "role": "unvalidated",
+                "reason": "toolbar_button_not_validated",
+                "trigger_text": btn_text,
+                "trigger_locator": btn.get("locator", ""),
+            })
 
     return validated, execution_order
 
@@ -1592,7 +1680,7 @@ async def _do_create(page, context: dict) -> dict:
                 "label": field.get("label"),
                 "kb_category": kb_cat,
                 "selector": field.get("selector"),
-                "fill_rule": field.get("fill_rule", {}),
+                "fill_rule": fill_rules.get(field.get("label", ""), {}),  # ★ 使用已生成的 fill_rules
                 "is_editable": False,
                 "option_text": "",
             }
@@ -3134,6 +3222,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
     dialog_fill_details = []
     # 收集表单字段详情和提交按钮信息（用于 playbook 序列化）
     edit_field_details = []
+    radio_field_details_local = []
     submit_result = {}
 
     # 记录点击前的 URL（用于导航保护）
@@ -3367,6 +3456,9 @@ async def _do_generic_operation(page, context: dict) -> dict:
             max_depth=3
         )
 
+        # ★ 提取 radio 字段到操作结果顶层
+        radio_field_details = _extract_radio_fields_from_nav(nav_info)
+
         # 关闭新标签页
         try:
             await new_page.close()
@@ -3387,6 +3479,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
                 "fill_data": nav_info.get("fill_data", {}),
                 "submit_result": submit_result,
                 "interaction_mode": "new_tab",
+                "radio_field_details": radio_field_details,
             }
         else:
             error_type = nav_info.get("error_type", "cross_page_no_submit")
@@ -3394,7 +3487,8 @@ async def _do_generic_operation(page, context: dict) -> dict:
             return make_error(error_type, error_text,
                              trigger_text=trigger_text_normalized,
                              nav_info=nav_info,
-                             selectors=selectors)
+                             selectors=selectors,
+                             radio_field_details=radio_field_details)
 
     # ── 现有检测逻辑（向后兼容） ──
     # 注意：_observe_post_click 已做了 wait + loading_complete，
@@ -3411,6 +3505,9 @@ async def _do_generic_operation(page, context: dict) -> dict:
             depth=0,
             max_depth=3
         )
+
+        # ★ 提取 radio 字段到操作结果顶层
+        radio_field_details = _extract_radio_fields_from_nav(nav_info)
 
         # 导航回原始页面
         await _navigate_back_to_list(page, url_before, tab_name=_tab_name, tab_locator=_tab_locator)
@@ -3431,7 +3528,8 @@ async def _do_generic_operation(page, context: dict) -> dict:
                     "trigger_text": trigger_text_normalized,
                     "selectors": selectors,
                     "fill_data": nav_info.get("fill_data", {}),
-                    "submit_result": submit_result
+                    "submit_result": submit_result,
+                    "radio_field_details": radio_field_details,
                 }
             else:
                 # 提交失败
@@ -3439,7 +3537,8 @@ async def _do_generic_operation(page, context: dict) -> dict:
                                  f"跨页面操作提交失败: {submit_result.get('button_text', 'unknown')}",
                                  nav_info=nav_info,
                                  selectors=selectors,
-                                 submit_result=submit_result)
+                                 submit_result=submit_result,
+                                 radio_field_details=radio_field_details)
         else:
             # 没有执行提交操作，检查是否有错误
             error_type = nav_info.get("error_type", "")
@@ -3450,13 +3549,15 @@ async def _do_generic_operation(page, context: dict) -> dict:
                 return make_error(error_type, error_text,
                                  trigger_text=trigger_text_normalized,
                                  nav_info=nav_info,
-                                 selectors=selectors)
+                                 selectors=selectors,
+                                 radio_field_details=radio_field_details)
             else:
                 # 没有错误但没有提交操作（可能是页面没有表单或关键按钮）
                 return make_error("cross_page_no_submit", "跨页面操作后未执行提交操作",
                                  trigger_text=trigger_text_normalized,
                                  nav_info=nav_info,
-                                 selectors=selectors)
+                                 selectors=selectors,
+                                 radio_field_details=radio_field_details)
 
     await wait_for_loading_complete(page)
 
@@ -3642,8 +3743,10 @@ async def _do_generic_operation(page, context: dict) -> dict:
 
             # 收集填充的字段详情（用于 playbook 生成）
             edit_field_details = []
+            radio_field_details_local = []
             for field in fields:
                 input_type = field.get("inputType", "text")
+                kb_category = field.get("kb_category", "")
                 # 收集 input 类型字段（包括 number、text 等）
                 if field.get("type") == "input" and field.get("selector"):
                     detail = {
@@ -3660,6 +3763,18 @@ async def _do_generic_operation(page, context: dict) -> dict:
                     if field.get("visible_index") is not None:
                         detail["visible_index"] = field["visible_index"]
                     edit_field_details.append(detail)
+                # ★ 提取 radio 字段到顶层
+                elif kb_category == "radio":
+                    radio_detail = {
+                        "label": field.get("label"),
+                        "kb_category": "radio",
+                        "option_locator": field.get("selector"),
+                        "option_text": field.get("firstOptionText", ""),
+                        "fill_rule": field.get("fill_rule", {}),
+                    }
+                    if "cascade_actions" in field:
+                        radio_detail["cascade_actions"] = field["cascade_actions"]
+                    radio_field_details_local.append(radio_detail)
 
             if filled == 0:
                 LOG.info(f"    无可填字段，尝试直接提交")
@@ -4313,6 +4428,10 @@ async def _do_generic_operation(page, context: dict) -> dict:
     # 记录确认按钮实际文本（供 playbook 生成精确 locator）
     if confirmed:
         result["confirm_button_text_verified"] = confirmed
+
+    # ★ 提取 radio 字段到操作结果顶层
+    if radio_field_details_local:
+        result["radio_field_details"] = radio_field_details_local
 
     return result
 

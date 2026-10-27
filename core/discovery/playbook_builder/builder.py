@@ -744,9 +744,52 @@ def _build_create_steps(op_data: dict) -> list:
                 continue
 
             rule = fill_rules.get(label, {})
+
+            # ★ 生成多候选 locator（与 edit 操作对齐）
+            # 优先级：placeholder > label > original > visible_index
+            candidates = []
+
+            # 候选 1: placeholder（最稳定）
+            placeholder = field.get("placeholder", "")
+            if placeholder:
+                escaped_ph = placeholder.replace('"', '\\"')
+                candidates.append({
+                    "strategy": "placeholder",
+                    "selector": f'input[placeholder="{escaped_ph}"]',
+                })
+
+            # 候选 2: label-based（语义化，跨会话稳定）
+            if label and not label.startswith('字段'):
+                escaped_label = label.replace('"', '\\"')
+                candidates.append({
+                    "strategy": "label",
+                    "selector": f'.el-form-item:has(.el-form-item__label:has-text("{escaped_label}")) input',
+                })
+
+            # 候选 3: original selector（原始路径）
+            if selector:
+                candidates.append({
+                    "strategy": "original",
+                    "selector": selector,
+                })
+
+            # 候选 4: visible_index（JS 定位）
+            visible_index = field.get("visible_index")
+            if visible_index is not None:
+                candidates.append({
+                    "strategy": "visible_index",
+                    "selector": f"__js_index__:{visible_index}",
+                })
+
+            # 默认主选择器：第一个候选；fallbacks：其余候选
+            primary = candidates[0] if candidates else {"strategy": "none", "selector": selector or ""}
+            fallbacks = candidates[1:] if len(candidates) > 1 else []
+
             field_info = {
                 "label": label,
-                "playwright_locator": selector,
+                "playwright_locator": primary.get("selector", ""),
+                "locator_strategy": primary.get("strategy", ""),
+                "fallback_locators": fallbacks,
                 "type": field_type,
                 "kb_category": kb_category,
                 "fill_rule": rule
@@ -795,6 +838,9 @@ def _build_create_steps(op_data: dict) -> list:
                 # 保留 select_sub_type 供 Stage 2 路由到专用处理器
                 if "select_sub_type" in ms_field:
                     field_info["select_sub_type"] = ms_field["select_sub_type"]
+                # ★ 添加 selection_strategy（如果存在）
+                if "selection_strategy" in ms_field:
+                    field_info["selection_strategy"] = ms_field["selection_strategy"]
             else:
                 # 非选择框字段：保留原有逻辑
                 field_info["option_text"] = ms_field.get("option_text", "")
@@ -1125,6 +1171,9 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
                 # 保留 select_sub_type 供 Stage 2 路由到专用处理器
                 if "select_sub_type" in ms_field:
                     field_info["select_sub_type"] = ms_field["select_sub_type"]
+                # ★ 添加 selection_strategy（如果存在）
+                if "selection_strategy" in ms_field:
+                    field_info["selection_strategy"] = ms_field["selection_strategy"]
             else:
                 # 非选择框字段：保留原有逻辑
                 field_info["option_text"] = ms_field.get("option_text", "")

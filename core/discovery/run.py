@@ -298,6 +298,20 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str,
             else:
                 LOG.warning(f"  Phase F: 仅非关键元素缺失（{len(missing)} 个），继续")
 
+    # 清理调试字段（不污染输出）
+    if "_tabDebug" in ui_result:
+        del ui_result["_tabDebug"]
+    if "_debug_ipCheck" in ui_result:
+        del ui_result["_debug_ipCheck"]
+    if "_debug_multiInput" in ui_result:
+        del ui_result["_debug_multiInput"]
+    if "_debug_addBtn" in ui_result:
+        del ui_result["_debug_addBtn"]
+    if "_debug_multiSelect" in ui_result:
+        del ui_result["_debug_multiSelect"]
+    if "_debug_composite" in ui_result:
+        del ui_result["_debug_composite"]
+
     # 保存
     ws_dir = get_workspace_dir(project_dir)
     ws_dir.mkdir(parents=True, exist_ok=True)

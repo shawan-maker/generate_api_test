@@ -16,10 +16,11 @@ import logging
 import json
 from typing import Optional
 from .button_driver import ButtonDriver, confirm_dialog
-from .form_filler import apply_fill_rule, FormFiller
+from .form_filler import FormFiller
 from .wait_helpers import wait_for_table_ready
 from .. import const
 from ..shared import (
+    apply_fill_rule,
     extract_marker_from_row,
     install_message_capture,
     get_captured_messages,

@@ -15,6 +15,7 @@ from playwright.async_api import Page, Locator
 from typing import Dict, List, Tuple
 
 from .. import const
+from ..shared import apply_fill_rule
 
 LOG = logging.getLogger("form_filler")
 
@@ -977,17 +978,17 @@ class FormFiller:
     @staticmethod
     def _default_for_type(field_type: str, input_type: str, ts: str, username: str) -> str:
         """根据字段类型生成合理的默认填充值。"""
+        import random as _rand
         if field_type == "textarea":
             return f"auto_test_{ts}"
         if input_type == "number":
-            return "1"
+            return str(_rand.randint(1, 100))
         if input_type == "email":
             return f"at_{ts}@test.com"
         if input_type == "tel":
-            import random as _rand
             return f"138{_rand.randint(10000000, 99999999)}"
         if input_type == "password":
-            return "Test@123456"
+            return f"Test@{_rand.randint(100000, 999999)}"
         if input_type == "url":
             return f"https://test-{ts}.example.com"
         # 默认文本
@@ -1355,11 +1356,11 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
 
                     if (widthRatio < 1.5) {{
                         const ipVersion = /ipv6|v6/i.test(label) ? 'v6' : 'v4';
-                        const subSelectors = independentInputs.map(inp => _buildSelector(inp));
+                        const subSelectors = independentInputs.map(inp => _buildSelector(inp, label));
 
                         fields.push({{
                             label, type: 'ip-input', kb_category: 'ip-input',
-                            selector: _buildComponentSelector(fi, '{form_item}', fields.length),
+                            selector: _buildComponentSelector(fi, '{form_item}', fields.length, label),
                             subSelectors: subSelectors,
                             inputCount: independentInputs.length,
                             ipVersion: ipVersion,
@@ -1367,7 +1368,7 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                         }});
                         fields.push({{
                             label: label + '(掩码)', type: 'select', kb_category: 'el-select',
-                            selector: _buildSelector(selects[0]),
+                            selector: _buildSelector(selects[0], label + '(掩码)'),
                             required,
                         }});
                         return;
@@ -1411,26 +1412,26 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                 }});
                 independentInputs.forEach(inp => {{
                     fields.push({{ label, type: 'input', kb_category: 'input-generic',
-                                 selector: _buildSelector(inp),
+                                 selector: _buildSelector(inp, label),
                                  inputType: inp.type || 'text', required }});
                 }});
             }}
             else if (fi.querySelector('{cascader_container}')) {{
                 const cascaderIdx = fields.length;
                 fields.push({{ label, type: 'cascader', kb_category: 'el-cascader',
-                             selector: _buildComponentSelector(fi, '{cascader_container}', cascaderIdx), required }});
+                             selector: _buildComponentSelector(fi, '{cascader_container}', cascaderIdx, label), required }});
             }}
             else if (fi.querySelector('{date_picker}')) {{
                 const datePickerIdx = fields.length;
                 fields.push({{ label, type: 'date-picker', kb_category: 'date-picker',
-                             selector: _buildComponentSelector(fi, '{date_picker}', datePickerIdx), required }});
+                             selector: _buildComponentSelector(fi, '{date_picker}', datePickerIdx, label), required }});
             }}
             else if (selects.length > 0) {{
                 // 2.4 增强：处理 form-item 内的多个 select（如授权主体：类型选择 + 实体选择）
                 selects.forEach((sel, idx) => {{
                     const labelSuffix = selects.length > 1 ? '(' + (idx + 1) + ')' : '';
                     // 使用 _buildSelector 生成唯一 CSS 路径（区分同 form-item 内的多个 select）
-                    const selSelector = _buildSelector(sel);
+                    const selSelector = _buildSelector(sel, label + labelSuffix);
 
                     fields.push({{ label: label + labelSuffix, type: 'select', kb_category: 'el-select',
                                  selector: selSelector, required }});
@@ -1452,13 +1453,13 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                 const radioIdx = fields.length;
                 const firstRadio = fi.querySelector('{radio_button}, {radio_label}');
                 fields.push({{ label, type: 'radio', kb_category: 'radio',
-                             selector: _buildComponentSelector(fi, '{radio_group}', radioIdx), required,
+                             selector: _buildComponentSelector(fi, '{radio_group}', radioIdx, label), required,
                              firstOptionText: firstRadio ? firstRadio.textContent.trim() : '' }});
             }}
             else if (fi.querySelector('{checkbox_container}') && !fi.closest('{table_container}')) {{
                 const checkboxIdx = fields.length;
                 fields.push({{ label, type: 'checkbox', kb_category: 'form-checkbox',
-                             selector: _buildComponentSelector(fi, '{checkbox_container}', checkboxIdx), required }});
+                             selector: _buildComponentSelector(fi, '{checkbox_container}', checkboxIdx, label), required }});
             }}
             else {{
                 // 检测列表选择器（穿梭框 / transfer-like 组件）
@@ -1479,7 +1480,7 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                     fields.push({{
                         label, type: 'list-selector',
                         kb_category: 'list-selector',
-                        selector: _buildComponentSelector(fi, listPanel ? listPanel.tagName.toLowerCase() : 'div', listIdx),
+                        selector: _buildComponentSelector(fi, listPanel ? listPanel.tagName.toLowerCase() : 'div', listIdx, label),
                         required,
                         itemCount: listItems.length
                     }});
@@ -1600,7 +1601,7 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
 
                         fields.push({{
                             label, type: 'ip-input', kb_category: 'ip-input',
-                            selector: _buildComponentSelector(fi, '{form_item}', fields.length),
+                            selector: _buildComponentSelector(fi, '{form_item}', fields.length, label),
                             subSelectors: subSelectors,
                             inputCount: allInputs.length,
                             ipVersion: ipVersion,
@@ -1624,7 +1625,7 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                     const ir = mainInput.getBoundingClientRect();
                     if (ir.width > 0 && ir.height > 0) {{
                         fields.push({{ label, type: 'input', kb_category: 'input-generic',
-                                     selector: _buildSelector(mainInput),
+                                     selector: _buildSelector(mainInput, label),
                                      inputType: mainInput.type || 'text', required }});
                     }}
                 }} else if (allInputs.length === 1) {{
@@ -1633,12 +1634,12 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                     const ir = inp.getBoundingClientRect();
                     if (ir.width > 0 && ir.height > 0) {{
                         fields.push({{ label, type: 'input', kb_category: 'input-generic',
-                                     selector: _buildSelector(inp),
+                                     selector: _buildSelector(inp, label),
                                      inputType: inp.type || 'text', required }});
                     }}
                 }} else if (ta) {{
                     fields.push({{ label, type: 'textarea', kb_category: 'textarea-generic',
-                                 selector: _buildSelector(ta), required }});
+                                 selector: _buildSelector(ta, label), required }});
                 }}
                 }}
 
@@ -1705,7 +1706,7 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                 // ★ 返回完整字段信息，含多种定位特征用于跨会话定位
                 const fieldEntry = {{
                     label, type: 'input', kb_category: 'input-generic',
-                    selector: _buildSelector(inp),
+                    selector: _buildSelector(inp, label),
                     inputType: isNumber ? 'number' : (inp.type || 'text'),
                     required: false,
                     visible_index: currentVisibleIndex  // ★ 在 scope 内的可见字段顺序
@@ -1742,7 +1743,7 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                         label: label,
                         type: 'select',
                         kb_category: 'el-select',
-                        selector: _buildComponentSelector(fi, '{select_container}', selectIdx),
+                        selector: _buildComponentSelector(fi, '{select_container}', selectIdx, label),
                         required: fi.classList.contains('is-required') ||
                                    fi.querySelector('[class*="required"]') !== null,
                     }});
@@ -1759,10 +1760,17 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
             _debug_composite: _debug_composite,
         }};
 
-        function _buildSelector(element) {{
+        function _buildSelector(element, labelText) {{
+            // 优先级 1: #id（最稳定）
             if (element.id) return `#${{element.id}}`;
+            // 优先级 2: [name] 属性
             if (element.name) return `[name="${{element.name}}"]`;
-
+            // 优先级 3: Label-based CSS（新增，跨会话稳定）
+            if (labelText && labelText.length > 0 && !labelText.startsWith('字段')) {{
+                const escaped = labelText.replace(/"/g, '\\"');
+                return `.el-form-item:has(.el-form-item__label:has-text("${{escaped}}")) input`;
+            }}
+            // 优先级 4: DOM path（原有逻辑）
             const path = [];
             let current = element;
             while (current && current.nodeType === Node.ELEMENT_NODE) {{
@@ -1788,12 +1796,18 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
             return path.join(' > ');
         }}
 
-        function _buildComponentSelector(formItem, componentSelector, fieldIndex) {{
+        function _buildComponentSelector(formItem, componentSelector, fieldIndex, labelText) {{
             // 为复杂组件（select/cascader/date-picker/radio/checkbox）生成 CSS selector
             const component = formItem.querySelector(componentSelector);
             if (!component) return null;
 
-            // 使用 formItem 在直接子元素中的位置定位（避免 :has() 伪类，Playwright 不支持）
+            // 优先级 1: Label-based CSS（新增，跨会话稳定）
+            if (labelText && labelText.length > 0 && !labelText.startsWith('字段')) {{
+                const escaped = labelText.replace(/"/g, '\\"');
+                return `.el-form-item:has(.el-form-item__label:has-text("${{escaped}}")) ${{componentSelector}}`;
+            }}
+
+            // 优先级 2: 使用 formItem 在直接子元素中的位置定位（避免 :has() 伪类，Playwright 不支持）
             // 注意：children 只返回直接子元素，querySelectorAll 会递归搜索所有后代
             // 对于多卡片表单（.el-card 包裹），必须用 children 而非 querySelectorAll
             const directChildren = formItem.parentElement.children;
@@ -2080,7 +2094,7 @@ def _infer_fill_rule(label: str, field_type: str, input_type: str, required: boo
     if input_type == "tel":
         return {"rule": "phone_pattern", "params": {"prefix": "138"}}
     if input_type == "password":
-        return {"rule": "password_fixed", "params": {"value": "Test@123456"}}
+        return {"rule": "password_pattern", "params": {"prefix": "Test@"}}
     if input_type == "number":
         return {"rule": "number_pattern", "params": {"min": 1, "max": 100}}
 
@@ -2093,7 +2107,7 @@ def _infer_fill_rule(label: str, field_type: str, input_type: str, required: boo
         return {"rule": "email_pattern", "params": {"domain": "test.com"}}
     password_keywords = ("密码", "password", "pwd")
     if any(kw in label_lower for kw in password_keywords):
-        return {"rule": "password_fixed", "params": {"value": "Test@123456"}}
+        return {"rule": "password_pattern", "params": {"prefix": "Test@"}}
 
     # 基于字段类型推断
     if field_type == "textarea":
@@ -2107,149 +2121,6 @@ def _infer_fill_rule(label: str, field_type: str, input_type: str, required: boo
 
     # 默认规则
     return {"rule": "name_pattern", "params": {"prefix": "test"}}
-
-
-def apply_fill_rule(rule: dict, timestamp: str = None) -> str:
-    """根据规则生成具体的填充值。
-
-    Args:
-        rule: {"rule": str, "params": dict} 格式的规则
-        timestamp: 时间戳（可选，用于生成唯一值）
-
-    Returns:
-        生成的具体值
-    """
-    if not timestamp:
-        timestamp = str(int(time.time()))[-6:]
-
-    rule_type = rule.get("rule", "name_pattern")
-    params = rule.get("params", {})
-    import random
-
-    if rule_type == "username_pattern":
-        prefix = params.get("prefix", "autotest")
-        return f"{prefix}{timestamp}"
-
-    if rule_type == "email_pattern":
-        domain = params.get("domain", "test.com")
-        return f"at_{timestamp}@{domain}"
-
-    if rule_type == "phone_pattern":
-        prefix = params.get("prefix", "138")
-        return f"{prefix}{random.randint(10000000, 99999999)}"
-
-    if rule_type == "password_fixed":
-        return params.get("value", "Test@123456")
-
-    if rule_type == "code_pattern":
-        prefix = params.get("prefix", "code")
-        return f"{prefix}_{timestamp}"
-
-    if rule_type == "description_pattern":
-        prefix = params.get("prefix", "auto")
-        return f"{prefix}_desc_{timestamp}"
-
-    if rule_type == "name_pattern":
-        prefix = params.get("prefix", "test")
-        # 与 _default_for_type 保持一致（Stage 1 用 AT_ 前缀）
-        return f"AT_{prefix}_{timestamp}"
-
-    if rule_type == "number_pattern":
-        min_val = params.get("min", 1)
-        max_val = params.get("max", 100)
-        # 使用时间戳后几位作为数字
-        num = int(timestamp) % (max_val - min_val + 1) + min_val
-        return str(num)
-
-    if rule_type == "fixed_value":
-        return params.get("value", "")
-
-    # IP 地址生成规则
-    if rule_type == "ip_v4_pattern":
-        # IPv4 单地址：10.0.0.1
-        base = params.get("base", "10.0.0")
-        last_octet = params.get("last_octet", 1)
-        # 使用时间戳确保唯一性（避免与其他测试数据冲突）
-        last_val = (int(timestamp) % 254) + 1 if last_octet == 1 else last_octet
-        return f"{base}.{last_val}"
-
-    if rule_type == "ip_v4_range_pattern":
-        # IPv4 区间：10.0.0.1-10.0.0.10
-        base = params.get("base", "10.0.0")
-        start = params.get("start", 1)
-        end = params.get("end", 10)
-        # 确保 end > start
-        start_val = (int(timestamp) % 240) + 1 if start == 1 else start
-        end_val = start_val + 9 if end == 10 else end
-        return f"{base}.{start_val}-{base}.{end_val}"
-
-    if rule_type == "ip_v6_pattern":
-        # IPv6 单地址：展开为 8 段 2001:0db8:0000:0000:0000:0000:0000:0001
-        prefix = params.get("prefix", "2001:db8")
-        suffix = params.get("suffix", 1)
-        suffix_val = (int(timestamp) % 65534) + 1 if suffix == 1 else suffix
-        # 展开为 8 段
-        prefix_parts = prefix.split(":")
-        while len(prefix_parts) < 7:
-            prefix_parts.append("0000")
-        prefix_parts.append(f"{suffix_val:04x}")
-        return ":".join(prefix_parts)
-
-    if rule_type == "ip_v6_range_pattern":
-        # IPv6 区间
-        prefix = params.get("prefix", "2001:db8")
-        start = params.get("start", 1)
-        end = params.get("end", 10)
-        start_val = (int(timestamp) % 65520) + 1 if start == 1 else start
-        end_val = start_val + 9 if end == 10 else end
-        prefix_parts = prefix.split(":")
-        while len(prefix_parts) < 7:
-            prefix_parts.append("0000")
-        start_ip = ":".join(prefix_parts + [f"{start_val:04x}"])
-        end_ip = ":".join(prefix_parts + [f"{end_val:04x}"])
-        return f"{start_ip}-{end_ip}"
-
-    # 未知规则，返回默认值
-    return f"test_{timestamp}"
-
-
-def generate_fill_data(fields: List[Dict], username: str = "test") -> dict:
-    """根据表单字段生成填充数据（独立函数，供 Stage 1/2 直接调用）。
-
-    从 FormFiller._build_fill_data 抽取的公开版本，无需实例化 FormFiller。
-
-    策略：
-    1. 基于字段类型和通用模式生成值（不硬编码模块特定字段）
-    2. 从 profile 读取测试数据配置（如有）
-
-    Args:
-        fields: scan_form_fields_v2() 返回的字段列表
-        username: 用户名（用于名称/用户名类字段）
-
-    Returns:
-        {label: value} 字典
-    """
-    import random
-    ts = str(int(time.time()))[-6:]
-
-    # 从 profile 读取测试数据配置（如果有）
-    # 默认值仅为兜底，实际应从 profile 配置
-    phone = f"138{random.randint(10000000, 99999999)}"
-    email = f"at_{ts}@test.com"
-    password = "Test@123456"
-
-    fill_data = {}
-
-    # 为所有字段按类型生成默认值
-    for field in fields:
-        label = field.get("label", "")
-        if not label:
-            continue
-        field_type = field.get("type", "input")
-        input_type = field.get("inputType", "text")
-        fill_data[label] = FormFiller._default_for_type(field_type, input_type, ts, username)
-
-    return fill_data
 
 
 class MultiStepExecutor:
@@ -2326,9 +2197,9 @@ class MultiStepExecutor:
         """
         handlers = {
             "el-select": self._execute_select_with_details,
-            "el-cascader": self._execute_cascader,  # 暂未实现详情版本
-            "date-picker": self._execute_date_picker,  # 暂未实现详情版本
-            "form-checkbox": self._execute_form_checkbox,  # 暂未实现详情版本
+            "el-cascader": self._execute_cascader_with_details,
+            "date-picker": self._execute_date_picker_with_details,
+            "form-checkbox": self._execute_form_checkbox_with_details,
             "list-selector": self._execute_list_selector_with_details,
             "transfer-box": self._execute_transfer_box,
             "ip-input": self._execute_ip_input_with_details,
@@ -2341,12 +2212,9 @@ class MultiStepExecutor:
         try:
             if kb_category == "ip-input":
                 return await handler(label, kwargs)
-            elif kb_category in ("el-select", "list-selector", "transfer-box"):
-                return await handler(label, option_text, options, selector)
             else:
-                # 其他类型暂时只返回成功标志，详情为空字典
-                success = await handler(label, option_text, options, selector)
-                return success, {}
+                # 所有处理器统一返回 (success, detail_dict)
+                return await handler(label, option_text, options, selector)
         except Exception as e:
             LOG.warning(f"MultiStepExecutor: {kb_category}({label}) 失败: {e}")
             return False, {}
@@ -2360,6 +2228,11 @@ class MultiStepExecutor:
         """
         steps = self.kb.get_steps("el-select", self.framework)
         select_sub_type = "select-single"  # 默认值，后续检测后覆盖
+        # ★ 定义默认的 selection_strategy，所有返回路径都会包含
+        selection_strategy = {
+            "method": "first_available",
+            "skip_rules": [{"condition": "is-disabled", "reason": "skip_disabled_options"}]
+        }
         if not steps:
             return False, {}
 
@@ -2403,16 +2276,16 @@ class MultiStepExecutor:
                 if mode == "multiple":
                     vals = has_default.get("values", [])
                     LOG.info(f"    el-select {label}: 多选已有默认值 {vals}，跳过")
-                    return True, {"is_editable": False, "option_text": ", ".join(vals), "select_sub_type": select_sub_type}
+                    return True, {"is_editable": False, "option_text": ", ".join(vals), "select_sub_type": select_sub_type, "selection_strategy": selection_strategy}
                 else:
                     val = has_default.get("value", "")
                     LOG.info(f"    el-select {label}: 单选已有默认值 '{val}'，跳过")
-                    return True, {"is_editable": False, "option_text": val, "select_sub_type": select_sub_type}
+                    return True, {"is_editable": False, "option_text": val, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy}
 
         expanded = await self._expand_by_selector(selector, label)
         if not expanded:
             LOG.debug(f"    el-select {label}: expand failed")
-            return False, {}
+            return False, {"selection_strategy": selection_strategy}
         await self.page.wait_for_timeout(500)
 
         # Step 2: editable-check
@@ -2483,6 +2356,7 @@ class MultiStepExecutor:
             "is_editable": is_editable,
             "option_text": option_text or "",
             "select_sub_type": select_sub_type if sub_type_info else "select-single",
+            "selection_strategy": selection_strategy,
         }
 
         if not option_text:
@@ -2514,8 +2388,10 @@ class MultiStepExecutor:
             if has_visible_dropdown and not has_any_visible_items:
                 LOG.info(f"    el-select {label}: 下拉框已展开但无选项，跳过（非必填或暂无可选项）")
                 detail["skipped_reason"] = "no_options"
+                detail["selection_strategy"] = selection_strategy
                 return False, detail
             LOG.warning(f"    el-select {label} 未发现可选项，下拉框状态: {json.dumps(dd_state, ensure_ascii=False)}")
+            detail["selection_strategy"] = selection_strategy
             return False, detail
 
         # Step 5: 根据是否可编辑选择不同策略
@@ -2582,9 +2458,9 @@ class MultiStepExecutor:
                 debug_info = verify.get("debug", {})
                 LOG.warning(f"    ⚠️ select 填充后验证失败: {label} 仍为空 "
                            f"debug={debug_info}")
-                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "select_sub_type": select_sub_type}
+                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy}
             LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
-            return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text), "select_sub_type": select_sub_type}
+            return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text), "select_sub_type": select_sub_type, "selection_strategy": selection_strategy}
         else:
             # 不可编辑：等待选项加载，再选择第一个选项
             await self._wait_for_options_loaded()
@@ -2602,9 +2478,9 @@ class MultiStepExecutor:
                 debug_info = verify.get("debug", {})
                 LOG.warning(f"    ⚠️ select 填充后验证失败: {label} 仍为空 "
                            f"debug={debug_info}")
-                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "select_sub_type": select_sub_type}
+                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy}
             LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
-            return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text), "select_sub_type": select_sub_type}
+            return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text), "select_sub_type": select_sub_type, "selection_strategy": selection_strategy}
 
     async def _fill_remote_select(self, selector: str, label: str) -> tuple:
         """远程搜索 el-select：展开后等待远程加载完成，选第一个
@@ -2765,6 +2641,15 @@ class MultiStepExecutor:
                 });
                 if (!visibleTree) return { success: false, reason: 'no_visible_tree' };
 
+                // ★ 获取当前已选中的显示值（用于跳过"选到相同值"的情况）
+                const currentDisplayValue = (() => {
+                    const inputEl = selectEl.querySelector('input.el-input__inner');
+                    if (inputEl && inputEl.value) return inputEl.value.trim();
+                    const tagEl = selectEl.querySelector('.el-select__tags .el-tag');
+                    if (tagEl) return tagEl.textContent.trim().replace('×', '').trim();
+                    return '';
+                })();
+
                 const spans = visibleTree.querySelectorAll('.custom-tree-node span');
                 let nodeData = null;
                 let text = '';
@@ -2774,20 +2659,29 @@ class MultiStepExecutor:
                     if (!content) continue;
                     const cb = content.querySelector('.el-checkbox');
                     if (cb && cb.classList.contains('is-checked')) continue;
+                    // ★ 跳过 is-current 节点（树组件自身标记的当前节点）
+                    if (content.classList.contains('is-current')) continue;
+                    // ★ 跳过与当前已选中值相同的节点
+                    const spanText = span.textContent.trim();
+                    if (currentDisplayValue && spanText === currentDisplayValue) continue;
                     const treeNodeEl = content.closest('.el-tree-node');
                     if (treeNodeEl && treeNodeEl.__vue__) {
                         nodeData = treeNodeEl.__vue__.node.data;
-                        text = span.textContent.trim();
+                        text = spanText;
                         break;
                     }
                 }
 
                 if (!nodeData && spans.length > 0) {
-                    const content = spans[0].closest('.el-tree-node__content');
-                    const treeNodeEl = content ? content.closest('.el-tree-node') : null;
-                    if (treeNodeEl && treeNodeEl.__vue__) {
-                        nodeData = treeNodeEl.__vue__.node.data;
-                        text = spans[0].textContent.trim();
+                    // fallback: 尝试第一个有 vue 数据的节点
+                    for (const span of spans) {
+                        const content = span.closest('.el-tree-node__content');
+                        const treeNodeEl = content ? content.closest('.el-tree-node') : null;
+                        if (treeNodeEl && treeNodeEl.__vue__) {
+                            nodeData = treeNodeEl.__vue__.node.data;
+                            text = span.textContent.trim();
+                            break;
+                        }
                     }
                 }
 
@@ -2817,14 +2711,22 @@ class MultiStepExecutor:
                 if verify.get("filled"):
                     return True, {
                         "option_text": verify.get("displayed_value", set_result['text']),
-                        "select_sub_type": "select-tree"
+                        "select_sub_type": "select-tree",
+                        "selection_strategy": {
+                            "method": "handleNodeClick",
+                            "skip_rules": [
+                                {"condition": "is-checked", "reason": "avoid_already_selected"},
+                                {"condition": "is-current", "reason": "avoid_current_selection"},
+                                {"condition": "text_match_current", "reason": "avoid_same_value"}
+                            ]
+                        }
                     }
                 else:
                     LOG.warning(f"    [select-tree] {label}: handleNodeClick 后验证失败, displayed='{verify.get('displayed_value', '')}'")
 
         # 3. Fallback: 直接 Playwright click
         LOG.info(f"    [select-tree] {label}: 尝试 Playwright click")
-        node_info = await self.page.evaluate("""() => {
+        node_info = await self.page.evaluate("""(selector) => {
             const allTrees = Array.from(document.querySelectorAll('.el-tree'));
 
             // ★ 修复：强制优先选择 dropdown 内的树（与 handleNodeClick 路径一致）
@@ -2841,16 +2743,32 @@ class MultiStepExecutor:
             });
             if (!visibleTree) return { found: false, reason: 'no_visible_tree' };
 
+            // ★ 获取当前已选中的显示值
+            const selectEl = document.querySelector(selector);
+            const currentDisplayValue = (() => {
+                if (!selectEl) return '';
+                const inputEl = selectEl.querySelector('input.el-input__inner');
+                if (inputEl && inputEl.value) return inputEl.value.trim();
+                const tagEl = selectEl.querySelector('.el-select__tags .el-tag');
+                if (tagEl) return tagEl.textContent.trim().replace('×', '').trim();
+                return '';
+            })();
+
             const spans = visibleTree.querySelectorAll('.custom-tree-node span');
             for (const span of spans) {
                 const content = span.closest('.el-tree-node__content');
                 if (!content) continue;
                 const cb = content.querySelector('.el-checkbox');
                 if (cb && cb.classList.contains('is-checked')) continue;
-                return { found: true, text: span.textContent.trim(), selector: '.custom-tree-node span' };
+                // ★ 跳过 is-current 节点
+                if (content.classList.contains('is-current')) continue;
+                // ★ 跳过与当前已选中值相同的节点
+                const spanText = span.textContent.trim();
+                if (currentDisplayValue && spanText === currentDisplayValue) continue;
+                return { found: true, text: spanText, selector: '.custom-tree-node span' };
             }
             return { found: false, reason: 'all_selected' };
-        }""")
+        }""", selector)
 
         if node_info.get('found'):
             locator = self.page.locator(f"{node_info['selector']}:visible").first
@@ -2864,12 +2782,28 @@ class MultiStepExecutor:
             return False, {
                 "skipped_reason": "verify_failed",
                 "option_text": node_info.get('text', ''),
-                "select_sub_type": "select-tree"
+                "select_sub_type": "select-tree",
+                "selection_strategy": {
+                    "method": "playwright_click",
+                    "skip_rules": [
+                        {"condition": "is-checked", "reason": "avoid_already_selected"},
+                        {"condition": "is-current", "reason": "avoid_current_selection"},
+                        {"condition": "text_match_current", "reason": "avoid_same_value"}
+                    ]
+                }
             }
 
         return True, {
             "option_text": verify.get("displayed_value", node_info.get('text', '')),
-            "select_sub_type": "select-tree"
+            "select_sub_type": "select-tree",
+            "selection_strategy": {
+                "method": "playwright_click",
+                "skip_rules": [
+                    {"condition": "is-checked", "reason": "avoid_already_selected"},
+                    {"condition": "is-current", "reason": "avoid_current_selection"},
+                    {"condition": "text_match_current", "reason": "avoid_same_value"}
+                ]
+            }
         }
 
     async def execute_select_by_sub_type(self, selector: str, sub_type: str, label: str) -> tuple:
@@ -2951,47 +2885,110 @@ class MultiStepExecutor:
             LOG.info(f"    el-select {label}: selector 展开失败: {e}")
             return False
 
-    async def _execute_cascader(self, label: str, _option_text, options: list, selector: str = "") -> bool:
-        """el-cascader 多步交互：expand → expand-level(逐级) → conditional-branch → select-last"""
+    async def _execute_cascader_with_details(self, label: str, _option_text, options: list, selector: str = "") -> tuple:
+        """el-cascader 多步交互，返回详细执行信息。
+
+        Returns:
+            tuple: (success: bool, detail: dict)
+        """
         steps = self.kb.get_steps("el-cascader", self.framework)
         if not steps:
-            return False
+            return False, {"skipped_reason": "no_steps", "kb_category": "el-cascader"}
 
         # Step 1: expand
         expanded = await self._try_step_patterns(steps.get("expand", {}), label=label)
         if not expanded:
-            return False
+            return False, {"skipped_reason": "expand_failed", "kb_category": "el-cascader"}
         await self.page.wait_for_timeout(500)
 
         # Step 2: 根据是否提供 options 选择不同模式
         if options:
-            # 外部提供了完整路径：按路径逐级展开+选择
-            return await self._cascader_select_by_path(steps, label, options)
+            success = await self._cascader_select_by_path(steps, label, options)
+            if success:
+                return True, {
+                    "option_text": " > ".join(options),
+                    "selected_path": options,
+                    "kb_category": "el-cascader",
+                }
+            return False, {"skipped_reason": "path_select_failed", "kb_category": "el-cascader"}
         else:
-            # 无路径：逐级发现+选择
-            return await self._cascader_discover_and_select(steps, label)
+            success = await self._cascader_discover_and_select(steps, label)
+            if success:
+                # 读取实际选择的路径
+                selected_path = await self._read_cascader_selected_path(selector)
+                return True, {
+                    "option_text": " > ".join(selected_path) if selected_path else "",
+                    "selected_path": selected_path,
+                    "kb_category": "el-cascader",
+                }
+            return False, {"skipped_reason": "discover_select_failed", "kb_category": "el-cascader"}
 
-    async def _execute_date_picker(self, label: str, option_text: str, _options, selector: str = "") -> bool:
-        """date-picker 多步交互：expand → select-today/select-now"""
+    async def _read_cascader_selected_path(self, selector: str = "") -> list:
+        """读取 cascader 当前选中的路径文本。"""
+        try:
+            if selector:
+                result = await self.page.evaluate("""(sel) => {
+                    const el = document.querySelector(sel);
+                    if (!el) return [];
+                    const input = el.querySelector('input');
+                    if (input && input.value) return input.value.split(' / ');
+                    const tags = el.querySelectorAll('.el-tag');
+                    if (tags.length > 0) return [tags[0].textContent.trim().replace('×', '').trim()];
+                    return [];
+                }""", selector)
+                return result if isinstance(result, list) else []
+            return []
+        except Exception:
+            return []
+
+    async def _execute_date_picker_with_details(self, label: str, option_text: str, _options, selector: str = "") -> tuple:
+        """date-picker 多步交互，返回详细执行信息。
+
+        Returns:
+            tuple: (success: bool, detail: dict)
+        """
         steps = self.kb.get_steps("date-picker", self.framework)
         if not steps:
-            return False
+            return False, {"skipped_reason": "no_steps", "kb_category": "date-picker"}
 
         # Step 1: expand
         expanded = await self._try_step_patterns(steps.get("expand", {}), label=label)
         if not expanded:
-            return False
+            return False, {"skipped_reason": "expand_failed", "kb_category": "date-picker"}
         await self.page.wait_for_timeout(500)
 
         # Step 2: 选择今天（默认策略）
+        strategy = "today"
         selected = await self._try_step_patterns(steps.get("select-today", {}), label=label)
         if not selected:
             # 回退：选择此刻
+            strategy = "now"
             selected = await self._try_step_patterns(steps.get("select-now", {}), label=label)
-        return selected
 
-    async def _execute_form_checkbox(self, label: str, option_text: str, _options, selector: str = "") -> bool:
-        """form-checkbox：勾选指定选项"""
+        if selected:
+            # 读取实际选中的值
+            actual_value = ""
+            if selector:
+                try:
+                    actual_value = await self.page.evaluate("""(sel) => {
+                        const input = document.querySelector(sel + ' input');
+                        return input ? input.value : '';
+                    }""", selector)
+                except Exception:
+                    pass
+            return True, {
+                "option_text": actual_value or strategy,
+                "selection_strategy": {"method": f"click_{strategy}"},
+                "kb_category": "date-picker",
+            }
+        return False, {"skipped_reason": "select_failed", "kb_category": "date-picker"}
+
+    async def _execute_form_checkbox_with_details(self, label: str, option_text: str, _options, selector: str = "") -> tuple:
+        """form-checkbox：勾选指定选项，返回详细执行信息。
+
+        Returns:
+            tuple: (success: bool, detail: dict)
+        """
         patterns = self.kb.get_patterns("form-checkbox", self.framework)
         for p in patterns:
             xpath = self.kb.expand_step(
@@ -2999,10 +2996,21 @@ class MultiStepExecutor:
                 framework=self.framework, apply_hidden=True
             )
             if await self._click_by_xpath(xpath):
-                return True
+                return True, {
+                    "option_text": option_text,
+                    "checked_options": [option_text],
+                    "kb_category": "form-checkbox",
+                }
 
         # 兜底：尝试 fallback_strategies
-        return await self._try_fallback(label)
+        success = await self._try_fallback(label)
+        if success:
+            return True, {
+                "option_text": option_text,
+                "checked_options": [option_text],
+                "kb_category": "form-checkbox",
+            }
+        return False, {"skipped_reason": "no_checkbox_clicked", "kb_category": "form-checkbox"}
 
     async def _execute_list_selector(self, label: str, option_text: str, _options, selector: str = "") -> bool:
         """list-selector：在列表选择器中选择一个选项（穿梭框/transfer-like 组件）

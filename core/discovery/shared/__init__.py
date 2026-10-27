@@ -12,6 +12,7 @@ core.discovery.shared — Stage 1/2 共享工具集
 - message_capture.py:    MutationObserver 消息捕获
 - dialog_helpers.py:     弹框检测/关闭/确认
 - form_validation.py:    表单验证错误检测
+- fill_helpers.py:       数据填充工具（值生成 + fill_rule 元数据 + 跳过规则评估）
 - success_verifier.py:   操作成功验证（六层策略链）
 - switch_ops.py:         Switch 切换操作
 - row_interaction.py:    行交互（定位/勾选/按钮点击）
@@ -37,6 +38,14 @@ from .dialog_helpers import (
 from .form_validation import (
     detect_form_errors,
     has_form_errors_visible,
+)
+
+from .fill_helpers import (
+    generate_fill_value,
+    apply_fill_rule,
+    evaluate_skip_rules,
+    TREE_SELECT_SKIP_RULES,
+    SELECT_SKIP_RULES,
 )
 
 from .success_verifier import verify_operation_success
@@ -72,6 +81,12 @@ __all__ = [
     # form validation
     "detect_form_errors",
     "has_form_errors_visible",
+    # fill helpers
+    "generate_fill_value",
+    "apply_fill_rule",
+    "evaluate_skip_rules",
+    "TREE_SELECT_SKIP_RULES",
+    "SELECT_SKIP_RULES",
     # success verification
     "verify_operation_success",
     # switch

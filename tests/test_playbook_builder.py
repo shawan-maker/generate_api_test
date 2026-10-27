@@ -416,7 +416,11 @@ class TestBuildCreateSteps:
         assert "角色" in labels
         role_field = [f for f in fill_step["fields"] if f["label"] == "角色"][0]
         assert role_field["kb_category"] == "el-select"
-        assert role_field["option_text"] == "管理员"
+        # P2b: el-select 的 option_text 被清空，使用 interaction 元数据
+        assert role_field["option_text"] == ""
+        assert "interaction" in role_field
+        assert role_field["interaction"]["click_strategy"] == "vue_emit"
+        assert role_field["interaction"]["component_type"] == "el-select"
 
     def test_create_with_radio_field(self):
         """radio_field_details → 生成 radio 类型字段"""
