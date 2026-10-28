@@ -118,6 +118,7 @@ class FormFiller:
                 "type": f["type"],
                 "kb_category": f.get("kb_category", ""),
                 "selector": f.get("selector"),
+                "playwright_locator": f.get("playwright_locator"),
                 "inputType": f.get("inputType", "text"),
                 "required": f.get("required", False),
             }
@@ -291,7 +292,8 @@ class FormFiller:
         for field in new_fields:
             label = field.get('label', '')
             kb_cat = field.get('kb_category', '')
-            selector = field.get('selector', '')
+            # ★ 优先使用 playwright_locator（更稳定），回退到 selector
+            selector = field.get('playwright_locator') or field.get('selector', '')
 
             # 防循环
             if selector in filled_selectors:
@@ -310,7 +312,8 @@ class FormFiller:
             if kb_cat in const.MULTI_STEP_TYPES or kb_cat == "form-checkbox":
                 # 多步字段：用 MultiStepExecutor 填充
                 success, detail = await executor.execute_with_details(
-                    kb_cat, label, option_text="", selector=selector
+                    kb_cat, label, option_text="", selector=selector,
+                    playwright_locator=field.get('playwright_locator')
                 )
                 action_entry["success"] = success
                 action_entry["option_text"] = detail.get("option_text", "")
@@ -413,7 +416,8 @@ class FormFiller:
             label = field.get("label", "")
             field_type = field.get("type", "input")
             kb_category = field.get("kb_category", "")
-            selector = field.get("selector")
+            # ★ 优先使用 playwright_locator（更稳定），回退到 selector
+            selector = field.get("playwright_locator") or field.get("selector")
 
             # multi_step 类型由 MultiStepExecutor 处理，此处跳过
             if kb_category in const.MULTI_STEP_TYPES:
@@ -487,8 +491,9 @@ class FormFiller:
                                 if right_panel_status.get('exists') and not right_panel_status.get('hasSelection'):
                                     LOG.info(f"    [radio-cascade] transfer-box 需要选择")
                                     executor = self._get_executor()
+                                    # transfer-box 不需要 selector，使用 None
                                     success, detail = await executor.execute_with_details(
-                                        "transfer-box", label, "", None, ""
+                                        "transfer-box", label, "", None, None
                                     )
                                     if success:
                                         LOG.info(f"    [radio-cascade] transfer-box 选择成功")
@@ -644,7 +649,9 @@ class FormFiller:
             for field in pending:
                 kb_cat = field.get("kb_category", "")
                 label = field.get("label", "")
-                selector = field.get("selector") or field.get("playwright_locator", "")
+                # 分别获取两种选择器
+                selector = field.get("selector")  # 标准 CSS，用于 evaluate
+                playwright_locator = field.get("playwright_locator")  # Playwright 语法
 
                 # 为 ip-input 传递额外参数
                 extra_kwargs = {}
@@ -656,7 +663,8 @@ class FormFiller:
                     }
 
                 success, detail = await executor.execute_with_details(
-                    kb_cat, label, option_text="", selector=selector, **extra_kwargs
+                    kb_cat, label, option_text="", selector=selector,
+                    playwright_locator=playwright_locator, **extra_kwargs
                 )
 
                 if success:
@@ -823,8 +831,8 @@ class FormFiller:
 
         与 fill_create_form 的区别：
         - 只修改 modifications 中指定的字段
-        - 默认修改 描述/备注/说明 类字段
-        - 跳过 名称/编码/用户名 等标识字段
+        - 默认修改所有可编辑的 input/textarea 字段
+        - 跳过 标识字段（账号/用户名等）和复杂组件（select/radio/checkbox 等）
 
         Args:
             fields: scan_form_fields_v2() 返回的字段列表
@@ -835,34 +843,15 @@ class FormFiller:
             成功填充的字段数
         """
         from .. import const
+        from core.discovery.shared.fill_helpers import generate_fill_value
 
-        # 标识字段：基于字段特征判断（不硬编码模块特定字段名）
-        # 跳过 ID 类、编码类、名称类、只读字段
+        # 标识字段：只跳过账号/用户名等定位字段，避免 marker 失效
         def _is_identifier(label: str, field: dict) -> bool:
             label_lower = label.lower()
             if field.get("readonly") or field.get("disabled"):
                 return True
-            if "id" in label_lower and "id" != label_lower:
-                return True
-            if any(kw in label_lower for kw in ["code", "编码", "编号", "account", "账号"]):
-                return True
-            # 名称/用户名类字段不应在编辑时修改（会破坏后续搜索）
-            if any(kw in label_lower for kw in ["名称", "name", "用户名", "username"]):
-                return True
-            return False
-
-        # 可编辑字段：基于字段类型和通用模式判断
-        def _is_editable(label: str, field: dict) -> bool:
-            label_lower = label.lower()
-            field_type = field.get("type", "input")
-            input_type = field.get("inputType", "text")
-
-            if field_type == "textarea":
-                return True
-            # number 类型默认可编辑
-            if input_type == "number":
-                return True
-            if any(kw in label_lower for kw in ["描述", "备注", "说明", "remark", "description", "memo", "note", "comment"]):
+            # 只跳过真正的定位字段
+            if any(kw in label_lower for kw in ["账号", "username", "account"]):
                 return True
             return False
 
@@ -873,16 +862,23 @@ class FormFiller:
             label = field.get("label", "")
             field_type = field.get("type", "input")
             kb_category = field.get("kb_category", "")
-            selector = field.get("selector")
-
-            # multi_step 类型跳过
-            if kb_category in const.MULTI_STEP_TYPES:
-                continue
-            if kb_category == "form-checkbox":
-                continue
+            # ★ 优先使用 playwright_locator（更稳定），回退到 selector
+            selector = field.get("playwright_locator") or field.get("selector")
 
             # 标识字段跳过
             if _is_identifier(label, field):
+                continue
+
+            # 复杂组件跳过（select/radio/checkbox/list 等不直接编辑）
+            if kb_category in const.MULTI_STEP_TYPES or kb_category in ("radio", "form-checkbox", "list-selector"):
+                continue
+
+            # 多输入组件跳过（如手机号：国家码+号码，编辑时无法正确处理复合输入）
+            if field.get("inputCount", 1) >= 2:
+                continue
+
+            # 只处理 input 和 textarea（扫描器已过滤 readonly/disabled）
+            if field_type not in ("input", "textarea"):
                 continue
 
             # 确定填充值
@@ -890,12 +886,14 @@ class FormFiller:
             if modifications and label in modifications:
                 value = modifications[label]
             elif not modifications:
-                # 自动模式：选择可编辑字段
-                if _is_editable(label, field):
-                    if field.get("inputType") == "number":
-                        value = ts  # 纯数值字符串
-                    else:
-                        value = f"auto_edited_{ts}"
+                # generate_fill_value 返回 (value, fill_rule) tuple
+                # Stage 1 直接用生成的值，apply_fill_rule 是 Stage 2 回放用的
+                value, _fill_rule = generate_fill_value(
+                    field_type, field.get("inputType", "text"),
+                    username="test", label=label
+                )
+                if not value:
+                    value = f"auto_edited_{ts}"
 
             if not value:
                 continue
@@ -1356,21 +1354,19 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
 
                     if (widthRatio < 1.5) {{
                         const ipVersion = /ipv6|v6/i.test(label) ? 'v6' : 'v4';
-                        const subSelectors = independentInputs.map(inp => _buildSelector(inp, label));
+                        const subSelectors = independentInputs.map(inp => _buildSelector(inp, label).selector);
 
-                        fields.push({{
+                        fields.push(Object.assign({{
                             label, type: 'ip-input', kb_category: 'ip-input',
-                            selector: _buildComponentSelector(fi, '{form_item}', fields.length, label),
                             subSelectors: subSelectors,
                             inputCount: independentInputs.length,
                             ipVersion: ipVersion,
                             required,
-                        }});
-                        fields.push({{
+                        }}, _buildComponentSelector(fi, '{form_item}', fields.length, label)));
+                        fields.push(Object.assign({{
                             label: label + '(掩码)', type: 'select', kb_category: 'el-select',
-                            selector: _buildSelector(selects[0], label + '(掩码)'),
                             required,
-                        }});
+                        }}, _buildSelector(selects[0], label + '(掩码)')));
                         return;
                     }}
                 }}
@@ -1411,30 +1407,29 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                     }}
                 }});
                 independentInputs.forEach(inp => {{
-                    fields.push({{ label, type: 'input', kb_category: 'input-generic',
-                                 selector: _buildSelector(inp, label),
-                                 inputType: inp.type || 'text', required }});
+                    fields.push(Object.assign({{ label, type: 'input', kb_category: 'input-generic',
+                                 inputType: inp.type || 'text', required }}, _buildSelector(inp, label)));
                 }});
             }}
             else if (fi.querySelector('{cascader_container}')) {{
                 const cascaderIdx = fields.length;
-                fields.push({{ label, type: 'cascader', kb_category: 'el-cascader',
-                             selector: _buildComponentSelector(fi, '{cascader_container}', cascaderIdx, label), required }});
+                fields.push(Object.assign({{ label, type: 'cascader', kb_category: 'el-cascader',
+                             required }}, _buildComponentSelector(fi, '{cascader_container}', cascaderIdx, label)));
             }}
             else if (fi.querySelector('{date_picker}')) {{
                 const datePickerIdx = fields.length;
-                fields.push({{ label, type: 'date-picker', kb_category: 'date-picker',
-                             selector: _buildComponentSelector(fi, '{date_picker}', datePickerIdx, label), required }});
+                fields.push(Object.assign({{ label, type: 'date-picker', kb_category: 'date-picker',
+                             required }}, _buildComponentSelector(fi, '{date_picker}', datePickerIdx, label)));
             }}
             else if (selects.length > 0) {{
                 // 2.4 增强：处理 form-item 内的多个 select（如授权主体：类型选择 + 实体选择）
                 selects.forEach((sel, idx) => {{
                     const labelSuffix = selects.length > 1 ? '(' + (idx + 1) + ')' : '';
                     // 使用 _buildSelector 生成唯一 CSS 路径（区分同 form-item 内的多个 select）
-                    const selSelector = _buildSelector(sel, label + labelSuffix);
+                    const selSelectors = _buildSelector(sel, label + labelSuffix);
 
-                    fields.push({{ label: label + labelSuffix, type: 'select', kb_category: 'el-select',
-                                 selector: selSelector, required }});
+                    fields.push(Object.assign({{ label: label + labelSuffix, type: 'select', kb_category: 'el-select',
+                                 required }}, selSelectors));
                     // [D4] el-select 多选调试
                     const isMulti = sel.classList.contains('el-select--multiple')
                         || sel.querySelector('.el-select__tags') !== null
@@ -1452,14 +1447,14 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
             else if (fi.querySelector('{radio_group}')) {{
                 const radioIdx = fields.length;
                 const firstRadio = fi.querySelector('{radio_button}, {radio_label}');
-                fields.push({{ label, type: 'radio', kb_category: 'radio',
-                             selector: _buildComponentSelector(fi, '{radio_group}', radioIdx, label), required,
-                             firstOptionText: firstRadio ? firstRadio.textContent.trim() : '' }});
+                fields.push(Object.assign({{ label, type: 'radio', kb_category: 'radio',
+                             required,
+                             firstOptionText: firstRadio ? firstRadio.textContent.trim() : '' }}, _buildComponentSelector(fi, '{radio_group}', radioIdx, label)));
             }}
             else if (fi.querySelector('{checkbox_container}') && !fi.closest('{table_container}')) {{
                 const checkboxIdx = fields.length;
-                fields.push({{ label, type: 'checkbox', kb_category: 'form-checkbox',
-                             selector: _buildComponentSelector(fi, '{checkbox_container}', checkboxIdx, label), required }});
+                fields.push(Object.assign({{ label, type: 'checkbox', kb_category: 'form-checkbox',
+                             required }}, _buildComponentSelector(fi, '{checkbox_container}', checkboxIdx, label)));
             }}
             else {{
                 // 检测列表选择器（穿梭框 / transfer-like 组件）
@@ -1477,13 +1472,12 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
 
                 if ((listPanel || listItems.length >= 3) && searchInput) {{
                     const listIdx = fields.length;
-                    fields.push({{
+                    fields.push(Object.assign({{
                         label, type: 'list-selector',
                         kb_category: 'list-selector',
-                        selector: _buildComponentSelector(fi, listPanel ? listPanel.tagName.toLowerCase() : 'div', listIdx, label),
                         required,
                         itemCount: listItems.length
-                    }});
+                    }}, _buildComponentSelector(fi, listPanel ? listPanel.tagName.toLowerCase() : 'div', listIdx, label)));
                 }}
                 // 通用 input / textarea
                 else {{
@@ -1599,14 +1593,13 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                             return path.join(' > ');
                         }});
 
-                        fields.push({{
+                        fields.push(Object.assign({{
                             label, type: 'ip-input', kb_category: 'ip-input',
-                            selector: _buildComponentSelector(fi, '{form_item}', fields.length, label),
                             subSelectors: subSelectors,
                             inputCount: allInputs.length,
                             ipVersion: ipVersion,
                             required,
-                        }});
+                        }}, _buildComponentSelector(fi, '{form_item}', fields.length, label)));
                         return; // 已识别为 IP，跳过后续检测
                     }}
                 }}
@@ -1624,22 +1617,21 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
 
                     const ir = mainInput.getBoundingClientRect();
                     if (ir.width > 0 && ir.height > 0) {{
-                        fields.push({{ label, type: 'input', kb_category: 'input-generic',
-                                     selector: _buildSelector(mainInput, label),
-                                     inputType: mainInput.type || 'text', required }});
+                        fields.push(Object.assign({{ label, type: 'input', kb_category: 'input-generic',
+                                     inputType: mainInput.type || 'text', required,
+                                     inputCount: allInputs.length }}, _buildSelector(mainInput, label)));
                     }}
                 }} else if (allInputs.length === 1) {{
                     // 单个 input
                     const inp = allInputs[0];
                     const ir = inp.getBoundingClientRect();
                     if (ir.width > 0 && ir.height > 0) {{
-                        fields.push({{ label, type: 'input', kb_category: 'input-generic',
-                                     selector: _buildSelector(inp, label),
-                                     inputType: inp.type || 'text', required }});
+                        fields.push(Object.assign({{ label, type: 'input', kb_category: 'input-generic',
+                                     inputType: inp.type || 'text', required }}, _buildSelector(inp, label)));
                     }}
                 }} else if (ta) {{
-                    fields.push({{ label, type: 'textarea', kb_category: 'textarea-generic',
-                                 selector: _buildSelector(ta, label), required }});
+                    fields.push(Object.assign({{ label, type: 'textarea', kb_category: 'textarea-generic',
+                                 required }}, _buildSelector(ta, label)));
                 }}
                 }}
 
@@ -1704,9 +1696,11 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                 const isNumber = !!inp.closest('.el-input-number');
 
                 // ★ 返回完整字段信息，含多种定位特征用于跨会话定位
+                const selResult = _buildSelector(inp, label);
                 const fieldEntry = {{
                     label, type: 'input', kb_category: 'input-generic',
-                    selector: _buildSelector(inp, label),
+                    selector: selResult.selector,
+                    playwright_locator: selResult.playwright_locator,
                     inputType: isNumber ? 'number' : (inp.type || 'text'),
                     required: false,
                     visible_index: currentVisibleIndex  // ★ 在 scope 内的可见字段顺序
@@ -1739,14 +1733,16 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                 );
                 if (!alreadyCovered) {{
                     const selectIdx = fields.length;
-                    fields.push({{
-                        label: label,
-                        type: 'select',
-                        kb_category: 'el-select',
-                        selector: _buildComponentSelector(fi, '{select_container}', selectIdx, label),
-                        required: fi.classList.contains('is-required') ||
-                                   fi.querySelector('[class*="required"]') !== null,
-                    }});
+                    const compSel = _buildComponentSelector(fi, '{select_container}', selectIdx, label);
+                    if (compSel && compSel.selector) {{
+                        fields.push(Object.assign({{
+                            label: label,
+                            type: 'select',
+                            kb_category: 'el-select',
+                            required: fi.classList.contains('is-required') ||
+                                       fi.querySelector('[class*="required"]') !== null,
+                        }}, compSel));
+                    }}
                 }}
             }});
         }});
@@ -1761,16 +1757,12 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
         }};
 
         function _buildSelector(element, labelText) {{
-            // 优先级 1: #id（最稳定）
-            if (element.id) return `#${{element.id}}`;
-            // 优先级 2: [name] 属性
-            if (element.name) return `[name="${{element.name}}"]`;
-            // 优先级 3: Label-based CSS（新增，跨会话稳定）
-            if (labelText && labelText.length > 0 && !labelText.startsWith('字段')) {{
-                const escaped = labelText.replace(/"/g, '\\"');
-                return `.el-form-item:has(.el-form-item__label:has-text("${{escaped}}")) input`;
-            }}
-            // 优先级 4: DOM path（原有逻辑）
+            // 优先级 1: #id（最稳定，两个上下文都支持）
+            if (element.id) return {{ selector: `#${{element.id}}`, playwright_locator: `#${{element.id}}` }};
+            // 优先级 2: [name] 属性（两个上下文都支持）
+            if (element.name) return {{ selector: `[name="${{element.name}}"]`, playwright_locator: `[name="${{element.name}}"]` }};
+
+            // 优先级 3a: DOM path（标准 CSS，evaluate 安全）
             const path = [];
             let current = element;
             while (current && current.nodeType === Node.ELEMENT_NODE) {{
@@ -1793,21 +1785,24 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                 path.unshift(selector);
                 current = current.parentElement;
             }}
-            return path.join(' > ');
+            const domPath = path.join(' > ');
+
+            // 优先级 3b: Label-based（Playwright 语法，跨会话稳定）
+            let playwrightLocator = null;
+            if (labelText && labelText.length > 0 && !labelText.startsWith('字段')) {{
+                const escaped = labelText.replace(/"/g, '\\"');
+                playwrightLocator = `.el-form-item:has(.el-form-item__label:has-text("${{escaped}}")) input`;
+            }}
+
+            return {{ selector: domPath, playwright_locator: playwrightLocator }};
         }}
 
         function _buildComponentSelector(formItem, componentSelector, fieldIndex, labelText) {{
             // 为复杂组件（select/cascader/date-picker/radio/checkbox）生成 CSS selector
             const component = formItem.querySelector(componentSelector);
-            if (!component) return null;
+            if (!component) return {{ selector: null, playwright_locator: null }};
 
-            // 优先级 1: Label-based CSS（新增，跨会话稳定）
-            if (labelText && labelText.length > 0 && !labelText.startsWith('字段')) {{
-                const escaped = labelText.replace(/"/g, '\\"');
-                return `.el-form-item:has(.el-form-item__label:has-text("${{escaped}}")) ${{componentSelector}}`;
-            }}
-
-            // 优先级 2: 使用 formItem 在直接子元素中的位置定位（避免 :has() 伪类，Playwright 不支持）
+            // 优先级 1: 使用 formItem 在直接子元素中的位置定位（标准 CSS，evaluate 安全）
             // 注意：children 只返回直接子元素，querySelectorAll 会递归搜索所有后代
             // 对于多卡片表单（.el-card 包裹），必须用 children 而非 querySelectorAll
             const directChildren = formItem.parentElement.children;
@@ -1818,7 +1813,16 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                     break;
                 }}
             }}
-            return FORM_ITEM_SEL + ':nth-child(' + nth + ') ' + componentSelector;
+            const domPath = FORM_ITEM_SEL + ':nth-child(' + nth + ') ' + componentSelector;
+
+            // 优先级 2: Label-based（Playwright 语法，跨会话稳定）
+            let playwrightLocator = null;
+            if (labelText && labelText.length > 0 && !labelText.startsWith('字段')) {{
+                const escaped = labelText.replace(/"/g, '\\"');
+                playwrightLocator = `.el-form-item:has(.el-form-item__label:has-text("${{escaped}}")) ${{componentSelector}}`;
+            }}
+
+            return {{ selector: domPath, playwright_locator: playwrightLocator }};
         }}
     }}
     """
@@ -1847,7 +1851,8 @@ async def fill_form(page: Page, fields: List[Dict], data: Dict[str, str]) -> Tup
             continue
 
         value = data[label]
-        selector = field['selector']
+        # ★ 优先使用 playwright_locator（更稳定），回退到 selector
+        selector = field.get('playwright_locator') or field['selector']
         field_type = field['type']
 
         try:
@@ -2002,127 +2007,6 @@ async def get_form_errors(page: Page) -> List[str]:
     return [e["error_text"] for e in errors if e.get("error_text")]
 
 
-def generate_fill_rules(fields: List[Dict]) -> dict:
-    """根据表单字段生成填充规则（而非具体值）。
-
-    Stage 1 保存"规则"，Stage 2 根据规则生成"新值"，避免值重复。
-
-    规则类型：
-    - username_pattern: 生成唯一用户名
-    - email_pattern: 生成测试邮箱
-    - phone_pattern: 生成手机号
-    - password_fixed: 固定测试密码
-    - code_pattern: 生成编码
-    - description_pattern: 生成描述
-    - name_pattern: 生成名称
-    - fixed_value: 固定值（不需要变化的字段）
-    - ip_v4_pattern: 生成 IPv4 地址（4 段）
-    - ip_v4_range_pattern: 生成 IPv4 地址区间（8 段）
-    - ip_v6_pattern: 生成 IPv6 地址（8 段）
-    - ip_v6_range_pattern: 生成 IPv6 地址区间（16 段）
-
-    Args:
-        fields: scan_form_fields_v2() 返回的字段列表
-
-    Returns:
-        {label: {"rule": str, "params": dict}} 字典
-    """
-    rules = {}
-
-    for field in fields:
-        label = field.get("label", "")
-        if not label:
-            continue
-
-        field_type = field.get("type", "input")
-        kb_category = field.get("kb_category", "")
-        input_type = field.get("inputType", "text")
-        required = field.get("required", False)
-
-        # 特殊处理 IP 输入字段
-        if kb_category == "ip-input":
-            input_count = field.get("inputCount", 4)
-            ip_version = field.get("ipVersion", "v4")
-
-            if ip_version == "v4":
-                if input_count == 4:
-                    # IPv4 单地址：10.0.0.1
-                    rules[label] = {"rule": "ip_v4_pattern", "params": {
-                        "base": "10.0.0",
-                        "last_octet": 1 + len(rules)  # 避免重复
-                    }}
-                elif input_count == 8:
-                    # IPv4 区间：10.0.0.1 - 10.0.0.10
-                    rules[label] = {"rule": "ip_v4_range_pattern", "params": {
-                        "base": "10.0.0",
-                        "start": 1 + len(rules),
-                        "end": 10 + len(rules)
-                    }}
-            elif ip_version == "v6":
-                if input_count == 8:
-                    # IPv6 单地址：2001:0db8:0000:0000:0000:0000:0000:0001
-                    rules[label] = {"rule": "ip_v6_pattern", "params": {
-                        "prefix": "2001:db8",
-                        "suffix": 1 + len(rules)
-                    }}
-                elif input_count == 16:
-                    # IPv6 区间
-                    rules[label] = {"rule": "ip_v6_range_pattern", "params": {
-                        "prefix": "2001:db8",
-                        "start": 1 + len(rules),
-                        "end": 10 + len(rules)
-                    }}
-            continue
-
-        # 根据字段标签和类型推断规则
-        rule = _infer_fill_rule(label, field_type, input_type, required)
-        rules[label] = rule
-
-    return rules
-
-
-def _infer_fill_rule(label: str, field_type: str, input_type: str, required: bool) -> dict:
-    """推断字段的填充规则。
-
-    基于字段类型、标签关键词和通用模式推断，不硬编码模块特定字段名。
-    """
-    label_lower = label.lower()
-
-    # 基于 inputType 推断（优先级最高）
-    if input_type == "email":
-        return {"rule": "email_pattern", "params": {"domain": "test.com"}}
-    if input_type == "tel":
-        return {"rule": "phone_pattern", "params": {"prefix": "138"}}
-    if input_type == "password":
-        return {"rule": "password_pattern", "params": {"prefix": "Test@"}}
-    if input_type == "number":
-        return {"rule": "number_pattern", "params": {"min": 1, "max": 100}}
-
-    # 基于标签关键词推断（覆盖 inputType 缺失的情况）
-    phone_keywords = ("手机", "电话", "phone", "mobile", "tel")
-    if any(kw in label_lower for kw in phone_keywords):
-        return {"rule": "phone_pattern", "params": {"prefix": "138"}}
-    email_keywords = ("邮箱", "email", "mail")
-    if any(kw in label_lower for kw in email_keywords):
-        return {"rule": "email_pattern", "params": {"domain": "test.com"}}
-    password_keywords = ("密码", "password", "pwd")
-    if any(kw in label_lower for kw in password_keywords):
-        return {"rule": "password_pattern", "params": {"prefix": "Test@"}}
-
-    # 基于字段类型推断
-    if field_type == "textarea":
-        return {"rule": "description_pattern", "params": {"prefix": "auto"}}
-
-    # 基于标签关键词推断（通用模式）
-    if any(kw in label_lower for kw in ["code", "编码", "编号"]):
-        return {"rule": "code_pattern", "params": {"prefix": "code"}}
-    if any(kw in label_lower for kw in ["描述", "备注", "说明", "remark", "description", "memo"]):
-        return {"rule": "description_pattern", "params": {"prefix": "auto"}}
-
-    # 默认规则
-    return {"rule": "name_pattern", "params": {"prefix": "test"}}
-
-
 class MultiStepExecutor:
     """多步交互执行器：根据 KB multi_step 模板驱动复杂组件交互。
 
@@ -2178,7 +2062,8 @@ class MultiStepExecutor:
 
     async def execute_with_details(self, kb_category: str, label: str,
                                    option_text: str = "", options: list = None,
-                                   selector: str = "", **kwargs) -> Tuple[bool, Dict]:
+                                   selector: str = "", playwright_locator: str = None,
+                                   **kwargs) -> Tuple[bool, Dict]:
         """根据 kb_category 分发到对应的执行方法，并返回详细执行信息。
 
         与 execute() 类似，但返回元组 (成功标志, 详情字典)。
@@ -2189,7 +2074,8 @@ class MultiStepExecutor:
             label: 字段标签（用于定位组件）
             option_text: 要选择的选项文本
             options: 级联选择的多级选项列表（如 ["uiautotest", "uiautotest"]）
-            selector: CSS selector（来自 playbook，直接定位元素）
+            selector: CSS selector（用于 evaluate 上下文，标准 CSS）
+            playwright_locator: Playwright locator（用于 Playwright API，可含 :has-text() 等扩展语法）
             **kwargs: 额外参数（如 ip-input 需要的 sub_selectors, input_count, ip_version）
 
         Returns:
@@ -2213,14 +2099,14 @@ class MultiStepExecutor:
             if kb_category == "ip-input":
                 return await handler(label, kwargs)
             else:
-                # 所有处理器统一返回 (success, detail_dict)
-                return await handler(label, option_text, options, selector)
+                # 所有处理器统一接收双选择器
+                return await handler(label, option_text, options, selector, playwright_locator)
         except Exception as e:
             LOG.warning(f"MultiStepExecutor: {kb_category}({label}) 失败: {e}")
             return False, {}
 
     async def _execute_select_with_details(self, label: str, option_text: str,
-                                           _options, selector: str = "") -> Tuple[bool, Dict]:
+                                           _options, selector: str = "", playwright_locator: str = None) -> Tuple[bool, Dict]:
         """el-select 多步交互，并返回详细的执行信息。
 
         Returns:
@@ -2282,7 +2168,7 @@ class MultiStepExecutor:
                     LOG.info(f"    el-select {label}: 单选已有默认值 '{val}'，跳过")
                     return True, {"is_editable": False, "option_text": val, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy}
 
-        expanded = await self._expand_by_selector(selector, label)
+        expanded = await self._expand_by_selector(selector, label, playwright_locator)
         if not expanded:
             LOG.debug(f"    el-select {label}: expand failed")
             return False, {"selection_strategy": selection_strategy}
@@ -2337,7 +2223,7 @@ class MultiStepExecutor:
             # .custom-tree-node / .el-tree-node__content，选择器不匹配
             if select_sub_type == "select-tree":
                 LOG.info(f"    [FIX] el-select {label}: 检测到 tree-select，路由到 _fill_tree_select 专用处理器")
-                return await self._fill_tree_select(selector, label)
+                return await self._fill_tree_select(selector, label, playwright_locator)
 
         # Step 3: 等待选项加载
         await self._wait_for_options_loaded()
@@ -2438,7 +2324,7 @@ class MultiStepExecutor:
             # 如果 fill 导致下拉关闭，重新展开
             if post_fill == 0:
                 LOG.info(f"    el-select {label}: fill closed dropdown, re-expanding")
-                re_expanded = await self._expand_by_selector(selector, label)
+                re_expanded = await self._expand_by_selector(selector, label, playwright_locator)
                 if re_expanded:
                     await self.page.wait_for_timeout(500)
                     # 等待选项加载
@@ -2482,7 +2368,7 @@ class MultiStepExecutor:
             LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
             return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text), "select_sub_type": select_sub_type, "selection_strategy": selection_strategy}
 
-    async def _fill_remote_select(self, selector: str, label: str) -> tuple:
+    async def _fill_remote_select(self, selector: str, label: str, playwright_locator: str = None) -> tuple:
         """远程搜索 el-select：展开后等待远程加载完成，选第一个
 
         策略：展开 → 等待 option 出现 → 选第一个
@@ -2490,7 +2376,7 @@ class MultiStepExecutor:
         LOG.info(f"    [select-remote] {label}: 展开下拉框")
 
         # 1. 展开下拉框
-        expanded = await self._expand_by_selector(selector, label)
+        expanded = await self._expand_by_selector(selector, label, playwright_locator)
         if not expanded:
             return False, {"skipped_reason": "expand_failed"}
 
@@ -2526,10 +2412,15 @@ class MultiStepExecutor:
 
         return selected, {"option_text": verify.get("displayed_value", option_text)}
 
-    async def _fill_tree_select(self, selector: str, label: str) -> tuple:
+    async def _fill_tree_select(self, selector: str, label: str, playwright_locator: str = None) -> tuple:
         """树形 el-select：诊断并选择树节点
 
         步骤：先详细诊断 Vue 组件结构和事件链，再选择正确的操作方式。
+
+        Args:
+            selector: CSS 选择器（用于 page.evaluate）
+            label: 字段标签
+            playwright_locator: Playwright 定位器（用于 page.click/locator，可选）
 
         Returns:
             tuple: (success: bool, detail: dict)
@@ -2806,86 +2697,53 @@ class MultiStepExecutor:
             }
         }
 
-    async def execute_select_by_sub_type(self, selector: str, sub_type: str, label: str) -> tuple:
+    async def execute_select_by_sub_type(self, selector: str, sub_type: str, label: str, playwright_locator: str = None) -> tuple:
         """根据子类型分发到不同处理方法
 
         Args:
             selector: CSS 选择器
             sub_type: 子类型（select-remote/select-tree/select-single 等）
             label: 字段标签
+            playwright_locator: Playwright 定位器（可选）
 
         Returns:
             (success, detail)
         """
         if sub_type == "select-remote":
-            return await self._fill_remote_select(selector, label)
+            return await self._fill_remote_select(selector, label, playwright_locator)
         elif sub_type == "select-tree":
-            return await self._fill_tree_select(selector, label)
+            return await self._fill_tree_select(selector, label, playwright_locator)
         else:
             # select-single/multi/searchable/group：走现有通用逻辑
             return await self._execute_select_with_details(selector, label)
 
-    async def _execute_select(self, label: str, option_text: str, _options, selector: str = "") -> bool:
-        """el-select 多步交互：使用 Stage 1 提供的 selector 展开"""
-        steps = self.kb.get_steps("el-select", self.framework)
-        if not steps:
-            return False
-
-        # Step 1: expand（必须使用 selector，不做 KB XPath 回退）
-        if not selector:
-            LOG.warning(f"    el-select {label} 缺少 selector（Stage 1 未提供）")
-            return False
-
-        expanded = await self._expand_by_selector(selector, label)
-        if not expanded:
-            return False
-        await self.page.wait_for_timeout(500)
-
-        # Step 1.5: 自动发现选项（新增）
-        if not option_text:
-            option_text = await self._discover_first_option()
-
-        # Step 2: editable-check — 判断是否可搜索
-        editable_patterns = steps.get("editable-check", {}).get("patterns", [])
-        is_editable = await self._check_element_visible(editable_patterns, label=label)
-
-        if is_editable and option_text:
-            # 可搜索：输入关键词 → 选择匹配项
-            await self._try_step_patterns(steps.get("fill", {}), label=label)
-            await self.page.wait_for_timeout(300)
-            selected = await self._try_step_patterns(
-                steps.get("select", {}), label=label, option_text=option_text)
-            return selected
-        else:
-            # 不可搜索或无指定选项：选第一项
-            selected = await self._try_step_patterns(
-                steps.get("first-option", {}), label=label)
-            return selected
-
-    async def _expand_by_selector(self, selector: str, label: str) -> bool:
+    async def _expand_by_selector(self, selector: str, label: str, playwright_locator: str = None) -> bool:
         """用 CSS selector 点击展开 el-select 下拉框。
 
         selector 来自 Stage 1 playbook，可能是 .el-select 或 input 的选择器。
+        playwright_locator: Playwright 语法定位器（优先使用）
         """
         try:
-            # 取第一个 selector（可能有逗号分隔的备选）
-            primary = selector.split(",")[0].strip()
+            # 优先使用 playwright_locator（更稳定）
+            effective_locator = playwright_locator if playwright_locator else selector
+            # 取第一个 locator（可能有逗号分隔的备选）
+            primary = effective_locator.split(",")[0].strip()
 
             # 尝试点击 .el-select 的 input 区域来展开
             el = self.page.locator(primary).first
             el_count = await el.count()
             if el_count == 0:
-                LOG.info(f"    el-select {label}: selector 未匹配 ({primary})")
+                LOG.info(f"    el-select {label}: locator 未匹配 ({primary})")
                 return False
 
             await el.click(timeout=3000)
-            LOG.info(f"    el-select {label}: selector 展开成功 ({primary})")
+            LOG.info(f"    el-select {label}: locator 展开成功 ({primary})")
             return True
         except Exception as e:
-            LOG.info(f"    el-select {label}: selector 展开失败: {e}")
+            LOG.info(f"    el-select {label}: locator 展开失败: {e}")
             return False
 
-    async def _execute_cascader_with_details(self, label: str, _option_text, options: list, selector: str = "") -> tuple:
+    async def _execute_cascader_with_details(self, label: str, _option_text, options: list, selector: str = "", playwright_locator: str = None) -> tuple:
         """el-cascader 多步交互，返回详细执行信息。
 
         Returns:
@@ -2941,7 +2799,7 @@ class MultiStepExecutor:
         except Exception:
             return []
 
-    async def _execute_date_picker_with_details(self, label: str, option_text: str, _options, selector: str = "") -> tuple:
+    async def _execute_date_picker_with_details(self, label: str, option_text: str, _options, selector: str = "", playwright_locator: str = None) -> tuple:
         """date-picker 多步交互，返回详细执行信息。
 
         Returns:
@@ -2983,7 +2841,7 @@ class MultiStepExecutor:
             }
         return False, {"skipped_reason": "select_failed", "kb_category": "date-picker"}
 
-    async def _execute_form_checkbox_with_details(self, label: str, option_text: str, _options, selector: str = "") -> tuple:
+    async def _execute_form_checkbox_with_details(self, label: str, option_text: str, _options, selector: str = "", playwright_locator: str = None) -> tuple:
         """form-checkbox：勾选指定选项，返回详细执行信息。
 
         Returns:
@@ -3033,7 +2891,7 @@ class MultiStepExecutor:
         success, _ = await self._execute_list_selector_with_details(label, option_text, _options, selector)
         return success
 
-    async def _execute_list_selector_with_details(self, label: str, option_text: str, _options, selector: str = "") -> Tuple[bool, Dict]:
+    async def _execute_list_selector_with_details(self, label: str, option_text: str, _options, selector: str = "", playwright_locator: str = None) -> Tuple[bool, Dict]:
         """list-selector 多步交互，并返回详细的执行信息。
 
         Returns:
@@ -3349,7 +3207,8 @@ class MultiStepExecutor:
         return expanded
 
     async def _execute_transfer_box(self, label: str, option_text: str = "",
-                                    _options=None, selector: str = "") -> Tuple[bool, Dict]:
+                                    _options=None, selector: str = "",
+                                    playwright_locator: str = None) -> Tuple[bool, Dict]:
         """transfer-box 穿梭框专用处理器
 
         处理 el-table 结构的穿梭框（tbody/tr/span），不包含 checkbox 或 li 的 fallback。
@@ -3359,6 +3218,7 @@ class MultiStepExecutor:
             option_text: 要选择的选项文本（为空则选择第一个）
             selector: 组件容器 selector（未使用）
             _options: 未使用
+            playwright_locator: Playwright locator（未使用，保持接口一致）
 
         Returns:
             Tuple[bool, Dict]: (是否成功, {"option_text": str, "selected_count": int})

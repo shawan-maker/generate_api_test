@@ -17,9 +17,9 @@ from core.discovery.replay.wait_helpers import (
     wait_for_loading_complete, wait_for_table_ready,
 )
 from core.discovery.replay.form_filler import (
-    FormFiller, read_form_errors, generate_fill_data, scan_form_fields,
-    generate_fill_rules,
+    FormFiller, read_form_errors, scan_form_fields,
 )
+from core.discovery.shared import generate_fill_data, generate_fill_rules
 
 LOG = logging.getLogger("button_detector")
 

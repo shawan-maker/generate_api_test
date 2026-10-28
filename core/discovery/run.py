@@ -299,8 +299,10 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str,
                 LOG.warning(f"  Phase F: 仅非关键元素缺失（{len(missing)} 个），继续")
 
     # 清理调试字段（不污染输出）
-    if "_tabDebug" in ui_result:
-        del ui_result["_tabDebug"]
+    # _tabDebug 嵌套在 page_structure 内部
+    if "page_structure" in ui_result and "_tabDebug" in ui_result.get("page_structure", {}):
+        del ui_result["page_structure"]["_tabDebug"]
+    # 其他调试字段在顶层
     if "_debug_ipCheck" in ui_result:
         del ui_result["_debug_ipCheck"]
     if "_debug_multiInput" in ui_result:

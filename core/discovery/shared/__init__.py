@@ -42,6 +42,8 @@ from .form_validation import (
 
 from .fill_helpers import (
     generate_fill_value,
+    generate_fill_data,
+    generate_fill_rules,
     apply_fill_rule,
     evaluate_skip_rules,
     TREE_SELECT_SKIP_RULES,
@@ -83,6 +85,8 @@ __all__ = [
     "has_form_errors_visible",
     # fill helpers
     "generate_fill_value",
+    "generate_fill_data",
+    "generate_fill_rules",
     "apply_fill_rule",
     "evaluate_skip_rules",
     "TREE_SELECT_SKIP_RULES",

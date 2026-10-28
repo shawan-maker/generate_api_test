@@ -19,9 +19,9 @@ from core.discovery.replay.wait_helpers import (
     wait_for_navigation_complete,
 )
 from core.discovery.replay.form_filler import (
-    FormFiller, read_form_errors, generate_fill_data, scan_form_fields,
-    generate_fill_rules,
+    FormFiller, read_form_errors, scan_form_fields,
 )
+from core.discovery.shared import generate_fill_data, generate_fill_rules
 from core.discovery.operation_executor.base_executor import (
     _click_button_escalating, _install_message_capture, _get_captured_messages,
     _verify_operation_success, _check_data_changed, _ensure_on_list_page,
@@ -214,8 +214,8 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
 
         LOG.info(f"  [INCREMENTAL-SCAN-DEBUG] dropdown_expand={expand_result}")
 
-        # 等待菜单动画完成
-        await page.wait_for_timeout(800)
+        # 等待菜单动画完成（增加等待时间，确保 Vue 响应式更新完成）
+        await page.wait_for_timeout(1500)
 
         # 检查是否有可见的 dropdown 菜单
         has_visible_menu = await page.evaluate("""() => {
@@ -660,6 +660,12 @@ async def _validate_single_tab_crud(
     button_states = {}  # {button_text: is_enabled}
     executed_actions = set()  # 已执行的按钮集合
 
+    # ★ 如果 created_marker 已存在（来自 pre_marker），立即预扫描初始状态
+    if created_marker:
+        await page.wait_for_timeout(500)
+        button_states = await _scan_all_button_states(page, created_marker)
+        LOG.info(f"{tab_prefix}[STATE-INIT] 预扫描初始按钮状态: {button_states}")
+
     # ★ 初始化执行顺序追踪（记录实际执行的操作序列，包括级联操作）
     execution_order = []
 
@@ -808,6 +814,13 @@ async def _validate_single_tab_crud(
                 validated[action] = result
                 # ★ 记录执行顺序
                 _record_execution(action, "main", "create")
+
+                # ★ 预扫描按钮状态：create 成功后立即记录初始状态
+                # 用于后续检测状态变化（如：冻结→启用、禁用→启用）
+                if created_marker:
+                    await page.wait_for_timeout(500)  # 等待 Vue 渲染
+                    button_states = await _scan_all_button_states(page, created_marker)
+                    LOG.info(f"{tab_prefix}[STATE-INIT] 预扫描按钮状态: {button_states}")
             else:
                 fallback = await _extract_fallback_marker(page)
                 if fallback:
@@ -2460,42 +2473,49 @@ async def _do_edit(page, context: dict) -> dict:
 
     # ── 弹窗编辑模式 (obs["scenario"] == "dialog") ──
     # 扫描字段并修改
-    fields = await form_filler.scan_form_fields_v2()
-    modifications = context.get("edit_overrides")
-    filled = await form_filler.fill_edit_form(fields, modifications)
-    if filled == 0:
-        await _close_dialog(page)
-        return make_error("no_editable_fields", "未找到可修改的字段",
-                         trigger_text=btn_text,
-                         trigger_locator_verified=btn_click_result.get("locator"))
+    try:
+        fields = await form_filler.scan_form_fields_v2()
+        modifications = context.get("edit_overrides")
+        filled = await form_filler.fill_edit_form(fields, modifications)
+        if filled == 0:
+            await _close_dialog(page)
+            return make_error("no_editable_fields", "未找到可修改的字段",
+                             trigger_text=btn_text,
+                             trigger_locator_verified=btn_click_result.get("locator"))
 
-    # 提交
-    submit_result = await form_filler.submit_form_v2()
-    if not submit_result.get("locator"):
-        await _close_dialog(page)
-        return submit_failed("未找到提交按钮",
-                            trigger_text=btn_text,
-                            trigger_locator_verified=btn_click_result.get("locator"))
-
-    await page.wait_for_timeout(2000)
-
-    # 检查错误
-    errors = await read_form_errors(page)
-    if errors:
-        field_errors = [e for e in errors if e.get("severity") == "field"]
-        if field_errors:
-            return form_validation(field_errors[0].get("error_text", ""),
-                                  error_field=field_errors[0].get("field_label", ""),
-                                  trigger_text=btn_text,
-                                  trigger_locator_verified=btn_click_result.get("locator"))
-
-    captured_msgs = await _get_captured_messages(page)
-    success = await _verify_operation_success(page, "update", captured_messages=captured_msgs)
-    if not success:
-        await _close_dialog(page)
-        return no_success_signal("编辑提交后未检测到成功信号",
+        # 提交
+        submit_result = await form_filler.submit_form_v2()
+        if not submit_result.get("locator"):
+            await _close_dialog(page)
+            return submit_failed("未找到提交按钮",
                                 trigger_text=btn_text,
                                 trigger_locator_verified=btn_click_result.get("locator"))
+
+        await page.wait_for_timeout(2000)
+
+        # 检查错误
+        errors = await read_form_errors(page)
+        if errors:
+            field_errors = [e for e in errors if e.get("severity") == "field"]
+            if field_errors:
+                await _close_dialog(page)  # ★ 关闭对话框，避免阻塞重试时的按钮点击
+                return form_validation(field_errors[0].get("error_text", ""),
+                                      error_field=field_errors[0].get("field_label", ""),
+                                      trigger_text=btn_text,
+                                      trigger_locator_verified=btn_click_result.get("locator"))
+
+        captured_msgs = await _get_captured_messages(page)
+        success = await _verify_operation_success(page, "update", captured_messages=captured_msgs)
+        if not success:
+            await _close_dialog(page)
+            return no_success_signal("编辑提交后未检测到成功信号",
+                                    trigger_text=btn_text,
+                                    trigger_locator_verified=btn_click_result.get("locator"))
+    except Exception as e:
+        # ★ 异常时先关闭对话框，再传播错误，避免对话框遮挡重试时的按钮点击
+        _log.warning(f"    [_do_edit] 弹窗编辑异常: {e}，关闭对话框")
+        await _close_dialog(page)
+        raise
 
     # 使用 submit_form_v2 返回的已验证 locator
     submit_text = submit_result["text"]

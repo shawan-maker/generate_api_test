@@ -106,6 +106,168 @@ def generate_fill_value(field_type: str, input_type: str,
     }
 
 
+def generate_fill_data(fields: list, username: str = "test") -> dict:
+    """根据表单字段列表生成填充数据。
+
+    遍历字段列表，对每个可输入字段调用 generate_fill_value()，
+    返回 {label: value} 字典。
+
+    Args:
+        fields: scan_form_fields_v2() 返回的字段列表
+        username: 用户名（用于名称字段前缀）
+
+    Returns:
+        {label: value} 字典
+    """
+    # 延迟导入避免循环依赖
+    from .. import const
+
+    MULTI_STEP_SKIP = set(const.MULTI_STEP_TYPES) | {
+        "date-range-picker", "el-tree-select", "form-checkbox",
+        "el-radio", "el-switch", "el-checkbox-group",
+    }
+
+    fill_data = {}
+    for field in fields:
+        label = field.get("label", "")
+        if not label:
+            continue
+
+        field_type = field.get("type", "input")
+        input_type = field.get("inputType", "text")
+        kb_category = field.get("kb_category", "")
+
+        # 跳过非输入型组件（多步交互组件由 fill_multi_step_fields 处理）
+        if kb_category in MULTI_STEP_SKIP:
+            continue
+
+        value, _rule = generate_fill_value(field_type, input_type, username, label)
+        fill_data[label] = value
+
+    return fill_data
+
+
+def generate_fill_rules(fields: list) -> dict:
+    """根据表单字段生成填充规则（而非具体值）。
+
+    Stage 1 保存"规则"，Stage 2 根据规则生成"新值"，避免值重复。
+
+    规则类型：
+    - username_pattern: 生成唯一用户名
+    - email_pattern: 生成测试邮箱
+    - phone_pattern: 生成手机号
+    - password_fixed: 固定测试密码
+    - code_pattern: 生成编码
+    - description_pattern: 生成描述
+    - name_pattern: 生成名称
+    - fixed_value: 固定值（不需要变化的字段）
+    - ip_v4_pattern: 生成 IPv4 地址（4 段）
+    - ip_v4_range_pattern: 生成 IPv4 地址区间（8 段）
+    - ip_v6_pattern: 生成 IPv6 地址（8 段）
+    - ip_v6_range_pattern: 生成 IPv6 地址区间（16 段）
+
+    Args:
+        fields: scan_form_fields_v2() 返回的字段列表
+
+    Returns:
+        {label: {"rule": str, "params": dict}} 字典
+    """
+    rules = {}
+
+    for field in fields:
+        label = field.get("label", "")
+        if not label:
+            continue
+
+        field_type = field.get("type", "input")
+        kb_category = field.get("kb_category", "")
+        input_type = field.get("inputType", "text")
+        required = field.get("required", False)
+
+        # 特殊处理 IP 输入字段
+        if kb_category == "ip-input":
+            input_count = field.get("inputCount", 4)
+            ip_version = field.get("ipVersion", "v4")
+
+            if ip_version == "v4":
+                if input_count == 4:
+                    # IPv4 单地址：10.0.0.1
+                    rules[label] = {"rule": "ip_v4_pattern", "params": {
+                        "base": "10.0.0",
+                        "last_octet": 1 + len(rules)  # 避免重复
+                    }}
+                elif input_count == 8:
+                    # IPv4 区间：10.0.0.1 - 10.0.0.10
+                    rules[label] = {"rule": "ip_v4_range_pattern", "params": {
+                        "base": "10.0.0",
+                        "start": 1 + len(rules),
+                        "end": 10 + len(rules)
+                    }}
+            elif ip_version == "v6":
+                if input_count == 8:
+                    # IPv6 单地址：2001:0db8:0000:0000:0000:0000:0000:0001
+                    rules[label] = {"rule": "ip_v6_pattern", "params": {
+                        "prefix": "2001:db8",
+                        "suffix": 1 + len(rules)
+                    }}
+                elif input_count == 16:
+                    # IPv6 区间
+                    rules[label] = {"rule": "ip_v6_range_pattern", "params": {
+                        "prefix": "2001:db8",
+                        "start": 1 + len(rules),
+                        "end": 10 + len(rules)
+                    }}
+            continue
+
+        # 根据字段标签和类型推断规则
+        rule = _infer_fill_rule(label, field_type, input_type, required)
+        rules[label] = rule
+
+    return rules
+
+
+def _infer_fill_rule(label: str, field_type: str, input_type: str, required: bool) -> dict:
+    """推断字段的填充规则。
+
+    基于字段类型、标签关键词和通用模式推断，不硬编码模块特定字段名。
+    """
+    label_lower = label.lower()
+
+    # 基于 inputType 推断（优先级最高）
+    if input_type == "email":
+        return {"rule": "email_pattern", "params": {"domain": "test.com"}}
+    if input_type == "tel":
+        return {"rule": "phone_pattern", "params": {"prefix": "138"}}
+    if input_type == "password":
+        return {"rule": "password_pattern", "params": {"prefix": "Test@"}}
+    if input_type == "number":
+        return {"rule": "number_pattern", "params": {"min": 1, "max": 100}}
+
+    # 基于标签关键词推断（覆盖 inputType 缺失的情况）
+    phone_keywords = ("手机", "电话", "phone", "mobile", "tel")
+    if any(kw in label_lower for kw in phone_keywords):
+        return {"rule": "phone_pattern", "params": {"prefix": "138"}}
+    email_keywords = ("邮箱", "email", "mail")
+    if any(kw in label_lower for kw in email_keywords):
+        return {"rule": "email_pattern", "params": {"domain": "test.com"}}
+    password_keywords = ("密码", "password", "pwd")
+    if any(kw in label_lower for kw in password_keywords):
+        return {"rule": "password_pattern", "params": {"prefix": "Test@"}}
+
+    # 基于字段类型推断
+    if field_type == "textarea":
+        return {"rule": "description_pattern", "params": {"prefix": "auto"}}
+
+    # 基于标签关键词推断（通用模式）
+    if any(kw in label_lower for kw in ["code", "编码", "编号"]):
+        return {"rule": "code_pattern", "params": {"prefix": "code"}}
+    if any(kw in label_lower for kw in ["描述", "备注", "说明", "remark", "description", "memo"]):
+        return {"rule": "description_pattern", "params": {"prefix": "auto"}}
+
+    # 默认规则
+    return {"rule": "name_pattern", "params": {"prefix": "test"}}
+
+
 def apply_fill_rule(rule: dict, timestamp: str = None) -> str:
     """根据 fill_rule 元数据生成具体的填充值。
 

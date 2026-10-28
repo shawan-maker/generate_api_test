@@ -17,9 +17,9 @@ from core.discovery.replay.wait_helpers import (
     wait_for_navigation_complete,
 )
 from core.discovery.replay.form_filler import (
-    FormFiller, read_form_errors, generate_fill_data, scan_form_fields,
-    generate_fill_rules,
+    FormFiller, read_form_errors, scan_form_fields,
 )
+from core.discovery.shared import generate_fill_data, generate_fill_rules
 # ★ 统一使用 shared 模块（Stage 1/2 共享）
 from core.discovery.shared import (
     install_message_capture,

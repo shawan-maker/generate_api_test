@@ -15,9 +15,9 @@ from core.discovery.replay.wait_helpers import (
     wait_for_navigation_complete,
 )
 from core.discovery.replay.form_filler import (
-    FormFiller, read_form_errors, generate_fill_data, scan_form_fields,
-    generate_fill_rules,
+    FormFiller, read_form_errors, scan_form_fields,
 )
+from core.discovery.shared import generate_fill_data, generate_fill_rules
 from core.discovery.operation_executor.base_executor import (
     _click_button_escalating, _install_message_capture, _get_captured_messages,
     _verify_operation_success,
@@ -1201,6 +1201,23 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
                                                    captured_messages=captured_msgs)
         # === DIAG-P5-2: verify 结果 ===
         LOG.info(f"    [DIAG-submitB-verify] verify结果: success={success}, strict=True")
+
+        # ★ partial_success 检测：通知同时含"成功"和"失败"时标记为部分成功
+        if not success and captured_msgs:
+            msg_texts = [m.get("text", "") for m in captured_msgs if isinstance(m, dict)]
+            all_text = " ".join(msg_texts)
+            has_success_kw = "成功" in all_text
+            has_failure_kw = "失败" in all_text
+            if has_success_kw and has_failure_kw:
+                LOG.info(f"    [DIAG-submitB-verify] 检测到部分成功（通知同时含'成功'和'失败'）")
+                nav_info["submit_result"] = {
+                    "success": True,
+                    "partial": True,
+                    "button_text": btn_text
+                }
+                nav_info["captured_messages"] = captured_msgs
+                return nav_info
+
         nav_info["submit_result"] = {
             "success": success,
             "button_text": btn_text
