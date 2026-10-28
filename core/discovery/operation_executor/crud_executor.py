@@ -1693,7 +1693,8 @@ async def _do_create(page, context: dict) -> dict:
                 "label": field.get("label"),
                 "kb_category": kb_cat,
                 "selector": field.get("selector"),
-                "fill_rule": fill_rules.get(field.get("label", ""), {}),  # ★ 使用已生成的 fill_rules
+                "playwright_locator": field.get("playwright_locator"),
+                "fill_rule": fill_rules.get(field.get("label", ""), {}),
                 "is_editable": False,
                 "option_text": "",
             }
@@ -1777,9 +1778,10 @@ async def _do_create(page, context: dict) -> dict:
             if ms_field["label"] == label:
                 ms_field["is_editable"] = detail.get("is_editable", False)
                 ms_field["option_text"] = detail.get("option_text", "")
-                # ★ Phase 4a: 传递 el-select 子类型
                 if "select_sub_type" in detail:
                     ms_field["select_sub_type"] = detail["select_sub_type"]
+                if detail.get("playwright_locator"):
+                    ms_field["playwright_locator"] = detail["playwright_locator"]
                 break
 
     # ✅ P6: 检查必填多步字段是否填充成功
@@ -1937,13 +1939,12 @@ async def _do_create(page, context: dict) -> dict:
     for field in fields:
         if field.get("kb_category") == "radio":
             field_label = field.get("label")
-            # 使用实际选择的值（从 fill_result.radio_selections 获取）
             actual_option_text = radio_selections.get(field_label, "")
             radio_field_details.append({
                 "label": field_label,
                 "kb_category": "radio",
-                "option_locator": field.get("selector"),
-                "option_text": actual_option_text,  # ★ 使用实际选择的值
+                "option_locator": field.get("playwright_locator") or field.get("selector"),
+                "option_text": actual_option_text,
                 "fill_rule": field.get("fill_rule", {}),
             })
 
@@ -3772,6 +3773,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
                     detail = {
                         "label": field.get("label"),
                         "selector": field.get("selector"),
+                        "playwright_locator": field.get("playwright_locator"),
                         "type": "input",
                         "inputType": input_type,
                     }

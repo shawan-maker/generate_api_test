@@ -131,6 +131,8 @@ class FormFiller:
                 entry["thead_label"] = f["thead_label"]
             if f.get("visible_index") is not None:
                 entry["visible_index"] = f["visible_index"]
+            if f.get("is_fallback_label"):
+                entry["is_fallback_label"] = True
             # ★ IP 多段输入专用字段
             if f.get("subSelectors"):
                 entry["subSelectors"] = f["subSelectors"]
@@ -675,6 +677,7 @@ class FormFiller:
                         "label": label,
                         "kb_category": kb_cat,
                         "selector": selector,
+                        "playwright_locator": field.get("playwright_locator"),
                         "is_editable": detail.get("is_editable", False),
                         "option_text": detail.get("option_text", ""),
                         "round": round_num,
@@ -733,6 +736,7 @@ class FormFiller:
                         "label": label,
                         "kb_category": kb_cat,
                         "selector": selector,
+                        "playwright_locator": field.get("playwright_locator"),
                         "is_editable": detail.get("is_editable", False),
                         "option_text": "",
                         "skipped_reason": detail.get("skipped_reason", "unknown"),
@@ -1378,25 +1382,11 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                         || sel.querySelector('input[multiple]') !== null;
                     const labelSuffix = selects.length > 1 ? '(' + (idx + 1) + ')' : '(下拉)';
 
-                    // 为每个 select 生成唯一 CSS 路径
-                    const selPath = [];
-                    let cur = sel;
-                    while (cur && cur.nodeType === Node.ELEMENT_NODE) {{
-                        let s = cur.nodeName.toLowerCase();
-                        if (cur.id) {{ s = '#' + cur.id; selPath.unshift(s); break; }}
-                        let sib = cur; let nth = 1;
-                        while (sib.previousElementSibling) {{
-                            sib = sib.previousElementSibling;
-                            if (sib.nodeName === cur.nodeName) nth++;
-                        }}
-                        if (nth > 1 || cur.nextElementSibling) s += ':nth-of-type(' + nth + ')';
-                        selPath.unshift(s);
-                        cur = cur.parentElement;
-                    }}
-                    const selSelector = selPath.join(' > ');
+                    // ★ 统一使用 _buildSelector 生成双定位器（selector + playwright_locator）
+                    const selResult = _buildSelector(sel, label + labelSuffix);
 
-                    fields.push({{ label: label + labelSuffix, type: 'select', kb_category: 'el-select',
-                                 selector: selSelector, required }});
+                    fields.push(Object.assign({{ label: label + labelSuffix, type: 'select', kb_category: 'el-select',
+                                 required }}, selResult));
                     if (isMulti) {{
                         _debug_multiSelect.push({{
                             label: label + labelSuffix,
@@ -1689,8 +1679,12 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                 // 3) 仍无 label 才用 placeholder（去掉"请输入"前缀后的干净文本）
                 if (!label && placeholder) label = placeholder;
 
-                // 4) 最后兜底：字段序号
-                if (!label) label = '字段' + (idx + 1);
+                // 4) 最后兜底：空字符串 + 标记
+                let isFallbackLabel = false;
+                if (!label) {{
+                    label = '';
+                    isFallbackLabel = true;
+                }}
 
                 // 检测 el-input-number 父容器
                 const isNumber = !!inp.closest('.el-input-number');
@@ -1705,6 +1699,7 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                     required: false,
                     visible_index: currentVisibleIndex  // ★ 在 scope 内的可见字段顺序
                 }};
+                if (isFallbackLabel) fieldEntry.is_fallback_label = true;
                 if (rawPlaceholder) fieldEntry.placeholder = rawPlaceholder;
                 if (theadLabel) fieldEntry.thead_label = theadLabel;
                 fields.push(fieldEntry);
@@ -1789,7 +1784,7 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
 
             // 优先级 3b: Label-based（Playwright 语法，跨会话稳定）
             let playwrightLocator = null;
-            if (labelText && labelText.length > 0 && !labelText.startsWith('字段')) {{
+            if (labelText && labelText.length > 0) {{
                 const escaped = labelText.replace(/"/g, '\\"');
                 playwrightLocator = `.el-form-item:has(.el-form-item__label:has-text("${{escaped}}")) input`;
             }}
@@ -1817,7 +1812,7 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
 
             // 优先级 2: Label-based（Playwright 语法，跨会话稳定）
             let playwrightLocator = null;
-            if (labelText && labelText.length > 0 && !labelText.startsWith('字段')) {{
+            if (labelText && labelText.length > 0) {{
                 const escaped = labelText.replace(/"/g, '\\"');
                 playwrightLocator = `.el-form-item:has(.el-form-item__label:has-text("${{escaped}}")) ${{componentSelector}}`;
             }}

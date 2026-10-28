@@ -351,6 +351,7 @@ def _build_form_page_playbook(ui_result: dict, form_actions: list) -> dict:
 
                 label = field.get("label", "")
                 selector = field.get("selector", "")
+                playwright_locator = field.get("playwright_locator", "") or selector
                 field_type = field.get("type", "input")
                 kb_category = field.get("kb_category", "")
 
@@ -368,7 +369,7 @@ def _build_form_page_playbook(ui_result: dict, form_actions: list) -> dict:
 
                 fields_info.append({
                     "label": label,
-                    "playwright_locator": selector,
+                    "playwright_locator": playwright_locator,
                     "type": field_type,
                     "kb_category": kb_category,
                     "fill_rule": fill_rule,
@@ -759,7 +760,7 @@ def _build_create_steps(op_data: dict) -> list:
                 })
 
             # 候选 2: label-based（语义化，跨会话稳定）
-            if label and not label.startswith('字段'):
+            if label and not field.get('is_fallback_label'):
                 escaped_label = label.replace('"', '\\"')
                 candidates.append({
                     "strategy": "label",
@@ -1086,15 +1087,8 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
                     "selector": f'input[placeholder="{escaped_ph}"]',
                 })
 
-            # 候选 2: Stage 1 的原始绝对路径选择器（特定于编辑 dialog 的 DOM 位置）
-            if selector:
-                candidates.append({
-                    "strategy": "original",
-                    "selector": selector,
-                })
-
-            # 候选 3: 基于 label 文本（限定到可见 dialog/drawer，避免匹配多个弹窗中的同名字段）
-            if label and not label.startswith("字段"):
+            # 候选 2: 基于 label 文本（限定到可见 dialog/drawer，避免匹配多个弹窗中的同名字段）
+            if label and not field.get("is_fallback_label"):
                 escaped_label = label.replace('"', '\\"')
                 candidates.append({
                     "strategy": "label",
@@ -1104,6 +1098,13 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
                         f'.el-drawer:not([style*="display: none"]) '
                         f'.el-form-item:has(.el-form-item__label:has-text("{escaped_label}")) input'
                     ),
+                })
+
+            # 候选 3: Stage 1 的原始绝对路径选择器（回退）
+            if selector:
+                candidates.append({
+                    "strategy": "original",
+                    "selector": selector,
                 })
 
             # 候选 4: 基于 visible_index（JS 定位，跨会话最稳定）
@@ -1373,7 +1374,9 @@ def _build_generic_steps(op_data: dict, create_marker=None) -> list:
         _PLACEHOLDER_TEXTS = {"(已选中)", "(selected)"}
         fill_fields = []
         for d in dialog_fills:
-            if not d.get("selector"):
+            # 优先使用 playwright_locator，回退到 selector
+            pw_locator = d.get("playwright_locator") or d.get("selector")
+            if not pw_locator:
                 continue
 
             option_text = d.get("option_text", "")
@@ -1385,7 +1388,7 @@ def _build_generic_steps(op_data: dict, create_marker=None) -> list:
 
             fill_field = {
                 "label": d.get("label", ""),
-                "playwright_locator": d["selector"],
+                "playwright_locator": pw_locator,
                 "type": "select",
                 "kb_category": kb_category,
                 "fill_rule": {},
@@ -1404,7 +1407,7 @@ def _build_generic_steps(op_data: dict, create_marker=None) -> list:
                 fill_field["option_text"] = ""  # 清空具体值，Stage 2 动态选择
                 fill_field["interaction"] = {
                     "type": "tree-select" if is_tree_select else "select",
-                    "locator": d["selector"],
+                    "locator": pw_locator,
                     "click_strategy": "handleNodeClick" if is_tree_select else "vue_emit",
                     "component_type": "el-tree" if is_tree_select else "el-select",
                 }
@@ -1459,7 +1462,7 @@ def _build_generic_steps(op_data: dict, create_marker=None) -> list:
                 })
 
             # 候选 3: 基于 label 文本（限定到可见 dialog/drawer，避免匹配多个弹窗中的同名字段）
-            if label and not label.startswith("字段"):
+            if label and not field.get("is_fallback_label"):
                 escaped_label = label.replace('"', '\\"')
                 candidates.append({
                     "strategy": "label",
@@ -1667,6 +1670,7 @@ def _build_page_nav_steps(op_data: dict) -> list:
         for field in form_fields:
             label = field.get("label", "")
             selector = field.get("selector", "")
+            playwright_locator = field.get("playwright_locator", "") or selector
             kb_category = field.get("kb_category", "")
             field_type = field.get("type", "input")
 
@@ -1687,7 +1691,7 @@ def _build_page_nav_steps(op_data: dict) -> list:
                     "label": label,
                     "type": "select",
                     "kb_category": "el-select",
-                    "playwright_locator": selector,
+                    "playwright_locator": playwright_locator,
                     "fill_rule": {},
                     "is_editable": True,
                     "is_multi_select": fs.get("isMultiSelect", False),
@@ -1701,7 +1705,7 @@ def _build_page_nav_steps(op_data: dict) -> list:
                     "label": label,
                     "type": "radio",
                     "kb_category": "radio",
-                    "playwright_locator": selector,
+                    "playwright_locator": playwright_locator,
                     "fill_rule": {},
                     "option_text": fs.get("value", ""),
                     # ★ 保留 firstOptionText（来自 scan_form_fields_v2），供 Stage 2 Vue v-model 同步使用
@@ -1717,7 +1721,7 @@ def _build_page_nav_steps(op_data: dict) -> list:
                     "label": label,
                     "type": field_type,
                     "kb_category": kb_category,
-                    "playwright_locator": selector,
+                    "playwright_locator": playwright_locator,
                     "fill_rule": {},
                 })
             elif kb_category in ("input-generic", "textarea-generic"):
