@@ -113,12 +113,13 @@ class ButtonStateTracker:
         self.executed_buttons.add(button_text)
 
 
-async def _scan_row_after_operation(page, row_selector: str, marker: str, existing_actions: set) -> list:
-    """操作执行后，增量扫描当前行，发现新出现的按钮。
+async def _scan_row_after_operation(page, row_selector: str, marker: str, existing_actions: set) -> dict:
+    """操作执行后，增量扫描当前行，发现新出现的按钮和文本变化的按钮。
 
     用于捕获状态依赖的按钮，如：
     - "暂停"操作成功后，"启用"按钮出现
     - "冻结"操作成功后，"解冻"按钮出现
+    - "锁定"按钮文本变为"解锁"（状态切换按钮对）
 
     Args:
         page: Playwright Page 对象
@@ -127,8 +128,13 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
         existing_actions: 已知的操作按钮文本集合（用于去重）
 
     Returns:
-        list: 新发现的按钮列表，格式同 element_scanner 的按钮格式
+        dict: {
+            'new_buttons': list,  # 新发现的按钮
+            'disappeared_buttons': list,  # 消失的按钮（可能是状态切换）
+            'all_current_texts': set  # 当前所有按钮文本（用于诊断）
+        }
     """
+    result = {'new_buttons': [], 'disappeared_buttons': [], 'all_current_texts': set()}
     try:
         LOG.info(f"  [INCREMENTAL-SCAN-DEBUG] 开始扫描: row_selector={row_selector}, marker={marker}")
 
@@ -142,35 +148,42 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
 
         if not row_exists:
             LOG.debug(f"  [incremental-scan] 行不存在（可能已删除），跳过扫描")
-            return []
+            return result
 
         # 2. 扫描当前行的所有操作按钮（直接可见的 .el-button）
-        new_buttons = await page.evaluate(f"""() => {{
+        scan_result = await page.evaluate(f"""() => {{
             const row = document.querySelector('{row_selector}');
-            if (!row) return [];
+            if (!row) return {{ buttons: [], allTexts: [] }};
 
             const buttons = [];
+            const allTexts = [];
             const existingTexts = {list(existing_actions)};
 
             // 扫描直接可见的按钮（.el-button）
             const directBtns = row.querySelectorAll('.cell .el-button');
             directBtns.forEach(btn => {{
                 const text = btn.textContent.trim();
-                if (text && !existingTexts.includes(text)) {{
-                    const rect = btn.getBoundingClientRect();
-                    buttons.push({{
-                        text: text,
-                        tag: 'BUTTON',
-                        location: 'row_action',
-                        selector: `button:has-text("${{text}}")`,
-                        rect: {{ width: rect.width, height: rect.height }},
-                        is_new: true,
-                    }});
+                if (text) {{
+                    allTexts.push(text);
+                    if (!existingTexts.includes(text)) {{
+                        const rect = btn.getBoundingClientRect();
+                        buttons.push({{
+                            text: text,
+                            tag: 'BUTTON',
+                            location: 'row_action',
+                            selector: `button:has-text("${{text}}")`,
+                            rect: {{ width: rect.width, height: rect.height }},
+                            is_new: true,
+                        }});
+                    }}
                 }}
             }});
 
-            return buttons;
+            return {{ buttons, allTexts }};
         }}""")
+
+        new_buttons = scan_result.get('buttons', [])
+        all_current_texts = set(scan_result.get('allTexts', []))
 
         LOG.info(f"  [INCREMENTAL-SCAN-DEBUG] direct_buttons_found={[b.get('text') for b in new_buttons]}")
 
@@ -193,23 +206,26 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
             const dropdown = row.querySelector('.el-dropdown');
             if (!dropdown) return {{ expanded: false, reason: 'no_dropdown' }};
 
+            // 记录 dropdown 索引，用于后续精确定位 menu
+            const dropdownIndex = Array.from(document.querySelectorAll('.el-dropdown')).indexOf(dropdown);
+
             // 方法 1: 调用 Vue 实例的 show/handleMouseEnter
             if (dropdown.__vue__) {{
                 const vm = dropdown.__vue__;
                 if (typeof vm.show === 'function') {{
                     vm.show();
-                    return {{ expanded: true, method: 'vue_show' }};
+                    return {{ expanded: true, method: 'vue_show', dropdownIndex }};
                 }}
                 if (typeof vm.handleMouseEnter === 'function') {{
                     vm.handleMouseEnter();
-                    return {{ expanded: true, method: 'vue_handleMouseEnter' }};
+                    return {{ expanded: true, method: 'vue_handleMouseEnter', dropdownIndex }};
                 }}
             }}
 
             // 方法 2: 派发 mouseenter + mouseover 事件
             dropdown.dispatchEvent(new MouseEvent('mouseenter', {{ bubbles: false }}));
             dropdown.dispatchEvent(new MouseEvent('mouseover', {{ bubbles: true }}));
-            return {{ expanded: true, method: 'dispatchEvent' }};
+            return {{ expanded: true, method: 'dispatchEvent', dropdownIndex }};
         }}""")
 
         LOG.info(f"  [INCREMENTAL-SCAN-DEBUG] dropdown_expand={expand_result}")
@@ -217,24 +233,55 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
         # 等待菜单动画完成（增加等待时间，确保 Vue 响应式更新完成）
         await page.wait_for_timeout(1500)
 
-        # 检查是否有可见的 dropdown 菜单
-        has_visible_menu = await page.evaluate("""() => {
+        dropdown_index = expand_result.get('dropdownIndex')
+
+        # 检查是否有可见的 dropdown 菜单（只检查目标行的 menu）
+        has_visible_menu = await page.evaluate(f"""(dropdownIndex) => {{
+            // 通过 dropdown 索引定位关联的 menu
+            const dropdowns = document.querySelectorAll('.el-dropdown');
+            if (typeof dropdownIndex === 'number' && dropdownIndex < dropdowns.length) {{
+                const dropdown = dropdowns[dropdownIndex];
+                const menu = dropdown.querySelector('.el-dropdown-menu')
+                    || dropdown.parentElement?.querySelector('.el-dropdown-menu');
+                if (menu && menu.offsetWidth > 0 && menu.offsetHeight > 0) return true;
+            }}
+            // 回退：检查任何可见 menu
             const menus = document.querySelectorAll('.el-dropdown-menu');
             return Array.from(menus).some(m => m.offsetWidth > 0 && m.offsetHeight > 0);
-        }""")
+        }}""", dropdown_index)
 
         LOG.info(f"  [INCREMENTAL-SCAN-DEBUG] has_visible_menu={has_visible_menu}")
 
         if has_visible_menu:
-            # 在 document.body 下查找可见的 dropdown-menu（teleport 渲染）
-            dropdown_buttons = await page.evaluate(f"""() => {{
+            # ★ 只扫描目标行的 dropdown menu（避免混入其他行的按钮）
+            dropdown_buttons = await page.evaluate(f"""(dropdownIndex) => {{
                 const existingTexts = {list(existing_actions)};
                 const buttons = [];
+                const allItems = [];
 
-                // 查找所有可见的 dropdown-menu（Element UI teleport 到 body）
-                const menus = document.querySelectorAll('.el-dropdown-menu');
+                // 通过 dropdown 索引定位目标 menu
+                let targetMenu = null;
+                const dropdowns = document.querySelectorAll('.el-dropdown');
+                if (typeof dropdownIndex === 'number' && dropdownIndex < dropdowns.length) {{
+                    const dropdown = dropdowns[dropdownIndex];
+                    targetMenu = dropdown.querySelector('.el-dropdown-menu')
+                        || dropdown.parentElement?.querySelector('.el-dropdown-menu');
+                }}
+
+                // 回退：找第一个可见的 menu
+                if (!targetMenu) {{
+                    const menus = document.querySelectorAll('.el-dropdown-menu');
+                    for (const menu of menus) {{
+                        if (menu.offsetWidth > 0 && menu.offsetHeight > 0) {{
+                            targetMenu = menu;
+                            break;
+                        }}
+                    }}
+                }}
+
+                // 收集所有 menu 信息（诊断用）
                 const menuInfo = [];
-                menus.forEach((menu, idx) => {{
+                document.querySelectorAll('.el-dropdown-menu').forEach((menu, idx) => {{
                     const items = [];
                     menu.querySelectorAll('.el-dropdown-menu__item').forEach(item => {{
                         items.push(item.textContent.trim());
@@ -248,14 +295,13 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
                     }});
                 }});
 
-                for (const menu of menus) {{
-                    if (menu.offsetWidth === 0 || menu.offsetHeight === 0) continue;
-
-                    menu.querySelectorAll('.el-dropdown-menu__item').forEach(item => {{
+                if (targetMenu) {{
+                    targetMenu.querySelectorAll('.el-dropdown-menu__item').forEach(item => {{
+                        const text = item.textContent.trim();
+                        allItems.push(text);
                         // ★ 过滤 disabled 项（cmss-disabled/is-disabled class 或 Vue disabled prop）
                         if (item.classList.contains('cmss-disabled') || item.classList.contains('is-disabled')) return;
                         if (item.__vue__ && item.__vue__.disabled === true) return;
-                        const text = item.textContent.trim();
                         if (text && !existingTexts.includes(text)) {{
                             buttons.push({{
                                 text: text,
@@ -268,25 +314,45 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
                     }});
                 }}
 
-                return {{ buttons: buttons, menuInfo: menuInfo, existingTexts: existingTexts }};
-            }}""")
+                return {{ buttons: buttons, menuInfo: menuInfo, existingTexts: existingTexts, allItems: allItems }};
+            }}""", dropdown_index)
 
             LOG.info(f"  [INCREMENTAL-SCAN-DEBUG] dropdown_scan_result={dropdown_buttons}")
 
             if isinstance(dropdown_buttons, dict):
                 visible_buttons.extend(dropdown_buttons.get('buttons', []))
+                # ★ 问题二：收集 dropdown 中的当前按钮文本
+                all_current_texts.update(dropdown_buttons.get('allItems', []))
             else:
                 visible_buttons.extend(dropdown_buttons)
+
+        # ★ 问题二：检测消失的按钮（可能是状态切换导致的文本变化）
+        # 例如：执行"禁用"后，"禁用"按钮消失，"启用"按钮出现
+        # 例如：执行"锁定"后，"锁定"按钮消失，"解锁"按钮出现
+        disappeared_buttons = []
+        if existing_actions and all_current_texts:
+            # 直接比较前后差异，找出消失的按钮
+            disappeared_buttons = [text for text in existing_actions if text not in all_current_texts]
+
+            if disappeared_buttons:
+                LOG.info(f"  [INCREMENTAL-SCAN] 检测到按钮文本变化:")
+                LOG.info(f"    消失的按钮: {disappeared_buttons}")
+                LOG.info(f"    新出现的按钮: {[b.get('text') for b in visible_buttons] if visible_buttons else []}")
+                LOG.info(f"    当前所有按钮: {all_current_texts}")
+
+        result['new_buttons'] = visible_buttons
+        result['disappeared_buttons'] = disappeared_buttons
+        result['all_current_texts'] = all_current_texts
 
         if visible_buttons:
             LOG.info(f"  [incremental-scan] 发现 {len(visible_buttons)} 个新按钮: "
                      f"{[b['text'] for b in visible_buttons]}")
 
-        return visible_buttons
+        return result
 
     except Exception as e:
         LOG.warning(f"  [incremental-scan] 扫描失败: {e}")
-        return []
+        return {'new_buttons': [], 'disappeared_buttons': [], 'all_current_texts': set()}
 
 
 async def discover_and_validate(page, username: str = "test") -> dict:
@@ -372,38 +438,73 @@ async def _scan_all_button_states(page, created_marker: str) -> dict:
             const vm = dropdown.__vue__;
             if (vm && typeof vm.show === 'function') {{
                 vm.show();
-                return {{ expanded: true, method: 'vue_show' }};
+            }} else {{
+                dropdown.dispatchEvent(new MouseEvent('mouseenter', {{ bubbles: false }}));
+                dropdown.dispatchEvent(new MouseEvent('mouseover', {{ bubbles: true }}));
             }}
 
-            dropdown.dispatchEvent(new MouseEvent('mouseenter', {{ bubbles: false }}));
-            dropdown.dispatchEvent(new MouseEvent('mouseover', {{ bubbles: true }}));
-            return {{ expanded: true, method: 'dispatchEvent' }};
+            // 获取此 dropdown 关联的 menu 元素标识
+            const menu = dropdown.querySelector('.el-dropdown-menu')
+                || dropdown.parentElement?.querySelector('.el-dropdown-menu');
+            const menuId = menu ? menu.id || menu.getAttribute('data-popper-id') : null;
+            const dropdownIndex = Array.from(document.querySelectorAll('.el-dropdown')).indexOf(dropdown);
+
+            return {{ expanded: true, menuId, dropdownIndex }};
         }}""")
 
         if dropdown_expand and dropdown_expand.get('expanded'):
             await page.wait_for_timeout(800)
 
-            # 扫描可见的 dropdown menu
-            dropdown_states = await page.evaluate("""() => {
-                const menus = document.querySelectorAll('.el-dropdown-menu');
-                const states = {};
+            # 扫描可见的 dropdown menu（只扫描目标行的 menu）
+            menu_id = dropdown_expand.get('menuId')
+            dropdown_index = dropdown_expand.get('dropdownIndex')
+            dropdown_states = await page.evaluate(f"""(params) => {{
+                const menuId = params.menuId;
+                const dropdownIndex = params.dropdownIndex;
+                const states = {{}};
+                let targetMenu = null;
 
-                for (const menu of menus) {
-                    if (menu.offsetWidth <= 0 || menu.offsetHeight <= 0) continue;
+                // 优先通过 menuId 定位
+                if (menuId) {{
+                    targetMenu = document.getElementById(menuId)
+                        || document.querySelector(`[data-popper-id="${{menuId}}"]`);
+                }}
 
-                    menu.querySelectorAll('.el-dropdown-menu__item').forEach(item => {
+                // 回退：通过 dropdown 索引定位
+                if (!targetMenu && typeof dropdownIndex === 'number') {{
+                    const dropdowns = document.querySelectorAll('.el-dropdown');
+                    if (dropdownIndex < dropdowns.length) {{
+                        const dropdown = dropdowns[dropdownIndex];
+                        targetMenu = dropdown.querySelector('.el-dropdown-menu')
+                            || dropdown.parentElement?.querySelector('.el-dropdown-menu');
+                    }}
+                }}
+
+                // 最后回退：找第一个可见的 menu
+                if (!targetMenu) {{
+                    const menus = document.querySelectorAll('.el-dropdown-menu');
+                    for (const menu of menus) {{
+                        if (menu.offsetWidth > 0 && menu.offsetHeight > 0) {{
+                            targetMenu = menu;
+                            break;
+                        }}
+                    }}
+                }}
+
+                if (targetMenu) {{
+                    targetMenu.querySelectorAll('.el-dropdown-menu__item').forEach(item => {{
                         const text = item.textContent.trim();
-                        if (text) {
+                        if (text) {{
                             const disabled = item.classList.contains('cmss-disabled')
                                 || item.classList.contains('is-disabled')
                                 || (item.__vue__ && item.__vue__.disabled === true);
                             states[text] = !disabled;
-                        }
-                    });
-                }
+                        }}
+                    }});
+                }}
 
                 return states;
-            }""")
+            }}""", {"menuId": menu_id, "dropdownIndex": dropdown_index})
 
             result.update(dropdown_states)
 
@@ -1000,13 +1101,34 @@ async def _validate_single_tab_crud(
                 LOG.info(f"{tab_prefix}[INCREMENTAL-SCAN] row_selector={row_selector}")
 
                 if row_selector:
-                    existing_actions = set(buttons_by_action.keys())
-                    LOG.info(f"{tab_prefix}[INCREMENTAL-SCAN] existing_actions={existing_actions}")
+                    # ★ 只传递行级按钮（dropdown/row_action），排除工具栏按钮
+                    existing_row_actions = {
+                        action for action, btn_info in buttons_by_action.items()
+                        if btn_info.get("location") in ("dropdown", "row_action")
+                    }
+                    LOG.info(f"{tab_prefix}[INCREMENTAL-SCAN] buttons_by_action 完整内容:")
+                    for _act, _info in buttons_by_action.items():
+                        LOG.info(f"  {_act}: location={_info.get('location')}, source={_info.get('source')}, "
+                                 f"tag={_info.get('tag')}, selector={_info.get('selector', '')[:80]}")
+                    LOG.info(f"{tab_prefix}[INCREMENTAL-SCAN] existing_row_actions={existing_row_actions}")
 
-                    new_buttons = await _scan_row_after_operation(
-                        page, row_selector, created_marker, existing_actions
+                    scan_result = await _scan_row_after_operation(
+                        page, row_selector, created_marker, existing_row_actions
                     )
+
+                    new_buttons = scan_result.get('new_buttons', [])
+                    disappeared_buttons = scan_result.get('disappeared_buttons', [])
+
                     LOG.info(f"{tab_prefix}[INCREMENTAL-SCAN] new_buttons={[b.get('text') for b in new_buttons] if new_buttons else []}")
+
+                    # ★ 问题二：记录消失的按钮（状态切换的旧状态）
+                    if disappeared_buttons:
+                        LOG.info(f"{tab_prefix}[INCREMENTAL-SCAN] disappeared_buttons={disappeared_buttons}")
+                        LOG.info(f"{tab_prefix}[INCREMENTAL-SCAN] 检测到状态切换按钮对:")
+                        for old_text in disappeared_buttons:
+                            # 查找对应的新按钮（通常是反义词）
+                            # 例如：禁用→启用，锁定→解锁，冻结→解冻
+                            LOG.info(f"  {old_text} → 已切换为新状态")
 
                     if new_buttons:
                         LOG.info(f"{tab_prefix}增量发现 {len(new_buttons)} 个新按钮")

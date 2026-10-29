@@ -571,12 +571,24 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
             captured_msgs = await _get_captured_messages(page)
             success = await _verify_operation_success(page, "submit", strict=True,
                                                        captured_messages=captured_msgs)
+
+            # ★ 问题三修复：检测部分成功场景
+            # 例如"执行 1/2 个授权操作，其中：1 个成功，1 个失败"
+            partial_success = False
+            if not success and captured_msgs:
+                msg_texts = [m.get('text', '') for m in captured_msgs if isinstance(m, dict)]
+                all_text = ' '.join(msg_texts)
+                if '成功' in all_text and '失败' in all_text:
+                    partial_success = True
+                    LOG.info(f"    检测到部分成功: {all_text[:120]}")
+
             nav_info["submit_result"] = {
-                "success": success,
+                "success": success or partial_success,
+                "partial_success": partial_success,
                 "button_text": btn_text
             }
 
-            if not success:
+            if not success and not partial_success:
                 nav_info["error_type"] = "submit_failed"
                 nav_info["error_text"] = "提交后未检测到成功信号"
 
@@ -590,7 +602,7 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
         form_field_details = await form_filler.scan_form_fields_v2()
 
         if not form_field_details:
-            # 确实没有任何可填写的字段，视为浏览/展示页面
+            # 确实没有任何可填写的字段，视为浏览/展示页面（详情页）
             LOG.info(f"    无任何表单字段，视为浏览页面（操作成功）")
             nav_info["submit_result"] = {
                 "success": True,
