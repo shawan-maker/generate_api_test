@@ -229,6 +229,7 @@ class ButtonDriver:
 
     async def _find_row_with_pagination(self, marker: str, max_pages: int = 3) -> Optional[Locator]:
         """带分页的行查找：当前页找不到时尝试翻页（最多 max_pages 页）"""
+        self._last_pagination_trace = None  # ★ O3: 记录分页查找轨迹
         try:
             # [PAGINATION-DIAG] 诊断：记录分页组件数量和可见性
             try:
@@ -296,6 +297,15 @@ class ButtonDriver:
                 row = await self._find_row_on_current_page(marker)
                 if row:
                     LOG.info(f"在第 {page_num} 页找到包含 '{marker}' 的行")
+                    # ★ O3: 记录分页查找轨迹
+                    self._last_pagination_trace = {
+                        "action": "paginate",
+                        "direction": "next",
+                        "start_page": current_page,
+                        "target_found_on_page": page_num,
+                        "pages_searched": page_num - current_page,
+                        "next_button_selector": next_btn_sel,
+                    }
                     return row
 
             LOG.warning(f"翻页 {max_pages} 页后仍未找到包含 '{marker}' 的行")

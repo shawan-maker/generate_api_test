@@ -842,6 +842,12 @@ def _build_create_steps(op_data: dict) -> list:
                 # ★ 添加 selection_strategy（如果存在）
                 if "selection_strategy" in ms_field:
                     field_info["selection_strategy"] = ms_field["selection_strategy"]
+            elif kb_category == "date-picker":
+                # ★ D1: date-picker 不记录具体日期值，记录选择策略
+                # Stage 2 根据策略点击"今天"按钮，而非填入写死的日期文本
+                field_info["option_text"] = ""
+                if "selection_strategy" in ms_field:
+                    field_info["selection_strategy"] = ms_field["selection_strategy"]
             else:
                 # 非选择框字段：保留原有逻辑
                 field_info["option_text"] = ms_field.get("option_text", "")
@@ -1175,6 +1181,12 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
                 # ★ 添加 selection_strategy（如果存在）
                 if "selection_strategy" in ms_field:
                     field_info["selection_strategy"] = ms_field["selection_strategy"]
+            elif kb_category == "date-picker":
+                # ★ D1: date-picker 不记录具体日期值，记录选择策略
+                # Stage 2 根据策略点击"今天"按钮，而非填入写死的日期文本
+                field_info["option_text"] = ""
+                if "selection_strategy" in ms_field:
+                    field_info["selection_strategy"] = ms_field["selection_strategy"]
             else:
                 # 非选择框字段：保留原有逻辑
                 field_info["option_text"] = ms_field.get("option_text", "")
@@ -1431,8 +1443,10 @@ def _build_generic_steps(op_data: dict, create_marker=None) -> list:
             thead_label = field.get("thead_label", "")
             visible_index = field.get("visible_index")
 
-            # 根据 inputType 生成合适的 fill_rule
-            if input_type == "number":
+            # ★ D3: 优先使用 Stage 1 记录的 fill_rule，回退到默认生成
+            if field.get("fill_rule"):
+                fill_rule = field["fill_rule"]
+            elif input_type == "number":
                 fill_rule = {
                     "rule": "number_pattern",
                     "params": {"min": 100000, "max": 999999}

@@ -887,6 +887,7 @@ class FormFiller:
 
             # 确定填充值
             value = None
+            _fill_rule = None  # ★ D3: 记录 fill_rule，供 playbook 传递给 Stage 2
             if modifications and label in modifications:
                 value = modifications[label]
             elif not modifications:
@@ -898,9 +899,14 @@ class FormFiller:
                 )
                 if not value:
                     value = f"auto_edited_{ts}"
+                    _fill_rule = {"rule": "name_pattern", "params": {"prefix": "auto_edited"}}
 
             if not value:
                 continue
+
+            # ★ D3: 将 fill_rule 写回 field dict，供调用方（crud_executor）收集
+            if _fill_rule:
+                field["_fill_rule"] = _fill_rule
 
             try:
                 from .locator_helpers import safe_css
@@ -2157,11 +2163,11 @@ class MultiStepExecutor:
                 if mode == "multiple":
                     vals = has_default.get("values", [])
                     LOG.info(f"    el-select {label}: 多选已有默认值 {vals}，跳过")
-                    return True, {"is_editable": False, "option_text": ", ".join(vals), "select_sub_type": select_sub_type, "selection_strategy": selection_strategy}
+                    return True, {"is_editable": False, "option_text": ", ".join(vals), "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "has_default_value"}
                 else:
                     val = has_default.get("value", "")
                     LOG.info(f"    el-select {label}: 单选已有默认值 '{val}'，跳过")
-                    return True, {"is_editable": False, "option_text": val, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy}
+                    return True, {"is_editable": False, "option_text": val, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "has_default_value"}
 
         expanded = await self._expand_by_selector(selector, label, playwright_locator)
         if not expanded:
@@ -2218,7 +2224,11 @@ class MultiStepExecutor:
             # .custom-tree-node / .el-tree-node__content，选择器不匹配
             if select_sub_type == "select-tree":
                 LOG.info(f"    [FIX] el-select {label}: 检测到 tree-select，路由到 _fill_tree_select 专用处理器")
-                return await self._fill_tree_select(selector, label, playwright_locator)
+                tree_result = await self._fill_tree_select(selector, label, playwright_locator)
+                # ★ O4: 记录执行路径
+                if isinstance(tree_result, tuple) and len(tree_result) == 2 and isinstance(tree_result[1], dict):
+                    tree_result[1]["execution_path"] = "tree_select_route"
+                return tree_result
 
         # Step 3: 等待选项加载
         await self._wait_for_options_loaded()
@@ -2270,9 +2280,11 @@ class MultiStepExecutor:
                 LOG.info(f"    el-select {label}: 下拉框已展开但无选项，跳过（非必填或暂无可选项）")
                 detail["skipped_reason"] = "no_options"
                 detail["selection_strategy"] = selection_strategy
+                detail["execution_path"] = "no_options_available"
                 return False, detail
             LOG.warning(f"    el-select {label} 未发现可选项，下拉框状态: {json.dumps(dd_state, ensure_ascii=False)}")
             detail["selection_strategy"] = selection_strategy
+            detail["execution_path"] = "no_options_discovered"
             return False, detail
 
         # Step 5: 根据是否可编辑选择不同策略
@@ -2301,6 +2313,7 @@ class MultiStepExecutor:
             filled = await self._try_step_patterns(steps.get("fill", {}), label=label, option_text=option_text)
             LOG.info(f"    el-select {label}: fill result={filled}")
             if not filled:
+                detail["execution_path"] = "editable_fill_failed"
                 return False, detail
 
             # 关键修复：fill 只 click 了输入框，需要实际输入搜索文本
@@ -2339,9 +2352,9 @@ class MultiStepExecutor:
                 debug_info = verify.get("debug", {})
                 LOG.warning(f"    ⚠️ select 填充后验证失败: {label} 仍为空 "
                            f"debug={debug_info}")
-                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy}
+                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "editable_verify_failed"}
             LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
-            return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text), "select_sub_type": select_sub_type, "selection_strategy": selection_strategy}
+            return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text), "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "editable_search_select"}
         else:
             # 不可编辑：等待选项加载，再选择第一个选项
             await self._wait_for_options_loaded()
@@ -2359,9 +2372,9 @@ class MultiStepExecutor:
                 debug_info = verify.get("debug", {})
                 LOG.warning(f"    ⚠️ select 填充后验证失败: {label} 仍为空 "
                            f"debug={debug_info}")
-                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy}
+                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "readonly_verify_failed"}
             LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
-            return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text), "select_sub_type": select_sub_type, "selection_strategy": selection_strategy}
+            return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text), "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "readonly_first_option"}
 
     async def _fill_remote_select(self, selector: str, label: str, playwright_locator: str = None) -> tuple:
         """远程搜索 el-select：展开后等待远程加载完成，选第一个

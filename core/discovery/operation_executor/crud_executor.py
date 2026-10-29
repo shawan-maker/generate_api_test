@@ -1425,6 +1425,18 @@ async def _error_driven_retry(page, operation_fn, context: dict) -> dict:
         if result.get("success"):
             if round_num > 0:
                 LOG.info(f"    第 {round_num + 1} 轮尝试成功")
+            # ★ O1: 将按钮状态注入到返回结果
+            if context.get("_button_state"):
+                result["button_state"] = context["_button_state"]
+            # ★ O2: 将 Tab 信息注入到返回结果
+            if context.get("tab_name"):
+                result["tab_info"] = {
+                    "tab_name": context.get("tab_name"),
+                    "tab_locator": context.get("tab_locator"),
+                }
+            # ★ O3: 将分页查找轨迹注入到返回结果
+            if context.get("_pagination_trace"):
+                result["pagination_trace"] = context["_pagination_trace"]
             return result
 
         # 提取错误信息
@@ -1850,10 +1862,22 @@ async def _do_create(page, context: dict) -> dict:
 
         if field_errors:
             first_err = field_errors[0]
-            return form_validation(first_err.get("error_text", ""),
+            # ★ O5: 记录表单快照，供 Stage 2 复现错误场景
+            try:
+                form_snapshot = await form_filler.scan_form_fields_v2()
+                snapshot_data = [
+                    {"label": f["label"], "value": f.get("value", ""), "kb_category": f.get("kb_category", "")}
+                    for f in form_snapshot
+                ]
+            except Exception as snap_err:
+                LOG.warning(f"    表单快照捕获失败: {snap_err}")
+                snapshot_data = []
+            result = form_validation(first_err.get("error_text", ""),
                                   error_field=first_err.get("field_label", ""),
                                   trigger_text=btn_text,
                                   trigger_locator_verified=btn_click_result.get("locator"))
+            result["form_snapshot_on_error"] = snapshot_data
+            return result
         global_errors = [e for e in errors if e.get("severity") == "global"]
         if global_errors:
             err_text = global_errors[0].get("error_text", "")
@@ -2499,11 +2523,23 @@ async def _do_edit(page, context: dict) -> dict:
         if errors:
             field_errors = [e for e in errors if e.get("severity") == "field"]
             if field_errors:
+                # ★ O5: 记录表单快照，供 Stage 2 复现错误场景
+                try:
+                    form_snapshot = await form_filler.scan_form_fields_v2()
+                    snapshot_data = [
+                        {"label": f["label"], "value": f.get("value", ""), "kb_category": f.get("kb_category", "")}
+                        for f in form_snapshot
+                    ]
+                except Exception as snap_err:
+                    _log.warning(f"    表单快照捕获失败: {snap_err}")
+                    snapshot_data = []
                 await _close_dialog(page)  # ★ 关闭对话框，避免阻塞重试时的按钮点击
-                return form_validation(field_errors[0].get("error_text", ""),
+                result = form_validation(field_errors[0].get("error_text", ""),
                                       error_field=field_errors[0].get("field_label", ""),
                                       trigger_text=btn_text,
                                       trigger_locator_verified=btn_click_result.get("locator"))
+                result["form_snapshot_on_error"] = snapshot_data
+                return result
 
         captured_msgs = await _get_captured_messages(page)
         success = await _verify_operation_success(page, "update", captured_messages=captured_msgs)
@@ -3097,6 +3133,20 @@ async def _do_delete(page, context: dict) -> dict:
 
     # 确认删除弹窗（支持 el-message-box 和 el-popconfirm）
     from core.discovery.replay.button_driver import confirm_dialog
+    # ★ O6: 记录确认对话框文本
+    dialog_text = await page.evaluate("""() => {
+        const msgBox = document.querySelector('.el-message-box__wrapper:not([style*="display: none"])');
+        if (msgBox) {
+            const msg = msgBox.querySelector('.el-message-box__message');
+            return msg ? msg.textContent.trim() : '';
+        }
+        const popconfirm = document.querySelector('.el-popconfirm:not([style*="display: none"])');
+        if (popconfirm) {
+            const msg = popconfirm.querySelector('.el-popconfirm__main');
+            return msg ? msg.textContent.trim() : '';
+        }
+        return '';
+    }""")
     confirmed = await confirm_dialog(page)
     LOG.info(f"    confirm_dialog 返回: '{confirmed}'")
 
@@ -3207,6 +3257,11 @@ async def _do_delete(page, context: dict) -> dict:
         "post_confirm_state": {
             "dialog_remains": post_state["dialog_remains"],
             "has_form_in_dialog": post_state["has_form_in_dialog"],
+        },
+        "confirm_dialog": {
+            "confirmed": confirmed,
+            "button_text": confirmed,
+            "dialog_text": dialog_text,
         },
     } if success else no_success_signal("删除后未检测到成功信号",
                                         trigger_text=trigger_text_normalized)
@@ -3333,6 +3388,55 @@ async def _do_generic_operation(page, context: dict) -> dict:
                             LOG.warning(f"  [GENERIC-SWITCH-PRECHECK] ✗ 开启失败: {result.get('error_text')}")
     except Exception as e:
         LOG.warning(f"  [GENERIC-SWITCH-PRECHECK] 预检失败: {e}")
+
+    # ★ O1: 记录按钮点击前的状态（用于 playbook 生成 wait_for_button_enabled 步骤）
+    context["_button_state"] = None
+    context["_pagination_trace"] = None
+    if marker:
+        from core.discovery.replay.button_driver import ButtonDriver
+        driver = ButtonDriver(page)
+        row = await driver.find_data_row(marker)
+        # ★ O3: 收集分页查找轨迹
+        if hasattr(driver, '_last_pagination_trace'):
+            context["_pagination_trace"] = driver._last_pagination_trace
+        if row:
+            context["_button_state"] = await page.evaluate(f"""async (arg) => {{
+                const row = arg.row;
+                const btnText = arg.btnText;
+                const btns = row.querySelectorAll('button');
+                for (const btn of btns) {{
+                    const txt = btn.textContent.trim();
+                    if (txt === btnText || txt.replace(/\\s+/g, '') === btnText.replace(/\\s+/g, '')) {{
+                        return {{
+                            found: true,
+                            isDisabled: btn.disabled || btn.classList.contains('is-disabled'),
+                            isVisible: btn.offsetWidth > 0 && btn.offsetHeight > 0,
+                            text: txt,
+                        }};
+                    }}
+                }}
+                // dropdown item
+                const moreBtn = row.querySelector('.el-dropdown-link');
+                if (moreBtn) {{
+                    moreBtn.click();
+                    await new Promise(r => setTimeout(r, 300));
+                    const items = document.querySelectorAll('.el-dropdown-menu__item');
+                    for (const item of items) {{
+                        const txt = item.textContent.trim();
+                        if (txt === btnText || txt.replace(/\\s+/g, '') === btnText.replace(/\\s+/g, '')) {{
+                            return {{
+                                found: true,
+                                isDisabled: item.classList.contains('is-disabled'),
+                                isVisible: item.offsetWidth > 0,
+                                text: txt,
+                                tagName: 'DROPDOWN_ITEM',
+                            }};
+                        }}
+                    }}
+                }}
+                return {{ found: false }};
+            }}""", {"row": row, "btnText": btn_text})
+            LOG.debug(f"  [O1] 按钮状态: {context.get('_button_state')}")
 
     # 找到行并点击
     row_selector = None
@@ -3609,7 +3713,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
             selectors["row_selector"] = row_selector
         # 文件上传操作无法自动完成（需要文件），标记为失败
         # ★ 包含已验证的触发器信息，供 playbook builder 生成步骤
-        return make_error("env_dependency", "文件上传操作无法自动完成",
+        result = make_error("env_dependency", "文件上传操作无法自动完成",
                          trigger_text=trigger_text_normalized,
                          trigger_locator_verified=_verified_trigger_locator,
                          dropdown_item_text_verified=_verified_dropdown_item_text,
@@ -3617,6 +3721,13 @@ async def _do_generic_operation(page, context: dict) -> dict:
                          needs_checkbox=_needs_checkbox,
                          checkbox_locator=_checkbox_locator,
                          selectors=selectors)
+        # ★ O7: 记录文件上传信息
+        result["upload_info"] = {
+            "file_input_locator": "input[type='file']",
+            "file_format": "xlsx",  # 或 csv
+            "upload_strategy": "set_input_files",
+        }
+        return result
 
     # ============================================================
     # 弹窗检测 + 按容器类型分发处理
@@ -3784,6 +3895,9 @@ async def _do_generic_operation(page, context: dict) -> dict:
                         detail["thead_label"] = field["thead_label"]
                     if field.get("visible_index") is not None:
                         detail["visible_index"] = field["visible_index"]
+                    # ★ D3: 收集 fill_rule（从 form_filler 写回的 _fill_rule）
+                    if field.get("_fill_rule"):
+                        detail["fill_rule"] = field["_fill_rule"]
                     edit_field_details.append(detail)
                 # ★ 提取 radio 字段到顶层
                 elif kb_category == "radio":
@@ -4391,6 +4505,13 @@ async def _do_generic_operation(page, context: dict) -> dict:
 
     # Playbook 增强字段
     result = {"success": True, "selectors": selectors, "confirmed": confirmed, "trigger_text": trigger_text_normalized, "marker": marker}
+
+    # ★ O6: 记录确认对话框信息
+    if confirmed:
+        result["confirm_dialog"] = {
+            "confirmed": True,
+            "button_text": confirmed,
+        }
 
     # 记录弹窗中填充的 select 字段详情（供 playbook 生成 fill_form 步骤）
     if dialog_fill_details:

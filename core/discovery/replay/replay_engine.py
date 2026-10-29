@@ -1037,6 +1037,10 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
                 sub_selectors = f.get("sub_selectors", [])
                 option_text = f.get("option_text", "")
                 label = f.get("label", "")
+                # ★ D2: 如果 option_text 为空但有 fill_rule，调用 apply_fill_rule 生成新 IP
+                if not option_text and f.get("fill_rule"):
+                    option_text = apply_fill_rule(f["fill_rule"])
+                    LOG.info(f"    [ip-input] {label}: apply_fill_rule 生成新值 = {option_text}")
                 if sub_selectors and option_text:
                     try:
                         success = await _fill_ip_input(page, sub_selectors, option_text, label)
