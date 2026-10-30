@@ -755,6 +755,9 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
     filled_count = 0
     marker_value = None
 
+    # ★ 密码缓存：同一表单内"密码"和"确认密码"必须相同
+    _password_cache = {}
+
     # 收集 multi_step 字段，统一用 FormFiller 处理
     multi_step_fields = []
     simple_fields = []
@@ -861,7 +864,18 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
 
         # 普通 input/textarea：生成填充值 + page.fill()
         if fill_rule:
-            value = apply_fill_rule(fill_rule)
+            # ★ 密码字段特殊处理：同一表单内"密码"和"确认密码"必须相同
+            rule_type = fill_rule.get("rule", "")
+            if rule_type == "password_pattern":
+                cache_key = json.dumps(fill_rule, sort_keys=True)
+                if cache_key in _password_cache:
+                    value = _password_cache[cache_key]
+                    LOG.info(f"    [password-reuse] {label}: 复用已生成密码 = {value}")
+                else:
+                    value = apply_fill_rule(fill_rule)
+                    _password_cache[cache_key] = value
+            else:
+                value = apply_fill_rule(fill_rule)
         else:
             LOG.warning(f"    字段 {label} 缺少 fill_rule，跳过")
             continue

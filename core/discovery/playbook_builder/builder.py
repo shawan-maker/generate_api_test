@@ -370,6 +370,7 @@ def _build_form_page_playbook(ui_result: dict, form_actions: list) -> dict:
                 fields_info.append({
                     "label": label,
                     "playwright_locator": playwright_locator,
+                    "selector": selector,
                     "type": field_type,
                     "kb_category": kb_category,
                     "fill_rule": fill_rule,
@@ -817,7 +818,8 @@ def _build_create_steps(op_data: dict) -> list:
 
             field_info = {
                 "label": ms_field["label"],
-                "playwright_locator": playwright_locator,
+                "playwright_locator": ms_field.get("playwright_locator", ""),
+                "selector": ms_field.get("selector", ""),
                 "type": kb_category.replace("el-", "") if kb_category.startswith("el-") else kb_category,
                 "kb_category": kb_category,
                 "fill_rule": ms_field.get("fill_rule", {}),
@@ -1156,7 +1158,8 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
 
             field_info = {
                 "label": ms_field["label"],
-                "playwright_locator": playwright_locator,
+                "playwright_locator": ms_field.get("playwright_locator", ""),
+                "selector": ms_field.get("selector", ""),
                 "type": kb_category.replace("el-", "") if kb_category.startswith("el-") else kb_category,
                 "kb_category": kb_category,
                 "fill_rule": ms_field.get("fill_rule", {}),
@@ -1388,6 +1391,7 @@ def _build_generic_steps(op_data: dict, create_marker=None) -> list:
         for d in dialog_fills:
             # 优先使用 playwright_locator，回退到 selector
             pw_locator = d.get("playwright_locator") or d.get("selector")
+            css_selector = d.get("selector", "")  # 标准 CSS，供 evaluate 使用
             if not pw_locator:
                 continue
 
@@ -1401,6 +1405,7 @@ def _build_generic_steps(op_data: dict, create_marker=None) -> list:
             fill_field = {
                 "label": d.get("label", ""),
                 "playwright_locator": pw_locator,
+                "selector": css_selector,
                 "type": "select",
                 "kb_category": kb_category,
                 "fill_rule": {},
@@ -1706,6 +1711,7 @@ def _build_page_nav_steps(op_data: dict) -> list:
                     "type": "select",
                     "kb_category": "el-select",
                     "playwright_locator": playwright_locator,
+                    "selector": selector,
                     "fill_rule": {},
                     "is_editable": True,
                     "is_multi_select": fs.get("isMultiSelect", False),
@@ -1736,6 +1742,7 @@ def _build_page_nav_steps(op_data: dict) -> list:
                     "type": field_type,
                     "kb_category": kb_category,
                     "playwright_locator": playwright_locator,
+                    "selector": selector,
                     "fill_rule": {},
                 })
             elif kb_category in ("input-generic", "textarea-generic"):

@@ -655,6 +655,10 @@ class FormFiller:
                 selector = field.get("selector")  # 标准 CSS，用于 evaluate
                 playwright_locator = field.get("playwright_locator")  # Playwright 语法
 
+                # ★ 回退：当 selector 为空但 playwright_locator 是纯 CSS 时，复用为 selector
+                if not selector and playwright_locator and ":has-text(" not in playwright_locator:
+                    selector = playwright_locator
+
                 # 为 ip-input 传递额外参数
                 extra_kwargs = {}
                 if kb_cat == "ip-input":
