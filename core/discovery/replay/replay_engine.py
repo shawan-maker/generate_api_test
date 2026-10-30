@@ -670,6 +670,156 @@ async def _step_wait_for_dialog(page, step: dict, ctx: dict):
         raise Exception(f"未知的 interaction_mode: {interaction_mode}")
 
 
+async def _execute_interaction_steps(page, steps: list, label: str) -> bool:
+    """执行 interaction_steps（Stage 1 记录的操作步骤序列）
+
+    这是 Stage 2 回放的核心逻辑，直接执行 Stage 1 探索时记录的操作步骤。
+
+    Args:
+        page: Playwright Page 对象
+        steps: 操作步骤列表，每个步骤包含：
+            - op: 操作类型 (click/click_first/fill/wait_xpath/wait_selector)
+            - desc: 操作描述（用于日志）
+            - 其他参数取决于 op 类型
+        label: 字段标签（用于日志）
+
+    Returns:
+        bool: 是否所有步骤都执行成功
+    """
+    LOG.info(f"    [interaction_steps] {label}: 开始执行 {len(steps)} 个步骤")
+
+    for i, step in enumerate(steps, 1):
+        op = step.get("op")
+        desc = step.get("desc", "未描述操作")
+
+        try:
+            if op == "click":
+                # 点击元素
+                selector = step.get("selector")
+                if not selector:
+                    raise Exception(f"click 操作缺少 selector")
+
+                # 等待元素可见
+                try:
+                    await page.wait_for_selector(selector, state="visible", timeout=5000)
+                except Exception:
+                    raise Exception(f"等待元素超时: {selector}")
+
+                # 点击
+                await page.click(selector, timeout=3000)
+                LOG.info(f"    [step {i}/{len(steps)}] {desc}: 点击成功")
+
+            elif op == "click_first":
+                # 点击第一个匹配的元素
+                selector = step.get("selector")
+                if not selector:
+                    raise Exception(f"click_first 操作缺少 selector")
+
+                # 等待至少一个元素可见
+                try:
+                    await page.wait_for_selector(selector, state="visible", timeout=5000)
+                except Exception:
+                    raise Exception(f"等待元素超时: {selector}")
+
+                # 点击第一个
+                elements = await page.query_selector_all(selector)
+                if not elements:
+                    raise Exception(f"未找到元素: {selector}")
+                await elements[0].click()
+                LOG.info(f"    [step {i}/{len(steps)}] {desc}: 点击第一个成功")
+
+            elif op == "fill":
+                # 填充输入框
+                selector = step.get("selector")
+                value = step.get("value", "")
+                if not selector:
+                    raise Exception(f"fill 操作缺少 selector")
+
+                # 等待输入框可见
+                try:
+                    await page.wait_for_selector(selector, state="visible", timeout=5000)
+                except Exception:
+                    raise Exception(f"等待输入框超时: {selector}")
+
+                # 清空并填充
+                await page.fill(selector, "")
+                await page.type(selector, value, delay=30)
+                LOG.info(f"    [step {i}/{len(steps)}] {desc}: 填充 '{value}'")
+
+            elif op == "wait":
+                # 等待指定时间
+                duration = step.get("duration", 500)
+                await page.wait_for_timeout(duration)
+                LOG.info(f"    [step {i}/{len(steps)}] {desc}: 等待 {duration}ms")
+
+            elif op == "wait_selector":
+                # 等待选择器出现
+                selector = step.get("selector")
+                timeout = step.get("timeout", 5000)
+                if not selector:
+                    raise Exception(f"wait_selector 操作缺少 selector")
+
+                try:
+                    await page.wait_for_selector(selector, state="visible", timeout=timeout)
+                    LOG.info(f"    [step {i}/{len(steps)}] {desc}: 元素已出现")
+                except Exception:
+                    raise Exception(f"等待元素超时 ({timeout}ms): {selector}")
+
+            elif op == "wait_xpath":
+                # 等待 XPath 表达式匹配的元素出现
+                xpath = step.get("xpath")
+                timeout = step.get("timeout", 5000)
+                if not xpath:
+                    raise Exception(f"wait_xpath 操作缺少 xpath")
+
+                try:
+                    await page.wait_for_selector(f"xpath={xpath}", state="visible", timeout=timeout)
+                    LOG.info(f"    [step {i}/{len(steps)}] {desc}: XPath 元素已出现")
+                except Exception:
+                    raise Exception(f"等待 XPath 元素超时 ({timeout}ms): {xpath}")
+
+            elif op == "check_default_value":
+                # 检查是否已有默认值，如果有则跳过后续步骤
+                selector = step.get("selector")
+                if not selector:
+                    raise Exception(f"check_default_value 操作缺少 selector")
+
+                # 检查是否有默认值
+                has_value = await page.evaluate("""(selector) => {
+                    const sel = document.querySelector(selector);
+                    if (!sel) return false;
+
+                    // 多选模式（tag）
+                    const tags = sel.querySelectorAll('.el-tag');
+                    if (tags && tags.length > 0) return true;
+
+                    // 单选模式
+                    const input = sel.querySelector('.el-input__inner');
+                    const selectedLabel = sel.querySelector('.el-select__selected-item');
+                    const value = selectedLabel?.textContent?.trim() || input?.value || '';
+                    return !!value;
+                }""", selector)
+
+                if has_value:
+                    LOG.info(f"    [step {i}/{len(steps)}] {desc}: 已有默认值，跳过后续步骤")
+                    return True  # 提前返回，跳过后续步骤
+                else:
+                    LOG.info(f"    [step {i}/{len(steps)}] {desc}: 无默认值，继续执行")
+
+            else:
+                raise Exception(f"未知的操作类型: {op}")
+
+            # 步骤间等待
+            await page.wait_for_timeout(200)
+
+        except Exception as e:
+            LOG.error(f"    [step {i}/{len(steps)}] {desc}: 失败 - {e}")
+            return False
+
+    LOG.info(f"    [interaction_steps] {label}: 所有 {len(steps)} 个步骤执行成功")
+    return True
+
+
 async def _fill_ip_input(page, sub_selectors: list, option_text: str, label: str) -> bool:
     """填充 IP 地址输入框（支持 IPv4 和 IPv6）
 
@@ -830,31 +980,32 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
                     for ca in cascade_actions:
                         if ca.get("type") == "transfer-box":
                             trigger_value = ca.get("trigger_value", "")
+                            interaction_steps = ca.get("interaction_steps", [])
                             # 只有当选择的值匹配 trigger_value 时才执行 cascade
                             if not trigger_value or trigger_value == first_text:
                                 LOG.info(f"      [Radio] 执行 cascade: transfer-box (trigger: {trigger_value})")
                                 await page.wait_for_timeout(500)  # 等待动态组件渲染
 
-                                from .form_filler import MultiStepExecutor
-                                executor = MultiStepExecutor(page, None, ui_framework)
-                                success, detail = await executor.execute_with_details(
-                                    "transfer-box", label, "", None, ""
-                                )
-                                if success:
-                                    LOG.info(f"      [Radio] cascade 成功: {detail.get('selected_items', [])}")
-                                    # ★ 只有 create 操作才从 cascade 提取 marker
-                                    if role == "create":
-                                        selected_items = detail.get("selected_items", [])
-                                        if selected_items and selected_items[0] and not marker_value:
-                                            marker_value = selected_items[0]
-                                            LOG.info(f"      [Radio] marker 已从 cascade 提取: {marker_value}")
-                                        elif not marker_value:
-                                            # fallback: 使用 trigger_value
-                                            if trigger_value:
-                                                marker_value = trigger_value
-                                                LOG.info(f"      [Radio] marker 已从 cascade trigger 提取: {marker_value}")
+                                if interaction_steps:
+                                    # 优先使用 interaction_steps 回放（与 el-select 一致）
+                                    success = await _execute_interaction_steps(
+                                        page, interaction_steps, label, f"cascade transfer-box"
+                                    )
+                                    if success:
+                                        LOG.info(f"      [Radio] cascade transfer-box 回放成功")
+                                    else:
+                                        LOG.warning(f"      [Radio] cascade transfer-box 回放失败")
                                 else:
-                                    LOG.warning(f"      [Radio] cascade 失败")
+                                    # 回退到重新探索
+                                    from .form_filler import MultiStepExecutor
+                                    executor = MultiStepExecutor(page, None, ui_framework)
+                                    success, detail = await executor.execute_with_details(
+                                        "transfer-box", label, "", None, ""
+                                    )
+                                    if success:
+                                        LOG.info(f"      [Radio] cascade 成功（重新探索）")
+                                    else:
+                                        LOG.warning(f"      [Radio] cascade 失败")
 
                 filled_count += 1
                 LOG.info(f"      [Radio] 处理完成: {label}")
@@ -1041,13 +1192,17 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
         ff = FormFiller(page)
         framework = step.get("framework", "element-ui")
 
-        # ★ 按 sub_type 分组：特殊处理的 el-select vs 通用字段
-        special_selects = []  # select-remote / select-tree
+        # ★ 按是否有 interaction_steps 分组
+        has_steps = []      # 有 interaction_steps 的字段
         normal_fields = []    # 其他所有 multi_step 字段
         for f in multi_step_fields:
             kb_cat = f.get("kb_category", "")
+
+            # ★ 优先使用 interaction_steps（Stage 1 记录的操作步骤）
+            if f.get("interaction_steps"):
+                has_steps.append(f)
             # ★ ip-input: 特殊处理（使用 sub_selectors）
-            if kb_cat == "ip-input":
+            elif kb_cat == "ip-input":
                 sub_selectors = f.get("sub_selectors", [])
                 option_text = f.get("option_text", "")
                 label = f.get("label", "")
@@ -1065,42 +1220,31 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
                             LOG.warning(f"    [ip-input] {label}: 填充失败")
                     except Exception as e:
                         LOG.warning(f"    [ip-input] {label}: 异常: {e}")
-            elif (kb_cat == "el-select"
-                and f.get("select_sub_type") in ("select-remote", "select-tree")):
-                special_selects.append(f)
             else:
                 normal_fields.append(f)
 
-        # 2a. 通用字段：走原有 fill_multi_step_fields
+        # 2a. 有 interaction_steps 的字段：使用通用步骤执行器
+        for f in has_steps:
+            label = f.get("label", "")
+            steps = f.get("interaction_steps", [])
+            LOG.info(f"    [interaction_steps] {label}: 使用 Stage 1 记录的操作步骤 ({len(steps)} 步)")
+            try:
+                success = await _execute_interaction_steps(page, steps, label)
+                if success:
+                    filled_count += 1
+                    LOG.info(f"    [interaction_steps] {label}: ✓ 执行成功")
+                else:
+                    LOG.warning(f"    [interaction_steps] {label}: ✗ 执行失败")
+            except Exception as e:
+                LOG.error(f"    [interaction_steps] {label}: 异常 - {e}")
+
+        # 2b. 通用字段：走原有 fill_multi_step_fields
         if normal_fields:
             ms_filled, _, close_dropdown_actions = await ff.fill_multi_step_fields(normal_fields, framework)
             filled_count += ms_filled
             LOG.debug(f"    multi_step 完成: {ms_filled}/{len(normal_fields)}")
             if close_dropdown_actions:
                 LOG.info(f"    multi_step 检测到 {len(close_dropdown_actions)} 个下拉框关闭操作")
-
-        # 2b. 特殊类型 el-select：逐个调用子类型专用方法
-        for f in special_selects:
-            selector = f.get("playwright_locator", "")
-            sub_type = f.get("select_sub_type", "")
-            label = f.get("label", "")
-            if not selector:
-                LOG.warning(f"    [sub-type] {label}: 缺少 selector，跳过")
-                continue
-            try:
-                # execute_select_by_sub_type 是 MultiStepExecutor 的方法
-                from .form_filler import MultiStepExecutor
-                executor = MultiStepExecutor(page, None, ui_framework)
-                success, detail = await executor.execute_select_by_sub_type(selector, sub_type, label)
-                if success:
-                    filled_count += 1
-                    LOG.info(f"    [sub-type] {label}: {sub_type} 填充成功")
-                    # 更新 option_text 供后续 marker 提取使用
-                    f["option_text"] = detail.get("option_text", "")
-                else:
-                    LOG.warning(f"    [sub-type] {label}: {sub_type} 填充失败: {detail}")
-            except Exception as e:
-                LOG.warning(f"    [sub-type] {label}: {sub_type} 异常: {e}")
 
         # ★ Phase 4b: 处理 el-select 的 cascade_actions（覆盖所有 multi_step_fields）
         for ms_field in multi_step_fields:
@@ -1113,30 +1257,30 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
                         ca_type = ca.get("type", "")
                         if ca_type == "transfer-box":
                             trigger_value = ca.get("trigger_value", "")
-                            selected_items = ca.get("selected_items", [])
+                            interaction_steps = ca.get("interaction_steps", [])
                             LOG.info(f"    [el-select] 执行 cascade: transfer-box (trigger: {trigger_value})")
                             await page.wait_for_timeout(500)
 
-                            from .form_filler import MultiStepExecutor
-                            executor = MultiStepExecutor(page, None, ui_framework)
-                            success, detail = await executor.execute_with_details(
-                                "transfer-box", field_label, "", None, ""
-                            )
-                            if success:
-                                LOG.info(f"    [el-select] cascade 成功: {detail}")
-                                if role == "create" and not marker_value and selected_items:
-                                    marker_value = selected_items[0]
-                                    LOG.info(f"    ✓ marker 已从 el-select cascade 提取: {marker_value}")
+                            if interaction_steps:
+                                # 使用 interaction_steps 回放
+                                success = await _execute_interaction_steps(
+                                    page, interaction_steps, field_label, f"cascade transfer-box"
+                                )
+                                if success:
+                                    LOG.info(f"    [el-select] cascade transfer-box 回放成功")
+                                else:
+                                    LOG.warning(f"    [el-select] cascade transfer-box 回放失败")
                             else:
-                                LOG.warning(f"    [el-select] cascade 失败")
-
-        # ★ 只有 create 操作才从 multi_step 字段提取 marker
-        if role == "create" and not marker_value:
-            for ms_field in multi_step_fields:
-                if ms_field.get("is_marker") and ms_field.get("option_text"):
-                    marker_value = ms_field["option_text"]
-                    LOG.info(f"    ✓ marker 已从 multi_step 字段提取: {marker_value}")
-                    break
+                                # 无 interaction_steps 时回退到实时探索
+                                from .form_filler import MultiStepExecutor
+                                executor = MultiStepExecutor(page, None, ui_framework)
+                                success, detail = await executor.execute_with_details(
+                                    "transfer-box", field_label, "", None, ""
+                                )
+                                if success:
+                                    LOG.info(f"    [el-select] cascade 成功: {detail}")
+                                else:
+                                    LOG.warning(f"    [el-select] cascade 失败")
 
     LOG.info(f"    已填充 {filled_count}/{len(fields)} 个字段")
     return marker_value

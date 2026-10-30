@@ -8,6 +8,77 @@ from core.discovery.page_classifier import classify_page_type
 LOG = logging.getLogger("playbook_builder")
 
 
+def _build_select_field_info(ms_field: dict, playwright_locator: str) -> dict:
+    """构建选择框类字段的 field_info（el-select / el-cascader / date-picker 等）
+
+    统一处理选择框类字段的 playbook 字段构建，包括：
+    - 清空 option_text（Stage 2 动态选择）
+    - 添加 interaction 元数据
+    - 提取 interaction_steps（Stage 1 操作步骤）
+
+    Args:
+        ms_field: multi_step_field 字典
+        playwright_locator: Playwright 定位器
+
+    Returns:
+        dict: field_info 字典
+    """
+    kb_category = ms_field["kb_category"]
+    is_select = kb_category == "el-select"
+    is_tree_select = ms_field.get("select_sub_type") == "select-tree"
+
+    field_info = {
+        "label": ms_field["label"],
+        "playwright_locator": ms_field.get("playwright_locator", ""),
+        "selector": ms_field.get("selector", ""),
+        "type": kb_category.replace("el-", "") if kb_category.startswith("el-") else kb_category,
+        "kb_category": kb_category,
+        "fill_rule": ms_field.get("fill_rule", {}),
+        "is_editable": ms_field.get("is_editable", False),
+    }
+
+    # ★ 泛化处理：选择框类字段记录交互步骤，Stage 2 按步骤回放
+    if is_select or is_tree_select:
+        # 添加交互元数据，供 Stage 2 回放使用
+        field_info["interaction"] = {
+            "locator": playwright_locator,
+            "click_strategy": "handleNodeClick" if is_tree_select else "vue_emit",
+            "component_type": "el-tree" if is_tree_select else "el-select",
+            "in_dropdown": ms_field.get("in_dropdown", False),
+        }
+        # 保留 select_sub_type 供 Stage 2 路由到专用处理器
+        if "select_sub_type" in ms_field:
+            field_info["select_sub_type"] = ms_field["select_sub_type"]
+        # ★ 添加 selection_strategy（如果存在）
+        if "selection_strategy" in ms_field:
+            field_info["selection_strategy"] = ms_field["selection_strategy"]
+        # ★ 记录 Stage 1 实际操作步骤
+        if "interaction_steps" in ms_field:
+            field_info["interaction_steps"] = ms_field["interaction_steps"]
+            LOG.info(f"    [builder] {ms_field['label']}: 提取 interaction_steps ({len(ms_field['interaction_steps'])} 个步骤)")
+    elif kb_category == "date-picker":
+        # ★ date-picker 记录选择策略
+        if "selection_strategy" in ms_field:
+            field_info["selection_strategy"] = ms_field["selection_strategy"]
+        # ★ 记录 Stage 1 实际操作步骤
+        if "interaction_steps" in ms_field:
+            field_info["interaction_steps"] = ms_field["interaction_steps"]
+            LOG.info(f"    [builder] {ms_field['label']}: 提取 interaction_steps ({len(ms_field['interaction_steps'])} 个步骤)")
+    elif kb_category == "el-cascader":
+        # ★ 记录 Stage 1 实际操作步骤
+        if "interaction_steps" in ms_field:
+            field_info["interaction_steps"] = ms_field["interaction_steps"]
+            LOG.info(f"    [builder] {ms_field['label']}: 提取 interaction_steps ({len(ms_field['interaction_steps'])} 个步骤)")
+    else:
+        # 非选择框字段
+        # ★ 记录 Stage 1 实际操作步骤（适用于 form-checkbox, list-selector, transfer-box 等）
+        if "interaction_steps" in ms_field:
+            field_info["interaction_steps"] = ms_field["interaction_steps"]
+            LOG.info(f"    [builder] {ms_field['label']}: 提取 interaction_steps ({len(ms_field['interaction_steps'])} 个步骤)")
+
+    return field_info
+
+
 def _classify_op_steps_type(op_data: dict) -> str:
     """根据 op_data 结构特征判断步骤构建类型（不写死任何操作名）。
 
@@ -812,47 +883,8 @@ def _build_create_steps(op_data: dict) -> list:
             else:
                 playwright_locator = ms_field.get("selector", "")
 
-            kb_category = ms_field["kb_category"]
-            is_select = kb_category == "el-select"
-            is_tree_select = ms_field.get("select_sub_type") == "select-tree"
-
-            field_info = {
-                "label": ms_field["label"],
-                "playwright_locator": ms_field.get("playwright_locator", ""),
-                "selector": ms_field.get("selector", ""),
-                "type": kb_category.replace("el-", "") if kb_category.startswith("el-") else kb_category,
-                "kb_category": kb_category,
-                "fill_rule": ms_field.get("fill_rule", {}),
-                "is_editable": ms_field.get("is_editable", False),
-            }
-
-            # ★ 泛化处理：选择框类字段记录交互方式而非具体值
-            # Stage 2 动态选择第一个可用选项
-            if is_select or is_tree_select:
-                # 清空 option_text，不记录具体选中值
-                field_info["option_text"] = ""
-                # 添加交互元数据，供 Stage 2 回放使用
-                field_info["interaction"] = {
-                    "locator": playwright_locator,
-                    "click_strategy": "handleNodeClick" if is_tree_select else "vue_emit",
-                    "component_type": "el-tree" if is_tree_select else "el-select",
-                    "in_dropdown": ms_field.get("in_dropdown", False),
-                }
-                # 保留 select_sub_type 供 Stage 2 路由到专用处理器
-                if "select_sub_type" in ms_field:
-                    field_info["select_sub_type"] = ms_field["select_sub_type"]
-                # ★ 添加 selection_strategy（如果存在）
-                if "selection_strategy" in ms_field:
-                    field_info["selection_strategy"] = ms_field["selection_strategy"]
-            elif kb_category == "date-picker":
-                # ★ D1: date-picker 不记录具体日期值，记录选择策略
-                # Stage 2 根据策略点击"今天"按钮，而非填入写死的日期文本
-                field_info["option_text"] = ""
-                if "selection_strategy" in ms_field:
-                    field_info["selection_strategy"] = ms_field["selection_strategy"]
-            else:
-                # 非选择框字段：保留原有逻辑
-                field_info["option_text"] = ms_field.get("option_text", "")
+            # 使用公共函数构建 field_info
+            field_info = _build_select_field_info(ms_field, playwright_locator)
 
             # ★ 方案 A：ip-input 显式标记 requires_locator = False
             if ms_field.get("kb_category") == "ip-input":
@@ -1152,47 +1184,8 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
             else:
                 playwright_locator = ms_field.get("selector", "")
 
-            kb_category = ms_field["kb_category"]
-            is_select = kb_category == "el-select"
-            is_tree_select = ms_field.get("select_sub_type") == "select-tree"
-
-            field_info = {
-                "label": ms_field["label"],
-                "playwright_locator": ms_field.get("playwright_locator", ""),
-                "selector": ms_field.get("selector", ""),
-                "type": kb_category.replace("el-", "") if kb_category.startswith("el-") else kb_category,
-                "kb_category": kb_category,
-                "fill_rule": ms_field.get("fill_rule", {}),
-                "is_editable": ms_field.get("is_editable", False),
-            }
-
-            # ★ 泛化处理：选择框类字段记录交互方式而非具体值
-            # Stage 2 动态选择第一个可用选项
-            if is_select or is_tree_select:
-                # 清空 option_text，不记录具体选中值
-                field_info["option_text"] = ""
-                # 添加交互元数据，供 Stage 2 回放使用
-                field_info["interaction"] = {
-                    "locator": playwright_locator,
-                    "click_strategy": "handleNodeClick" if is_tree_select else "vue_emit",
-                    "component_type": "el-tree" if is_tree_select else "el-select",
-                    "in_dropdown": ms_field.get("in_dropdown", False),
-                }
-                # 保留 select_sub_type 供 Stage 2 路由到专用处理器
-                if "select_sub_type" in ms_field:
-                    field_info["select_sub_type"] = ms_field["select_sub_type"]
-                # ★ 添加 selection_strategy（如果存在）
-                if "selection_strategy" in ms_field:
-                    field_info["selection_strategy"] = ms_field["selection_strategy"]
-            elif kb_category == "date-picker":
-                # ★ D1: date-picker 不记录具体日期值，记录选择策略
-                # Stage 2 根据策略点击"今天"按钮，而非填入写死的日期文本
-                field_info["option_text"] = ""
-                if "selection_strategy" in ms_field:
-                    field_info["selection_strategy"] = ms_field["selection_strategy"]
-            else:
-                # 非选择框字段：保留原有逻辑
-                field_info["option_text"] = ms_field.get("option_text", "")
+            # 使用公共函数构建 field_info
+            field_info = _build_select_field_info(ms_field, playwright_locator)
 
             # ★ 方案 A：ip-input 显式标记 requires_locator = False
             if ms_field.get("kb_category") == "ip-input":
@@ -1385,8 +1378,6 @@ def _build_generic_steps(op_data: dict, create_marker=None) -> list:
     # 如果 Stage 1 在弹窗中填充了 select 字段，生成 fill_form 步骤（在 confirm 之前执行）
     dialog_fills = op_data.get("dialog_fills", [])
     if dialog_fills:
-        # 过滤掉无效的占位符 option_text（如 "(已选中)"），替换为空字符串以触发 Stage 2 自动发现
-        _PLACEHOLDER_TEXTS = {"(已选中)", "(selected)"}
         fill_fields = []
         for d in dialog_fills:
             # 优先使用 playwright_locator，回退到 selector
@@ -1394,10 +1385,6 @@ def _build_generic_steps(op_data: dict, create_marker=None) -> list:
             css_selector = d.get("selector", "")  # 标准 CSS，供 evaluate 使用
             if not pw_locator:
                 continue
-
-            option_text = d.get("option_text", "")
-            if option_text in _PLACEHOLDER_TEXTS:
-                option_text = ""  # 清空占位符，让 Stage 2 自动发现并选择第一个
 
             kb_category = d.get("kb_category", "el-select")
             select_sub_type = d.get("select_sub_type")
@@ -1410,24 +1397,27 @@ def _build_generic_steps(op_data: dict, create_marker=None) -> list:
                 "kb_category": kb_category,
                 "fill_rule": {},
                 "is_editable": d.get("is_editable", False),
-                "option_text": option_text,
             }
 
             # ★ Phase 4a: 序列化 el-select 子类型
             if select_sub_type:
                 fill_field["select_sub_type"] = select_sub_type
 
-            # ★ 所有 el-select 类型统一处理：清空 option_text + 记录交互元数据
-            # 对齐 _build_create_steps / _build_update_steps 的逻辑
+            # ★ 所有 el-select 类型统一处理：记录交互元数据
+            # 对齐 _build_select_field_info 的逻辑
             is_tree_select = select_sub_type == "select-tree"
             if kb_category == "el-select":
-                fill_field["option_text"] = ""  # 清空具体值，Stage 2 动态选择
                 fill_field["interaction"] = {
                     "type": "tree-select" if is_tree_select else "select",
                     "locator": pw_locator,
                     "click_strategy": "handleNodeClick" if is_tree_select else "vue_emit",
                     "component_type": "el-tree" if is_tree_select else "el-select",
                 }
+
+            # ★ 记录 Stage 1 实际操作步骤
+            if "interaction_steps" in d:
+                fill_field["interaction_steps"] = d["interaction_steps"]
+                LOG.info(f"    [builder] {d.get('label', '')}: 提取 interaction_steps ({len(d['interaction_steps'])} 个步骤)")
 
             fill_fields.append(fill_field)
         if fill_fields:

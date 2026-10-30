@@ -416,8 +416,8 @@ class TestBuildCreateSteps:
         assert "角色" in labels
         role_field = [f for f in fill_step["fields"] if f["label"] == "角色"][0]
         assert role_field["kb_category"] == "el-select"
-        # P2b: el-select 的 option_text 被清空，使用 interaction 元数据
-        assert role_field["option_text"] == ""
+        # P2b: el-select 不再包含 option_text，使用 interaction_steps 回放
+        assert "option_text" not in role_field
         assert "interaction" in role_field
         assert role_field["interaction"]["click_strategy"] == "vue_emit"
         assert role_field["interaction"]["component_type"] == "el-select"

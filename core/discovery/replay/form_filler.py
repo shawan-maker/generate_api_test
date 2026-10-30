@@ -318,11 +318,11 @@ class FormFiller:
                     playwright_locator=field.get('playwright_locator')
                 )
                 action_entry["success"] = success
-                action_entry["option_text"] = detail.get("option_text", "")
+                action_entry["interaction_steps"] = detail.get("interaction_steps", [])
                 if success:
                     cascade_filled += 1
                     filled_selectors.add(selector)
-                    LOG.info(f"    [cascade-fill] ✅ {label} ({kb_cat}) → {detail.get('option_text', '')}")
+                    LOG.info(f"    [cascade-fill] ✅ {label} ({kb_cat}) → {len(detail.get('interaction_steps', []))} 步")
 
                     # el-select 下拉框关闭
                     if kb_cat == "el-select":
@@ -500,13 +500,12 @@ class FormFiller:
                                     if success:
                                         LOG.info(f"    [radio-cascade] transfer-box 选择成功")
                                         # ★ 记录 cascade 操作，供 Stage 2 回放
-                                        # selected_items 应包含实际选中的项（option_text）
-                                        selected_text = detail.get("option_text", "")
+                                        interaction_steps = detail.get("interaction_steps", [])
                                         cascade_actions.append({
                                             "type": "transfer-box",
                                             "trigger_field": label,
                                             "trigger_value": first_text,
-                                            "selected_items": [selected_text] if selected_text else [],
+                                            "interaction_steps": interaction_steps,
                                         })
                                     else:
                                         LOG.warning(f"    [radio-cascade] transfer-box 选择失败")
@@ -683,14 +682,14 @@ class FormFiller:
                         "selector": selector,
                         "playwright_locator": field.get("playwright_locator"),
                         "is_editable": detail.get("is_editable", False),
-                        "option_text": detail.get("option_text", ""),
+                        "interaction_steps": detail.get("interaction_steps", []),
                         "round": round_num,
                     }
                     # ★ Phase 4a 补漏：复制 select_sub_type（el-select 子类型）
                     if "select_sub_type" in detail:
                         detail_entry["select_sub_type"] = detail["select_sub_type"]
                     details.append(detail_entry)
-                    LOG.info(f"    ✅ multi_step R{round_num}: {label} ({kb_cat}) → {detail.get('option_text', '')}")
+                    LOG.info(f"    ✅ multi_step R{round_num}: {label} ({kb_cat}) → {len(detail.get('interaction_steps', []))} 步")
 
                     # ★ el-select 选择后检查下拉框状态，如仍展开则关闭并记录
                     if kb_cat == "el-select":
@@ -742,7 +741,7 @@ class FormFiller:
                         "selector": selector,
                         "playwright_locator": field.get("playwright_locator"),
                         "is_editable": detail.get("is_editable", False),
-                        "option_text": "",
+                        "interaction_steps": [],
                         "skipped_reason": detail.get("skipped_reason", "unknown"),
                         "round": round_num,
                     })
@@ -769,7 +768,7 @@ class FormFiller:
                 "kb_category": kb_cat,
                 "selector": selector,
                 "is_editable": False,
-                "option_text": "",
+                "interaction_steps": [],
                 "skipped_reason": "no_options",
             })
         if pending:
@@ -2115,7 +2114,7 @@ class MultiStepExecutor:
         """el-select 多步交互，并返回详细的执行信息。
 
         Returns:
-            Tuple[bool, Dict]: (是否成功, {"is_editable": bool, "option_text": str})
+            Tuple[bool, Dict]: (是否成功, {"is_editable": bool, "option_text": str, "interaction_steps": list})
         """
         steps = self.kb.get_steps("el-select", self.framework)
         select_sub_type = "select-single"  # 默认值，后续检测后覆盖
@@ -2124,13 +2123,16 @@ class MultiStepExecutor:
             "method": "first_available",
             "skip_rules": [{"condition": "is-disabled", "reason": "skip_disabled_options"}]
         }
+        # ★ 记录操作步骤
+        interaction_steps = []
+
         if not steps:
             return False, {}
 
         # Step 1: expand（必须使用 selector，不做 KB XPath 回退）
         if not selector:
             LOG.warning(f"    el-select {label} 缺少 selector（Stage 1 未提供）")
-            return False, {}
+            return False, {"interaction_steps": []}
 
         # Step 0: 检查下拉框是否已有默认选中值（避免重复点击导致取消选中）
         if not option_text:
@@ -2167,17 +2169,52 @@ class MultiStepExecutor:
                 if mode == "multiple":
                     vals = has_default.get("values", [])
                     LOG.info(f"    el-select {label}: 多选已有默认值 {vals}，跳过")
-                    return True, {"is_editable": False, "option_text": ", ".join(vals), "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "has_default_value"}
+                    # 记录检查默认值步骤
+                    interaction_steps.append({
+                        "op": "check_default_value",
+                        "selector": selector,
+                        "desc": f"检查默认值: {', '.join(vals)}",
+                        "value": ', '.join(vals)
+                    })
+                    return True, {
+                        "is_editable": False,
+                        "option_text": ", ".join(vals),
+                        "select_sub_type": select_sub_type,
+                        "selection_strategy": selection_strategy,
+                        "interaction_steps": interaction_steps,
+                        "execution_path": "has_default_value"
+                    }
                 else:
                     val = has_default.get("value", "")
                     LOG.info(f"    el-select {label}: 单选已有默认值 '{val}'，跳过")
-                    return True, {"is_editable": False, "option_text": val, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "has_default_value"}
+                    # 记录检查默认值步骤
+                    interaction_steps.append({
+                        "op": "check_default_value",
+                        "selector": selector,
+                        "desc": f"检查默认值: {val}",
+                        "value": val
+                    })
+                    return True, {
+                        "is_editable": False,
+                        "option_text": val,
+                        "select_sub_type": select_sub_type,
+                        "selection_strategy": selection_strategy,
+                        "interaction_steps": interaction_steps,
+                        "execution_path": "has_default_value"
+                    }
 
         expanded = await self._expand_by_selector(selector, label, playwright_locator)
         if not expanded:
             LOG.debug(f"    el-select {label}: expand failed")
             return False, {"selection_strategy": selection_strategy}
         await self.page.wait_for_timeout(500)
+
+        # ★ 记录步骤：展开下拉框
+        interaction_steps.append({
+            "op": "click",
+            "locator": playwright_locator or selector,
+            "desc": f"展开{label}下拉框"
+        })
 
         # Step 2: editable-check
         editable_patterns = steps.get("editable-check", {}).get("patterns", [])
@@ -2223,19 +2260,26 @@ class MultiStepExecutor:
 
             LOG.info(f"    el-select {label}: sub_type={select_sub_type}")
 
-            # ★ FIX: tree-select 路由到专用处理器
-            # 通用选择路径使用 .el-select-dropdown__item，但 tree-select 的选项是
-            # .custom-tree-node / .el-tree-node__content，选择器不匹配
-            if select_sub_type == "select-tree":
-                LOG.info(f"    [FIX] el-select {label}: 检测到 tree-select，路由到 _fill_tree_select 专用处理器")
-                tree_result = await self._fill_tree_select(selector, label, playwright_locator)
-                # ★ O4: 记录执行路径
-                if isinstance(tree_result, tuple) and len(tree_result) == 2 and isinstance(tree_result[1], dict):
-                    tree_result[1]["execution_path"] = "tree_select_route"
-                return tree_result
-
         # Step 3: 等待选项加载
         await self._wait_for_options_loaded()
+
+        # ★ FIX: tree-select 路由到专用处理器
+        # 通用选择路径使用 .el-select-dropdown__item，但 tree-select 的选项是
+        # .custom-tree-node / .el-tree-node__content，选择器不匹配
+        if select_sub_type == "select-tree":
+            LOG.info(f"    [FIX] el-select {label}: 检测到 tree-select，路由到 _fill_tree_select 专用处理器")
+            tree_result = await self._fill_tree_select(selector, label, playwright_locator)
+            # ★ O4: 记录执行路径
+            if isinstance(tree_result, tuple) and len(tree_result) == 2 and isinstance(tree_result[1], dict):
+                tree_result[1]["execution_path"] = "tree_select_route"
+            return tree_result
+
+        # ★ 记录步骤：等待选项加载
+        interaction_steps.append({
+            "op": "wait",
+            "duration": 500,
+            "desc": "等待选项加载"
+        })
 
         # Step 4: 自动发现选项
         if not option_text:
@@ -2320,6 +2364,14 @@ class MultiStepExecutor:
                 detail["execution_path"] = "editable_fill_failed"
                 return False, detail
 
+            # ★ 记录步骤：输入搜索文本
+            interaction_steps.append({
+                "op": "fill",
+                "selector": selector + " input",
+                "value": option_text,
+                "desc": f"输入搜索词: {option_text}"
+            })
+
             # 关键修复：fill 只 click 了输入框，需要实际输入搜索文本
             typed = await self._type_search_text(label, option_text, selector)
             LOG.info(f"    el-select {label}: type search result={typed}")
@@ -2349,6 +2401,15 @@ class MultiStepExecutor:
             if not selected:
                 selected = await self._click_visible_option(option_text)
                 LOG.info(f"    el-select {label}: direct click result={selected}")
+
+            # ★ 记录步骤：选择选项
+            if selected:
+                interaction_steps.append({
+                    "op": "click_first",
+                    "selector": ".el-select-dropdown:not([style*='display: none']) .el-select-dropdown__item:not(.is-disabled)",
+                    "desc": f"选择选项: {option_text}"
+                })
+
             # Post-fill verification
             await self.page.wait_for_timeout(500)
             verify = await self._verify_select_filled(label, selector)
@@ -2358,10 +2419,20 @@ class MultiStepExecutor:
                            f"debug={debug_info}")
                 return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "editable_verify_failed"}
             LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
-            return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text), "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "editable_search_select"}
+
+            LOG.info(f"    [el-select] {label}: 已记录 {len(interaction_steps)} 个操作步骤")
+            return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text), "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "interaction_steps": interaction_steps, "execution_path": "editable_search_select"}
         else:
             # 不可编辑：等待选项加载，再选择第一个选项
             await self._wait_for_options_loaded()
+
+            # ★ 记录步骤：等待选项加载
+            interaction_steps.append({
+                "op": "wait",
+                "duration": 500,
+                "desc": "等待选项加载"
+            })
+
             selected = await self._try_step_patterns(
                 steps.get("first-option", {}), label=label, option_text=option_text)
             LOG.info(f"    el-select {label}: first-option result={selected}")
@@ -2369,6 +2440,15 @@ class MultiStepExecutor:
             if not selected:
                 selected = await self._click_visible_option(option_text)
                 LOG.info(f"    el-select {label}: direct click result={selected}")
+
+            # ★ 记录步骤：选择选项
+            if selected:
+                interaction_steps.append({
+                    "op": "click_first",
+                    "selector": ".el-select-dropdown:not([style*='display: none']) .el-select-dropdown__item:not(.is-disabled)",
+                    "desc": f"选择选项: {option_text}"
+                })
+
             # Post-fill verification
             await self.page.wait_for_timeout(500)
             verify = await self._verify_select_filled(label, selector)
@@ -2378,7 +2458,9 @@ class MultiStepExecutor:
                            f"debug={debug_info}")
                 return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "readonly_verify_failed"}
             LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
-            return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text), "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "readonly_first_option"}
+
+            LOG.info(f"    [el-select] {label}: 已记录 {len(interaction_steps)} 个操作步骤")
+            return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text), "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "interaction_steps": interaction_steps, "execution_path": "readonly_first_option"}
 
     async def _fill_remote_select(self, selector: str, label: str, playwright_locator: str = None) -> tuple:
         """远程搜索 el-select：展开后等待远程加载完成，选第一个
@@ -2386,11 +2468,19 @@ class MultiStepExecutor:
         策略：展开 → 等待 option 出现 → 选第一个
         """
         LOG.info(f"    [select-remote] {label}: 展开下拉框")
+        interaction_steps = []
 
         # 1. 展开下拉框
         expanded = await self._expand_by_selector(selector, label, playwright_locator)
         if not expanded:
             return False, {"skipped_reason": "expand_failed"}
+
+        # ★ 记录步骤：展开下拉框
+        interaction_steps.append({
+            "op": "click",
+            "selector": selector,
+            "desc": "展开下拉框"
+        })
 
         # 2. 等待远程 API 返回（关键差异：通用逻辑不等待）
         LOG.info(f"    [select-remote] {label}: 等待远程选项加载...")
@@ -2401,6 +2491,13 @@ class MultiStepExecutor:
                 timeout=5000
             )
             LOG.info(f"    [select-remote] {label}: 远程选项已加载")
+
+            # ★ 记录步骤：等待远程选项加载
+            interaction_steps.append({
+                "op": "wait_for_selector",
+                "selector": ".el-select-dropdown:not([style*='display: none']) .el-select-dropdown__item:not(.is-disabled)",
+                "desc": "等待远程选项加载"
+            })
         except Exception as e:
             LOG.warning(f"    [select-remote] {label}: 远程选项未加载 (timeout): {e}")
             return False, {"skipped_reason": "remote_load_timeout"}
@@ -2415,6 +2512,14 @@ class MultiStepExecutor:
         selected = await self._click_visible_option(option_text)
         LOG.info(f"    [select-remote] {label}: 选择结果={selected}, option='{option_text}'")
 
+        # ★ 记录步骤：选择选项
+        if selected:
+            interaction_steps.append({
+                "op": "click_first",
+                "selector": ".el-select-dropdown:not([style*='display: none']) .el-select-dropdown__item:not(.is-disabled)",
+                "desc": f"选择选项: {option_text}"
+            })
+
         # 4. 验证
         await self.page.wait_for_timeout(500)
         verify = await self._verify_select_filled(label, selector)
@@ -2422,7 +2527,8 @@ class MultiStepExecutor:
             LOG.warning(f"    [select-remote] {label}: 填充后验证失败")
             return False, {"option_text": option_text, "verify_failed": True}
 
-        return selected, {"option_text": verify.get("displayed_value", option_text)}
+        LOG.info(f"    [select-remote] {label}: 已记录 {len(interaction_steps)} 个操作步骤")
+        return selected, {"option_text": verify.get("displayed_value", option_text), "interaction_steps": interaction_steps}
 
     async def _fill_tree_select(self, selector: str, label: str, playwright_locator: str = None) -> tuple:
         """树形 el-select：诊断并选择树节点
@@ -2436,8 +2542,9 @@ class MultiStepExecutor:
 
         Returns:
             tuple: (success: bool, detail: dict)
-                detail 包含 "option_text"（选中的节点文本）
+                detail 包含 "option_text"（选中的节点文本）和 "interaction_steps"（操作步骤）
         """
+        interaction_steps = []  # ★ 记录操作步骤
         LOG.info(f"    [select-tree] {label}: 开始诊断")
 
         # 1. 详细诊断：el-select Vue 实例 + 页面所有 el-tree 的事件绑定
@@ -2520,6 +2627,23 @@ class MultiStepExecutor:
         has_handleNodeClick = 'handleNodeClick' in diag.get('select', {}).get('events', [])
         if has_handleNodeClick:
             LOG.info(f"    [select-tree] {label}: 通过 handleNodeClick 事件回调设置值")
+
+            # ★ 记录步骤 1：点击展开
+            interaction_steps.append({
+                "op": "click",
+                "locator": playwright_locator or selector,
+                "desc": f"展开{label}下拉框"
+            })
+
+            # ★ 记录步骤 2：等待树渲染
+            tree_selector = ".el-select-dropdown:not([style*='display: none']) .el-tree"
+            interaction_steps.append({
+                "op": "wait_visible",
+                "selector": tree_selector,
+                "timeout": 3000,
+                "desc": "等待树渲染"
+            })
+
             set_result = await self.page.evaluate("""(selector) => {
                 const selectEl = document.querySelector(selector);
                 if (!selectEl || !selectEl.__vue__) return { success: false, reason: 'no_select_vue' };
@@ -2612,9 +2736,20 @@ class MultiStepExecutor:
                 await self.page.wait_for_timeout(800)
                 verify = await self._verify_select_filled(label, selector)
                 if verify.get("filled"):
+                    # ★ 记录步骤 3：点击第一个树节点
+                    node_selector = ".el-select-dropdown:not([style*='display: none']) .custom-tree-node span"
+                    interaction_steps.append({
+                        "op": "click_first",
+                        "selector": node_selector,
+                        "desc": "点击第一个树节点"
+                    })
+
+                    LOG.info(f"    [select-tree] {label}: 已记录 {len(interaction_steps)} 个操作步骤")
+
                     return True, {
                         "option_text": verify.get("displayed_value", set_result['text']),
                         "select_sub_type": "select-tree",
+                        "interaction_steps": interaction_steps,
                         "selection_strategy": {
                             "method": "handleNodeClick",
                             "skip_rules": [
@@ -2629,6 +2764,15 @@ class MultiStepExecutor:
 
         # 3. Fallback: 直接 Playwright click
         LOG.info(f"    [select-tree] {label}: 尝试 Playwright click")
+
+        # ★ 记录步骤（即使走 Fallback 路径）
+        if not any(s.get("op") == "click" for s in interaction_steps):
+            interaction_steps.append({
+                "op": "click",
+                "locator": playwright_locator or selector,
+                "desc": f"展开{label}下拉框 (fallback)"
+            })
+
         node_info = await self.page.evaluate("""(selector) => {
             const allTrees = Array.from(document.querySelectorAll('.el-tree'));
 
@@ -2680,12 +2824,20 @@ class MultiStepExecutor:
                 LOG.info(f"    [select-tree] {label}: click '{node_info['text']}'")
                 await self.page.wait_for_timeout(800)
 
+                # ★ 记录步骤：点击树节点
+                interaction_steps.append({
+                    "op": "click",
+                    "locator": f"{node_info['selector']}:visible",
+                    "desc": f"点击树节点: {node_info['text']}"
+                })
+
         verify = await self._verify_select_filled(label, selector)
         if not verify.get("filled"):
             return False, {
                 "skipped_reason": "verify_failed",
                 "option_text": node_info.get('text', ''),
                 "select_sub_type": "select-tree",
+                "interaction_steps": interaction_steps,
                 "selection_strategy": {
                     "method": "playwright_click",
                     "skip_rules": [
@@ -2696,9 +2848,12 @@ class MultiStepExecutor:
                 }
             }
 
+        LOG.info(f"    [select-tree] {label}: 已记录 {len(interaction_steps)} 个操作步骤")
+
         return True, {
             "option_text": verify.get("displayed_value", node_info.get('text', '')),
             "select_sub_type": "select-tree",
+            "interaction_steps": interaction_steps,
             "selection_strategy": {
                 "method": "playwright_click",
                 "skip_rules": [
@@ -2765,31 +2920,57 @@ class MultiStepExecutor:
         if not steps:
             return False, {"skipped_reason": "no_steps", "kb_category": "el-cascader"}
 
+        interaction_steps = []
+
         # Step 1: expand
         expanded = await self._try_step_patterns(steps.get("expand", {}), label=label)
         if not expanded:
             return False, {"skipped_reason": "expand_failed", "kb_category": "el-cascader"}
         await self.page.wait_for_timeout(500)
 
+        # ★ 记录步骤：展开级联选择器
+        interaction_steps.append({
+            "op": "click",
+            "selector": selector,
+            "desc": "展开级联选择器"
+        })
+
         # Step 2: 根据是否提供 options 选择不同模式
         if options:
             success = await self._cascader_select_by_path(steps, label, options)
             if success:
+                # ★ 记录步骤：按路径选择
+                for i, opt in enumerate(options):
+                    interaction_steps.append({
+                        "op": "click_first",
+                        "selector": ".el-cascader-panel .el-cascader-node",
+                        "desc": f"选择第{i+1}级: {opt}"
+                    })
+                LOG.info(f"    [cascader] {label}: 已记录 {len(interaction_steps)} 个操作步骤")
                 return True, {
                     "option_text": " > ".join(options),
                     "selected_path": options,
                     "kb_category": "el-cascader",
+                    "interaction_steps": interaction_steps,
                 }
             return False, {"skipped_reason": "path_select_failed", "kb_category": "el-cascader"}
         else:
             success = await self._cascader_discover_and_select(steps, label)
             if success:
+                # ★ 记录步骤：自动发现并选择
+                interaction_steps.append({
+                    "op": "click_first",
+                    "selector": ".el-cascader-panel .el-cascader-node",
+                    "desc": "自动发现并选择"
+                })
                 # 读取实际选择的路径
                 selected_path = await self._read_cascader_selected_path(selector)
+                LOG.info(f"    [cascader] {label}: 已记录 {len(interaction_steps)} 个操作步骤")
                 return True, {
                     "option_text": " > ".join(selected_path) if selected_path else "",
                     "selected_path": selected_path,
                     "kb_category": "el-cascader",
+                    "interaction_steps": interaction_steps,
                 }
             return False, {"skipped_reason": "discover_select_failed", "kb_category": "el-cascader"}
 
@@ -2821,11 +3002,20 @@ class MultiStepExecutor:
         if not steps:
             return False, {"skipped_reason": "no_steps", "kb_category": "date-picker"}
 
+        interaction_steps = []
+
         # Step 1: expand
         expanded = await self._try_step_patterns(steps.get("expand", {}), label=label)
         if not expanded:
             return False, {"skipped_reason": "expand_failed", "kb_category": "date-picker"}
         await self.page.wait_for_timeout(500)
+
+        # ★ 记录步骤：展开日期选择器
+        interaction_steps.append({
+            "op": "click",
+            "selector": selector,
+            "desc": "展开日期选择器"
+        })
 
         # Step 2: 选择今天（默认策略）
         strategy = "today"
@@ -2836,6 +3026,13 @@ class MultiStepExecutor:
             selected = await self._try_step_patterns(steps.get("select-now", {}), label=label)
 
         if selected:
+            # ★ 记录步骤：选择日期
+            interaction_steps.append({
+                "op": "click_first",
+                "selector": ".el-picker-panel .el-date-table td.available",
+                "desc": f"选择日期: {strategy}"
+            })
+
             # 读取实际选中的值
             actual_value = ""
             if selector:
@@ -2846,10 +3043,13 @@ class MultiStepExecutor:
                     }""", selector)
                 except Exception:
                     pass
+
+            LOG.info(f"    [date-picker] {label}: 已记录 {len(interaction_steps)} 个操作步骤")
             return True, {
                 "option_text": actual_value or strategy,
                 "selection_strategy": {"method": f"click_{strategy}"},
                 "kb_category": "date-picker",
+                "interaction_steps": interaction_steps,
             }
         return False, {"skipped_reason": "select_failed", "kb_category": "date-picker"}
 
@@ -2859,6 +3059,7 @@ class MultiStepExecutor:
         Returns:
             tuple: (success: bool, detail: dict)
         """
+        interaction_steps = []
         patterns = self.kb.get_patterns("form-checkbox", self.framework)
         for p in patterns:
             xpath = self.kb.expand_step(
@@ -2866,19 +3067,37 @@ class MultiStepExecutor:
                 framework=self.framework, apply_hidden=True
             )
             if await self._click_by_xpath(xpath):
+                # ★ 记录步骤：勾选复选框
+                interaction_steps.append({
+                    "op": "click_xpath",
+                    "xpath": xpath,
+                    "desc": f"勾选复选框: {option_text}"
+                })
+
+                LOG.info(f"    [form-checkbox] {label}: 已记录 {len(interaction_steps)} 个操作步骤")
                 return True, {
                     "option_text": option_text,
                     "checked_options": [option_text],
                     "kb_category": "form-checkbox",
+                    "interaction_steps": interaction_steps,
                 }
 
         # 兜底：尝试 fallback_strategies
         success = await self._try_fallback(label)
         if success:
+            # ★ 记录步骤：使用兜底策略
+            interaction_steps.append({
+                "op": "click_xpath",
+                "xpath": "fallback",
+                "desc": f"使用兜底策略勾选: {option_text}"
+            })
+
+            LOG.info(f"    [form-checkbox] {label}: 已记录 {len(interaction_steps)} 个操作步骤 (兜底)")
             return True, {
                 "option_text": option_text,
                 "checked_options": [option_text],
                 "kb_category": "form-checkbox",
+                "interaction_steps": interaction_steps,
             }
         return False, {"skipped_reason": "no_checkbox_clicked", "kb_category": "form-checkbox"}
 
@@ -3021,7 +3240,14 @@ class MultiStepExecutor:
                 return Array.from(checked).map(el => el.textContent.trim()).join(', ');
             }""")
 
-            return True, {"option_text": selected_text, "selected_count": 1}
+            interaction_steps = [{
+                "op": "click_first",
+                "selector": ".el-checkbox-group .el-checkbox:not(.is-checked) .el-checkbox__label",
+                "desc": "勾选第一个未选中的复选框"
+            }]
+
+            LOG.info(f"    [list-selector] {label}: 已记录 {len(interaction_steps)} 个操作步骤 (checkbox)")
+            return True, {"option_text": selected_text, "selected_count": 1, "interaction_steps": interaction_steps}
 
         # 回退 1：尝试普通 li 列表项（增加可见性校验，避免匹配不可见的菜单项）
         list_item = None
@@ -3039,7 +3265,15 @@ class MultiStepExecutor:
                 await list_item.click()
                 await self.page.wait_for_timeout(500)
                 item_text = await list_item.inner_text()
-                return True, {"option_text": item_text.strip(), "selected_count": 1}
+
+                interaction_steps = [{
+                    "op": "click_first",
+                    "selector": "li[class*='item']:not(.is-selected):not(.is-disabled)",
+                    "desc": "点击第一个可点击的列表项"
+                }]
+
+                LOG.info(f"    [list-selector] {label}: 已记录 {len(interaction_steps)} 个操作步骤 (li)")
+                return True, {"option_text": item_text.strip(), "selected_count": 1, "interaction_steps": interaction_steps}
             else:
                 LOG.info(f"    li 元素不可见（可能在视口外），跳过")
                 list_item = None
@@ -3102,6 +3336,8 @@ class MultiStepExecutor:
             LOG.warning(f"    IP 段数不匹配: 解析出 {len(segments)} 段，需要 {input_count} 段")
             return False, {"skipped_reason": "segment_count_mismatch"}
 
+        interaction_steps = [] # ★ 初始化
+
         # 3. 逐个填充 input
         filled_count = 0
         for i, (selector, value) in enumerate(zip(sub_selectors, segments)):
@@ -3128,6 +3364,14 @@ class MultiStepExecutor:
                 filled_count += 1
                 LOG.debug(f"      IP input[{i}] = {value}")
 
+                # ★ 记录步骤
+                interaction_steps.append({
+                    "op": "fill",
+                    "selector": selector,
+                    "value": value,
+                    "desc": f"填充 IP 第 {i+1} 段"
+                })
+
             except Exception as e:
                 LOG.warning(f"    IP input[{i}] 填充失败: {selector} - {e}")
                 # 继续填充其他段，不中断
@@ -3135,8 +3379,8 @@ class MultiStepExecutor:
         if filled_count == 0:
             return False, {"skipped_reason": "all_inputs_failed"}
 
-        LOG.info(f"    ✅ IP 填充成功: {filled_count}/{input_count} 段")
-        return True, {"option_text": ip_value, "input_count": filled_count}
+        LOG.info(f"    ✅ IP 填充成功: {filled_count}/{input_count} 段, 已记录 {len(interaction_steps)} 个操作步骤")
+        return True, {"option_text": ip_value, "input_count": filled_count, "interaction_steps": interaction_steps}
 
     def _parse_ip_segments(self, ip_value: str, input_count: int, ip_version: str) -> list:
         """解析 IP 值为各段列表。
@@ -3410,7 +3654,20 @@ class MultiStepExecutor:
                 LOG.warning(f"    [transfer-box] ⚠ 右侧面板未更新，可能点击未生效")
                 LOG.warning(f"    [transfer-box] 建议检查：1) 是否需要点击父元素(tr/td) 2) 是否需要用 Playwright click 3) 是否需要触发 Vue 事件")
 
-            return True, {"option_text": target_text, "selected_count": 1 if right_panel_updated else 0}
+            # ★ 记录 interaction_steps
+            interaction_steps = [
+                {
+                    "op": "click",
+                    "selector": "xpath://tbody//tr[@class='el-table__row']//span[1]",
+                    "desc": "点击穿梭框左侧行"
+                }
+            ]
+
+            return True, {
+                "option_text": target_text,
+                "selected_count": 1 if right_panel_updated else 0,
+                "interaction_steps": interaction_steps
+            }
 
         # === STEP 2: xpath 失败时，回退到 querySelectorAll + 筛选 ===
         LOG.info(f"    [transfer-box] xpath 未找到，回退到 querySelectorAll 方式")
@@ -3541,7 +3798,20 @@ class MultiStepExecutor:
                     }""")
                     LOG.info(f"    [DIAG-transfer] 左侧 DOM 树: {json.dumps(deep_diag, ensure_ascii=False)}")
 
-                return True, {"option_text": target_text, "selected_count": 1}
+                # ★ 记录 interaction_steps
+                interaction_steps = [
+                    {
+                        "op": "click",
+                        "selector": f"text:{target_text}",
+                        "desc": "点击穿梭框左侧元素（回退方案）"
+                    }
+                ]
+
+                return True, {
+                    "option_text": target_text,
+                    "selected_count": 1,
+                    "interaction_steps": interaction_steps
+                }
             else:
                 LOG.warning(f"    穿梭框 JS click 失败: '{target_text}'")
 

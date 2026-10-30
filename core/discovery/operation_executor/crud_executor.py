@@ -1830,7 +1830,6 @@ async def _do_create(page, context: dict) -> dict:
                 "playwright_locator": field.get("playwright_locator"),
                 "fill_rule": fill_rules.get(field.get("label", ""), {}),
                 "is_editable": False,
-                "option_text": "",
             }
             # ★ ip-input: 显式标记为"复合输入字段"（使用 sub_selectors，不需要 locator）
             if kb_cat == "ip-input":
@@ -1911,9 +1910,12 @@ async def _do_create(page, context: dict) -> dict:
         for ms_field in multi_step_field_details:
             if ms_field["label"] == label:
                 ms_field["is_editable"] = detail.get("is_editable", False)
-                ms_field["option_text"] = detail.get("option_text", "")
+                # 移除 option_text（Stage 2 不再依赖文本回放）
                 if "select_sub_type" in detail:
                     ms_field["select_sub_type"] = detail["select_sub_type"]
+                # 传递 interaction_steps（Stage 2 按步骤回放）
+                if "interaction_steps" in detail:
+                    ms_field["interaction_steps"] = detail["interaction_steps"]
                 if detail.get("playwright_locator"):
                     ms_field["playwright_locator"] = detail["playwright_locator"]
                 break
@@ -1925,8 +1927,8 @@ async def _do_create(page, context: dict) -> dict:
         # 查找对应的字段定义，检查是否必填
         field_def = next((f for f in fields if f.get("label") == label), None)
         is_required = field_def and field_def.get("required", False)
-        # 检查是否填充成功（is_editable 或 option_text，且没有 skipped_reason）
-        is_success = (detail.get("is_editable", False) or detail.get("option_text", "")) \
+        # 检查是否填充成功（is_editable 或 interaction_steps 非空，且没有 skipped_reason）
+        is_success = (detail.get("is_editable", False) or detail.get("interaction_steps")) \
                      and not detail.get("skipped_reason")
         if is_required and not is_success:
             required_failed.append(label)

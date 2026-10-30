@@ -207,6 +207,25 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
                         if matching_closes:
                             field["close_dropdown"] = matching_closes
 
+            # ★ 合并 ms_details 的详细信息到 form_field_details（Stage 2 需要 interaction_steps 回放）
+            if ms_details:
+                for ms_detail in ms_details:
+                    label = ms_detail.get("label")
+                    if not label:
+                        continue
+                    for field in form_field_details:
+                        if field.get("label") == label:
+                            # 传递 interaction_steps（Stage 2 按步骤回放）
+                            if "interaction_steps" in ms_detail:
+                                field["interaction_steps"] = ms_detail["interaction_steps"]
+                            # 传递 select_sub_type（如 select-tree、select-multi）
+                            if "select_sub_type" in ms_detail:
+                                field["select_sub_type"] = ms_detail["select_sub_type"]
+                            # 传递 is_editable
+                            if "is_editable" in ms_detail:
+                                field["is_editable"] = ms_detail["is_editable"]
+                            break
+
             # ★ FIX: 将 form_field_details 更新到 nav_info（与 Path B line 628 对齐）
             # 修复 Bug: discover_all 返回的 form_fields 可能不完整（如 prewarm 阶段的字段）
             # form_field_details 来自 scan_form_fields_v2()，包含 cascade_actions 等完整信息
@@ -650,6 +669,25 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
                                        if c["field_label"] == field.get("label")]
                     if matching_closes:
                         field["close_dropdown"] = matching_closes
+
+        # ★ 合并 ms_details 的详细信息到 form_field_details（Stage 2 需要 interaction_steps 回放）
+        if ms_details:
+            for ms_detail in ms_details:
+                label = ms_detail.get("label")
+                if not label:
+                    continue
+                for field in form_field_details:
+                    if field.get("label") == label:
+                        # 传递 interaction_steps（Stage 2 按步骤回放）
+                        if "interaction_steps" in ms_detail:
+                            field["interaction_steps"] = ms_detail["interaction_steps"]
+                        # 传递 select_sub_type（如 select-tree、select-multi）
+                        if "select_sub_type" in ms_detail:
+                            field["select_sub_type"] = ms_detail["select_sub_type"]
+                        # 传递 is_editable
+                        if "is_editable" in ms_detail:
+                            field["is_editable"] = ms_detail["is_editable"]
+                        break
 
         # ★ 保存 form_field_details 到 nav_info（含 selector + kb_category，供 playbook 生成使用）
         nav_info["form_fields"] = form_field_details
