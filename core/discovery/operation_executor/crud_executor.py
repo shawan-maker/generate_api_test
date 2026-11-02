@@ -577,6 +577,10 @@ async def _check_and_execute_newly_enabled(
 
     # 逐一执行
     for text in newly_enabled:
+        # ★ 防止递归中已执行的按钮被重复执行
+        if text in executed_actions:
+            LOG.info(f"{tab_prefix}[STATE-CHANGE] 跳过已执行按钮: {text}")
+            continue
         LOG.info(f"{tab_prefix}[STATE-CHANGE] 执行新启用按钮: {text}")
 
         # 构建按钮信息
@@ -1143,6 +1147,15 @@ async def _validate_single_tab_crud(
                                 LOG.info(f"{tab_prefix}  [SKIP] {new_action} 已在 buttons_by_action 中，跳过")
                                 continue
 
+                            # ★ 跳过 STATE-CHANGE 链中已执行过的按钮
+                            # INCREMENTAL-SCAN 可能重新发现已在级联中执行的状态切换按钮
+                            # （初始 disabled 的按钮在 STATE-CHANGE 后变为 enabled，被识别为"新"）
+                            if new_action in executed_actions:
+                                LOG.info(f"{tab_prefix}  [SKIP] {new_action} 已在 STATE-CHANGE 中执行过，跳过")
+                                # 仍注册到 buttons_by_action（供后续 INCREMENTAL-SCAN 去重），但不加入 ordered_actions
+                                buttons_by_action[new_action] = new_btn
+                                continue
+
                             buttons_by_action[new_action] = new_btn
 
                             # ★ 回写到 ui_result["dropdowns"]：确保增量发现的下拉菜单项
@@ -1567,7 +1580,8 @@ async def _error_driven_retry(page, operation_fn, context: dict) -> dict:
         error_field = result.get("error_field", "")
         current_error_key = f"{error_type}|{error_field}|{error_text}"
 
-        LOG.info(f"    第 {round_num + 1} 轮失败: [{error_type}] {error_text[:80]}")
+        LOG.info(f"    第 {round_num + 1} 轮失败: [{error_type}] field={error_field} text={error_text[:120]}"
+                 f" is_terminal={error_type in TERMINAL_ERRORS}")
 
         # P2: 不可重试错误 → 立即返回
         if error_type in TERMINAL_ERRORS:
@@ -1779,6 +1793,7 @@ async def _do_create(page, context: dict) -> dict:
     # 3. 扫描表单字段（如果探测阶段没扫到或需要刷新）
     if not fields:
         fields = await form_filler.scan_form_fields_v2()
+        context["fields"] = fields  # 更新 context，供 _apply_fix() 使用
     if not fields:
         # 无表单字段的特殊情况：可能是简单确认对话框（如 AccessKey 创建）
         # 尝试直接点击确认按钮
@@ -1974,6 +1989,7 @@ async def _do_create(page, context: dict) -> dict:
 
     # 9. 检查表单校验错误
     errors = await read_form_errors(page)
+    LOG.info(f"    [DEBUG] 提交后 read_form_errors 返回 {len(errors or [])} 条: {errors}")
     if errors:
         field_errors = [e for e in errors if e.get("severity") == "field"]
 
@@ -2020,10 +2036,13 @@ async def _do_create(page, context: dict) -> dict:
 
     # 10. 验证成功（弹窗关闭 / 成功提示）
     captured_msgs = await _get_captured_messages(page)
+    LOG.info(f"    [DEBUG] captured_messages: {captured_msgs}")
     success = await _verify_operation_success(page, "create", captured_messages=captured_msgs)
+    LOG.info(f"    [DEBUG] _verify_operation_success: {success}")
     if not success:
         # 二次检测：提取明确的业务失败信息
         failure_info = await _extract_business_failure(page)
+        LOG.info(f"    [DEBUG] _extract_business_failure: {failure_info}")
         if failure_info:
             # 业务失败但表单已提交，保留表单数据供 playbook 生成完整步骤
             return _build_create_error_result(
@@ -4761,7 +4780,16 @@ def _apply_fix(error_result: dict, context: dict) -> dict:
         # 表单校验错误：修改对应字段的值
         overrides = context.setdefault("fill_overrides", {})
         if error_field:
-            if "已存在" in error_text or "重复" in error_text or "duplicate" in error_text.lower():
+            # ★ 检查是否为非必填字段：非必填字段验证失败时清空该字段跳过
+            fields = context.get("fields", [])
+            field_def = next((f for f in fields if f.get("label") == error_field), None)
+            is_required = field_def.get("required", True) if field_def else True
+
+            if not is_required:
+                # 非必填字段验证失败：清空值跳过
+                LOG.info(f"    [apply_fix] 非必填字段 '{error_field}' 验证失败，清空值跳过")
+                overrides[error_field] = ""
+            elif "已存在" in error_text or "重复" in error_text or "duplicate" in error_text.lower():
                 # 唯一性冲突：加时间戳后缀
                 ts = str(int(time.time()))[-6:]
                 overrides[error_field] = f"AT_{ts}"

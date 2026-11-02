@@ -416,6 +416,23 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
             # 收集 no_options 的字段标签（两轮都无选项 → 不计入必填失败）
             no_options_labels = {d["label"] for d in ms_details if d.get("skipped_reason") == "no_options"}
 
+            # ★ 收集 cascade 填充的字段标签（radio-cascade 触发的穿梭框等组件）
+            # 这些字段的值不在标准 DOM input 中体现，不应参与必填检查
+            cascade_filled_labels = set()
+            has_transfer_box_cascade = False  # 标记是否有 transfer-box cascade
+
+            for field in form_field_details:
+                if field.get("cascade_actions"):
+                    cascade_filled_labels.add(field.get("label"))
+                    # 也收集 cascade 目标字段
+                    for ca in field["cascade_actions"]:
+                        if ca.get("target_label"):
+                            cascade_filled_labels.add(ca["target_label"])
+                        # ★ 检测 transfer-box 类型的 cascade
+                        if ca.get("type") == "transfer-box":
+                            has_transfer_box_cascade = True
+                            LOG.info(f"    [cascade-transfer] 检测到 transfer-box cascade 操作")
+
             # 必填字段为空且非 disabled → 标记失败
             for fs in field_states:
                 if not fs["hasValue"]:
@@ -426,6 +443,16 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
                     if fs["label"] in no_options_labels:
                         # no_options 的字段不计入必填失败（API 可能无数据）
                         LOG.info(f"    跳过 no_options 必填字段: {fs['label']}（无可选数据）")
+                        continue
+                    if fs["label"] in cascade_filled_labels:
+                        LOG.info(f"    跳过 cascade 填充字段: {fs['label']}（已由 radio-cascade 处理）")
+                        continue
+                    # ★ transfer-box cascade 特殊处理：
+                    # transfer-box 组件的 DOM 位置可能与目标 form-item 不匹配，
+                    # 无法可靠地从 DOM 位置推断目标字段。当检测到 transfer-box cascade 时，
+                    # 跳过所有空的 input 类型字段（它们可能是 transfer-box 的目标）
+                    if has_transfer_box_cascade and fs.get("type") == "input":
+                        LOG.info(f"    跳过 transfer-box cascade 目标字段: {fs['label']}（input 类型，可能由 transfer-box 填充）")
                         continue
                     # 非 disabled 且为空 → 真的填不上
                     unfilled_required.append(f"{fs['label']}（{fs['type']}，值为空）")
@@ -855,6 +882,19 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
         # 收集 no_options 的字段标签（两轮都无选项 → 不计入必填失败）
         no_options_labels = {d["label"] for d in ms_details if d.get("skipped_reason") == "no_options"}
 
+        # ★ 收集 cascade 填充的字段标签（radio-cascade 触发的穿梭框等组件）
+        cascade_filled_labels = set()
+        has_transfer_box_cascade = False
+        for field in form_field_details:
+            if field.get("cascade_actions"):
+                cascade_filled_labels.add(field.get("label"))
+                for ca in field["cascade_actions"]:
+                    if ca.get("target_label"):
+                        cascade_filled_labels.add(ca["target_label"])
+                    if ca.get("type") == "transfer-box":
+                        has_transfer_box_cascade = True
+                        LOG.info(f"    [cascade-transfer] 检测到 transfer-box cascade 操作")
+
         # 必填字段为空且非 disabled → 标记失败
         for fs in field_states:
             if not fs["hasValue"]:
@@ -864,6 +904,13 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
                 if fs["label"] in no_options_labels:
                     # no_options 的字段不计入必填失败（API 可能无数据）
                     LOG.info(f"    跳过 no_options 必填字段: {fs['label']}（无可选数据）")
+                    continue
+                if fs["label"] in cascade_filled_labels:
+                    LOG.info(f"    跳过 cascade 填充字段: {fs['label']}（已由 radio-cascade 处理）")
+                    continue
+                # ★ transfer-box cascade 特殊处理
+                if has_transfer_box_cascade and fs.get("type") == "input":
+                    LOG.info(f"    跳过 transfer-box cascade 目标字段: {fs['label']}（input 类型，可能由 transfer-box 填充）")
                     continue
                 unfilled_required.append(f"{fs['label']}（{fs['type']}，值为空）")
 

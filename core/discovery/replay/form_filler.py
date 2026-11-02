@@ -501,10 +501,35 @@ class FormFiller:
                                         LOG.info(f"    [radio-cascade] transfer-box 选择成功")
                                         # ★ 记录 cascade 操作，供 Stage 2 回放
                                         interaction_steps = detail.get("interaction_steps", [])
+
+                                        # ★ 查找 transfer-box 关联的表单字段标签
+                                        _transfer_target_label = ""
+                                        try:
+                                            _transfer_target_label = await self.page.evaluate("""() => {
+                                                const boxes = document.querySelectorAll(
+                                                    '[class*="transfer-box"], [class*="el-transfer"]'
+                                                );
+                                                for (const box of boxes) {
+                                                    const r = box.getBoundingClientRect();
+                                                    if (r.width <= 0 || r.height <= 0) continue;
+                                                    const formItem = box.closest('.el-form-item, .ant-form-item');
+                                                    if (formItem) {
+                                                        const labelEl = formItem.querySelector(
+                                                            '.el-form-item__label, .ant-form-item-label label'
+                                                        );
+                                                        if (labelEl) return labelEl.textContent.trim().replace(/[：:]/g, '');
+                                                    }
+                                                }
+                                                return '';
+                                            }""")
+                                        except Exception:
+                                            pass
+
                                         cascade_actions.append({
                                             "type": "transfer-box",
                                             "trigger_field": label,
                                             "trigger_value": first_text,
+                                            "target_label": _transfer_target_label,
                                             "interaction_steps": interaction_steps,
                                         })
                                     else:
@@ -537,11 +562,91 @@ class FormFiller:
                     value = val
                     break
 
-            if not value:
+            if value is None:
+                continue
+
+            # ★ 空字符串 = 清空字段（非必填字段验证失败跳过时使用）
+            if value == "":
+                try:
+                    from .locator_helpers import safe_css
+                    if selector:
+                        enhanced = safe_css(selector)
+                        await self.page.fill(enhanced, "", timeout=3000)
+                        LOG.info(f"    清空字段: {label}")
+                except Exception as e:
+                    LOG.warning(f"清空字段 {label} 失败: {e}")
                 continue
 
             try:
                 from .locator_helpers import safe_css
+                input_count = field.get("inputCount", 1)
+
+                # ★ 复合字段特殊处理：智能判断主输入框
+                if input_count >= 2:
+                    LOG.info(f"    [DEBUG-FILL] 复合字段 {label}: inputCount={input_count}, 智能定位主输入框")
+                    # 通过 label 在 el-form-item 中找到所有 input
+                    form_item_css = f'.el-form-item:has(.el-form-item__label:has-text("{label}"))'
+                    form_items = await self.page.locator(form_item_css).all()
+                    for fi in form_items:
+                        inputs = await fi.locator('input:not([readonly]):visible').all()
+                        if len(inputs) >= 2:
+                            # 智能判断：优先选空值 + 有"请输入"placeholder 的 input
+                            main_input = None
+                            main_idx = -1
+
+                            # 第一轮：找空值 + "请输入" placeholder
+                            for idx, inp in enumerate(inputs):
+                                try:
+                                    val = await inp.input_value()
+                                    placeholder = await inp.get_attribute('placeholder') or ''
+                                    if not val and ('请输入' in placeholder or 'Enter' in placeholder):
+                                        main_input = inp
+                                        main_idx = idx
+                                        LOG.info(f"    [DEBUG-FILL] {label}: 找到空值+请输入 placeholder 的 input (idx={idx})")
+                                        break
+                                except:
+                                    continue
+
+                            # 第二轮：找空值的 input（可能无 placeholder）
+                            if not main_input:
+                                for idx, inp in enumerate(inputs):
+                                    try:
+                                        val = await inp.input_value()
+                                        if not val:
+                                            main_input = inp
+                                            main_idx = idx
+                                            LOG.info(f"    [DEBUG-FILL] {label}: 找到空值 input (idx={idx})")
+                                            break
+                                    except:
+                                        continue
+
+                            # 第三轮：找有"请输入"的 input（即使有值也覆盖）
+                            if not main_input:
+                                for idx, inp in enumerate(inputs):
+                                    try:
+                                        placeholder = await inp.get_attribute('placeholder') or ''
+                                        if '请输入' in placeholder or 'Enter' in placeholder:
+                                            main_input = inp
+                                            main_idx = idx
+                                            LOG.info(f"    [DEBUG-FILL] {label}: 找到请输入 placeholder 的 input (idx={idx})")
+                                            break
+                                    except:
+                                        continue
+
+                            # 兜底：选第一个 input
+                            if not main_input:
+                                main_input = inputs[0]
+                                main_idx = 0
+                                LOG.info(f"    [DEBUG-FILL] {label}: 兜底选第一个 input")
+
+                            await main_input.fill(value, timeout=3000)
+                            LOG.info(f"    [DEBUG-FILL] ✓ {label}: 填充主输入框 (idx={main_idx})")
+                            filled += 1
+                            break
+                    else:
+                        LOG.warning(f"    [DEBUG-FILL] {label}: 未找到复合字段的主输入框")
+                    continue
+
                 # 优先使用 scan 返回的精确 selector
                 if selector:
                     enhanced = safe_css(selector)
@@ -565,8 +670,32 @@ class FormFiller:
                         inputs_in_this_item = await fi.locator('input:not([readonly])').count()
                         if inputs_in_this_item >= 2:
                             # 这个 form-item 内有多个 input，是复合输入组
+                            # ★ 调试日志：输出每个 input 的详细信息
+                            input_details = await fi.evaluate("""() => {
+                                const inputs = Array.from(
+                                    document.querySelectorAll('input:not([readonly])')
+                                ).filter(inp => inp.offsetWidth > 0);
+                                // 限定在当前 form-item 内
+                                return inputs.map((inp, idx) => ({
+                                    idx, type: inp.type || 'text',
+                                    width: inp.offsetWidth,
+                                    placeholder: inp.placeholder || '',
+                                    maxLength: inp.getAttribute('maxlength') || '',
+                                    value: inp.value || '',
+                                    disabled: inp.disabled,
+                                }));
+                            }""")
+                            LOG.info(f"    [DEBUG-FILL] 复合输入组 {label}: inputCount={inputs_in_this_item}")
+                            for d in (input_details or []):
+                                LOG.info(f"    [DEBUG-FILL]   input[{d.get('idx')}]: "
+                                         f"type={d.get('type')}, width={d.get('width')}, "
+                                         f"placeholder='{d.get('placeholder')}', "
+                                         f"maxLength={d.get('maxLength')}, "
+                                         f"value='{d.get('value')[:20]}', disabled={d.get('disabled')}")
                             main_input = fi.locator('input:not([readonly])[placeholder*="请输入"], input:not([readonly])[placeholder*="Enter"]').first
                             if await main_input.count() > 0:
+                                main_placeholder = await main_input.get_attribute('placeholder') or ''
+                                LOG.info(f"    [DEBUG-FILL] 复合输入组 {label}: main_input placeholder='{main_placeholder}', fill_value={value}")
                                 await main_input.fill(value, timeout=3000)
                                 filled += 1
                                 LOG.info(f"    填充复合输入组: {label} = {value} (多input匹配)")
@@ -1604,6 +1733,22 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                 }}
 
                 if (allInputs.length >= 2) {{
+                    // ★ 调试日志：输出复合输入组的每个 input 详情
+                    _debug_composite.push({{
+                        label: label,
+                        type: 'input-composite',
+                        inputCount: allInputs.length,
+                        inputDetails: allInputs.map((inp, idx) => ({{
+                            idx, type: inp.type || 'text',
+                            width: inp.offsetWidth,
+                            placeholder: inp.placeholder || '',
+                            maxLength: inp.getAttribute('maxlength') || '',
+                            value: (inp.value || '').substring(0, 30),
+                            disabled: inp.disabled,
+                            className: (inp.className || '').substring(0, 60),
+                        }})),
+                    }});
+
                     // 复合输入组：过滤辅助输入，选择主输入
                     const mainInput = allInputs.find(inp => {{
                         // 优先选择 placeholder 包含"请输入"的

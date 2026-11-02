@@ -126,20 +126,67 @@ class EcsCloudStrategy(LoginStrategy):
         await page.wait_for_timeout(800)
         LOG.info("[ecscloud] 已填充凭据")
 
-        # 点击认证按钮
-        await self._click_auth_button(page, auth_text)
-        await page.wait_for_timeout(2500)
-        LOG.info(f"[ecscloud] 已点击认证按钮, material={'yes' if self._captcha_material else 'no'}")
+        # ★ 判断登录模式：检查是否有"点击完成认证"按钮
+        has_auth_button = await page.evaluate("""(authText) => {
+          const buttons = Array.from(document.querySelectorAll('button'));
+          return buttons.some(b => {
+            const r = b.getBoundingClientRect();
+            return r.width > 0 && r.height > 0 && (b.textContent||'').trim() === authText;
+          });
+        }""", auth_text)
 
-        # 滑块验证（最多 4 轮）
+        if has_auth_button:
+            # 旧模式：先点"点击完成认证" → 滑块验证 → 点"登录"
+            LOG.info(f"[ecscloud] 登录模式: 旧版 (有认证按钮 '{auth_text}')")
+            await self._click_auth_button(page, auth_text)
+            await page.wait_for_timeout(2500)
+            LOG.info(f"[ecscloud] 已点击认证按钮, material={'yes' if self._captcha_material else 'no'}")
+            trigger_text = auth_text
+        else:
+            # 新模式：先点"登录" → 滑块验证 → 自动登录
+            LOG.info(f"[ecscloud] 登录模式: 新版 (无认证按钮，直接点 '{login_text}')")
+            await page.evaluate("""(t) => {
+              function isVisible(el) {
+                if (!el) return false;
+                const rect = el.getBoundingClientRect();
+                if (rect.width === 0 || rect.height === 0) return false;
+                const style = window.getComputedStyle(el);
+                return style.display !== 'none' && style.visibility !== 'hidden';
+              }
+              const vis = Array.from(document.querySelectorAll('button')).filter(isVisible);
+              let target = vis.find(b => (b.textContent||'').trim() === t);
+              if (!target) target = vis.find(b => (b.textContent||'').replace(/\\s+/g, '') === t.replace(/\\s+/g, ''));
+              if (target) target.click();
+            }""", login_text)
+            await page.wait_for_timeout(2000)
+            LOG.info(f"[ecscloud] 已点击登录按钮, material={'yes' if self._captcha_material else 'no'}")
+            trigger_text = login_text
+
+        # 滑块验证（最多 4 轮）— 两种模式共用
         verify_ok = False
         for attempt in range(4):
             geo = await self.slider.read_geometry(page)
-            LOG.info(f"[ecscloud] 第{attempt+1}轮: geo_ok={geo.get('ok')}, material={'yes' if self._captcha_material else 'no'}")
+            LOG.info(f"[ecscloud] 第{attempt+1}轮: geo_ok={geo.get('ok')}, reason={geo.get('reason', 'ok')}, "
+                     f"total={geo.get('total', '?')}, material={'yes' if self._captcha_material else 'no'}")
 
             if not geo.get("ok"):
-                LOG.info("[ecscloud] geo 不可见, 重点击认证按钮")
-                await self._click_auth_button(page, auth_text)
+                LOG.info(f"[ecscloud] geo 不可见 (reason={geo.get('reason')}), 重点击触发按钮")
+                if has_auth_button:
+                    await self._click_auth_button(page, auth_text)
+                else:
+                    await page.evaluate("""(t) => {
+                      function isVisible(el) {
+                        if (!el) return false;
+                        const rect = el.getBoundingClientRect();
+                        if (rect.width === 0 || rect.height === 0) return false;
+                        const style = window.getComputedStyle(el);
+                        return style.display !== 'none' && style.visibility !== 'hidden';
+                      }
+                      const vis = Array.from(document.querySelectorAll('button')).filter(isVisible);
+                      let target = vis.find(b => (b.textContent||'').trim() === t);
+                      if (!target) target = vis.find(b => (b.textContent||'').replace(/\\s+/g, '') === t.replace(/\\s+/g, ''));
+                      if (target) target.click();
+                    }""", login_text)
                 await page.wait_for_timeout(2500)
                 geo = await self.slider.read_geometry(page)
                 if not geo.get("ok"):
@@ -181,16 +228,26 @@ class EcsCloudStrategy(LoginStrategy):
             LOG.error("[ecscloud] 滑块验证失败")
             return LoginResult.FAILED
 
-        # 点击登录按钮
-        LOG.info("[ecscloud] 点击登录按钮")
-        await page.evaluate("""(t) => {
-          const vis=Array.prototype.slice.call(document.querySelectorAll('button'))
-            .filter(b=>{const r=b.getBoundingClientRect();return r.width>0&&r.height>0;});
-          let target = vis.find(b => (b.textContent||'').trim() === t);
-          if (!target) target = vis.find(b => (b.textContent||'').replace(/\\s+/g, '') === t.replace(/\\s+/g, ''));
-          if (target) target.click();
-        }""", login_text)
-        await page.wait_for_timeout(5000)
+        # 旧模式：滑块验证通过后还需点击"登录"按钮
+        if has_auth_button:
+            LOG.info("[ecscloud] 旧模式: 滑块验证通过，点击登录按钮")
+            await page.evaluate("""(t) => {
+              function isVisible(el) {
+                if (!el) return false;
+                const rect = el.getBoundingClientRect();
+                if (rect.width === 0 || rect.height === 0) return false;
+                const style = window.getComputedStyle(el);
+                return style.display !== 'none' && style.visibility !== 'hidden';
+              }
+              const vis = Array.from(document.querySelectorAll('button')).filter(isVisible);
+              let target = vis.find(b => (b.textContent||'').trim() === t);
+              if (!target) target = vis.find(b => (b.textContent||'').replace(/\\s+/g, '') === t.replace(/\\s+/g, ''));
+              if (target) target.click();
+            }""", login_text)
+            await page.wait_for_timeout(5000)
+        else:
+            # 新模式：滑块通过后自动登录，等待页面跳转
+            await page.wait_for_timeout(5000)
 
         # 关闭"密码提醒"对话框（如果有）
         try:

@@ -1488,12 +1488,39 @@ async def confirm_dialog(page: Page, confirm: bool = True, ui_framework: str = "
             else:
                 button = page.locator(f"xpath={scope}//button[{cancel_xpath_pred} and {hidden_filter}]").first
 
-        else:  # generic-dialog — 限定在可见对话框容器内查找
+        else:  # generic-dialog — 优先使用 JS click（可靠触发 Vue 事件）
+            target_texts = const.CONFIRM_TEXTS if confirm else const.CANCEL_TEXTS
+            target_json = json.dumps(target_texts, ensure_ascii=False)
+            js_clicked = await page.evaluate(f"""() => {{
+                const targetTexts = {target_json};
+                const dialogs = document.querySelectorAll(
+                    '.el-dialog__wrapper:not([style*="display: none"]), ' +
+                    '.ant-modal-wrap:not([style*="display: none"])'
+                );
+                for (const dialog of dialogs) {{
+                    if (dialog.offsetWidth <= 0 || dialog.offsetHeight <= 0) continue;
+                    const buttons = dialog.querySelectorAll('button');
+                    for (const btn of buttons) {{
+                        if (btn.offsetWidth === 0 || btn.offsetHeight === 0) continue;
+                        if (btn.disabled || btn.classList.contains('is-disabled')) continue;
+                        const txt = (btn.textContent || '').trim().replace(/\\s+/g, '');
+                        if (targetTexts.includes(txt)) {{
+                            btn.click();
+                            return (btn.textContent || '').trim();
+                        }}
+                    }}
+                }}
+                return null;
+            }}""")
+            if js_clicked:
+                LOG.debug(f"generic-dialog JS click 成功: '{js_clicked}'")
+                await wait_for_loading_complete(page)
+                return js_clicked
+            # JS click 未命中，回退到 Playwright locator（兼容非 Vue 框架）
+            LOG.debug("generic-dialog JS click 未命中，回退到 Playwright locator")
             dialog_scope = ".el-dialog__wrapper:not([style*='display: none']), .ant-modal-wrap:not([style*='display: none'])"
             if confirm:
-                button = page.locator(f'{dialog_scope} button.el-button--primary').first
-                if await button.count() == 0:
-                    button = page.locator(f"xpath={dialog_scope}//button[{confirm_xpath_pred} and {hidden_filter}]").first
+                button = page.locator(f"xpath={dialog_scope}//button[{confirm_xpath_pred} and {hidden_filter}]").first
             else:
                 button = page.locator(f"xpath={dialog_scope}//button[{cancel_xpath_pred} and {hidden_filter}]").first
 
