@@ -615,7 +615,7 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
 
             # 验证提交是否成功（使用捕获的消息）
             captured_msgs = await _get_captured_messages(page)
-            success = await _verify_operation_success(page, "submit", strict=True,
+            success, _detail = await _verify_operation_success(page, "submit", strict=True,
                                                        captured_messages=captured_msgs)
 
             # ★ 问题三修复：检测部分成功场景
@@ -648,7 +648,21 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
         form_field_details = await form_filler.scan_form_fields_v2()
 
         if not form_field_details:
-            # 确实没有任何可填写的字段，视为浏览/展示页面（详情页）
+            # 确实没有任何可填写的字段，可能是浏览/展示页面
+            # ★ 但需要先检查是否有文件上传组件（导入等场景）
+            has_upload_component = await page.evaluate("""() => {
+                const fileInput = document.querySelector('input[type="file"]');
+                const uploadDiv = document.querySelector('.el-upload, .ant-upload, .upload-area');
+                return !!(fileInput || uploadDiv);
+            }""")
+
+            if has_upload_component:
+                LOG.info(f"    检测到文件上传组件，无法自动完成导入操作")
+                nav_info["error_type"] = "env_dependency"
+                nav_info["error_text"] = "文件上传操作需要外部文件，无法自动完成"
+                return nav_info
+
+            # 没有文件上传组件，视为浏览/展示页面（详情页）
             LOG.info(f"    无任何表单字段，视为浏览页面（操作成功）")
             nav_info["submit_result"] = {
                 "success": True,
@@ -1294,10 +1308,10 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
             if not captured_msgs:
                 LOG.warning(f"    [DIAG-submitB-verify] ⚠️ DOM 有通知但 captured_msgs 为空，Observer 可能已失效！")
 
-        success = await _verify_operation_success(page, "submit", strict=True,
+        success, _detail = await _verify_operation_success(page, "submit", strict=True,
                                                    captured_messages=captured_msgs)
         # === DIAG-P5-2: verify 结果 ===
-        LOG.info(f"    [DIAG-submitB-verify] verify结果: success={success}, strict=True")
+        LOG.info(f"    [DIAG-submitB-verify] verify结果: success={success}, detail={_detail}, strict=True")
 
         # ★ partial_success 检测：通知同时含"成功"和"失败"时标记为部分成功
         if not success and captured_msgs:

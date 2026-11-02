@@ -840,7 +840,7 @@ async def _get_captured_messages(page, msg_type: str = None, clear: bool = False
 
 
 async def _verify_operation_success(page, operation_type: str, strict: bool = False,
-                                     captured_messages: list = None) -> bool:
+                                     captured_messages: list = None) -> tuple:
     """验证操作是否成功（弹窗关闭 / 成功提示 / 列表变化 / 捕获的消息）。
 
     ★ 已委托给 shared/verify_operation_success（Stage 1/2 统一实现）
@@ -852,15 +852,22 @@ async def _verify_operation_success(page, operation_type: str, strict: bool = Fa
         captured_messages: 由 _get_captured_messages() 返回的捕获消息列表
 
     Returns:
-        bool: 是否检测到成功信号
+        (success: bool, detail: dict)
+        detail 包含:
+        - matched_method: str  匹配的成功方法
+        - failure_reason: str  失败原因（如有）
+        - failure_type: str    失败类型（如有）:
+            "notification" | "css:..." | "captured" | "dialog" |
+            "form_validation" | "backend" — 明确失败
+            "no_signal" — 无信号（兜底）
+        - has_processing: bool 是否仅有处理中消息
     """
-    success, detail = await verify_operation_success(
+    return await verify_operation_success(
         page,
         operation_type=operation_type,
         strict=strict,
         captured_messages=captured_messages,
     )
-    return success
 
 
 async def _check_data_changed(page, operation_type: str) -> bool:

@@ -1802,7 +1802,7 @@ async def _do_create(page, context: dict) -> dict:
         if confirmed:
             await page.wait_for_timeout(1500)
             captured_msgs = await _get_captured_messages(page)
-            success = await _verify_operation_success(page, "create", captured_messages=captured_msgs)
+            success, _detail = await _verify_operation_success(page, "create", captured_messages=captured_msgs)
             if success:
                 LOG.info(f"    无表单字段的确认对话框操作成功")
                 # 构建 trigger_locator_verified（与正常 _do_create 路径一致）
@@ -2037,8 +2037,8 @@ async def _do_create(page, context: dict) -> dict:
     # 10. 验证成功（弹窗关闭 / 成功提示）
     captured_msgs = await _get_captured_messages(page)
     LOG.info(f"    [DEBUG] captured_messages: {captured_msgs}")
-    success = await _verify_operation_success(page, "create", captured_messages=captured_msgs)
-    LOG.info(f"    [DEBUG] _verify_operation_success: {success}")
+    success, _detail = await _verify_operation_success(page, "create", captured_messages=captured_msgs)
+    LOG.info(f"    [DEBUG] _verify_operation_success: {success}, detail={_detail}")
     if not success:
         # 二次检测：提取明确的业务失败信息
         failure_info = await _extract_business_failure(page)
@@ -2685,7 +2685,7 @@ async def _do_edit(page, context: dict) -> dict:
                 return result
 
         captured_msgs = await _get_captured_messages(page)
-        success = await _verify_operation_success(page, "update", captured_messages=captured_msgs)
+        success, _detail = await _verify_operation_success(page, "update", captured_messages=captured_msgs)
         if not success:
             await _close_dialog(page)
             return no_success_signal("编辑提交后未检测到成功信号",
@@ -3360,7 +3360,7 @@ async def _do_delete(page, context: dict) -> dict:
     captured_msgs = await _get_captured_messages(page)
 
     # 验证成功（成功提示或行消失）
-    success = await _verify_operation_success(page, "delete", captured_messages=captured_msgs)
+    success, _detail = await _verify_operation_success(page, "delete", captured_messages=captured_msgs)
 
     # 行消失是最可靠的的成功信号，覆盖 toast 检测
     if not success and row_disappeared:
@@ -4383,7 +4383,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
 
         if _instant_msgs:
             LOG.info(f"    [toast-first] 检测到 {len(_instant_msgs)} 条捕获消息")
-            _instant_success = await _verify_operation_success(
+            _instant_success, _ = await _verify_operation_success(
                 page, action, strict=True, captured_messages=_instant_msgs)
             if _instant_success:
                 LOG.info(f"    [toast-first] 检测到成功 toast，直接标记成功")
@@ -4629,15 +4629,28 @@ async def _do_generic_operation(page, context: dict) -> dict:
         LOG.info(f"      [{i}] text='{msg.get('text', '')[:80]}', type={msg.get('type')}, source={msg.get('source')}")
 
     # 验证操作是否真的成功（严格模式：需要正向成功信号）
-    success = await _verify_operation_success(page, action, strict=True, captured_messages=captured_msgs)
+    success, detail = await _verify_operation_success(page, action, strict=True, captured_messages=captured_msgs)
 
-    # ★ no_success_signal 不作为失败依据
-    # 操作可能已执行（按钮已点击、表单已提交），只是成功消息未被捕获
-    # 仍然构建完整结果供 playbook builder 使用
+    # ★ 统一判定逻辑：根据 detail.failure_type 区分"明确失败"和"无信号"
+    # - 明确失败（failure_type != "no_signal"）→ 返回失败
+    # - 无信号（failure_type == "no_signal"）→ 按钮已点击/表单已提交，标记为成功
     if not success:
-        LOG.warning(f"    [no_success_signal] {action} 操作未检测到成功信号，但按钮已点击，仍标记为成功")
-        # 关闭可能残留的弹窗/抽屉
-        await _close_dialog(page)
+        failure_type = detail.get("failure_type", "no_signal")
+        failure_reason = detail.get("failure_reason", "")
+
+        if failure_type != "no_signal":
+            # ★ 明确检测到失败（dialog/toast/captured 中有失败关键词）
+            LOG.warning(f"    [operation_failed] {action} 操作失败: {failure_reason[:80]}")
+            # 关闭可能残留的弹窗/抽屉
+            await _close_dialog(page)
+            return make_error("operation_failed",
+                             f"{action} 操作失败: {failure_reason}",
+                             trigger_text=trigger_text_normalized)
+        else:
+            # ★ 无信号 → 按钮已点击/表单已提交，标记为成功
+            LOG.info(f"    [no_signal] {action} 无明确成功信号，但按钮已点击，标记为成功")
+            # 关闭可能残留的弹窗/抽屉
+            await _close_dialog(page)
 
     # 构建 selectors
     selectors = {"trigger": btn_text}
@@ -4755,7 +4768,7 @@ async def _do_save_or_confirm(page, context: dict) -> dict:
 
     # 验证成功
     captured_msgs = await _get_captured_messages(page)
-    success = await _verify_operation_success(page, "save", strict=True, captured_messages=captured_msgs)
+    success, _detail = await _verify_operation_success(page, "save", strict=True, captured_messages=captured_msgs)
 
     if success:
         return make_success(selectors={"trigger": btn_text}, error_type="", error_text="")
