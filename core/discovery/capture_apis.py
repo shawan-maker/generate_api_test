@@ -369,6 +369,9 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
                 replay_windows[action]["failure_type"] = result["failure_type"]
             if result.get("failure_reason"):
                 replay_windows[action]["failure_reason"] = result["failure_reason"]
+        # ★ 标记前端错误操作（不捕获 API，但在报告中标记）
+        if not op.get("api_capture", True):
+            replay_windows[action]["api_capture"] = False
 
         continue
 

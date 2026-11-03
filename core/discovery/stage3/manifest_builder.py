@@ -1517,6 +1517,17 @@ def build_manifest(analysis: dict, capture_result: dict,
             LOG.warning(f"  ⚠️ 操作 '{action}' 在 core_apis 中无端点，跳过")
             continue
 
+        # ★ 前端错误操作：API 未捕获，生成标记步骤
+        if eps[0].get("api_captured") is False:
+            steps.append({
+                "action": "api_not_captured",
+                "operation": action,
+                "reason": eps[0].get("reason", "frontend_error"),
+                "description": f"API 未捕获 ({eps[0].get('reason', 'frontend_error')})",
+            })
+            LOG.info(f"  ⏭️ 操作 '{action}': API 未捕获 ({eps[0].get('reason', 'frontend_error')})")
+            continue
+
         # 详细日志：输出每个操作的端点信息
         LOG.info(f"  处理操作: {action} ({len(eps)} 个端点)")
         for i, ep in enumerate(eps):

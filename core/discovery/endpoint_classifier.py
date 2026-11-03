@@ -467,6 +467,15 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict,
 
         for action, window in replay_windows.items():
             start, end = window["start"], window["end"]
+
+            # ★ 前端错误操作（api_capture: false）：跳过 API 分类，输出标记
+            if window.get("api_capture") is False:
+                core_api_map[action] = [{
+                    "api_captured": False,
+                    "reason": "frontend_error",
+                }]
+                continue
+
             # 筛选时间窗口内的 API 调用，按时间排序
             window_calls = sorted(
                 [c for c in all_calls if start <= c.get("ts", 0) <= end],

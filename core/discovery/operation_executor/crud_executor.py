@@ -1068,6 +1068,10 @@ async def _validate_single_tab_crud(
                 validated[action] = result
                 executed_actions.add(action)
                 _record_execution(action, "main", "generic", partial_success=True)
+            elif result:
+                # ★ 失败结果也写入 validated，与 create/update/delete 角色统一
+                # Stage 1 记录实际操作，成功/失败不影响操作记录
+                validated[action] = result
 
         # ★ 通用状态变化检测与级联执行
         # 操作成功后，扫描按钮状态变化，自动执行新启用的按钮

@@ -187,6 +187,14 @@ def _build_core_apis_from_core_api_map(core_api_map: dict, infra_apis: set) -> d
         if not candidates:
             continue
 
+        # ★ 前端错误操作：无 API 捕获，保留标记
+        # 这些操作在前端就失败了（如文件上传需要外部文件、表单校验拦截），没有真正的后端请求，
+        # 所以 classifier 无法为其选取核心 API，直接透传标记到下游
+        if candidates[0].get("api_captured") is False:
+            core_apis[action_name] = [candidates[0]]  # 保留标记，不进一步处理
+            LOG.info(f"  {action_name}: API 未捕获 ({candidates[0].get('reason', 'frontend_error')})")
+            continue
+
         # 从候选中选取核心 API
         selected = _select_core_api(candidates, "step")
         if not selected:

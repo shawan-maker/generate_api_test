@@ -302,6 +302,16 @@ class StepExecutor:
         action = step_def.get("action", "unknown")
         label = step_def.get("label", action)
 
+        # ★ 处理 api_not_captured 步骤（前端错误，无 API 捕获）
+        if action == "api_not_captured":
+            operation = step_def.get("operation", label)
+            reason = step_def.get("reason", "frontend_error")
+            desc = step_def.get("description", "API 未捕获")
+            print(f"\n[{operation}] ⚠️ 跳过: {desc} (原因: {reason})")
+            self._write_log(operation, operation, None, "skipped",
+                           f"API 未捕获: {reason}")
+            return True
+
         # ★ 多阶段操作：按 phases 顺序执行
         phases = step_def.get("phases")
         if phases:

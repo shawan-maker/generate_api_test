@@ -629,6 +629,12 @@ def build_playbook(ui_result: dict) -> dict:
             else:
                 detection_status = "failed"
 
+            # ★ 前端错误操作标记 api_capture: false
+            # 这些操作没有真正的后端请求（如文件上传需要外部文件、表单校验在前端拦截）
+            # Stage 2 回放时不捕获 API，但在脚本和报告中标记"未捕获"
+            _frontend_error_types = {"env_dependency", "form_validation"}
+            api_capture = not (detection_status == "failed" and error_type in _frontend_error_types)
+
             entry = {
                 "display_name": display_name,
                 "description": op_data.get("description", action),
@@ -638,6 +644,7 @@ def build_playbook(ui_result: dict) -> dict:
                 "marker_source": op_data.get("marker_source") if steps_type == "create" else None,
                 "detection_status": detection_status,
                 "replayable": replayable,
+                "api_capture": api_capture,
             }
             # ★ 多 Tab 页面：记录操作归属的 tab
             if len(tabs) > 1 and tab_name:
@@ -796,6 +803,7 @@ def _build_create_steps(op_data: dict) -> list:
     # Step 3: 填充表单
     form_fields = op_data.get("form_fields", [])
     fill_rules = op_data.get("fill_rules", {})
+    fill_data = op_data.get("fill_data", {})  # ★ Stage 1 实际填充记录
     multi_step_details = op_data.get("multi_step_field_details", [])
     radio_details = op_data.get("radio_field_details", [])
 
@@ -814,6 +822,11 @@ def _build_create_steps(op_data: dict) -> list:
 
             # 跳过 multi_step 和 radio（单独处理）
             if kb_category in const.MULTI_STEP_TYPES or kb_category in ("form-checkbox", "radio"):
+                continue
+
+            # ★ 只保留 Stage 1 实际填充了非空值的字段
+            # fill_data 是 Stage 1 的实际填充记录，以此为源确保 Playbook 与 Stage 1 行为一致
+            if not fill_data.get(label):
                 continue
 
             rule = fill_rules.get(label, {})
@@ -1091,6 +1104,7 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
     # Step 4: 填充表单
     form_fields = op_data.get("form_fields", [])
     fill_rules = op_data.get("fill_rules", {})
+    fill_data = op_data.get("fill_data", {})
     multi_step_details = op_data.get("multi_step_field_details", [])
     radio_details = op_data.get("radio_field_details", [])
 
@@ -1112,6 +1126,10 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
 
             # 跳过 multi_step 和 radio（单独处理）
             if kb_category in const.MULTI_STEP_TYPES or kb_category in ("form-checkbox", "radio"):
+                continue
+
+            # ★ 只保留 Stage 1 实际填充了非空值的字段
+            if not fill_data.get(label):
                 continue
 
             rule = fill_rules.get(label, {})

@@ -362,6 +362,7 @@ class TestBuildCreateSteps:
             "form_fields": [
                 {"label": "名称", "selector": "input.name", "type": "input", "kb_category": "input-generic"}
             ],
+            "fill_data": {"名称": "test_123"},
             "fill_rules": {"名称": {"rule": "name_pattern", "params": {"prefix": "test"}}},
             "submit_locator_verified": "button.submit",
             "submit_text": "确定",
@@ -454,6 +455,7 @@ class TestBuildCreateSteps:
                 {"label": "用户名称", "selector": "input.name", "type": "input", "kb_category": "input-generic"},
                 {"label": "备注", "selector": "input.remark", "type": "input", "kb_category": "input-generic"},
             ],
+            "fill_data": {"用户名称": "test_name", "备注": "test_remark"},
             "fill_rules": {"用户名称": {}, "备注": {}},
             "submit_locator_verified": "button.ok",
         }
@@ -483,6 +485,7 @@ class TestBuildCreateSteps:
                 {"label": "角色", "selector": ".sel", "type": "select", "kb_category": "el-select"},
                 {"label": "名称", "selector": "input.n", "type": "input", "kb_category": "input-generic"},
             ],
+            "fill_data": {"角色": "admin", "名称": "test_name"},
             "fill_rules": {"角色": {}, "名称": {}},
             "submit_locator_verified": "button.ok",
         }
@@ -578,6 +581,7 @@ class TestBuildUpdateSteps:
                 {"label": "名称", "selector": "input.name", "type": "input", "kb_category": "input-generic",
                  "placeholder": "请输入名称"}
             ],
+            "fill_data": {"名称": "test_name"},
             "fill_rules": {"名称": {"rule": "name_pattern"}},
             "submit_locator_verified": "button.ok",
         }
@@ -620,6 +624,7 @@ class TestBuildUpdateSteps:
                     "visible_index": 0,
                 }
             ],
+            "fill_data": {"用户名称": "test_name"},
             "fill_rules": {"用户名称": {}},
             "submit_locator_verified": "button.ok",
         }
