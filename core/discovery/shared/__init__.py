@@ -66,6 +66,8 @@ from .row_interaction import (
 
 from .tab_helpers import restore_active_tab
 
+from .transition_helpers import transition_to_next
+
 __all__ = [
     # marker
     "extract_marker_from_row",
@@ -103,4 +105,6 @@ __all__ = [
     "get_row_selector_by_marker",
     # tab helpers
     "restore_active_tab",
+    # transition
+    "transition_to_next",
 ]

@@ -962,34 +962,6 @@ async def _extract_business_failure(page) -> dict | None:
         return None
 
 
-async def _ensure_on_list_page(page, tab_name: str = "", tab_locator: str = ""):
-    """确保当前在列表页（如果不在，导航回去），并恢复正确的 Tab。
-
-    Args:
-        page: Playwright Page 对象
-        tab_name: 目标 Tab 名称（可选，用于多 Tab 页面恢复）
-        tab_locator: 目标 Tab 的 Playwright locator（可选）
-    """
-    try:
-        url = page.url
-        # 检查是否在创建/编辑页面
-        if any(kw in url for kw in ("/create", "/add", "/edit", "/detail")):
-            # 回退到上一页
-            await page.go_back()
-            await wait_for_navigation_complete(page)
-
-        # 关闭可能残留的弹窗
-        from core.discovery.ui_scanner.button_detector import _close_dialog
-        await _close_dialog(page)
-
-        # ★ Tab 恢复：检查当前激活的 Tab 是否匹配
-        if tab_name and tab_locator:
-            await _restore_active_tab(page, tab_name, tab_locator)
-    except Exception as e:
-        # 浏览器可能已关闭（如 Target page, context or browser has been closed）
-        LOG.debug(f"    _ensure_on_list_page: {e}")
-
-
 async def _restore_active_tab(page, tab_name: str, tab_locator: str):
     """检查当前激活的 Tab，如果不是目标 Tab，点击切换。
 

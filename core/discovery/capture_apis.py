@@ -109,86 +109,10 @@ def _load_playbook(project_dir: Path, module_name: str) -> dict | None:
 async def _cleanup_after_operation(page, ui_framework: str = "element-ui"):
     """操作后清理：关闭残留弹窗，确保回到列表页状态。
 
-    Stage 2 回放时，失败操作（如 import 打开上传对话框）可能留下未关闭的弹窗，
-    阻挡后续操作的点击。此函数在每个操作回放后调用。
+    Deprecated: 请使用 shared.transition_to_next 代替
     """
-    from . import const
-
-    # 0. 先诊断是否有残留弹窗
-    dialog_state = await page.evaluate("""() => {
-        const dialogs = document.querySelectorAll('.el-dialog__wrapper');
-        const msgBoxes = document.querySelectorAll('.el-message-box__wrapper');
-        const drawers = document.querySelectorAll('.el-drawer');
-        const visibleDialogs = Array.from(dialogs).filter(d =>
-            window.getComputedStyle(d).display !== 'none'
-        );
-        const visibleMsgBoxes = Array.from(msgBoxes).filter(d =>
-            window.getComputedStyle(d).display !== 'none'
-        );
-        const visibleDrawers = Array.from(drawers).filter(d =>
-            window.getComputedStyle(d).display !== 'none'
-        );
-        return {
-            dialogs: visibleDialogs.length,
-            msgBoxes: visibleMsgBoxes.length,
-            drawers: visibleDrawers.length,
-            total: visibleDialogs.length + visibleMsgBoxes.length + visibleDrawers.length
-        };
-    }""")
-    if dialog_state.get('total', 0) > 0:
-        LOG.info(f"  [cleanup] 检测到残留弹窗: {dialog_state}")
-
-    # 1. 按 Escape 尝试关闭（多次，确保嵌套弹窗全部关闭）
-    for i in range(3):
-        await page.keyboard.press("Escape")
-        await page.wait_for_timeout(200)
-
-    # 2. JS 清理：关闭所有可见的对话框/抽屉/消息框
-    try:
-        selectors = const.get_ui_selectors(ui_framework)
-        cleanup_scripts = selectors.get("cleanup", {})
-
-        # 执行各类型的清理脚本
-        for script_key in ["dialog_close_js", "messagebox_cancel_js", "drawer_close_js"]:
-            script = cleanup_scripts.get(script_key)
-            if script:
-                await page.evaluate(f"() => {{ {script} }}")
-    except Exception as e:
-        LOG.debug(f"UI 选择器清理失败: {e}")
-
-    await page.wait_for_timeout(500)
-
-    # 3. 再次按 Escape（兜底）
-    await page.keyboard.press("Escape")
-    await page.wait_for_timeout(300)
-
-    # 4. 强制移除 DOM 中的弹窗元素（兜底，防止残留弹窗阻止导航）
-    try:
-        removed = await page.evaluate("""() => {
-            const selectors = [
-                '.el-dialog__wrapper',
-                '.el-message-box__wrapper',
-                '.el-drawer',
-                '.el-message',
-                '.el-notification'
-            ];
-            let count = 0;
-            for (const sel of selectors) {
-                const elements = document.querySelectorAll(sel);
-                for (const el of elements) {
-                    // 只移除可见的
-                    if (window.getComputedStyle(el).display !== 'none') {
-                        el.style.display = 'none';
-                        count++;
-                    }
-                }
-            }
-            return count;
-        }""")
-        if removed > 0:
-            LOG.info(f"  [cleanup] 强制隐藏了 {removed} 个残留弹窗元素")
-    except Exception as e:
-        LOG.debug(f"强制清理弹窗失败: {e}")
+    from .shared.transition_helpers import transition_to_next
+    await transition_to_next(page, ui_framework=ui_framework, wait_table=False)
 
 
 async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: str,
@@ -385,37 +309,10 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
                     break  # 无法恢复，终止后续操作
                 continue  # 跳过清理，直接进入下一个操作
 
-        # 操作间清理：关闭残留弹窗，确保回到列表页
+        # 操作间衔接：关闭弹窗 + 导航回列表页 + 等待表格（统一使用 shared/transition_to_next）
         try:
-            await _cleanup_after_operation(page, ui_framework)
-        except Exception as e:
-            LOG.debug(f"  操作间清理异常（不影响后续）: {e}")
-
-        # ★ 操作后重新加载页面（与 Stage 1 行为一致）
-        # 确保每个操作后回到初始页面状态，避免操作间状态污染
-        try:
-            import time as _time
-            _nav_start = _time.time()
-            await page.goto(target_url, wait_until="networkidle", timeout=60000)
-            _nav_elapsed = round((_time.time() - _nav_start) * 1000)
-            LOG.info(f"  page.goto 完成: {_nav_elapsed}ms, URL={page.url[:80]}")
-            table_ok = await wait_for_table_ready(page, timeout=15000)
-            if not table_ok:
-                # 诊断：表格未加载，记录页面状态
-                diag = await page.evaluate("""() => {
-                    const rows = document.querySelectorAll('tbody tr');
-                    const tables = document.querySelectorAll('table');
-                    const empty = document.querySelectorAll('.el-table__empty-block, .el-table__empty-text');
-                    return {
-                        tables: tables.length,
-                        rows: rows.length,
-                        emptyBlocks: empty.length,
-                        url: location.href,
-                        bodyHTML: document.body.innerHTML.substring(0, 500)
-                    };
-                }""")
-                LOG.warning(f"  ⚠️ 表格未就绪: tables={diag.get('tables')}, rows={diag.get('rows')}, empty={diag.get('emptyBlocks')}")
-                LOG.warning(f"  页面 URL: {diag.get('url', '')[:100]}")
+            from .shared.transition_helpers import transition_to_next
+            await transition_to_next(page, target_url=target_url, ui_framework=ui_framework, wait_table=True, table_timeout=15000)
         except Exception as e:
             LOG.warning(f"  操作后页面重置失败: {e}")
 

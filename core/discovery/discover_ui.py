@@ -57,7 +57,6 @@ from core.discovery.operation_executor.base_executor import (
     _get_captured_messages,
     _verify_operation_success,
     _check_data_changed,
-    _ensure_on_list_page,
     _check_create_api_triggered_simple,
 )
 from core.discovery.operation_executor.crud_executor import (
@@ -140,7 +139,6 @@ __all__ = [
     "_get_captured_messages",
     "_verify_operation_success",
     "_check_data_changed",
-    "_ensure_on_list_page",
     "_check_create_api_triggered_simple",
     # Operation Executor - CRUD Executor
     "discover_and_validate",

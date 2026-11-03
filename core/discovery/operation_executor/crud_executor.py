@@ -24,7 +24,7 @@ from core.discovery.replay.form_filler import (
 from core.discovery.shared import generate_fill_data, generate_fill_rules
 from core.discovery.operation_executor.base_executor import (
     _click_button_escalating, _install_message_capture, _get_captured_messages,
-    _verify_operation_success, _check_data_changed, _ensure_on_list_page,
+    _verify_operation_success, _check_data_changed,
     _extract_fallback_marker, _ensure_row_selected, _try_fill_empty_selects,
     _check_create_api_triggered_simple, _ensure_switch_enabled,
     _extract_business_failure, _observe_post_click, _setup_new_tab_listener,
@@ -1222,11 +1222,12 @@ async def _validate_single_tab_crud(
                             LOG.info(f"{tab_prefix}  + {new_action} (角色: {new_role}, 插入位置: {insert_pos}, "
                                      f"ordered_actions={ordered_actions})")
 
-        # 操作后确保回到列表页
+        # 操作后确保回到列表页（统一使用 shared/transition_to_next）
         try:
-            await _ensure_on_list_page(page, tab_name, tab_locator)
+            from ..shared.transition_helpers import transition_to_next
+            await transition_to_next(page, tab_name=tab_name, tab_locator=tab_locator, wait_table=False)
         except Exception as e:
-            LOG.error(f"{tab_prefix}_ensure_on_list_page 异常: {e}")
+            LOG.error(f"{tab_prefix}transition_to_next 异常: {e}")
             if "has been closed" in str(e):
                 LOG.error(f"{tab_prefix}浏览器已关闭，停止后续操作验证")
                 break
@@ -2105,8 +2106,9 @@ async def _do_create(page, context: dict) -> dict:
     else:
         LOG.info(f"    marker: None (无 input 类型字段)")
 
-    # 确保回到列表页
-    await _ensure_on_list_page(page, context.get("tab_name", ""), context.get("tab_locator", ""))
+    # 确保回到列表页（统一使用 shared/transition_to_next）
+    from ..shared.transition_helpers import transition_to_next
+    await transition_to_next(page, tab_name=context.get("tab_name", ""), tab_locator=context.get("tab_locator", ""), wait_table=False)
 
     # 使用 submit_form_v2 返回的已验证 locator（Stage 1 探测成功的那个）
     submit_text = submit_result["text"]
