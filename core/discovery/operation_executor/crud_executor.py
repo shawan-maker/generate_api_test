@@ -2680,17 +2680,34 @@ async def _do_edit(page, context: dict) -> dict:
         filled = await form_filler.fill_edit_form(fields, modifications)
         if filled == 0:
             await _close_dialog(page)
-            return make_error("no_editable_fields", "未找到可修改的字段",
-                             trigger_text=btn_text,
-                             trigger_locator_verified=btn_click_result.get("locator"))
+            return {
+                "success": False,
+                "error_type": "no_editable_fields",
+                "error_text": "未找到可修改的字段",
+                "trigger_text": btn_text,
+                "trigger_locator_verified": btn_click_result.get("locator"),
+                "form_fields": fields,
+                "filled_count": filled,
+                "interaction_mode": "dialog",
+                "dialog_locator": ".el-dialog__wrapper",
+            }
 
         # 提交
         submit_result = await form_filler.submit_form_v2()
         if not submit_result.get("locator"):
             await _close_dialog(page)
-            return submit_failed("未找到提交按钮",
-                                trigger_text=btn_text,
-                                trigger_locator_verified=btn_click_result.get("locator"))
+            return {
+                "success": False,
+                "error_type": "submit_failed",
+                "error_text": "未找到提交按钮",
+                "trigger_text": btn_text,
+                "trigger_locator_verified": btn_click_result.get("locator"),
+                "form_fields": fields,
+                "filled_count": filled,
+                "dialog_detected": dialog_detected,
+                "interaction_mode": "dialog",
+                "dialog_locator": ".el-dialog__wrapper",
+            }
 
         await page.wait_for_timeout(2000)
 
@@ -2715,15 +2732,29 @@ async def _do_edit(page, context: dict) -> dict:
                                       trigger_text=btn_text,
                                       trigger_locator_verified=btn_click_result.get("locator"))
                 result["form_snapshot_on_error"] = snapshot_data
+                result["form_fields"] = fields
+                result["filled_count"] = filled
+                result["submit_result"] = submit_result
+                result["interaction_mode"] = "dialog"
+                result["dialog_locator"] = ".el-dialog__wrapper"
                 return result
 
         captured_msgs = await _get_captured_messages(page)
         success, _detail = await _verify_operation_success(page, "update", captured_messages=captured_msgs)
         if not success:
             await _close_dialog(page)
-            return no_success_signal("编辑提交后未检测到成功信号",
-                                    trigger_text=btn_text,
-                                    trigger_locator_verified=btn_click_result.get("locator"))
+            return {
+                "success": False,
+                "error_type": "no_success_signal",
+                "error_text": "编辑提交后未检测到成功信号",
+                "trigger_text": btn_text,
+                "trigger_locator_verified": btn_click_result.get("locator"),
+                "form_fields": fields,
+                "filled_count": filled,
+                "submit_result": submit_result,
+                "interaction_mode": "dialog",
+                "dialog_locator": ".el-dialog__wrapper",
+            }
     except Exception as e:
         # ★ 异常时先关闭对话框，再传播错误，避免对话框遮挡重试时的按钮点击
         _log.warning(f"    [_do_edit] 弹窗编辑异常: {e}，关闭对话框")
@@ -3418,29 +3449,55 @@ async def _do_delete(page, context: dict) -> dict:
     needs_checkbox = btn_location == "toolbar"
     checkbox_locator = ".el-checkbox__input" if needs_checkbox else None
 
-    result = {
-        "success": True,
-        "selectors": selectors,
-        "confirmed": confirmed,
-        "is_delete": True,
-        "requires_marker": True,
-        "marker": marker,
-        "trigger_text": trigger_text_normalized,
-        "trigger_locator_verified": trigger_locator_verified,
-        "success_locator": ".el-message--success",
-        "needs_checkbox": needs_checkbox,
-        "checkbox_locator": checkbox_locator,
-        "post_confirm_state": {
-            "dialog_remains": post_state["dialog_remains"],
-            "has_form_in_dialog": post_state["has_form_in_dialog"],
-        },
-        "confirm_dialog": {
+    if success:
+        result = {
+            "success": True,
+            "selectors": selectors,
             "confirmed": confirmed,
-            "button_text": confirmed,
-            "dialog_text": dialog_text,
-        },
-    } if success else no_success_signal("删除后未检测到成功信号",
-                                        trigger_text=trigger_text_normalized)
+            "is_delete": True,
+            "requires_marker": True,
+            "marker": marker,
+            "trigger_text": trigger_text_normalized,
+            "trigger_locator_verified": trigger_locator_verified,
+            "success_locator": ".el-message--success",
+            "needs_checkbox": needs_checkbox,
+            "checkbox_locator": checkbox_locator,
+            "post_confirm_state": {
+                "dialog_remains": post_state["dialog_remains"],
+                "has_form_in_dialog": post_state["has_form_in_dialog"],
+            },
+            "confirm_dialog": {
+                "confirmed": confirmed,
+                "button_text": confirmed,
+                "dialog_text": dialog_text,
+            },
+        }
+    else:
+        # ★ 失败时也保留所有交互数据，确保 playbook 可以生成回放步骤
+        result = {
+            "success": False,
+            "error_type": "no_success_signal",
+            "error_text": "删除后未检测到成功信号",
+            "selectors": selectors,
+            "confirmed": confirmed,
+            "is_delete": True,
+            "requires_marker": True,
+            "marker": marker,
+            "trigger_text": trigger_text_normalized,
+            "trigger_locator_verified": trigger_locator_verified,
+            "success_locator": ".el-message--success",
+            "needs_checkbox": needs_checkbox,
+            "checkbox_locator": checkbox_locator,
+            "post_confirm_state": {
+                "dialog_remains": post_state["dialog_remains"],
+                "has_form_in_dialog": post_state["has_form_in_dialog"],
+            },
+            "confirm_dialog": {
+                "confirmed": confirmed,
+                "button_text": confirmed,
+                "dialog_text": dialog_text,
+            },
+        }
 
     return result
 
@@ -3476,6 +3533,59 @@ async def _do_generic_operation(page, context: dict) -> dict:
     edit_field_details = []
     radio_field_details_local = []
     submit_result = {}
+    # 初始化上下文变量（确保在任何失败路径都能访问）
+    _verified_trigger_locator = None
+    _verified_dropdown_item_text = None
+    _needs_checkbox = False
+    _checkbox_locator = None
+    confirmed = ""
+    fields = []
+    filled = 0
+    actual_state = ""
+
+    def _fail(error_type: str, error_text: str, **kwargs):
+        """统一的失败结果生成器，自动合并所有已收集的交互数据"""
+        result = {
+            "success": False,
+            "error_type": error_type,
+            "error_text": error_text,
+            "trigger_text": trigger_text_normalized,
+            "action": action,
+        }
+        # 合并 kwargs
+        result.update(kwargs)
+        # 自动添加已收集的交互数据（如果存在且非空）
+        if dialog_fill_details:
+            result["dialog_fills"] = dialog_fill_details
+        if edit_field_details:
+            result["edit_field_details"] = edit_field_details
+        if radio_field_details_local:
+            result["radio_field_details"] = radio_field_details_local
+        if submit_result:
+            result["submit_result"] = submit_result
+        if confirmed:
+            result["confirmed"] = confirmed
+            result["confirm_dialog"] = {
+                "confirmed": confirmed,
+                "button_text": confirmed,
+            }
+        if _verified_trigger_locator:
+            result["trigger_locator_verified"] = _verified_trigger_locator
+        if _verified_dropdown_item_text:
+            result["dropdown_item_text_verified"] = _verified_dropdown_item_text
+        if _needs_checkbox:
+            result["needs_checkbox"] = True
+            result["checkbox_locator"] = _checkbox_locator or ".el-checkbox__input"
+        if fields:
+            result["form_fields"] = fields
+        if filled > 0:
+            result["filled_count"] = filled
+        # 添加对话框相关字段
+        if actual_state and any(actual_state.startswith(prefix) for prefix in ["dialog:", "drawer:"]):
+            result["dialog_detected"] = True
+            result["interaction_mode"] = "dialog"
+            result["dialog_locator"] = ".el-dialog__wrapper"
+        return result
 
     # 记录点击前的 URL（用于导航保护）
     url_before = page.url
@@ -3622,9 +3732,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
         driver = ButtonDriver(page)
         row = await driver.find_data_row(marker)
         if not row:
-            return row_not_found(f"未找到数据行: {marker}",
-                                trigger_text=trigger_text_normalized,
-                                trigger_locator_verified=None)
+            return _fail("row_not_found", f"未找到数据行: {marker}")
         clicked = await driver.click_row_button_v2(row, btn_text)
         row_selector = btn_text
     elif btn_location == "dropdown":
@@ -3644,9 +3752,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
         driver = ButtonDriver(page)
         row = await driver.find_data_row(marker)
         if not row:
-            return row_not_found(f"未找到数据行: {marker}",
-                                trigger_text=trigger_text_normalized,
-                                trigger_locator_verified=None)
+            return _fail("row_not_found", f"未找到数据行: {marker}")
         dropdown_click_result = await driver.click_row_more_item(row, btn_text)
         clicked = dropdown_click_result.get("clicked", False)
         LOG.info(f"    [DEBUG-dropdown] click_row_more_item 返回: {dropdown_click_result}")
@@ -3708,9 +3814,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
             LOG.info(f"    跳过 {action} 操作: 按钮被禁用 (cmss-disabled/is-disabled)")
             return skipped(f"按钮被禁用: {action}",
                           trigger_text=trigger_text_normalized)
-        return click_failed(f"无法点击 {action} 按钮: {btn_text}",
-                           trigger_text=trigger_text_normalized,
-                           trigger_locator_verified=btn_click_result.get("locator") if btn_click_result else None)
+        return _fail("click_failed", f"无法点击 {action} 按钮: {btn_text}")
 
     # ★ 计算已验证的触发器信息（供后续所有 return 路径使用）
     # 按钮已被成功点击 → locator 已验证，无论操作结果成功还是失败都应保留
@@ -3790,11 +3894,10 @@ async def _do_generic_operation(page, context: dict) -> dict:
         else:
             error_type = nav_info.get("error_type", "cross_page_no_submit")
             error_text = nav_info.get("error_text", "新标签页操作未完成")
-            return make_error(error_type, error_text,
-                             trigger_text=trigger_text_normalized,
-                             nav_info=nav_info,
-                             selectors=selectors,
-                             radio_field_details=radio_field_details)
+            return _fail(error_type, error_text,
+                        nav_info=nav_info,
+                        selectors=selectors,
+                        radio_field_details=radio_field_details)
 
     # ── 现有检测逻辑（向后兼容） ──
     # 注意：_observe_post_click 已做了 wait + loading_complete，
@@ -3839,12 +3942,12 @@ async def _do_generic_operation(page, context: dict) -> dict:
                 }
             else:
                 # 提交失败
-                return make_error("cross_page_submit_failed",
-                                 f"跨页面操作提交失败: {submit_result.get('button_text', 'unknown')}",
-                                 nav_info=nav_info,
-                                 selectors=selectors,
-                                 submit_result=submit_result,
-                                 radio_field_details=radio_field_details)
+                return _fail("cross_page_submit_failed",
+                            f"跨页面操作提交失败: {submit_result.get('button_text', 'unknown')}",
+                            nav_info=nav_info,
+                            selectors=selectors,
+                            submit_result=submit_result,
+                            radio_field_details=radio_field_details)
         else:
             # 没有执行提交操作，检查是否有错误
             error_type = nav_info.get("error_type", "")
@@ -3852,18 +3955,16 @@ async def _do_generic_operation(page, context: dict) -> dict:
 
             if error_type:
                 # 有明确错误
-                return make_error(error_type, error_text,
-                                 trigger_text=trigger_text_normalized,
-                                 nav_info=nav_info,
-                                 selectors=selectors,
-                                 radio_field_details=radio_field_details)
+                return _fail(error_type, error_text,
+                            nav_info=nav_info,
+                            selectors=selectors,
+                            radio_field_details=radio_field_details)
             else:
                 # 没有错误但没有提交操作（可能是页面没有表单或关键按钮）
-                return make_error("cross_page_no_submit", "跨页面操作后未执行提交操作",
-                                 trigger_text=trigger_text_normalized,
-                                 nav_info=nav_info,
-                                 selectors=selectors,
-                                 radio_field_details=radio_field_details)
+                return _fail("cross_page_no_submit", "跨页面操作后未执行提交操作",
+                            nav_info=nav_info,
+                            selectors=selectors,
+                            radio_field_details=radio_field_details)
 
     await wait_for_loading_complete(page)
 
@@ -4042,8 +4143,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
             else:
                 LOG.warning(f"    {actual_state} 中未找到确认按钮")
                 await _close_dialog(page)
-                return make_error("no_confirm_button", f"{action} {actual_state} 中未找到确认按钮",
-                                 trigger_text=trigger_text_normalized)
+                return _fail("no_confirm_button", f"{action} {actual_state} 中未找到确认按钮")
             await wait_for_loading_complete(page)
             await page.wait_for_timeout(1000)
         elif form_filler:
@@ -4106,8 +4206,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
                 LOG.info(f"    [DIAG-generic-path2] confirm_dialog 返回: '{confirmed}'")
                 if not confirmed:
                     await _close_dialog(page)
-                    return make_error("no_confirm_button", f"{action} {actual_state} 中未找到提交/确认按钮",
-                                     trigger_text=trigger_text_normalized)
+                    return _fail("no_confirm_button", f"{action} {actual_state} 中未找到提交/确认按钮")
             await page.wait_for_timeout(2000)
             await wait_for_loading_complete(page)
 
@@ -4124,9 +4223,8 @@ async def _do_generic_operation(page, context: dict) -> dict:
                 field_errors = [e for e in errors if e.get("severity") == "field"]
                 if field_errors:
                     await _close_dialog(page)
-                    return form_validation(field_errors[0].get("error_text", ""),
-                                          error_field=field_errors[0].get("field_label", ""),
-                                          trigger_text=trigger_text_normalized)
+                    return _fail("form_validation", field_errors[0].get("error_text", ""),
+                                error_field=field_errors[0].get("field_label", ""))
             # 表单已提交，confirmed 留空，直接进入成功验证
         else:
             # 有表单但无 form_filler → 回退到填充空 select + 确认（对齐旧代码行为）
@@ -4168,8 +4266,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
             else:
                 LOG.warning(f"    {actual_state} 中未找到确认按钮")
                 await _close_dialog(page)
-                return make_error("no_confirm_button", f"{action} {actual_state} 中未找到确认按钮",
-                                 trigger_text=trigger_text_normalized)
+                return _fail("no_confirm_button", f"{action} {actual_state} 中未找到确认按钮")
             await wait_for_loading_complete(page)
             await page.wait_for_timeout(1000)
 
@@ -4453,9 +4550,8 @@ async def _do_generic_operation(page, context: dict) -> dict:
                 for m in _poll_msgs:
                     if _pc.classify_notification(m.get('text', '')) == "failure":
                         LOG.warning(f"    [toast-poll] 第 {_poll_round+1} 轮：检测到失败 toast: {m.get('text','')[:60]}")
-                        return make_error("operation_failed",
-                                        f"{action} 操作失败: {m.get('text', '')}",
-                                        trigger_text=trigger_text_normalized)
+                        return _fail("operation_failed",
+                                    f"{action} 操作失败: {m.get('text', '')}")
 
             # 检查 2: 直接查询 DOM 中当前可见的通知（兜底，防止 MutationObserver 遗漏）
             _dom_toast = await page.evaluate("""() => {
@@ -4607,26 +4703,21 @@ async def _do_generic_operation(page, context: dict) -> dict:
                     else:
                         LOG.warning(f"    确认弹窗存在但未找到确认按钮")
                         await _close_dialog(page)
-                        return make_error("no_confirm_button", f"{action} 弹窗中未找到确认按钮",
-                                         trigger_text=trigger_text_normalized)
+                        return _fail("no_confirm_button", f"{action} 弹窗中未找到确认按钮")
                 else:
                     LOG.warning("    空 select 字段填充失败")
                     await _close_dialog(page)
-                    return make_error("required_field_empty", f"弹窗中必填字段为空且无法自动填充: {', '.join(empty_fields)}",
-                                     trigger_text=trigger_text_normalized)
+                    return _fail("required_field_empty", f"弹窗中必填字段为空且无法自动填充: {', '.join(empty_fields)}")
             elif diag.get("confirm_disabled"):
                 await _close_dialog(page)
-                return make_error("confirm_button_disabled", f"确认按钮被禁用，无法执行 {action} 操作",
-                                 trigger_text=trigger_text_normalized)
+                return _fail("confirm_button_disabled", f"确认按钮被禁用，无法执行 {action} 操作")
             else:
                 btn_list = [b.get("text", "?") for b in diag.get("buttons", [])]
                 await _close_dialog(page)
-                return make_error("no_confirm_button", f"{action} 弹窗中未找到可点击的确认按钮（弹窗按钮: {btn_list}）",
-                                 trigger_text=trigger_text_normalized)
+                return _fail("no_confirm_button", f"{action} 弹窗中未找到可点击的确认按钮（弹窗按钮: {btn_list}）")
         else:
             # 无任何弹窗且即时操作也未成功
-            return make_error("no_confirm_button", f"{action} 操作未检测到弹窗或成功信号",
-                             trigger_text=trigger_text_normalized)
+            return _fail("no_confirm_button", f"{action} 操作未检测到弹窗或成功信号")
 
 
     # 检查确认后的页面状态（是否仍有残留对话框）
@@ -4655,8 +4746,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
 
         if filtered_errors:
             first = filtered_errors[0]
-            return make_error(first.get("severity", "unknown"), first.get("error_text", ""),
-                             trigger_text=trigger_text_normalized)
+            return _fail(first.get("severity", "unknown"), first.get("error_text", ""))
 
     # 读取捕获的消息（操作后可能已消失）
     captured_msgs = await _get_captured_messages(page)
@@ -4681,9 +4771,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
             LOG.warning(f"    [operation_failed] {action} 操作失败: {failure_reason[:80]}")
             # 关闭可能残留的弹窗/抽屉
             await _close_dialog(page)
-            return make_error("operation_failed",
-                             f"{action} 操作失败: {failure_reason}",
-                             trigger_text=trigger_text_normalized)
+            return _fail("operation_failed", f"{action} 操作失败: {failure_reason}")
         else:
             # ★ 无信号 → 按钮已点击/表单已提交，标记为成功
             LOG.info(f"    [no_signal] {action} 无明确成功信号，但按钮已点击，标记为成功")

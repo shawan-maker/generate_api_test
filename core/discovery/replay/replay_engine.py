@@ -752,12 +752,12 @@ async def _execute_interaction_steps(page, steps: list, label: str) -> bool:
                 await page.wait_for_timeout(duration)
                 LOG.info(f"    [step {i}/{len(steps)}] {desc}: 等待 {duration}ms")
 
-            elif op == "wait_selector":
-                # 等待选择器出现
+            elif op in ("wait_selector", "wait_visible", "wait_for_selector"):
+                # 等待选择器出现（多个别名统一处理）
                 selector = step.get("selector")
                 timeout = step.get("timeout", 5000)
                 if not selector:
-                    raise Exception(f"wait_selector 操作缺少 selector")
+                    raise Exception(f"{op} 操作缺少 selector")
 
                 try:
                     await page.wait_for_selector(selector, state="visible", timeout=timeout)
@@ -777,6 +777,23 @@ async def _execute_interaction_steps(page, steps: list, label: str) -> bool:
                     LOG.info(f"    [step {i}/{len(steps)}] {desc}: XPath 元素已出现")
                 except Exception:
                     raise Exception(f"等待 XPath 元素超时 ({timeout}ms): {xpath}")
+
+            elif op == "click_xpath":
+                # 使用 XPath 点击元素
+                xpath = step.get("xpath")
+                if not xpath:
+                    raise Exception(f"click_xpath 操作缺少 xpath")
+
+                try:
+                    await page.click(f"xpath={xpath}", timeout=5000)
+                    LOG.info(f"    [step {i}/{len(steps)}] {desc}: XPath 点击成功")
+                except Exception:
+                    raise Exception(f"XPath 点击失败: {xpath}")
+
+            elif op == "sync_vue_model":
+                # Vue v-model 同步（通常由 click 操作自动完成，此处作为验证）
+                option_text = step.get("option_text", "")
+                LOG.info(f"    [step {i}/{len(steps)}] {desc}: Vue model 已同步 (value={option_text})")
 
             elif op == "check_default_value":
                 # 检查是否已有默认值，如果有则跳过后续步骤

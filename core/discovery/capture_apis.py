@@ -114,9 +114,34 @@ async def _cleanup_after_operation(page, ui_framework: str = "element-ui"):
     """
     from . import const
 
-    # 1. 按 Escape 尝试关闭
-    await page.keyboard.press("Escape")
-    await page.wait_for_timeout(300)
+    # 0. 先诊断是否有残留弹窗
+    dialog_state = await page.evaluate("""() => {
+        const dialogs = document.querySelectorAll('.el-dialog__wrapper');
+        const msgBoxes = document.querySelectorAll('.el-message-box__wrapper');
+        const drawers = document.querySelectorAll('.el-drawer');
+        const visibleDialogs = Array.from(dialogs).filter(d =>
+            window.getComputedStyle(d).display !== 'none'
+        );
+        const visibleMsgBoxes = Array.from(msgBoxes).filter(d =>
+            window.getComputedStyle(d).display !== 'none'
+        );
+        const visibleDrawers = Array.from(drawers).filter(d =>
+            window.getComputedStyle(d).display !== 'none'
+        );
+        return {
+            dialogs: visibleDialogs.length,
+            msgBoxes: visibleMsgBoxes.length,
+            drawers: visibleDrawers.length,
+            total: visibleDialogs.length + visibleMsgBoxes.length + visibleDrawers.length
+        };
+    }""")
+    if dialog_state.get('total', 0) > 0:
+        LOG.info(f"  [cleanup] 检测到残留弹窗: {dialog_state}")
+
+    # 1. 按 Escape 尝试关闭（多次，确保嵌套弹窗全部关闭）
+    for i in range(3):
+        await page.keyboard.press("Escape")
+        await page.wait_for_timeout(200)
 
     # 2. JS 清理：关闭所有可见的对话框/抽屉/消息框
     try:
@@ -131,24 +156,39 @@ async def _cleanup_after_operation(page, ui_framework: str = "element-ui"):
     except Exception as e:
         LOG.debug(f"UI 选择器清理失败: {e}")
 
-    # 2.5 清除搜索框（避免过滤干扰后续操作）
-    try:
-        search_inputs = await page.query_selector_all('input[placeholder*="搜索"], input[placeholder*="查询"], input[placeholder*="请输入"]')
-        for search_input in search_inputs:
-            if await search_input.is_visible():
-                current_value = await search_input.input_value()
-                if current_value and current_value.strip():
-                    await search_input.fill("")
-                    await page.wait_for_timeout(100)
-                    LOG.debug(f"已清除搜索框: {current_value}")
-    except Exception as e:
-        LOG.debug(f"搜索框清理失败: {e}")
-
     await page.wait_for_timeout(500)
 
     # 3. 再次按 Escape（兜底）
     await page.keyboard.press("Escape")
     await page.wait_for_timeout(300)
+
+    # 4. 强制移除 DOM 中的弹窗元素（兜底，防止残留弹窗阻止导航）
+    try:
+        removed = await page.evaluate("""() => {
+            const selectors = [
+                '.el-dialog__wrapper',
+                '.el-message-box__wrapper',
+                '.el-drawer',
+                '.el-message',
+                '.el-notification'
+            ];
+            let count = 0;
+            for (const sel of selectors) {
+                const elements = document.querySelectorAll(sel);
+                for (const el of elements) {
+                    // 只移除可见的
+                    if (window.getComputedStyle(el).display !== 'none') {
+                        el.style.display = 'none';
+                        count++;
+                    }
+                }
+            }
+            return count;
+        }""")
+        if removed > 0:
+            LOG.info(f"  [cleanup] 强制隐藏了 {removed} 个残留弹窗元素")
+    except Exception as e:
+        LOG.debug(f"强制清理弹窗失败: {e}")
 
 
 async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: str,
@@ -354,8 +394,28 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
         # ★ 操作后重新加载页面（与 Stage 1 行为一致）
         # 确保每个操作后回到初始页面状态，避免操作间状态污染
         try:
+            import time as _time
+            _nav_start = _time.time()
             await page.goto(target_url, wait_until="networkidle", timeout=60000)
-            await wait_for_table_ready(page, timeout=15000)
+            _nav_elapsed = round((_time.time() - _nav_start) * 1000)
+            LOG.info(f"  page.goto 完成: {_nav_elapsed}ms, URL={page.url[:80]}")
+            table_ok = await wait_for_table_ready(page, timeout=15000)
+            if not table_ok:
+                # 诊断：表格未加载，记录页面状态
+                diag = await page.evaluate("""() => {
+                    const rows = document.querySelectorAll('tbody tr');
+                    const tables = document.querySelectorAll('table');
+                    const empty = document.querySelectorAll('.el-table__empty-block, .el-table__empty-text');
+                    return {
+                        tables: tables.length,
+                        rows: rows.length,
+                        emptyBlocks: empty.length,
+                        url: location.href,
+                        bodyHTML: document.body.innerHTML.substring(0, 500)
+                    };
+                }""")
+                LOG.warning(f"  ⚠️ 表格未就绪: tables={diag.get('tables')}, rows={diag.get('rows')}, empty={diag.get('emptyBlocks')}")
+                LOG.warning(f"  页面 URL: {diag.get('url', '')[:100]}")
         except Exception as e:
             LOG.warning(f"  操作后页面重置失败: {e}")
 
