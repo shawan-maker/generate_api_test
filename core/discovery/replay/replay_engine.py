@@ -989,7 +989,7 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
                                 if interaction_steps:
                                     # 优先使用 interaction_steps 回放（与 el-select 一致）
                                     success = await _execute_interaction_steps(
-                                        page, interaction_steps, label, f"cascade transfer-box"
+                                        page, interaction_steps, label
                                     )
                                     if success:
                                         LOG.info(f"      [Radio] cascade transfer-box 回放成功")
@@ -1264,7 +1264,7 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
                             if interaction_steps:
                                 # 使用 interaction_steps 回放
                                 success = await _execute_interaction_steps(
-                                    page, interaction_steps, field_label, f"cascade transfer-box"
+                                    page, interaction_steps, field_label
                                 )
                                 if success:
                                     LOG.info(f"    [el-select] cascade transfer-box 回放成功")

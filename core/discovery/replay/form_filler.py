@@ -413,6 +413,7 @@ class FormFiller:
         filled = 0
         cascade_actions = []  # ★ 记录 radio 触发的级联操作（如 transfer-box）
         radio_selections = {}  # ★ 记录 radio 实际选择的值（供 playbook 使用）
+        radio_field_details = []  # ★ Fix 11: 记录 radio 字段的详细信息（含 interaction_steps）
         select_close_dropdown = []  # ★ 记录 el-select 下拉框关闭操作
         for field in fields:
             label = field.get("label", "")
@@ -458,6 +459,22 @@ class FormFiller:
                             filled += 1
                             radio_selections[label] = first_text  # ★ 记录实际选择的值
                             LOG.info(f"    选择 radio: {label} = {first_text}")
+
+                            # ★ Fix 11: 记录 radio interaction_steps
+                            _radio_interactions = [
+                                {"op": "click", "selector": f'.el-radio-group .el-radio:has-text("{first_text}")', "desc": f"点击 radio: {first_text}"}
+                            ]
+                            if vue_update_result and vue_update_result.get("found"):
+                                _radio_interactions.append({
+                                    "op": "sync_vue_model",
+                                    "option_text": first_text,
+                                    "desc": f"Vue v-model 同步: {first_text}"
+                                })
+                            radio_field_details.append({
+                                "label": label,
+                                "option_text": first_text,
+                                "interaction_steps": _radio_interactions,
+                            })
 
                             # radio 级联：检测动态组件并自动处理
                             await self.page.wait_for_timeout(1000)  # 等待动态组件渲染
@@ -2331,7 +2348,7 @@ class MultiStepExecutor:
                     }
                 else:
                     val = has_default.get("value", "")
-                    LOG.info(f"    el-select {label}: 单选已有默认值 '{val}'，跳过")
+                    LOG.info(f"    el-select {label}: 单选已有默认值 '{val}'，记录完整步骤后继续")
                     # 记录检查默认值步骤
                     interaction_steps.append({
                         "op": "check_default_value",
@@ -2339,14 +2356,11 @@ class MultiStepExecutor:
                         "desc": f"检查默认值: {val}",
                         "value": val
                     })
-                    return True, {
-                        "is_editable": False,
-                        "option_text": val,
-                        "select_sub_type": select_sub_type,
-                        "selection_strategy": selection_strategy,
-                        "interaction_steps": interaction_steps,
-                        "execution_path": "has_default_value"
-                    }
+                    # ★ Fix 1: 不提前返回，继续执行展开和选择流程
+                    # 设置 option_text 为默认值，确保选择相同选项
+                    option_text = val
+                    # execution_path 标记为 has_default_value
+                    # 后续代码会正常记录 click + click_first 步骤
 
         expanded = await self._expand_by_selector(selector, label, playwright_locator)
         if not expanded:
@@ -2357,7 +2371,7 @@ class MultiStepExecutor:
         # ★ 记录步骤：展开下拉框
         interaction_steps.append({
             "op": "click",
-            "locator": playwright_locator or selector,
+            "selector": selector,
             "desc": f"展开{label}下拉框"
         })
 
@@ -2562,7 +2576,8 @@ class MultiStepExecutor:
                 debug_info = verify.get("debug", {})
                 LOG.warning(f"    ⚠️ select 填充后验证失败: {label} 仍为空 "
                            f"debug={debug_info}")
-                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "editable_verify_failed"}
+                # ★ Fix 2: 保留已执行的 interaction_steps
+                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "editable_verify_failed", "interaction_steps": interaction_steps}
             LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
 
             LOG.info(f"    [el-select] {label}: 已记录 {len(interaction_steps)} 个操作步骤")
@@ -2601,7 +2616,8 @@ class MultiStepExecutor:
                 debug_info = verify.get("debug", {})
                 LOG.warning(f"    ⚠️ select 填充后验证失败: {label} 仍为空 "
                            f"debug={debug_info}")
-                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "readonly_verify_failed"}
+                # ★ Fix 2: 保留已执行的 interaction_steps
+                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "readonly_verify_failed", "interaction_steps": interaction_steps}
             LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
 
             LOG.info(f"    [el-select] {label}: 已记录 {len(interaction_steps)} 个操作步骤")
@@ -2776,7 +2792,7 @@ class MultiStepExecutor:
             # ★ 记录步骤 1：点击展开
             interaction_steps.append({
                 "op": "click",
-                "locator": playwright_locator or selector,
+                "selector": selector,
                 "desc": f"展开{label}下拉框"
             })
 
@@ -2914,7 +2930,7 @@ class MultiStepExecutor:
         if not any(s.get("op") == "click" for s in interaction_steps):
             interaction_steps.append({
                 "op": "click",
-                "locator": playwright_locator or selector,
+                "selector": selector,
                 "desc": f"展开{label}下拉框 (fallback)"
             })
 

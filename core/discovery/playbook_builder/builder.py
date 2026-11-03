@@ -1104,7 +1104,14 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
     # Step 4: 填充表单
     form_fields = op_data.get("form_fields", [])
     fill_rules = op_data.get("fill_rules", {})
+    # ★ Fix 4 (corrected): update 的 fill_data 可能是空，edit_fill_data.modified_fields 是 int（修改数量）
+    # 对于 create 操作：fill_data 是 dict {label: value}
+    # 对于 edit 操作：fill_data 为空，edit_fill_data.modified_fields 是 int
+    # → edit 用 fill_rules keys 过滤（有 rule 的字段就是 Stage 1 实际修改的字段）
     fill_data = op_data.get("fill_data", {})
+    _use_fill_rules_as_filter = False
+    if not fill_data or not isinstance(fill_data, dict):
+        _use_fill_rules_as_filter = True
     multi_step_details = op_data.get("multi_step_field_details", [])
     radio_details = op_data.get("radio_field_details", [])
 
@@ -1129,8 +1136,14 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
                 continue
 
             # ★ 只保留 Stage 1 实际填充了非空值的字段
-            if not fill_data.get(label):
-                continue
+            if _use_fill_rules_as_filter:
+                # edit 操作：fill_rules 中有 rule 的字段就是 Stage 1 修改过的
+                if label not in fill_rules:
+                    continue
+            else:
+                # create 操作：fill_data 中值非空的字段
+                if not fill_data.get(label):
+                    continue
 
             rule = fill_rules.get(label, {})
 
@@ -1187,9 +1200,9 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
                 "fill_rule": rule
             }
 
-            # 标记 marker 字段：label 包含关键字 + 仅限文本输入类型（排除 select/checkbox/radio）
-            _marker_kw = ("名称", "账号", "name", "username")
-            if field_type in ("input", "textarea") and any(kw in label.lower() for kw in _marker_kw):
+            # ★ Fix 8: 使用 marker_source 精确标记 marker 字段
+            marker_source = op_data.get("marker_source", {})
+            if marker_source and marker_source.get("field_label") == label:
                 field_info["is_marker"] = True
 
             fields_info.append(field_info)
@@ -1252,13 +1265,18 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
     # Step 5: 点击提交（使用已验证的 locator）
     submit_locator = op_data.get("submit_locator_verified") or op_data.get("submit_locator")
     submit_text = op_data.get("submit_text") or op_data.get("selectors", {}).get("submit")
+    # ★ Fix 9: 传递 submit_click_strategy
+    submit_click_strategy = op_data.get("submit_click_strategy", "playwright")
     if submit_locator:
-        steps.append({
+        click_step = {
             "action": "click_button",
             "playwright_locator": submit_locator,
             "text": submit_text,
             "description": "点击提交按钮"
-        })
+        }
+        if submit_click_strategy != "playwright":
+            click_step["click_strategy"] = submit_click_strategy
+        steps.append(click_step)
 
     # Step 6: 验证成功
     success_locator = op_data.get("success_locator", ".el-message--success")
@@ -1727,6 +1745,9 @@ def _build_page_nav_steps(op_data: dict) -> list:
                 # ★ 传递 close_dropdown（el-select 选择后下拉框仍展开，需发送 ESC 关闭）
                 if "close_dropdown" in field:
                     select_field["close_dropdown"] = field["close_dropdown"]
+                # ★ Fix 10: 传递 interaction_steps
+                if "interaction_steps" in field:
+                    select_field["interaction_steps"] = field["interaction_steps"]
                 fill_fields.append(select_field)
             elif kb_category == "radio":
                 radio_field = {

@@ -931,8 +931,20 @@ async def _validate_single_tab_crud(
                 if fallback:
                     created_marker = fallback
                     LOG.info(f"{tab_prefix}create 失败，使用 fallback marker: {fallback}")
+                # ★ Fix 5: 即使 result 为 None/空也要记录
                 if result:
                     validated[action] = result
+                else:
+                    validated[action] = {
+                        "success": False,
+                        "error_type": "create_failed",
+                        "error_text": "Create operation returned no result",
+                        "trigger_text": btn_text,
+                        "trigger_locator_verified": btn_click_result.get("locator") if btn_click_result else None,
+                        "fill_data": fill_data,
+                        "fill_rules": fill_rules,
+                        "form_fields": fields,
+                    }
 
         elif role == "query":
             LOG.info(f"{tab_prefix}[QUERY-DEBUG] 开始验证 query 操作: btn_text='{btn.get('text')}', is_search_input={btn.get('is_search_input')}, marker={created_marker}")
@@ -973,7 +985,12 @@ async def _validate_single_tab_crud(
             if btn_location in ("row_action", "dropdown"):
                 if not created_marker:
                     LOG.warning(f"{tab_prefix}{action} 跳过: create 失败且无可用 marker")
-                    validated[action] = skipped("create 失败且无可用 marker")
+                    # ★ Fix 6: 补充上下文信息
+                    skip_result = skipped("create 失败且无可用 marker")
+                    skip_result["trigger_text"] = btn_text
+                    skip_result["btn_location"] = btn_location
+                    skip_result["skip_reason"] = "no_marker_available"
+                    validated[action] = skip_result
                 else:
                     result = await _error_driven_retry(
                         page, _do_edit, {
@@ -1007,7 +1024,12 @@ async def _validate_single_tab_crud(
             if btn_location == "row_action":
                 if not created_marker:
                     LOG.warning(f"{tab_prefix}{action} 跳过: create 失败且无可用 marker")
-                    validated[action] = skipped("create 失败且无可用 marker")
+                    # ★ Fix 6: 补充上下文信息
+                    skip_result = skipped("create 失败且无可用 marker")
+                    skip_result["trigger_text"] = btn_text
+                    skip_result["btn_location"] = btn_location
+                    skip_result["skip_reason"] = "no_marker_available"
+                    validated[action] = skip_result
                 else:
                     result = await _error_driven_retry(
                         page, _do_delete, {
@@ -2016,10 +2038,17 @@ async def _do_create(page, context: dict) -> dict:
             except Exception as snap_err:
                 LOG.warning(f"    表单快照捕获失败: {snap_err}")
                 snapshot_data = []
-            result = form_validation(first_err.get("error_text", ""),
-                                  error_field=first_err.get("field_label", ""),
-                                  trigger_text=btn_text,
-                                  trigger_locator_verified=btn_click_result.get("locator"))
+            # ★ Fix 3: 使用 _build_create_error_result 保留完整表单数据
+            result = _build_create_error_result(
+                "form_validation",
+                first_err.get("error_text", ""),
+                btn_text, btn_click_result,
+                fill_data, fill_rules, fields, submit_result,
+                multi_step_field_details, username,
+                radio_field_details=radio_field_details,
+                cascade_actions=cascade_actions
+            )
+            result["error_field"] = first_err.get("field_label", "")
             result["form_snapshot_on_error"] = snapshot_data
             return result
         global_errors = [e for e in errors if e.get("severity") == "global"]
@@ -3602,9 +3631,14 @@ async def _do_generic_operation(page, context: dict) -> dict:
         # 两步点击：先找到行 → 展开"更多" → 点击子项
         if not marker:
             LOG.warning(f"  {action} 跳过: dropdown 操作需要 marker")
-            return skipped("dropdown 操作需要 marker",
+            # ★ Fix 7: 补充上下文信息
+            result = skipped("dropdown 操作需要 marker",
                           trigger_text=trigger_text_normalized,
                           trigger_locator_verified=None)
+            result["btn_location"] = "dropdown"
+            result["dropdown_parent"] = btn.get("parent", "更多")
+            result["skip_reason"] = "no_marker_for_dropdown"
+            return result
 
         from core.discovery.replay.button_driver import ButtonDriver
         driver = ButtonDriver(page)
