@@ -6,7 +6,6 @@ error-driven retry logic, and individual CRUD operation executors
 (create, query, detail, edit, delete, save/confirm).
 """
 
-import json
 import logging
 import time
 from core.discovery import const
@@ -14,12 +13,11 @@ from core.discovery.shared.constants import (
     DROPDOWN_TRIGGER_TEXTS, NON_BUSINESS_BUTTONS, BATCH_PREFIXES, DESTROY_KEYWORDS,
 )
 from core.discovery.replay.wait_helpers import (
-    wait_for_dropdown, wait_for_dialog_dismissed, wait_for_dialog,
     wait_for_loading_complete, wait_for_table_ready,
     wait_for_navigation_complete,
 )
 from core.discovery.replay.form_filler import (
-    FormFiller, read_form_errors, scan_form_fields,
+    FormFiller, read_form_errors,
 )
 from core.discovery.shared import generate_fill_data, generate_fill_rules
 from core.discovery.operation_executor.base_executor import (
@@ -939,11 +937,11 @@ async def _validate_single_tab_crud(
                         "success": False,
                         "error_type": "create_failed",
                         "error_text": "Create operation returned no result",
-                        "trigger_text": btn_text,
-                        "trigger_locator_verified": btn_click_result.get("locator") if btn_click_result else None,
-                        "fill_data": fill_data,
-                        "fill_rules": fill_rules,
-                        "form_fields": fields,
+                        "trigger_text": btn.get("text", "") if isinstance(btn, dict) else str(btn),
+                        "trigger_locator_verified": btn.get("locator", "") if isinstance(btn, dict) else "",
+                        "fill_data": {},
+                        "fill_rules": {},
+                        "form_fields": form_fields,
                     }
 
         elif role == "query":

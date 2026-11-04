@@ -16,14 +16,14 @@ API_AI_test/
 │       ├── auth_service.py          统一认证服务（所有入口的唯一认证接口）
 │       ├── batch_runner.py          批量模块发现
 │       ├── stage1_rescue.py         Stage 1 Phase C/D/E 补救子例程
-│       ├── discover_ui.py           Stage 1: UI 元素探测 + Playbook 生成
-│       ├── capture_apis.py          Stage 2: API 拦截捕获（动态操作列表）
-│       ├── analyze_flow.py          Stage 3: 逻辑分析 + Manifest 构建
+│       ├── discover_ui.py           Stage 1: UI 元素探测 + Playbook 生成（Facade）
+│       ├── capture_apis.py          Stage 2: API 拦截捕获（Playbook 回放模式）
+│       ├── analyze_flow.py          Stage 3: 逻辑分析 + Manifest 构建（Facade）
 │       ├── gen_test.py              Stage 4: API 脚本生成（Manifest 驱动薄脚本）
 │       ├── generate_ui_script.py    Stage 2b: UI 脚本生成（Playbook → Playwright 脚本）
 │       ├── export_artifacts.py      Stage 5: Postman/Excel/helpers 导出
 │       ├── request_interceptor.py   HTTP 拦截 + KB 驱动注入
-│       ├── endpoint_classifier.py   端点分类去重
+│       ├── endpoint_classifier.py   端点分类去重 + 时间戳优先分类
 │       ├── stage_validators.py      质量门禁（含 manifest 架构检查）
 │       ├── discover_navigation.py   导航发现编排
 │       ├── nav_discovery.py         导航菜单爬取
@@ -37,7 +37,9 @@ API_AI_test/
 │       ├── run_parallel.py          并行执行生成的测试脚本
 │       ├── stage2_errors.py         Stage 2 错误分类
 │       ├── const.py                 常量定义
+│       │
 │       ├── shared/                  ★ Stage 1/2 共享运行时逻辑（统一定义，双阶段调用）
+│       │   ├── __init__.py            导出所有共享函数
 │       │   ├── constants.py           共享常量（DESTROY_KEYWORDS / SUCCESS_KEYWORDS 等）
 │       │   ├── marker_utils.py        Marker 提取（表格行标识）
 │       │   ├── message_capture.py     MutationObserver 消息捕获 + 通知钉住
@@ -45,13 +47,29 @@ API_AI_test/
 │       │   ├── form_validation.py     表单验证错误检测
 │       │   ├── success_verifier.py    操作成功验证（六层策略链）
 │       │   ├── switch_ops.py          Switch 切换（含 tab-pane 过滤 + 确认弹框）
-│       │   └── row_interaction.py     行定位 / 勾选 / 点击（含固定列 JS click）
-│       └── replay/                  UI 操作回放引擎
-│           ├── replay_engine.py       Playbook 回放执行器（含通知钉住机制）
-│           ├── button_driver.py       按钮点击驱动（KB 模板 fallback）
-│           ├── form_filler.py         表单智能填充（type-aware 动态构建）
-│           ├── locator_helpers.py     定位器辅助工具
-│           └── wait_helpers.py        事件驱动等待（表格就绪/弹窗/loading）
+│       │   ├── row_interaction.py     行定位 / 勾选 / 点击（含固定列 JS click）
+│       │   ├── tab_helpers.py         Tab 切换与恢复（多 Tab 页面支持）
+│       │   └── transition_helpers.py  ★ 操作间页面衔接（统一 Stage 1/2）
+│       │
+│       ├── replay/                  UI 操作回放引擎
+│       │   ├── replay_engine.py       Playbook 回放执行器（含通知钉住机制）
+│       │   ├── button_driver.py       按钮点击驱动（KB 模板 fallback）
+│       │   ├── form_filler.py         表单智能填充（type-aware 动态构建）
+│       │   ├── locator_helpers.py     定位器辅助工具
+│       │   └── wait_helpers.py        事件驱动等待（表格就绪/弹窗/loading）
+│       │
+│       ├── ui_scanner/              Stage 1 UI 探测子模块
+│       │   ├── element_scanner.py     DOM 元素发现
+│       │   ├── button_detector.py     按钮检测与分类
+│       │   └── form_scanner.py        表单字段扫描
+│       │
+│       ├── operation_executor/      Stage 1 操作执行子模块
+│       │   ├── base_executor.py       通用执行工具
+│       │   ├── crud_executor.py       CRUD 操作执行
+│       │   └── navigation_executor.py 跨页面导航
+│       │
+│       └── playbook_builder/        Stage 1 Playbook 生成
+│           └── builder.py             Playbook 生成与步骤分类
 │
 ├── lib/                         共享运行时库
 │   ├── auth/                      统一登录模块（策略模式）
@@ -83,7 +101,7 @@ API_AI_test/
 │   └── pytest_api_ai_test/        pytest 插件（自动发现 *_API测试.py）
 │
 ├── config/                      全局配置
-│   ├── credentials.yaml           全局凭据库
+│   ├── credentials.yaml           全局凭据库（按 base_url 组织）
 │   ├── debug_strategies.json      调试策略
 │   ├── failure_patterns.yaml      失败模式
 │   └── probe_lessons_kb.json      探测经验知识库
@@ -130,11 +148,21 @@ API_AI_test/
 │           │   └── *.postman_collection.json
 │           └── login.py           登录脚本
 │
+├── workspace/                   运行时工作空间（每个项目一个子目录）
+│   └── <project_name>/
+│       ├── kb/module_discovered/  KB 中间产物
+│       ├── output/                运行时输出（日志、截图、调试脚本）
+│       ├── logs/                  Pipeline 日志
+│       └── reports/               并行执行报告
+│
 ├── docs/                        文档
 │   ├── PROJECT_GUIDE.md           项目指南（本文档）
 │   ├── debug/                     调试文档
-│   └── design/                    设计文档
+│   ├── design/                    设计文档
+│   └── fixes/                     修复记录
 │
+├── scripts/                     工具脚本
+├── tools/                       工具
 ├── skill.md                     AI Skill 描述文件
 ├── pyproject.toml               项目元数据
 ├── requirements.txt             Python 依赖
@@ -292,6 +320,7 @@ python projects/ecm-compute/v1.0.0/ui/用户管理.py --operation "创建用户"
   - `ecso`: 算术验证码（ddddocr OCR 识别）
   - `tianshu`: 字符验证码（ddddocr OCR 识别）
 - `CookieStore`: 统一 Cookie 持久化（cookies.json + meta.json + localStorage）
+- `credentials.yaml`: 按 base_url 组织，支持多项目凭据管理
 
 **生成脚本认证**：仅依赖 `cookies.json`，不包含登录逻辑
 - 运行 Stage 1-2 时自动调用 `LoginSession` 完成登录并刷新 cookie
@@ -319,7 +348,95 @@ python projects/ecm-compute/v1.0.0/ui/用户管理.py --operation "创建用户"
 - 同步时自动转换导入路径（`from .. import const` → `from . import const`）
 - 脚本包可拷贝到其他地方独立运行
 
-### 4.5 UI 回放引擎 — 通知钉住机制
+### 4.5 Stage 1/Stage 2 共享运行时架构（`shared/`）
+
+> **原则**：Stage 1 负责探测和记录（静态 locator），Stage 2 负责根据 locator 回放。对于无法通过静态 locator 回放的运行时动态逻辑，在 `core/discovery/shared/` 中**只定义一次**，Stage 1 和 Stage 2 同时调用。
+
+**解决的问题**：
+- Stage 1 探测时操作成功，但 Stage 2 回放时因判定标准不同而失败
+- 相同的 Switch 切换/行定位/弹框关闭逻辑在两个阶段各写一份，修改不同步
+- 新增类似逻辑时不确定该放在哪里
+
+**10 个共享模块**：
+
+| 模块 | 功能 | 调用方 |
+|------|------|--------|
+| `transition_helpers.py` | ★ 操作间页面衔接（统一 Stage 1/2） | crud_executor + capture_apis |
+| `success_verifier.py` | 六层策略链验证操作成功 | base_executor + replay_engine |
+| `switch_ops.py` | Switch 切换 + tab-pane 过滤 + 确认弹框 | crud_executor + replay_engine |
+| `message_capture.py` | MutationObserver 注入 + 通知钉住 | base_executor + replay_engine |
+| `row_interaction.py` | 行定位/勾选/点击（含固定列兼容） | crud_executor + replay_engine |
+| `dialog_helpers.py` | 弹框/遮罩层检测与关闭 | base_executor + replay_engine |
+| `form_validation.py` | 表单验证错误检测 | base_executor + replay_engine |
+| `tab_helpers.py` | Tab 切换与恢复（多 Tab 页面） | transition_helpers + replay_engine |
+| `marker_utils.py` | Marker 提取（表格行标识） | crud_executor + capture_apis |
+| `constants.py` | 共享常量（成功/失败关键词等） | crud_executor + replay_engine |
+
+**开发规范**：
+1. 新增运行时动态逻辑时 → 在 `shared/` 中创建模块
+2. 修改已有逻辑时 → 只改 `shared/` 中的实现，Stage 1/2 自动生效
+3. 在 `shared/__init__.py` 中导出，调用方通过 `from core.discovery.shared import xxx` 导入
+
+### 4.6 统一操作间衔接逻辑（`transition_to_next`）
+
+**问题**：Stage 1 和 Stage 2 在每个业务操作完成后，各自有独立的"页面恢复"逻辑，实现不一致导致 Stage 2 出现问题：
+
+| 对比项 | Stage 1 (`_ensure_on_list_page`) | Stage 2 (`_cleanup_after_operation` + `page.goto`) |
+|--------|----------------------------------|-----------------------------------------------------|
+| 弹窗关闭 | `_close_dialog()` — 点击关闭/取消按钮 + Escape | Escape × 3 + JS cleanup + Escape |
+| 导航 | `page.go_back()`（浏览器后退） | `page.goto(target_url)`（全量导航） |
+| Tab 恢复 | `_restore_active_tab()` | 不恢复（全量刷新重置） |
+| 表格等待 | 无显式等待 | `wait_for_table_ready()` |
+
+**解决方案**：`shared/transition_helpers.py` 提供统一的 `transition_to_next()` 函数：
+
+```python
+async def transition_to_next(
+    page: Page,
+    target_url: str = "",           # Stage 2 必须传，Stage 1 可选
+    tab_name: str = "",             # 多 Tab 页面
+    tab_locator: str = "",
+    ui_framework: str = "element-ui",
+    wait_table: bool = True,
+    table_timeout: int = 15000,
+) -> bool:
+    """操作完成后，将页面恢复到初始列表状态。"""
+```
+
+**执行顺序**：
+1. **关闭所有弹窗**（必须先于导航，弹窗可能阻止 `page.goto()`）
+   - Escape × 2（处理嵌套弹窗）
+   - JS 关闭：点击关闭按钮 / 取消按钮
+   - JS 强制隐藏：对仍然可见的弹窗设 `display=none`（兜底）
+   - 验证：确认没有可见弹窗
+2. **导航回列表页**（智能优化：已在目标页且表格就绪则跳过 `page.goto()`）
+3. **恢复 Tab**（多 Tab 页面）
+4. **等待表格就绪**
+
+**智能导航优化**：
+```python
+if current_url.startswith(target_url):
+    # 已在目标页 → 先尝试等待表格，避免全量刷新（节省 2-3s）
+    table_ok = await wait_for_table_ready(page, timeout=5000)
+    if table_ok:
+        LOG.debug("表格已就绪，跳过 page.goto")
+        return False  # 无需导航
+    else:
+        LOG.info("表格未就绪（5s），执行 page.goto 刷新")
+        await page.goto(target_url, wait_until="networkidle")
+else:
+    # 不在目标页 → 必须导航
+    await page.goto(target_url, wait_until="networkidle")
+```
+
+**关键设计决策**：
+- **先关弹窗再导航**：弹窗（尤其有 `beforeunload` 的页面）可能阻止 `page.goto()`，所以必须在导航前关闭
+- **JS 强制隐藏兜底**：如果 Escape + 点击关闭按钮都无法关闭弹窗，强制设 `display=none`，确保页面可导航
+- **Stage 1 不传 target_url**：Stage 1 走 `go_back()` 轻量路径，避免全量刷新的性能开销
+- **Tab 恢复复用共享实现**：直接调用 `restore_active_tab()`，不重复实现
+- **表格等待可选**：某些操作（如纯弹窗操作）后不需要等待表格
+
+### 4.7 UI 回放引擎 — 通知钉住机制
 
 UI 自动化截图需要捕获 `el-message` / `el-notification` 等瞬态通知：
 
@@ -331,11 +448,11 @@ UI 自动化截图需要捕获 `el-message` / `el-notification` 等瞬态通知�
 - **释放**：`_cleanup_dialogs()` 在操作间清理时调用 `window.__unpin_notifications()` 释放
 - **截图时机**：在 `wait_for_loading_complete()` 之后、`+500ms` 等待通知出现后截图
 
-### 4.6 Stage 1 失败路径数据完整性
+### 4.8 Stage 1 失败路径数据完整性
 
 Stage 1 的所有失败路径（click_failed、no_fields、submit_failed 等）均记录 `trigger_text` 和 `trigger_locator_verified`，确保 `build_playbook()` 能为失败操作生成至少包含 click_button 步骤的 playbook，Stage 2 可以回放并捕获 API 响应。
 
-### 4.7 五角色字段分类系统
+### 4.9 五角色字段分类系统
 
 Stage 3 (`field_classifier.py`) 将请求体字段分为 5 个角色，驱动 Manifest 中的 `body_field_roles`：
 
@@ -357,32 +474,21 @@ Stage 3 (`field_classifier.py`) 将请求体字段分为 5 个角色，驱动 Ma
 
 **核心依赖**：`ValueIndex`（`field_classifier.py`）存储前置 API 响应 + 创建体 + 创建响应的值索引，Pass 3 的 context 识别完全依赖值相等匹配，不依赖字段名。
 
-### 4.8 Stage 1/Stage 2 共享运行时架构（`shared/`）
+### 4.10 replay_engine 支持的操作类型
 
-> **原则**：Stage 1 负责探测和记录（静态 locator），Stage 2 负责根据 locator 回放。对于无法通过静态 locator 回放的运行时动态逻辑，在 `core/discovery/shared/` 中**只定义一次**，Stage 1 和 Stage 2 同时调用。
+`replay/replay_engine.py` 支持以下 Playbook 步骤操作类型：
 
-**解决的问题**：
-- Stage 1 探测时操作成功，但 Stage 2 回放时因判定标准不同而失败
-- 相同的 Switch 切换/行定位/弹框关闭逻辑在两个阶段各写一份，修改不同步
-- 新增类似逻辑时不确定该放在哪里
-
-**8 个共享模块**：
-
-| 模块 | 功能 | 调用方 |
-|------|------|--------|
-| `success_verifier.py` | 六层策略链验证操作成功 | base_executor + replay_engine |
-| `switch_ops.py` | Switch 切换 + tab-pane 过滤 + 确认弹框 | crud_executor + replay_engine |
-| `message_capture.py` | MutationObserver 注入 + 通知钉住 | base_executor + replay_engine |
-| `row_interaction.py` | 行定位/勾选/点击（含固定列兼容） | crud_executor + replay_engine |
-| `dialog_helpers.py` | 弹框/遮罩层检测与关闭 | base_executor + replay_engine |
-| `form_validation.py` | 表单验证错误检测 | base_executor + replay_engine |
-| `constants.py` | 共享常量（成功/失败关键词等） | crud_executor + replay_engine |
-| `marker_utils.py` | Marker 提取（表格行标识） | crud_executor + replay_engine |
-
-**开发规范**：
-1. 新增运行时动态逻辑时 → 在 `shared/` 中创建模块
-2. 修改已有逻辑时 → 只改 `shared/` 中的实现，Stage 1/2 自动生效
-3. 在 `shared/__init__.py` 中导出，调用方通过 `from core.discovery.shared import xxx` 导入
+| 操作类型 | 说明 | 示例 |
+|---------|------|------|
+| `click` | 点击元素 | 按钮点击 |
+| `click_first` | 点击第一个匹配元素 | 多个匹配时取第一个 |
+| `fill` | 填充表单字段 | 输入框填充 |
+| `wait` | 等待指定时间 | 固定等待 |
+| `wait_selector` / `wait_visible` / `wait_for_selector` | 等待元素可见 | 等待弹窗出现 |
+| `wait_xpath` | 等待 XPath 元素 | XPath 定位等待 |
+| `click_xpath` | XPath 点击 | 复杂定位点击 |
+| `sync_vue_model` | Vue model 同步验证 | 下拉框值同步 |
+| `check_default_value` | 检查默认值 | 表单默认值验证 |
 
 ---
 
@@ -390,7 +496,7 @@ Stage 3 (`field_classifier.py`) 将请求体字段分为 5 个角色，驱动 Ma
 
 ### 5.1 运行时输出
 
-统一在 `projects/<project>/output/`：
+统一在 `workspace/<project>/output/`：
 - `config/` — cookies.json 等运行时配置
 - `logs/` — pipeline 日志
 
@@ -456,6 +562,19 @@ modules:
     enabled: true
     priority: 2
     tags: ["用户中心", "权限"]
+```
+
+### 6.3 credentials.yaml
+
+```yaml
+# 按 base_url 组织，支持多项目凭据管理
+"https://10.151.61.248":
+  username: "admin"
+  password: "password123"
+
+"https://another-system.com":
+  username: "user"
+  password: "pass456"
 ```
 
 ---
@@ -528,6 +647,13 @@ python -m core.discovery.run --project ecm-compute --module "用户管理" --sta
 
 回放引擎内置通知钉住机制（MutationObserver），在 `replay_from_playbook()` 开始时自动注入。确保使用最新的 `core/discovery/replay/replay_engine.py` 和 `button_driver.py`。
 
+### Q: Stage 2 操作间页面衔接失败？
+
+检查 `shared/transition_helpers.py` 的 `transition_to_next()` 日志：
+- 弹窗未关闭：检查 `_dismiss_all_overlays()` 是否正确执行
+- 表格未就绪：检查 `_navigate_to_list()` 的智能导航是否超时
+- Tab 未恢复：检查 `restore_active_tab()` 参数
+
 ---
 
 ## 9. 技术栈
@@ -540,6 +666,7 @@ python -m core.discovery.run --project ecm-compute --module "用户管理" --sta
 - **pyyaml** — 配置文件解析
 - **jsonpath-ng** — JSON 路径查询
 - **openpyxl** — Excel 导出（可选）
+- **ddddocr** — OCR 验证码识别（算术/字符）
 
 ---
 

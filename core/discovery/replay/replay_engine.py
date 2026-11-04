@@ -15,7 +15,7 @@ replay_engine.py — Playbook 回放引擎
 import logging
 import json
 from typing import Optional
-from .button_driver import ButtonDriver, confirm_dialog
+from .button_driver import ButtonDriver
 from .form_filler import FormFiller
 from .wait_helpers import wait_for_table_ready
 from .. import const
@@ -1557,61 +1557,6 @@ async def _take_assert_screenshot(page, step: dict):
         LOG.debug(f"    [assert_screenshot] saved: {len(raw)} bytes")
     except Exception as e:
         LOG.debug(f"    [assert_screenshot] failed: {e}")
-
-
-async def _diagnose_success_dom(page) -> list:
-    """诊断模式：扫描 DOM 中所有可能的成功提示元素。
-
-    Returns:
-        候选元素列表 [{selector, text, className, tag}]
-    """
-    try:
-        result = await page.evaluate("""() => {
-            const candidates = [];
-            const keywords = ['成功', 'success', 'completed', 'saved', '完成'];
-
-            // 扫描所有可见元素
-            const walker = document.createTreeWalker(
-                document.body, NodeFilter.SHOW_ELEMENT, null
-            );
-            while (walker.nextNode()) {
-                const el = walker.currentNode;
-                if (el.offsetParent === null) continue;  // 跳过不可见元素
-
-                const text = (el.textContent || '').trim();
-                const cls = el.className || '';
-                const matched = keywords.some(kw =>
-                    text.toLowerCase().includes(kw.toLowerCase())
-                );
-                if (!matched) continue;
-
-                // 构建推荐选择器
-                let selector = el.tagName.toLowerCase();
-                if (cls && typeof cls === 'string') {
-                    selector += '.' + cls.trim().split(/\\s+/).slice(0, 2).join('.');
-                }
-                if (el.id) selector = '#' + el.id;
-
-                candidates.push({
-                    tag: el.tagName.toLowerCase(),
-                    className: (typeof cls === 'string') ? cls : '',
-                    selector: selector,
-                    text: text.substring(0, 100),
-                    role: el.getAttribute('role') || ''
-                });
-            }
-            // 去重（同 selector 只保留第一个）
-            const seen = new Set();
-            return candidates.filter(c => {
-                if (seen.has(c.selector)) return false;
-                seen.add(c.selector);
-                return true;
-            });
-        }""")
-        return result or []
-    except Exception as e:
-        LOG.debug(f"    DOM 诊断异常: {e}")
-        return []
 
 
 async def _step_assert_row_disappeared(page, step: dict, button_driver: ButtonDriver, marker: str):

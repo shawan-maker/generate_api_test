@@ -16,7 +16,6 @@ Stage 2 直接执行 playbook 中的 steps，不再重新探测表单。
 
 import json
 import logging
-import re
 import time
 from pathlib import Path
 from .request_interceptor import RequestInterceptor
@@ -25,11 +24,7 @@ from .endpoint_classifier import EndpointClassifier
 from .replay.replay_engine import replay_from_playbook
 from .replay.wait_helpers import (
     wait_for_table_ready,
-    wait_for_dialog,
-    wait_for_loading_complete,
-    wait_for_api_response
 )
-from . import const
 from .path_mapper import get_workspace_dir
 from .shared.marker_utils import extract_marker_from_row
 
@@ -306,8 +301,20 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
                     LOG.info(f"  ✅ 页面已恢复，继续后续操作")
                 except Exception as reload_err:
                     LOG.error(f"  ❌ 页面恢复失败: {reload_err}")
-                    break  # 无法恢复，终止后续操作
-                continue  # 跳过清理，直接进入下一个操作
+                    # 恢复失败，记录当前操作时间窗口并终止
+                    op_end = time.time()
+                    replay_windows[action] = {"start": op_start, "end": op_end, "crashed": True, "recovery_failed": True}
+                    break
+                # 恢复成功，仍需要关闭弹窗 + 恢复 Tab + 等待表格（与其他操作保持一致）
+                try:
+                    from .shared.transition_helpers import transition_to_next
+                    await transition_to_next(page, target_url=target_url, ui_framework=ui_framework, wait_table=True, table_timeout=15000)
+                except Exception as e:
+                    LOG.warning(f"  崩溃恢复后页面重置失败: {e}")
+                # 记录时间窗口（标记为崩溃但已恢复）
+                op_end = time.time()
+                replay_windows[action] = {"start": op_start, "end": op_end, "crashed": True, "recovered": True}
+                continue
 
         # 操作间衔接：关闭弹窗 + 导航回列表页 + 等待表格（统一使用 shared/transition_to_next）
         try:

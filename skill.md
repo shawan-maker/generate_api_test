@@ -1,7 +1,7 @@
 ---
 name: api-ai-test
 description: "自动化发现、生成和执行 API/UI 测试的五阶段流水线。当用户提到 api、test、自动化测试、发现、生成、执行、用户管理、角色管理等关键词时触发。"
-version: "2.3.0"
+version: "2.4.0"
 compatibility: "通用（Claude / GPT / 其他 AI 客户端）"
 allowed-tools:
   - Bash(python:*)
@@ -33,6 +33,7 @@ allowed-tools:
 3. **导航自动发现** — 爬取侧边栏菜单，自动识别所有模块，批量处理
 4. **增量发现** — 7 天内已发现的模块自动跳过
 5. **多格式导出** — Postman Collection / helpers.py / Excel 参数文件
+6. **统一共享运行时** — Stage 1/2 共享 10 个运行时模块，确保行为一致
 
 ---
 
@@ -135,7 +136,7 @@ python projects/<项目名>/v1.0.0/ui/<模块名>.py --operation "创建用户"
 
 ---
 
-## ⚠️ AI 行为约束（必须遵守）
+## AI 行为约束（必须遵守）
 
 1. 执行 `--discover-only` 后，**必须**将模块列表展示给用户
 2. **等待用户选择**要执行的模块（输入编号如 `"1,3,5"` 或 `"all"`）
@@ -189,12 +190,27 @@ python projects/<项目名>/v1.0.0/ui/<模块名>.py --operation "创建用户"
 ## 架构约束：Stage 1/Stage 2 共享运行时
 
 > Stage 1 负责探测和记录（静态 locator），Stage 2 负责根据 locator 回放。
-> 对于**无法通过静态 locator 回放的运行时动态逻辑**（成功验证、Switch 切换、行定位、弹框处理等），在 `core/discovery/shared/` 中**只定义一次**，Stage 1 和 Stage 2 同时调用。
+> 对于**无法通过静态 locator 回放的运行时动态逻辑**（成功验证、Switch 切换、行定位、弹框处理、页面衔接等），在 `core/discovery/shared/` 中**只定义一次**，Stage 1 和 Stage 2 同时调用。
+
+**10 个共享模块**：
+
+| 模块 | 功能 |
+|------|------|
+| `transition_helpers.py` | 操作间页面衔接（关闭弹窗 → 导航回列表 → 恢复 Tab → 等待表格） |
+| `success_verifier.py` | 六层策略链验证操作成功 |
+| `switch_ops.py` | Switch 切换 + tab-pane 过滤 + 确认弹框 |
+| `message_capture.py` | MutationObserver 注入 + 通知钉住 |
+| `row_interaction.py` | 行定位 / 勾选 / 点击（含固定列兼容） |
+| `dialog_helpers.py` | 弹框 / 遮罩层检测与关闭 |
+| `form_validation.py` | 表单验证错误检测 |
+| `tab_helpers.py` | Tab 切换与恢复（多 Tab 页面） |
+| `marker_utils.py` | Marker 提取（表格行标识） |
+| `constants.py` | 共享常量（成功/失败关键词等） |
 
 **后续开发规范**：
 1. 新增运行时动态逻辑 → 在 `core/discovery/shared/` 中创建模块
 2. 修改已有逻辑 → 只改 `shared/` 中的实现，两阶段自动生效
-3. 详见 `docs/PROJECT_GUIDE.md §4.8` 和 `docs/stage_b_unified_refactoring.md`
+3. 详见 `docs/PROJECT_GUIDE.md 4.5` 和 `docs/stage_b_unified_refactoring.md`
 
 ---
 
@@ -225,13 +241,13 @@ cd projects/<项目名>/<版本>/api && python <模块名>_API测试.py
 使用 `--stage 5`，输出在 `projects/<项目名>/<版本>/export/<模块名>/`。
 
 ### Q: 如何查看日志？
-日志输出到 `projects/<项目名>/output/logs/`。
+日志输出到 `workspace/<项目名>/output/logs/`。
 
 ---
 
 ## 技术栈
 
-Python 3.9+ / Playwright / pytest / httpx / opencv-python-headless / pyyaml / jsonpath-ng / openpyxl
+Python 3.9+ / Playwright / pytest / httpx / opencv-python-headless / pyyaml / jsonpath-ng / openpyxl / ddddocr
 
 ---
 
@@ -239,4 +255,5 @@ Python 3.9+ / Playwright / pytest / httpx / opencv-python-headless / pyyaml / js
 
 - 项目实现详解：`docs/PROJECT_GUIDE.md`
 - 五阶段引擎设计：`docs/design/stage-improvement.md`
+- Stage B 统一化重构报告：`docs/stage_b_unified_refactoring.md`
 - Claude Code 操作指南：`.claude/commands/api-ai-test.md`
