@@ -4141,9 +4141,15 @@ async def _do_generic_operation(page, context: dict) -> dict:
             if confirmed:
                 LOG.info(f"    已点击确认按钮: {confirmed}")
             else:
-                LOG.warning(f"    {actual_state} 中未找到确认按钮")
-                await _close_dialog(page)
-                return _fail("no_confirm_button", f"{action} {actual_state} 中未找到确认按钮")
+                # ★ 修复: 无确认按钮时，尝试关闭弹窗（取消/关闭按钮）
+                # 只读查看型 dialog（如"导入历史"）只有取消按钮，关闭即为成功
+                LOG.info(f"    {actual_state} 中未找到确认按钮，尝试关闭弹窗...")
+                closed = await confirm_dialog(page, confirm=False)
+                if closed:
+                    LOG.info(f"    已点击取消/关闭按钮: '{closed}'（只读查看型弹窗）")
+                else:
+                    await _close_dialog(page)
+                    return _fail("no_confirm_button", f"{action} {actual_state} 中未找到确认按钮")
             await wait_for_loading_complete(page)
             await page.wait_for_timeout(1000)
         elif form_filler:

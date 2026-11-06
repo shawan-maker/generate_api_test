@@ -473,6 +473,7 @@ class FormFiller:
                             radio_field_details.append({
                                 "label": label,
                                 "option_text": first_text,
+                                "all_options": field.get("allOptions", []),
                                 "interaction_steps": _radio_interactions,
                             })
 
@@ -1591,10 +1592,13 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
             }}
             else if (fi.querySelector('{radio_group}')) {{
                 const radioIdx = fields.length;
-                const firstRadio = fi.querySelector('{radio_button}, {radio_label}');
+                const allRadioOptions = fi.querySelectorAll('{radio_button}, {radio_label}');
+                const allOptions = Array.from(allRadioOptions).map(opt => opt.textContent.trim()).filter(t => t);
+                const firstOptionText = allOptions.length > 0 ? allOptions[0] : '';
                 fields.push(Object.assign({{ label, type: 'radio', kb_category: 'radio',
                              required,
-                             firstOptionText: firstRadio ? firstRadio.textContent.trim() : '' }}, _buildComponentSelector(fi, '{radio_group}', radioIdx, label)));
+                             firstOptionText,
+                             allOptions }}, _buildComponentSelector(fi, '{radio_group}', radioIdx, label)));
             }}
             else if (fi.querySelector('{checkbox_container}') && !fi.closest('{table_container}')) {{
                 const checkboxIdx = fields.length;
@@ -3116,17 +3120,18 @@ class MultiStepExecutor:
                 }
             return False, {"skipped_reason": "path_select_failed", "kb_category": "el-cascader"}
         else:
-            success = await self._cascader_discover_and_select(steps, label)
+            success, selected_path = await self._cascader_discover_and_select(steps, label)
             if success:
-                # ★ 记录步骤：自动发现并选择
-                interaction_steps.append({
-                    "op": "click_first",
-                    "selector": ".el-cascader-panel .el-cascader-node",
-                    "desc": "自动发现并选择"
-                })
-                # 读取实际选择的路径
-                selected_path = await self._read_cascader_selected_path(selector)
-                LOG.info(f"    [cascader] {label}: 已记录 {len(interaction_steps)} 个操作步骤")
+                # ★ 为每一级记录一个 click_text 步骤（而非笼统的 click_first）
+                for i, text in enumerate(selected_path):
+                    interaction_steps.append({
+                        "op": "click_text",
+                        "selector": ".el-cascader-menu",
+                        "text": text,
+                        "level": i + 1,
+                        "desc": f"选择第{i+1}级: {text}"
+                    })
+                LOG.info(f"    [cascader] {label}: 已记录 {len(interaction_steps)} 个操作步骤, path={selected_path}")
                 return True, {
                     "option_text": " > ".join(selected_path) if selected_path else "",
                     "selected_path": selected_path,
@@ -4191,7 +4196,6 @@ class MultiStepExecutor:
                 **placeholder_kwargs
             )
 
-            # Debug: log the generated XPath
             LOG.debug(f"    XPath pattern: {xpath[:120]}...")
 
             # 如果有活跃覆盖层，先尝试在覆盖层内定位
@@ -4724,7 +4728,7 @@ class MultiStepExecutor:
         return await self._try_step_patterns(
             steps.get(target_step, {}), label=label, option_text=last_option)
 
-    async def _cascader_discover_and_select(self, steps: dict, label: str) -> bool:
+    async def _cascader_discover_and_select(self, steps: dict, label: str) -> tuple:
         """逐级发现+选择：每级选第一个有子级的项展开，到叶子级时选择。
 
         策略：
@@ -4732,14 +4736,19 @@ class MultiStepExecutor:
         - 如果有子级指示（箭头图标），点击第一项展开下一级
         - 如果无子级（叶子节点），直接点击选择
         - 最大深度 10 级保护
+
+        Returns:
+            tuple: (success: bool, selected_path: list[str])
+                selected_path 记录每级实际选择的文本，用于生成 interaction_steps
         """
         max_depth = 10
+        selected_path = []
 
         for depth in range(max_depth):
             items = await self._read_cascader_current_items()
             if not items:
                 LOG.warning(f"级联第 {depth+1} 级无菜单项")
-                return False
+                return False, selected_path
 
             first_item = items[0]
             if first_item.get("hasChildren"):
@@ -4749,7 +4758,8 @@ class MultiStepExecutor:
                     label=label, option_text=first_item["text"])
                 if not expanded:
                     LOG.warning(f"级联第 {depth+1} 级 '{first_item['text']}' 展开失败")
-                    return False
+                    return False, selected_path
+                selected_path.append(first_item["text"])  # ★ 记录中间级
                 await self.page.wait_for_timeout(300)
             else:
                 # 叶子节点：直接选择
@@ -4769,11 +4779,12 @@ class MultiStepExecutor:
                     steps.get(target_step, {}),
                     label=label, option_text=first_item["text"])
                 if selected:
-                    LOG.info(f"    级联自动发现: 选择了 '{first_item['text']}' (depth={depth+1})")
-                return selected
+                    selected_path.append(first_item["text"])  # ★ 记录叶子级
+                    LOG.info(f"    级联自动发现: 选择了 '{first_item['text']}' (depth={depth+1}), path={selected_path}")
+                return selected, selected_path
 
         LOG.warning("级联超过最大深度，中止")
-        return False
+        return False, selected_path
 
     async def discover_options(self, kb_category: str, label: str) -> dict:
         """发现组件的可用选项（不选择，仅读取）。

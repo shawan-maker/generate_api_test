@@ -918,6 +918,7 @@ def _build_create_steps(op_data: dict) -> list:
                 "kb_category": "radio",
                 "fill_rule": radio_field.get("fill_rule", {}),
                 "option_text": radio_field.get("option_text", ""),
+                "all_options": radio_field.get("all_options", []),
             }
 
             # ★ 附加该 radio 触发的 cascade 操作（如 transfer-box）
@@ -1237,6 +1238,7 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
                 "kb_category": "radio",
                 "fill_rule": radio_field.get("fill_rule", {}),
                 "option_text": radio_field.get("option_text", ""),
+                "all_options": radio_field.get("all_options", []),
             }
 
             # ★ 附加该 radio 触发的 cascade 操作（如 transfer-box）
@@ -1757,6 +1759,7 @@ def _build_page_nav_steps(op_data: dict) -> list:
                     "playwright_locator": playwright_locator,
                     "fill_rule": {},
                     "option_text": fs.get("value", ""),
+                    "all_options": field.get("all_options", []),
                     # ★ 保留 firstOptionText（来自 scan_form_fields_v2），供 Stage 2 Vue v-model 同步使用
                     "firstOptionText": field.get("firstOptionText", ""),
                 }

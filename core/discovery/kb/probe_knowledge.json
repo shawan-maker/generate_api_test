@@ -241,7 +241,7 @@
           "expand-level": {
             "desc": "展开中间级（两种类型操作相同：点击文本展开下一级）",
             "patterns": [
-              "//li[@role='menuitem']//span[contains(text(),'{option_text}')]"
+              "(//div[contains(@class,'el-cascader-menu')])[last()]//li[@role='menuitem']//span[contains(text(),'{option_text}')]"
             ]
           },
           "select-last-checkbox": {

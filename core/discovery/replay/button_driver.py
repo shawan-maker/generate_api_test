@@ -1517,12 +1517,16 @@ async def confirm_dialog(page: Page, confirm: bool = True, ui_framework: str = "
                 await wait_for_loading_complete(page)
                 return js_clicked
             # JS click 未命中，回退到 Playwright locator（兼容非 Vue 框架）
+            # ★ 修复: 避免 CSS scope + xpath= 混用导致 SyntaxError
+            # 使用 Playwright CSS scope + :has-text 过滤
             LOG.debug("generic-dialog JS click 未命中，回退到 Playwright locator")
             dialog_scope = ".el-dialog__wrapper:not([style*='display: none']), .ant-modal-wrap:not([style*='display: none'])"
-            if confirm:
-                button = page.locator(f"xpath={dialog_scope}//button[{confirm_xpath_pred} and {hidden_filter}]").first
-            else:
-                button = page.locator(f"xpath={dialog_scope}//button[{cancel_xpath_pred} and {hidden_filter}]").first
+            target_kw = "确定" if confirm else "取消"
+            button = page.locator(f'{dialog_scope} button:has-text("{target_kw}")').first
+            if await button.count() == 0:
+                # 无精确匹配，尝试空格归一化变体 "确 定"
+                target_kw_alt = "确 定" if confirm else "取 消"
+                button = page.locator(f'{dialog_scope} button:has-text("{target_kw_alt}")').first
 
         if button and await button.count() > 0:
             button_text = await button.inner_text()

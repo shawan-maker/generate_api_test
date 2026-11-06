@@ -728,6 +728,33 @@ async def _execute_interaction_steps(page, steps: list, label: str) -> bool:
                 await elements[0].click()
                 LOG.info(f"    [step {i}/{len(steps)}] {desc}: 点击第一个成功")
 
+            elif op == "click_text":
+                # 点击包含指定文本的元素（用于级联选择器的逐级点击）
+                selector = step.get("selector")
+                text = step.get("text", "")
+                level = step.get("level", 0)
+
+                if not selector or not text:
+                    raise Exception(f"click_text 操作缺少 selector 或 text")
+
+                LOG.debug(f"click_text: selector={selector}, text={text}, level={level}")
+
+                # 构建包含文本的选择器
+                text_selector = f"{selector}:has-text('{text}')"
+
+                try:
+                    await page.wait_for_selector(text_selector, state="visible", timeout=5000)
+                except Exception:
+                    raise Exception(f"等待元素超时: {text_selector}")
+
+                # 找到所有匹配的元素，点击第一个
+                elements = await page.query_selector_all(text_selector)
+                if not elements:
+                    raise Exception(f"未找到元素: {text_selector}")
+
+                await elements[0].click()
+                LOG.info(f"    [step {i}/{len(steps)}] {desc}: 点击文本 '{text}' 成功")
+
             elif op == "fill":
                 # 填充输入框
                 selector = step.get("selector")
@@ -976,6 +1003,16 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
         # 处理逻辑与 Stage 1 fill_create_form() 保持一致（含 Vue v-model 同步）
         if kb_category == "radio":
             try:
+                # ★ 优先使用 option_text（Stage 1 实际选择的值）
+                first_text = field.get("option_text", "") or field.get("firstOptionText", "")
+
+                # ★ 如果 option_text 有值但 locator 指向容器，构造具体选项的 locator
+                if first_text and locator and first_text not in locator:
+                    locator = (
+                        f'{locator} .el-radio:has-text("{first_text}"), '
+                        f'{locator} .el-radio-button:has-text("{first_text}")'
+                    )
+
                 enhanced = safe_css(locator, ui_framework) if locator else locator
                 await page.click(enhanced, timeout=3000)
                 LOG.info(f"      [Radio] 点击完成: {label}")
@@ -984,8 +1021,6 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
                 await page.wait_for_timeout(300)
 
                 # 通过共享工具强制同步 Vue v-model
-                # 兼容两种字段名：firstOptionText（原始扫描）和 option_text（playbook 生成）
-                first_text = field.get("firstOptionText", "") or field.get("option_text", "")
                 if first_text:
                     from .vue_radio_sync import sync_radio_vue_model
                     vue_update_result = await sync_radio_vue_model(page, first_text)
