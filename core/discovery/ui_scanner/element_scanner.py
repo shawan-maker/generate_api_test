@@ -321,6 +321,33 @@ async def _discover_once(page, kb: ProbeKB, framework: str) -> dict:
             LOG.info(f"  弹窗按钮: {len(result['dialog_buttons'])} (含创建弹窗内)")
         await _close_dialog(page)
 
+    # 3.8 主从布局检测：有表格 + 无 create_like 按钮 → 尝试激活树节点后重新扫描
+    has_create = any(_classify_button_location(b) == "create_like" for b in result["toolbar_buttons"])
+    _page_struct_check = await _snapshot_page_structure(page)
+    _has_table = _page_struct_check.get("mainBodyRows", -1) >= 0 or _page_struct_check.get("tables", 0) > 0
+    if _has_table and not has_create:
+        precondition = await _try_activate_master_detail_tree(page)
+        if precondition:
+            result["preconditions"] = [precondition]
+            # 重新扫描 toolbar + row_actions
+            _rescan = await _scan_candidates(page)
+            _new_toolbar = [
+                c for c in _rescan
+                if c.get("location") == "toolbar" and not _is_navigation_element(c)
+            ]
+            _new_rows = [c for c in _rescan if c.get("location") == "row_action"]
+            # 合并新发现的按钮（去重）
+            for btn in _new_toolbar:
+                if not any(b["text"] == btn["text"] for b in result["toolbar_buttons"]):
+                    result["toolbar_buttons"].append(btn)
+            for ra in _new_rows:
+                if not any(b["text"] == ra["text"] for b in result["row_actions"]):
+                    result["row_actions"].append(ra)
+            # 重新判断 has_create
+            has_create = any(_classify_button_location(b) == "create_like" for b in result["toolbar_buttons"])
+            LOG.info(f"  重新扫描: toolbar={len(result['toolbar_buttons'])} row_actions={len(result['row_actions'])} "
+                     f"has_create={has_create}")
+
     # 4.1 数据预热：空表格时先创建数据以发现行操作按钮
     # 条件：无行操作 + 有创建按钮（无论表格是否有数据）
     # 修复：即使表格有数据，如果行操作未被发现，也应执行预热
@@ -453,6 +480,209 @@ async def _discover_once(page, kb: ProbeKB, framework: str) -> dict:
     }
 
     return result
+
+
+async def _try_activate_master_detail_tree(page) -> dict:
+    """检测主从布局（左侧树形 + 右侧操作区域），自动选中第一个树节点。
+
+    触发条件（由调用方判断）：页面存在表格 + 无 create_like 按钮。
+
+    流程：
+    1. 检测树形结构是否存在
+    2. 检查是否已有选中状态（避免重复操作）
+    3. 点击第一个可见的树节点
+    4. 等待右侧内容刷新
+    5. 返回 precondition 记录（供 playbook 和 Stage 2 使用）
+
+    Returns:
+        precondition dict 或 None（未检测到树形结构）
+        {
+            "type": "click_first_visible",
+            "selector": "[role='treeitem']",
+            "text_matched": "总部",
+            "description": "选择部门节点以激活操作区域",
+            "wait_ms": 1500
+        }
+    """
+    try:
+        # Step 1: 检测树形结构
+        info = await page.evaluate("""
+        () => {
+            // 判断节点是否是叶子节点（无子节点）
+            function _isLeafNode(sel, node) {
+                // Element UI / Ant Design 常见叶子节点标记
+                const cls = (node.className || '').toString();
+
+                // 显式标记为叶子
+                if (cls.includes('is-leaf') || cls.includes('tree-leaf')) {
+                    return true;
+                }
+
+                // 检查是否有子节点容器
+                // Element UI: .el-tree-node__children
+                // Ant Design: .ant-tree-treenode 内的 .ant-tree-indent 或子 .ant-tree-treenode
+                const childrenContainer = node.querySelector(':scope > .el-tree-node__children, :scope > .ant-tree-list');
+                if (childrenContainer) {
+                    return false;  // 有子节点容器，不是叶子
+                }
+
+                // 检查 aria-expanded 属性（展开的节点不是叶子）
+                const ariaExpanded = node.getAttribute('aria-expanded');
+                if (ariaExpanded === 'true' || ariaExpanded === 'false') {
+                    return false;  // 有展开属性，是父节点
+                }
+
+                // 检查是否有展开/折叠图标
+                const switcherIcon = node.querySelector('.el-tree-node__expand-icon:not(.is-leaf), .ant-tree-switcher:not(.ant-tree-switcher-noop)');
+                if (switcherIcon) {
+                    return false;  // 有展开图标，是父节点
+                }
+
+                // 默认为叶子节点
+                return true;
+            }
+
+            const treeSelectors = [
+                '[role="treeitem"]',
+                '.el-tree-node',
+                '.ant-tree-treenode',
+                '.custom-tree-node',
+                '[class*="tree-node"]'
+            ];
+
+            for (const sel of treeSelectors) {
+                const nodes = document.querySelectorAll(sel);
+                if (nodes.length > 0) {
+                    // 检查是否已有选中状态（且选中的是叶子节点）
+                    const selectedSels = [
+                        sel + '.is-current',
+                        sel + '[aria-selected="true"]',
+                        sel + '.active',
+                        sel + '.selected'
+                    ];
+                    let hasSelected = false;
+                    let selectedText = null;
+                    for (const ssel of selectedSels) {
+                        const selectedNode = document.querySelector(ssel);
+                        if (selectedNode) {
+                            // 检查选中的是否是叶子节点
+                            const isLeaf = _isLeafNode(sel, selectedNode);
+                            if (isLeaf) {
+                                hasSelected = true;
+                                selectedText = selectedNode.textContent.trim().substring(0, 60);
+                            }
+                            break;
+                        }
+                    }
+
+                    // 找第一个可见的**叶子节点**
+                    let firstLeaf = null;
+                    for (const node of nodes) {
+                        const rect = node.getBoundingClientRect();
+                        if (rect.width > 0 && rect.height > 0) {
+                            const isLeaf = _isLeafNode(sel, node);
+                            if (isLeaf) {
+                                firstLeaf = node.textContent.trim().substring(0, 60);
+                                break;
+                            }
+                        }
+                    }
+
+                    return {
+                        found: true,
+                        selector: sel,
+                        nodeCount: nodes.length,
+                        hasSelected: hasSelected,
+                        selectedText: selectedText,
+                        firstLeaf: firstLeaf
+                    };
+                }
+            }
+            return {found: false};
+        }
+        """)
+
+        if not info.get("found"):
+            LOG.info("  🔍 主从布局检测: 无树形结构")
+            return None
+
+        tree_sel = info.get("selector", "")
+        first_leaf = info.get("firstLeaf", "")
+        LOG.info(f"  🔍 主从布局检测: 发现树形结构 ({tree_sel}, {info.get('nodeCount', 0)} 个节点)")
+        LOG.info(f"     首个可见叶子节点: '{first_leaf}'")
+
+        # Step 2: 如果已有选中状态（且选中的是叶子节点），记录但不点击
+        if info.get("hasSelected"):
+            selected_text = info.get("selectedText", "")
+            LOG.info(f"     已有选中状态: '{selected_text}'")
+            return {
+                "type": "click_first_leaf",
+                "selector": tree_sel,
+                "text_matched": selected_text or first_leaf,
+                "description": "选择树节点以激活操作区域",
+                "wait_ms": 1500
+            }
+
+        # Step 3: 点击第一个可见的叶子节点
+        LOG.info(f"  💡 自动选中第一个叶子节点以激活操作区域...")
+        clicked = await page.evaluate(f"""
+        () => {{
+            function _isLeafNode(sel, node) {{
+                const cls = (node.className || '').toString();
+                if (cls.includes('is-leaf') || cls.includes('tree-leaf')) {{
+                    return true;
+                }}
+                const childrenContainer = node.querySelector(':scope > .el-tree-node__children, :scope > .ant-tree-list');
+                if (childrenContainer) {{
+                    return false;
+                }}
+                const ariaExpanded = node.getAttribute('aria-expanded');
+                if (ariaExpanded === 'true' || ariaExpanded === 'false') {{
+                    return false;
+                }}
+                const switcherIcon = node.querySelector('.el-tree-node__expand-icon:not(.is-leaf), .ant-tree-switcher:not(.ant-tree-switcher-noop)');
+                if (switcherIcon) {{
+                    return false;
+                }}
+                return true;
+            }}
+
+            const nodes = document.querySelectorAll('{tree_sel}');
+            for (const node of nodes) {{
+                const rect = node.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0) {{
+                    const isLeaf = _isLeafNode('{tree_sel}', node);
+                    if (isLeaf) {{
+                        node.click();
+                        return node.textContent.trim().substring(0, 60);
+                    }}
+                }}
+            }}
+            return null;
+        }}
+        """)
+
+        if not clicked:
+            LOG.warning(f"     未能点击叶子节点")
+            return None
+
+        LOG.info(f"     已点击: '{clicked}'")
+
+        # Step 4: 等待右侧内容刷新
+        await page.wait_for_timeout(1500)
+
+        # Step 5: 返回 precondition 记录
+        return {
+            "type": "click_first_leaf",
+            "selector": tree_sel,
+            "text_matched": clicked,
+            "description": "选择树节点以激活操作区域",
+            "wait_ms": 1500
+        }
+
+    except Exception as e:
+        LOG.warning(f"  主从布局检测失败: {e}")
+        return None
 
 
 async def _scan_candidates(page) -> list:

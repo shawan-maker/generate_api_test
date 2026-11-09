@@ -579,6 +579,19 @@ def build_playbook(ui_result: dict) -> dict:
                 }
                 op_steps.append(click_tab_step)
 
+        # ★ 主从布局前置条件：在操作步骤前插入树节点点击
+        # 每个操作都需要（因为 URL 恢复后树选中状态丢失）
+        for pc in ui_result.get("preconditions", []):
+            precondition_step = {
+                "action": "precondition",
+                "type": pc.get("type", "click_first_visible"),
+                "selector": pc.get("selector", ""),
+                "text_matched": pc.get("text_matched", ""),
+                "wait_ms": pc.get("wait_ms", 1500),
+                "description": pc.get("description", "主从布局前置条件"),
+            }
+            op_steps.append(precondition_step)
+
         # ★ 跨页面操作检测：nav_info 中有 navigated_url → page-nav 模式
         # 不论成功失败，只要有导航信息就视为 page-nav
         nav_info = op_data.get("nav_info")

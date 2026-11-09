@@ -413,13 +413,13 @@ async def _close_dialog(page):
 
 
 def _classify_button_location(btn: dict) -> str:
-    """基于按钮 DOM 位置推断其行为类型（结构性，不依赖文本）。
+    """基于按钮 DOM 位置和文本推断其行为类型。
 
-    用于 Stage 1 内部逻辑（如决定是否扫描创建弹窗），不改变按钮的 action 字段。
-    按钮的 action 字段始终使用按钮文本原文。
+    用于 Stage 1 内部逻辑（如决定是否扫描创建弹窗、触发主从布局检测），
+    不改变按钮的 action 字段。按钮的 action 字段始终使用按钮文本原文。
 
     Returns:
-        "create_like" / "query_like" / "navigation" / "business"
+        "create_like" / "query_like" / "navigation" / "business" / "generic"
     """
     location = btn.get("location", "toolbar")
     tag = btn.get("tag", "")
@@ -428,14 +428,35 @@ def _classify_button_location(btn: dict) -> str:
     if location == "menu":
         return "navigation"
 
-    # 工具栏按钮（页面顶部）→ 可能是 create 或 query
+    # 工具栏按钮（页面顶部）
     if location == "toolbar":
-        # 有 icon 特征或 class 包含 search/query → query_like
+        # 必须是 BUTTON 标签
+        if tag != "BUTTON":
+            return "navigation"
+
         cls = (btn.get("className") or "").lower()
+        text = (btn.get("text") or "").lower()
+
+        # 搜索/查询类
         if "search" in cls or "query" in cls or "filter" in cls:
             return "query_like"
-        # 其他工具栏按钮 → 可能是 create 或 generic
-        return "create_like"
+
+        # 创建类按钮判断（primary + 文本双重验证，排除批量操作）
+        is_primary = "primary" in cls
+        has_create_keyword = any(kw in text for kw in ["创建", "新增", "新建", "添加", "create", "add", "new"])
+        has_batch_keyword = any(kw in text for kw in ["全部", "批量", "拒绝", "接受", "all", "batch", "reject", "accept"])
+
+        # primary 样式 + 创建类文本 → create_like
+        if is_primary and has_create_keyword:
+            return "create_like"
+        # primary 样式但文本是批量操作 → generic（如"全部接受"）
+        if is_primary and has_batch_keyword:
+            return "generic"
+        # 只有创建类文本 → create_like
+        if has_create_keyword:
+            return "create_like"
+        # 其他工具栏按钮 → generic
+        return "generic"
 
     # 行操作按钮 → 业务操作
     if location == "row_action":
@@ -723,12 +744,22 @@ def _infer_action_role(action: str, btn: dict, delete_actions: list = None) -> s
     if tag == "A" and btn.get("href"):
         return "detail"
 
-    # toolbar BUTTON：区分主操作按钮和辅助按钮
+    # toolbar BUTTON：区分主操作按钮和辅助按钮（与 _classify_button_location 一致）
     if location == "toolbar":
-        # primary 按钮 = 主操作（创建/新增）→ create 角色
-        if "primary" in cls:
+        text = (btn.get("text") or "").lower()
+        has_create_keyword = any(kw in text for kw in ["创建", "新增", "新建", "添加", "create", "add", "new"])
+        has_batch_keyword = any(kw in text for kw in ["全部", "批量", "拒绝", "接受", "all", "batch", "reject", "accept"])
+
+        # primary 按钮 + 创建类文本 → create 角色
+        if "primary" in cls and has_create_keyword:
             return "create"
-        # 非 primary 的 toolbar 按钮 = 批量操作/辅助功能 → generic
+        # primary 按钮但文本是批量操作 → generic
+        if "primary" in cls and has_batch_keyword:
+            return "generic"
+        # 只有创建类文本 → create
+        if has_create_keyword:
+            return "create"
+        # 其他 toolbar 按钮 → generic
         return "generic"
 
     # row_action / dropdown：区分删除/编辑/其他
@@ -749,9 +780,9 @@ def _infer_action_role(action: str, btn: dict, delete_actions: list = None) -> s
 def _find_create_delete_actions(buttons_by_action: dict) -> tuple:
     """基于 DOM 位置找出 create-like 和所有 delete-like 操作。
 
-    纯结构性判断：
-    - create: toolbar 中第一个 primary BUTTON（主操作按钮）
-    - delete: 所有破坏性操作（基于按钮文本关键词匹配，不写死具体操作名）
+    判断逻辑（与 _classify_button_location / _infer_action_role 统一）：
+    - create: toolbar BUTTON 同时满足 primary 样式 + 创建类文本，或仅含创建类文本
+    - delete: 所有破坏性操作（基于按钮文本关键词匹配）
 
     Args:
         buttons_by_action: {action: btn_dict} 映射
@@ -762,11 +793,19 @@ def _find_create_delete_actions(buttons_by_action: dict) -> tuple:
     create_action = None
     delete_actions = []
 
-    # create: toolbar 中第一个 primary BUTTON
+    _create_kws = ["创建", "新增", "新建", "添加", "create", "add", "new"]
+    _batch_kws = ["全部", "批量", "拒绝", "接受", "all", "batch", "reject", "accept"]
+
+    # create: toolbar BUTTON + (primary + 创建文本) 或 (仅创建文本)
     for action, btn in buttons_by_action.items():
         if btn.get("location") == "toolbar" and btn.get("tag") == "BUTTON":
             cls = (btn.get("className") or "").lower()
-            if "primary" in cls:
+            text = (btn.get("text") or action).lower()
+            is_primary = "primary" in cls
+            has_create = any(kw in text for kw in _create_kws)
+            has_batch = any(kw in text for kw in _batch_kws)
+
+            if (is_primary and has_create) or (has_create and not has_batch):
                 create_action = action
                 break
 

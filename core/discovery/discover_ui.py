@@ -28,6 +28,7 @@ from core.discovery.ui_scanner.element_scanner import (
     _snapshot_page_structure,
     _detect_ui_framework,
     _kb_enrichment_scan,
+    _try_activate_master_detail_tree,
 )
 from core.discovery.ui_scanner.button_detector import (
     _close_dialog,
@@ -114,6 +115,7 @@ __all__ = [
     "_snapshot_page_structure",
     "_detect_ui_framework",
     "_kb_enrichment_scan",
+    "_try_activate_master_detail_tree",
     "_get_kb",
     # UI Scanner - Button Detector
     "_close_dialog",

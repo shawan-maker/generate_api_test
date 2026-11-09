@@ -339,6 +339,9 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
             elif action == "click_tab":
                 await _step_click_tab(page, step)
 
+            elif action == "precondition":
+                await _step_precondition(page, step)
+
             elif action == "toggle_switch":
                 await _step_toggle_switch(page, step)
 
@@ -1672,6 +1675,100 @@ async def _step_click_tab(page, step: dict):
     except Exception as e:
         LOG.warning(f"    ⚠️ tab 切换失败 ({tab_name}): {e}")
         raise
+
+
+async def _step_precondition(page, step: dict):
+    """步骤：执行主从布局前置条件（如点击树节点）。
+
+    在主从布局页面中，某些操作按钮需要先选中树节点才可见。
+    此步骤在每次操作前执行，确保操作区域已激活。
+
+    Args:
+        page: Playwright Page 对象
+        step: precondition 步骤配置
+            - type: 前置条件类型（支持 "click_first_visible" 或 "click_first_leaf"）
+            - selector: 树节点选择器（如 "[role='treeitem']"）
+            - text_matched: 期望匹配的节点文本（可选）
+            - wait_ms: 点击后等待时间（毫秒）
+            - description: 描述信息
+    """
+    pc_type = step.get("type", "click_first_leaf")
+    selector = step.get("selector", "")
+    wait_ms = step.get("wait_ms", 1500)
+
+    if pc_type in ("click_first_leaf", "click_first_visible"):
+        if not selector:
+            LOG.warning("    precondition: 缺少 selector")
+            return
+
+        try:
+            # 查找并点击第一个可见的叶子节点
+            clicked = await page.evaluate(f"""
+            () => {{
+                function _isLeafNode(sel, node) {{
+                    const cls = (node.className || '').toString();
+                    if (cls.includes('is-leaf') || cls.includes('tree-leaf')) {{
+                        return true;
+                    }}
+                    const childrenContainer = node.querySelector(':scope > .el-tree-node__children, :scope > .ant-tree-list');
+                    if (childrenContainer) {{
+                        return false;
+                    }}
+                    const ariaExpanded = node.getAttribute('aria-expanded');
+                    if (ariaExpanded === 'true' || ariaExpanded === 'false') {{
+                        return false;
+                    }}
+                    const switcherIcon = node.querySelector('.el-tree-node__expand-icon:not(.is-leaf), .ant-tree-switcher:not(.ant-tree-switcher-noop)');
+                    if (switcherIcon) {{
+                        return false;
+                    }}
+                    return true;
+                }}
+
+                const nodes = document.querySelectorAll('{selector}');
+                for (const node of nodes) {{
+                    const rect = node.getBoundingClientRect();
+                    if (rect.width > 0 && rect.height > 0) {{
+                        // 如果是 click_first_leaf 模式，需要检查是否是叶子节点
+                        const needLeafCheck = {str(pc_type == 'click_first_leaf').lower()};
+                        if (needLeafCheck && !_isLeafNode('{selector}', node)) {{
+                            continue;
+                        }}
+
+                        // 检查是否已选中（避免重复点击）
+                        const isSelected = node.classList.contains('is-current') ||
+                                           node.getAttribute('aria-selected') === 'true' ||
+                                           node.classList.contains('active') ||
+                                           node.classList.contains('selected');
+                        if (isSelected) {{
+                            return {{clicked: false, reason: 'already_selected'}};
+                        }}
+                        node.click();
+                        return {{
+                            clicked: true,
+                            text: node.textContent.trim().substring(0, 60)
+                        }};
+                    }}
+                }}
+                return {{clicked: false, reason: 'no_visible_node'}};
+            }}
+            """)
+
+            if clicked.get("clicked"):
+                text = clicked.get("text", "")
+                LOG.info(f"    ✓ precondition: 已点击树节点 '{text}'")
+                await page.wait_for_timeout(wait_ms)
+            elif clicked.get("reason") == "already_selected":
+                LOG.debug(f"    ✓ precondition: 树节点已选中，跳过")
+            else:
+                LOG.warning(f"    ⚠️ precondition: 未找到可见的树节点")
+
+        except Exception as e:
+            LOG.warning(f"    ⚠️ precondition 执行失败: {e}")
+            # precondition 失败不应中断整个操作，允许继续（按钮可能已可见）
+
+    else:
+        LOG.warning(f"    precondition: 未知类型 '{pc_type}'")
 
 
 async def _step_toggle_switch(page, step: dict):
