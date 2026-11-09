@@ -473,6 +473,7 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict,
                 core_api_map[action] = [{
                     "api_captured": False,
                     "reason": "frontend_error",
+                    "pathname": "",
                 }]
                 continue
 
