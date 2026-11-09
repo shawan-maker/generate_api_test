@@ -971,12 +971,14 @@ async def _ensure_login(page, context, profile, login_url, target_url, args, wor
 
     LOG.info("  ✅ 认证成功")
 
-    # 导航到目标 URL
-    try:
-        await page.goto(target_url, wait_until="load", timeout=45000)
-    except Exception:
-        pass
-    await page.wait_for_timeout(3000)
+    # 导航到目标 URL（用于菜单发现）
+    if target_url:
+        LOG.info(f"  导航到目标页面: {target_url}")
+        try:
+            await page.goto(target_url, wait_until="load", timeout=45000)
+            await page.wait_for_timeout(5000)
+        except Exception as e:
+            LOG.warning(f"  导航失败: {e}，使用当前页面")
 
     return True
 

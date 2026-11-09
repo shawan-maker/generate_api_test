@@ -184,17 +184,29 @@ class SliderSolver:
         }
 
     def read_geometry(self, page):
-        """读取可见 #slideVerify 的几何信息
+        """读取可见滑块验证码的几何信息
+
+        兼容两种格式：
+        - 旧版: #slideVerify 容器
+        - 新版: .double-slide-verify-container 或 .slide-verify 容器
 
         Returns:
             dict: {ok, dispW, dispH, handle:{x,y,w,h}, trackW, reason}
         """
         js = r"""
         () => {
-          const svs = Array.prototype.slice.call(document.querySelectorAll('#slideVerify'));
-          const sv = svs.find(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
-          if (!sv) return { ok:false, reason:'no_visible_slideVerify', total: svs.length };
-          const bg = sv.querySelector('canvas:not(.slide-verify-block)');
+          // 兼容多种容器选择器（优先级：新版容器优先）
+          const selectors = ['.double-slide-verify-container', '#slideVerify', '.slide-verify-container', '.slide-verify'];
+          let sv = null;
+          for (const sel of selectors) {
+            const els = Array.prototype.slice.call(document.querySelectorAll(sel));
+            sv = els.find(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
+            if (sv) break;
+          }
+          if (!sv) {
+            return { ok:false, reason:'no_visible_slider', total: 0 };
+          }
+          const bg = sv.querySelector('canvas:not(.slide-verify-block), canvas.slide-verify-block');
           const handle = sv.querySelector('.slide-verify-slider-mask-item');
           const track = sv.querySelector('.slide-verify-slider');
           if (!bg || !handle || !track) return { ok:false, reason:'missing_parts' };

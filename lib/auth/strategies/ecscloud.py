@@ -8,6 +8,8 @@ ecscloud.py — EcsCloud/estack 登录策略
 import re
 import asyncio
 import logging
+import time
+import json
 
 from ..strategy_base import LoginStrategy, LoginResult, LoginConfig
 from ..captcha.slider import SliderSolver
@@ -116,15 +118,21 @@ class EcsCloudStrategy(LoginStrategy):
         username_sel = config.selectors.get("username", self.get_selectors()["username"])
         password_sel = config.selectors.get("password", self.get_selectors()["password"])
 
-        # 先尝试 Vue 注入
-        vue_ok = await self._fill_via_vue(page, config.username, config.password)
-        if not vue_ok:
-            # 回退到 Playwright fill
+        # 使用 Playwright fill 输入（触发所有原生输入事件，确保 Vue 表单验证正常工作）
+        try:
             await page.fill(username_sel, config.username)
             await page.fill(password_sel, config.password)
-
-        await page.wait_for_timeout(800)
-        LOG.info("[ecscloud] 已填充凭据")
+            await page.wait_for_timeout(500)
+            LOG.info("[ecscloud] 已填充凭据")
+        except Exception as e:
+            LOG.warning(f"[ecscloud] Playwright fill 失败，尝试 Vue 注入: {e}")
+            vue_ok = await self._fill_via_vue(page, config.username, config.password)
+            if not vue_ok:
+                # 双重保障：Vue 注入后再用 fill
+                await page.fill(username_sel, config.username)
+                await page.fill(password_sel, config.password)
+            await page.wait_for_timeout(800)
+            LOG.info("[ecscloud] 已填充凭据 (Vue注入)")
 
         # ★ 判断登录模式：检查是否有"点击完成认证"按钮
         has_auth_button = await page.evaluate("""(authText) => {
@@ -136,11 +144,100 @@ class EcsCloudStrategy(LoginStrategy):
         }""", auth_text)
 
         if has_auth_button:
-            # 旧模式：先点"点击完成认证" → 滑块验证 → 点"登录"
+            # 旧模式：先点"点击完成认证" → 等待滑块出现 → 滑块验证 → 点"登录"
             LOG.info(f"[ecscloud] 登录模式: 旧版 (有认证按钮 '{auth_text}')")
-            await self._click_auth_button(page, auth_text)
-            await page.wait_for_timeout(2500)
-            LOG.info(f"[ecscloud] 已点击认证按钮, material={'yes' if self._captcha_material else 'no'}")
+
+            # 点击前截图
+            try:
+                await page.screenshot(path="debug_before_click_auth.png", full_page=True)
+                LOG.info("[ecscloud] 点击前截图已保存: debug_before_click_auth.png")
+            except Exception as e:
+                LOG.warning(f"[ecscloud] 点击前截图失败: {e}")
+
+            # 监听网络请求
+            network_requests = []
+            page.on("request", lambda req: network_requests.append({
+                "url": req.url,
+                "method": req.method,
+                "timestamp": time.time()
+            }))
+
+            click_ok = await self._click_auth_button(page, auth_text)
+            LOG.info(f"[ecscloud] 认证按钮点击结果: {click_ok}")
+
+            # 等待滑块组件出现（最多5秒）
+            slider_appeared = await self._wait_for_slider(page, timeout_ms=5000)
+            if not slider_appeared:
+                LOG.warning("[ecscloud] 首次点击后滑块未出现，检查页面状态...")
+
+                # 详细检查页面状态
+                page_state = await page.evaluate("""() => {
+                    const url = window.location.href;
+                    const allButtons = Array.from(document.querySelectorAll('button'));
+                    const visibleButtons = allButtons.filter(b => {
+                        const r = b.getBoundingClientRect();
+                        return r.width > 0 && r.height > 0;
+                    }).map(b => ({
+                        text: b.textContent.trim(),
+                        classes: b.className,
+                        id: b.id
+                    })).slice(0, 10);
+
+                    // 检查是否有错误提示
+                    const errors = Array.from(document.querySelectorAll('.el-message, .el-notification, .error, .alert, [class*="error"], [class*="alert"]'))
+                        .filter(e => e.offsetWidth > 0 || e.offsetHeight > 0)
+                        .map(e => ({
+                            text: e.textContent.trim().substring(0, 100),
+                            classes: e.className
+                        }));
+
+                    // 检查是否有弹框
+                    const modals = Array.from(document.querySelectorAll('.el-dialog, .el-dialog__wrapper, .modal, [class*="modal"], [class*="dialog"]'))
+                        .filter(e => e.offsetWidth > 0 || e.offsetHeight > 0)
+                        .map(e => ({
+                            text: e.textContent.trim().substring(0, 100),
+                            classes: e.className,
+                            id: e.id
+                        }));
+
+                    // 检查验证码相关元素（即使不可见）
+                    const verifyElements = Array.from(document.querySelectorAll('[class*="verify"], [class*="slider"], [class*="captcha"], #slideVerify, .double-slide-verify-container'))
+                        .map(e => ({
+                            tag: e.tagName,
+                            classes: e.className,
+                            id: e.id,
+                            visible: e.offsetWidth > 0 || e.offsetHeight > 0,
+                            rect: e.getBoundingClientRect()
+                        }));
+
+                    return {
+                        url,
+                        visibleButtons,
+                        errors,
+                        hasModals: modals.length > 0,
+                        modalCount: modals.length,
+                        modals,
+                        verifyElements: verifyElements.slice(0, 20)
+                    };
+                }""")
+                LOG.info(f"[ecscloud] 页面状态: {json.dumps(page_state, indent=2, ensure_ascii=False)}")
+                LOG.info(f"[ecscloud] 点击后网络请求数: {len(network_requests)}")
+                if network_requests:
+                    for req in network_requests[-10:]:  # 只显示最后10个请求
+                        LOG.info(f"  - {req['method']} {req['url']}")
+
+                # 点击后截图
+                try:
+                    await page.screenshot(path="debug_after_click_auth.png", full_page=True)
+                    LOG.info("[ecscloud] 点击后截图已保存: debug_after_click_auth.png")
+                except Exception as e:
+                    LOG.warning(f"[ecscloud] 点击后截图失败: {e}")
+
+                click_ok = await self._click_auth_button(page, auth_text)
+                LOG.info(f"[ecscloud] 重试点击结果: {click_ok}")
+                slider_appeared = await self._wait_for_slider(page, timeout_ms=5000)
+
+            LOG.info(f"[ecscloud] 已点击认证按钮, slider_appeared={slider_appeared}, material={'yes' if self._captcha_material else 'no'}")
             trigger_text = auth_text
         else:
             # 新模式：先点"登录" → 滑块验证 → 自动登录
@@ -170,28 +267,58 @@ class EcsCloudStrategy(LoginStrategy):
                      f"total={geo.get('total', '?')}, material={'yes' if self._captcha_material else 'no'}")
 
             if not geo.get("ok"):
-                LOG.info(f"[ecscloud] geo 不可见 (reason={geo.get('reason')}), 重点击触发按钮")
-                if has_auth_button:
-                    await self._click_auth_button(page, auth_text)
+                # 如果是首次尝试，等待更久让滑块渲染（headless 模式可能需要额外时间）
+                if attempt == 0:
+                    LOG.info("[ecscloud] 首次未检测到滑块，额外等待 3s...")
+                    await page.wait_for_timeout(3000)
+                    geo = await self.slider.read_geometry(page)
+                    if geo.get("ok"):
+                        LOG.info(f"[ecscloud] 等待后检测到滑块: dispW={geo.get('dispW')}")
+                    else:
+                        LOG.info(f"[ecscloud] geo 仍不可见 (reason={geo.get('reason')}), 重点击触发按钮")
+                        if has_auth_button:
+                            await self._click_auth_button(page, auth_text)
+                        else:
+                            await page.evaluate("""(t) => {
+                              function isVisible(el) {
+                                if (!el) return false;
+                                const rect = el.getBoundingClientRect();
+                                if (rect.width === 0 || rect.height === 0) return false;
+                                const style = window.getComputedStyle(el);
+                                return style.display !== 'none' && style.visibility !== 'hidden';
+                              }
+                              const vis = Array.from(document.querySelectorAll('button')).filter(isVisible);
+                              let target = vis.find(b => (b.textContent||'').trim() === t);
+                              if (!target) target = vis.find(b => (b.textContent||'').replace(/\\s+/g, '') === t.replace(/\\s+/g, ''));
+                              if (target) target.click();
+                            }""", login_text)
+                        await page.wait_for_timeout(4000)  # 更长的等待时间
+                        geo = await self.slider.read_geometry(page)
+                        if not geo.get("ok"):
+                            continue
                 else:
-                    await page.evaluate("""(t) => {
-                      function isVisible(el) {
-                        if (!el) return false;
-                        const rect = el.getBoundingClientRect();
-                        if (rect.width === 0 || rect.height === 0) return false;
-                        const style = window.getComputedStyle(el);
-                        return style.display !== 'none' && style.visibility !== 'hidden';
-                      }
-                      const vis = Array.from(document.querySelectorAll('button')).filter(isVisible);
-                      let target = vis.find(b => (b.textContent||'').trim() === t);
-                      if (!target) target = vis.find(b => (b.textContent||'').replace(/\\s+/g, '') === t.replace(/\\s+/g, ''));
-                      if (target) target.click();
-                    }""", login_text)
-                await page.wait_for_timeout(2500)
-                geo = await self.slider.read_geometry(page)
-                if not geo.get("ok"):
-                    await page.wait_for_timeout(800)
-                    continue
+                    LOG.info(f"[ecscloud] geo 不可见 (reason={geo.get('reason')}), 重点击触发按钮")
+                    if has_auth_button:
+                        await self._click_auth_button(page, auth_text)
+                    else:
+                        await page.evaluate("""(t) => {
+                          function isVisible(el) {
+                            if (!el) return false;
+                            const rect = el.getBoundingClientRect();
+                            if (rect.width === 0 || rect.height === 0) return false;
+                            const style = window.getComputedStyle(el);
+                            return style.display !== 'none' && style.visibility !== 'hidden';
+                          }
+                          const vis = Array.from(document.querySelectorAll('button')).filter(isVisible);
+                          let target = vis.find(b => (b.textContent||'').trim() === t);
+                          if (!target) target = vis.find(b => (b.textContent||'').replace(/\\s+/g, '') === t.replace(/\\s+/g, ''));
+                          if (target) target.click();
+                        }""", login_text)
+                    await page.wait_for_timeout(4000)
+                    geo = await self.slider.read_geometry(page)
+                    if not geo.get("ok"):
+                        await page.wait_for_timeout(800)
+                        continue
 
             mat = self._captcha_material
             if not mat or not mat.get("backImage"):
@@ -335,17 +462,68 @@ class EcsCloudStrategy(LoginStrategy):
             return "/login" not in page.url
 
     async def _fill_via_vue(self, page, username: str, password: str) -> bool:
-        """通过 Vue 组件注入用户名密码"""
+        """通过 Vue 组件注入用户名密码，并触发响应式更新"""
         try:
             await page.evaluate(FIND_LC_SRC)
-            result = await page.evaluate(f"""() => {{
+            result = await page.evaluate(f"""(username, password) => {{
               const lc = findLC_smart();
-              if (!lc || !lc.loginForm) return false;
-              lc.loginForm.username = {username!r};
-              lc.loginForm.password = {password!r};
-              return true;
-            }}""")
-            return bool(result)
+              if (!lc || !lc.loginForm) return {{success: false, error: 'no_vm'}};
+
+              // 尝试多个可能的字段名
+              const userKeys = ['username', 'userName', 'user', 'loginName', 'account'];
+              const passKeys = ['password', 'passwd', 'pass'];
+
+              let userKey = null, passKey = null;
+              for (const key of userKeys) {{
+                if (key in lc.loginForm) {{ userKey = key; break; }}
+              }}
+              for (const key of passKeys) {{
+                if (key in lc.loginForm) {{ passKey = key; break; }}
+              }}
+
+              if (!userKey || !passKey) {{
+                return {{success: false, error: 'no_fields', keys: Object.keys(lc.loginForm)}};
+              }}
+
+              // 使用 Vue.$set 触发响应式更新
+              const Vue = window.Vue || lc.constructor;
+              if (Vue && Vue.set) {{
+                Vue.set(lc.loginForm, userKey, username);
+                Vue.set(lc.loginForm, passKey, password);
+              }} else {{
+                lc.loginForm[userKey] = username;
+                lc.loginForm[passKey] = password;
+              }}
+
+              // 触发 input 事件
+              const inputs = document.querySelectorAll('input[placeholder*="用户名"], input[placeholder*="密码"], input[type="text"], input[type="password"]');
+              inputs.forEach(input => {{
+                const event = new Event('input', {{ bubbles: true }});
+                input.dispatchEvent(event);
+                const changeEvent = new Event('change', {{ bubbles: true }});
+                input.dispatchEvent(changeEvent);
+              }});
+
+              // 强制更新 Vue 组件
+              if (lc.$forceUpdate) {{
+                lc.$forceUpdate();
+              }}
+
+              // ★ 等待 Vue 渲染完成（关键步骤）
+              return new Promise((resolve) => {{
+                if (lc.$nextTick) {{
+                  lc.$nextTick(() => {{
+                    resolve({{success: true, userKey, passKey}});
+                  }});
+                }} else {{
+                  setTimeout(() => {{
+                    resolve({{success: true, userKey, passKey}});
+                  }}, 100);
+                }}
+              }});
+            }}""", username, password)
+            LOG.info(f"[ecscloud] Vue 注入结果: {result}")
+            return result.get('success', False) if isinstance(result, dict) else bool(result)
         except Exception as e:
             LOG.debug(f"[ecscloud] Vue 注入失败: {e}")
             return False
@@ -389,25 +567,86 @@ class EcsCloudStrategy(LoginStrategy):
             return False
 
     async def _click_auth_button(self, page, text):
-        """多策略点击认证按钮"""
+        """点击认证按钮 — 优先找可见按钮的坐标，用 mouse.click"""
+        # 策略1（最可靠）：JavaScript 找可见按钮的坐标，用 Playwright mouse.click
         try:
-            btn = page.locator(f"button:has-text('{text}')").first
-            if await btn.is_visible(timeout=1500):
-                await btn.click(timeout=5000, force=True)
-                return True
-        except Exception:
-            pass
-        try:
-            done = await page.evaluate("""(t) => {
-              const nodes=[...document.querySelectorAll('*')].filter(n=>(n.textContent||'').trim()===t && n.children.length===0);
-              if(nodes[0]){nodes[0].dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));return true;}
-              const all=[...document.querySelectorAll('div,span,button,a')].filter(n=>(n.textContent||'').trim().includes(t));
-              if(all[all.length-1]){all[all.length-1].dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));return true;}
-              return false;
+            box = await page.evaluate("""(text) => {
+                const buttons = Array.from(document.querySelectorAll('button'));
+                // 只选可见的按钮（rect 宽度和高度都大于0）
+                for (const btn of buttons) {
+                    if (btn.textContent.includes(text)) {
+                        const rect = btn.getBoundingClientRect();
+                        if (rect.width > 0 && rect.height > 0) {
+                            return {x: rect.x, y: rect.y, width: rect.width, height: rect.height};
+                        }
+                    }
+                }
+                return null;
             }""", text)
-            return bool(done)
-        except Exception:
-            return False
+
+            if box and box['width'] > 0 and box['height'] > 0:
+                LOG.info(f"[ecscloud] JS获取可见按钮位置: {box}")
+                await page.mouse.click(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
+                await asyncio.sleep(1)
+                return True
+            else:
+                LOG.warning(f"[ecscloud] 未找到可见按钮或按钮尺寸为0: {box}")
+        except Exception as e:
+            LOG.warning(f"[ecscloud] 策略1 JS+mouse.click 失败: {e}")
+
+        # 策略2（备选）：JavaScript 直接调用 visible button 的 click()
+        try:
+            done = await page.evaluate("""(text) => {
+                const buttons = Array.from(document.querySelectorAll('button'));
+                for (const btn of buttons) {
+                    if (btn.textContent.includes(text)) {
+                        const rect = btn.getBoundingClientRect();
+                        if (rect.width > 0 && rect.height > 0) {
+                            btn.click();
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }""", text)
+            if done:
+                LOG.info("[ecscloud] 策略2 JS btn.click() 成功")
+                await asyncio.sleep(1)
+                return True
+            else:
+                LOG.warning("[ecscloud] 策略2未找到可见按钮")
+        except Exception as e:
+            LOG.warning(f"[ecscloud] 策略2点击失败: {e}")
+
+        return False
+
+    async def _wait_for_slider(self, page, timeout_ms=5000):
+        """等待滑块验证码组件出现"""
+        import time
+        deadline = time.time() + timeout_ms / 1000.0
+        while time.time() < deadline:
+            # 检查两种验证码容器
+            result = await page.evaluate("""() => {
+                const slideVerify = document.querySelectorAll('#slideVerify');
+                const doubleSlide = document.querySelectorAll('.double-slide-verify-container');
+                const visible = (els) => Array.from(els).some(e => {
+                    const r = e.getBoundingClientRect();
+                    return r.width > 0 && r.height > 0;
+                });
+                return {
+                    slideVerify_count: slideVerify.length,
+                    slideVerify_visible: visible(slideVerify),
+                    double_container_count: doubleSlide.length,
+                    double_container_visible: visible(doubleSlide),
+                    any_visible: visible(slideVerify) || visible(doubleSlide)
+                };
+            }""")
+            if result['any_visible']:
+                LOG.info(f"[ecscloud] 滑块组件已出现: {result}")
+                return True
+            await asyncio.sleep(0.5)
+        LOG.warning(f"[ecscloud] 滑块组件等待超时 ({timeout_ms}ms)")
+        return False
 
     async def _poll_verify(self, page, max_ms=6000):
         """轮询滑块验证结果"""

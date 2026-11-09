@@ -144,6 +144,14 @@ class RequestInterceptor:
         '.woff', '.woff2', '.ttf', '.eot', '.map', '.mp4', '.webm'
     )
 
+    # 响应样本路径过滤：跳过这些路径前缀（静态资源导出，体积大且非业务 API）
+    SKIP_RESPONSE_PATH_PREFIXES = (
+        '/export-js/', '/static/', '/assets/', '/public/',
+    )
+
+    # 单个响应体体积上限（超过则截断到 200KB，保留结构信息）
+    MAX_RESPONSE_BODY_SIZE = 200 * 1024  # 200KB
+
     def __init__(self, page, base_url: str, target_url: str, capture_all_mode: bool = False, api_path_prefix: str = None):
         self.page = page
         self.base_url = base_url
@@ -337,6 +345,13 @@ class RequestInterceptor:
             b = await resp.text()
             if b and len(b) > 20:
                 pn = urlparse(u).path.replace(self.base_url, "")
+                # ★ 跳过静态资源导出路径（体积大且非业务 API）
+                if any(pn.startswith(prefix) for prefix in self.SKIP_RESPONSE_PATH_PREFIXES):
+                    return
+                # ★ 超大响应体截断（保留结构信息，避免 MemoryError）
+                if len(b) > self.MAX_RESPONSE_BODY_SIZE:
+                    LOG.debug(f"  响应体过大 ({len(b)} bytes)，截断到 {self.MAX_RESPONSE_BODY_SIZE}: {pn[:60]}")
+                    b = b[:self.MAX_RESPONSE_BODY_SIZE] + "...[TRUNCATED]"
                 # 权限门禁识别：优先使用 HTTP 状态码，其次使用 KB 配置的关键词
                 status = resp.status
                 gate_detected = False

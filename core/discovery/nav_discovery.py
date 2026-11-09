@@ -39,7 +39,11 @@ async def crawl_menu_tree(page, wait_ms=1500, max_depth=5) -> list:
     home_url = page.url
     LOG.info(f"  菜单爬取起点: {home_url}")
 
-    # Step 0: 诊断当前页面
+    # Step 0: 等待 SPA 完全加载
+    LOG.info("  等待 SPA 初始化...")
+    await page.wait_for_timeout(8000)
+
+    # 诊断当前页面
     diag = await _diagnose_menu_structure(page)
     LOG.info(f"  菜单诊断: submenu_titles={diag.get('submenu_titles', 0)}, "
              f"menu_items={diag.get('menu_items', 0)}, "
