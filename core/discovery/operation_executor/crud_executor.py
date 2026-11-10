@@ -1773,6 +1773,11 @@ async def _do_create(page, context: dict) -> dict:
     )
     cleanup_tab_listener()
 
+    # 2.5 确定提交按钮的搜索范围（避免误点击反馈弹窗内的按钮）
+    from core.discovery.operation_executor.base_executor import _determine_submit_scope
+    scope_selector = await _determine_submit_scope(page, obs)
+    LOG.info(f"    [scope] scenario={obs['scenario']}, container_type={obs.get('container_type', '')}, scope_selector={scope_selector[:80] if scope_selector else '(empty)'}")
+
     # 2a. 新标签页场景
     if obs["scenario"] == "new_tab":
         new_page = obs["new_page"]
@@ -2001,7 +2006,7 @@ async def _do_create(page, context: dict) -> dict:
             LOG.info(f"    兜底 select_dropdowns: 选择了 {select_count} 个下拉框")
 
     # 7. 提交
-    submit_result = await form_filler.submit_form_v2()
+    submit_result = await form_filler.submit_form_v2(scope_selector=scope_selector)
     if not submit_result.get("locator"):
         from core.discovery.ui_scanner.button_detector import _close_dialog
         await _close_dialog(page)
@@ -4765,24 +4770,15 @@ async def _do_generic_operation(page, context: dict) -> dict:
     # 验证操作是否真的成功（严格模式：需要正向成功信号）
     success, detail = await _verify_operation_success(page, action, strict=True, captured_messages=captured_msgs)
 
-    # ★ 统一判定逻辑：根据 detail.failure_type 区分"明确失败"和"无信号"
-    # - 明确失败（failure_type != "no_signal"）→ 返回失败
-    # - 无信号（failure_type == "no_signal"）→ 按钮已点击/表单已提交，标记为成功
+    # ★ 统一判定逻辑：无论 failure_type 是什么，未检测到成功信号即标记为失败
+    # query/detail 操作有独立函数（_do_query/_do_detail），不走此路径，不受影响
     if not success:
         failure_type = detail.get("failure_type", "no_signal")
-        failure_reason = detail.get("failure_reason", "")
-
-        if failure_type != "no_signal":
-            # ★ 明确检测到失败（dialog/toast/captured 中有失败关键词）
-            LOG.warning(f"    [operation_failed] {action} 操作失败: {failure_reason[:80]}")
-            # 关闭可能残留的弹窗/抽屉
-            await _close_dialog(page)
-            return _fail("operation_failed", f"{action} 操作失败: {failure_reason}")
-        else:
-            # ★ 无信号 → 按钮已点击/表单已提交，标记为成功
-            LOG.info(f"    [no_signal] {action} 无明确成功信号，但按钮已点击，标记为成功")
-            # 关闭可能残留的弹窗/抽屉
-            await _close_dialog(page)
+        failure_reason = detail.get("failure_reason", "未检测到成功信号")
+        LOG.warning(f"    [operation_failed] {action} 操作未成功 ({failure_type}): {failure_reason[:80]}")
+        # 关闭可能残留的弹窗/抽屉
+        await _close_dialog(page)
+        return _fail("operation_failed", f"{action} 操作未成功: {failure_reason}")
 
     # 构建 selectors
     selectors = {"trigger": btn_text}
@@ -4817,9 +4813,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
         "has_form_in_dialog": post_state["has_form_in_dialog"],
     }
 
-    # ★ 标记成功信号未捕获（供后续阶段参考，但不影响成功状态）
-    if not success:
-        result["success_signal_not_captured"] = True
+    # success 为 True 才会执行到这里（not success 已在上方 return _fail）
 
     # 记录 trigger_locator_verified（使用 _click_button_escalating 返回的实际 locator）
     if btn_location not in ("dropdown",):

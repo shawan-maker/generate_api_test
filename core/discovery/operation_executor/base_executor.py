@@ -702,6 +702,79 @@ async def _observe_post_click(page, url_before: str, timeout_ms: int = 3000,
     return result
 
 
+async def _determine_submit_scope(page, obs: dict) -> str:
+    """确定提交按钮的搜索范围，避免误点击反馈弹窗内的按钮。
+
+    Args:
+        page: Playwright Page 对象
+        obs: _observe_post_click 的返回值
+
+    Returns:
+        CSS 选择器字符串（空字符串表示全页面）
+    """
+    scenario = obs.get("scenario", "none")
+    container_type = obs.get("container_type", "")
+    container_title = obs.get("container_title", "")
+
+    # new_tab 场景已隔离，无需 scope
+    if scenario == "new_tab":
+        return ""
+
+    # page_nav 场景：表单在新页面主体，提交按钮可能在表单内或页面级固定栏
+    if scenario == "page_nav":
+        has_form = obs.get("has_form", False)
+        if has_form:
+            # 表单内部 + 页面级固定底栏（如 .order-submit）
+            # 注意：不能用 :visible（Playwright 伪类），querySelectorAll 不支持
+            return ".el-form, .ant-form, form, .order-submit, .page-footer, .form-footer"
+        else:
+            # 无表单：搜索 body 内所有元素，排除隐藏的弹窗和抽屉
+            return "body *:not(.el-dialog__wrapper):not(.el-dialog__wrapper *):not(.el-drawer):not(.el-drawer *)"
+
+    # dialog 场景：表单在弹窗内
+    if scenario == "dialog":
+        if container_type == "el-dialog":
+            if container_title:
+                # 用 title 精确匹配
+                return f".el-dialog__wrapper:not([style*='display: none']):has(.el-dialog__title:has-text('{container_title}')) .el-dialog__body"
+            else:
+                return ".el-dialog__wrapper:not([style*='display: none']) .el-dialog__body"
+        elif container_type == "el-drawer":
+            return ".el-drawer.el-drawer--open .el-drawer__body"
+        elif container_type == "el-message-box":
+            return ".el-message-box__wrapper:not([style*='display: none'])"
+        else:
+            # 未知容器类型，回退到全页面
+            return ""
+
+    # none 场景：检查是否有已存在的可见弹窗
+    try:
+        visible_dialog = await page.evaluate("""() => {
+            const dialog = document.querySelector('.el-dialog__wrapper:not([style*="display: none"])');
+            if (dialog && dialog.offsetWidth > 0) {
+                const hasForm = !!(dialog.querySelector('.el-form') || dialog.querySelector('form'));
+                return {type: 'dialog', hasForm};
+            }
+            const drawer = document.querySelector('.el-drawer.el-drawer--open');
+            if (drawer && drawer.offsetWidth > 0) {
+                const hasForm = !!(drawer.querySelector('.el-form') || drawer.querySelector('form'));
+                return {type: 'drawer', hasForm};
+            }
+            return null;
+        }""")
+
+        if visible_dialog:
+            if visible_dialog.get("type") == "dialog" and visible_dialog.get("hasForm"):
+                return ".el-dialog__wrapper:not([style*='display: none']) .el-dialog__body"
+            elif visible_dialog.get("type") == "drawer" and visible_dialog.get("hasForm"):
+                return ".el-drawer.el-drawer--open .el-drawer__body"
+    except Exception as e:
+        LOG.warning(f"  [scope] 检测可见弹窗失败: {e}")
+
+    # 无可见弹窗或弹窗内无表单，使用页面主体
+    return "body > main, body > section, body > div:not(.el-dialog__wrapper):not(.el-drawer)"
+
+
 async def _check_page_has_form(page) -> bool:
     """检查当前页面是否包含表单元素。"""
     try:
