@@ -231,8 +231,17 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
             # form_field_details 来自 scan_form_fields_v2()，包含 cascade_actions 等完整信息
             if form_field_details != form_fields:
                 LOG.info(f"    [FIX] 更新 nav_info.form_fields: {len(form_fields)} → {len(form_field_details)} 个字段")
-                old_labels = {f.get("label") for f in form_fields}
-                new_labels = {f.get("label") for f in form_field_details}
+                # 类型校验：form_fields 元素必须是 dict，不能是 str
+                if all(isinstance(f, dict) for f in form_fields):
+                    old_labels = {f.get("label") for f in form_fields}
+                else:
+                    LOG.warning(f"    [FIX] form_fields 元素类型异常: {[type(f).__name__ for f in form_fields[:5]]}")
+                    old_labels = set()
+                if all(isinstance(f, dict) for f in form_field_details):
+                    new_labels = {f.get("label") for f in form_field_details}
+                else:
+                    LOG.warning(f"    [FIX] form_field_details 元素类型异常: {[type(f).__name__ for f in form_field_details[:5]]}")
+                    new_labels = set()
                 added = new_labels - old_labels
                 removed = old_labels - new_labels
                 if added:

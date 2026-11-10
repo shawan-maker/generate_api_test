@@ -3554,6 +3554,8 @@ async def _do_generic_operation(page, context: dict) -> dict:
             "success": False,
             "error_type": error_type,
             "error_text": error_text,
+            "failure_type": error_type,
+            "failure_reason": error_text,
             "trigger_text": trigger_text_normalized,
             "action": action,
         }
@@ -4144,7 +4146,25 @@ async def _do_generic_operation(page, context: dict) -> dict:
             _msgs_after_confirm = await page.evaluate("() => (window.__captured_messages || []).length")
             LOG.info(f"    [DIAG-after-confirm] confirm_dialog 后，消息数组长度: {_msgs_after_confirm}")
             if confirmed:
-                LOG.info(f"    已点击确认按钮: {confirmed}")
+                # 验证返回的文本是否真的是确认按钮文本（去空格后匹配 CONFIRM_TEXTS）
+                confirmed_normalized = confirmed.replace(" ", "")
+                is_real_confirm = confirmed_normalized in const.CONFIRM_TEXTS_SET
+                if is_real_confirm:
+                    LOG.info(f"    已点击确认按钮: {confirmed}")
+                else:
+                    # confirm_dialog 返回了非确认按钮文本（可能是弹窗标题或内容文本）
+                    # 说明弹窗内没有确认按钮 → 只读查看型弹窗，关闭即为成功
+                    LOG.info(f"    confirm_dialog 返回了非确认文本: '{confirmed[:40]}'（只读查看型弹窗）")
+                    closed = await confirm_dialog(page, confirm=False)
+                    if not closed:
+                        await _close_dialog(page)
+                    return {
+                        "success": True,
+                        "trigger_text": trigger_text_normalized,
+                        "selectors": {"trigger": btn_text},
+                        "interaction_mode": "readonly_dialog",
+                        "readonly_dialog": True,
+                    }
             else:
                 # ★ 修复: 无确认按钮时，尝试关闭弹窗（取消/关闭按钮）
                 # 只读查看型 dialog（如"导入历史"）只有取消按钮，关闭即为成功

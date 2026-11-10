@@ -747,6 +747,14 @@ async def _scan_candidates(page) -> list:
             const wrapper = el.closest('.el-dialog__wrapper, .ant-modal-wrap, .el-drawer__wrapper');
             if (wrapper && wrapper.style.display === 'none') return;
 
+            // ★ 跳过非标准浮层内的按钮（cookie偏好/公告/通知等非业务组件）
+            const nonBizOverlay = el.closest(
+                '[class*="cookie"], [class*="consent"], [class*="banner"], ' +
+                '[class*="notice-bar"], [class*="announcement"], [class*="notification-bar"], ' +
+                '[class*="toast-"], [class*="snackbar"], [class*="alert-bar"]'
+            );
+            if (nonBizOverlay) return;
+
             seen.add(key);
             let location = 'toolbar';
             let source = 'main';
