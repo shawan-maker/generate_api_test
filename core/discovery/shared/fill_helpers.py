@@ -124,7 +124,7 @@ def generate_fill_data(fields: list, username: str = "test") -> dict:
 
     MULTI_STEP_SKIP = set(const.MULTI_STEP_TYPES) | {
         "date-range-picker", "el-tree-select", "form-checkbox",
-        "el-radio", "el-switch", "el-checkbox-group",
+        "radio", "el-radio", "el-switch", "el-checkbox-group",
     }
 
     fill_data = {}
@@ -183,6 +183,12 @@ def generate_fill_rules(fields: list) -> dict:
         kb_category = field.get("kb_category", "")
         input_type = field.get("inputType", "text")
         required = field.get("required", False)
+
+        # 特殊处理 radio 字段：使用 firstOptionText 作为固定值
+        if kb_category == "radio" or field_type == "radio":
+            first_option = field.get("firstOptionText", "")
+            rules[label] = {"rule": "fixed_value", "params": {"value": first_option}}
+            continue
 
         # 特殊处理 IP 输入字段
         if kb_category == "ip-input":
@@ -255,6 +261,10 @@ def _infer_fill_rule(label: str, field_type: str, input_type: str, required: boo
         return {"rule": "password_pattern", "params": {"prefix": "Test@"}}
 
     # 基于字段类型推断
+    if field_type == "radio":
+        # radio 字段应通过 generate_fill_rules 处理（需要 firstOptionText）
+        # 这里是安全兜底：无选项信息时返回空固定值
+        return {"rule": "fixed_value", "params": {"value": ""}}
     if field_type == "textarea":
         return {"rule": "description_pattern", "params": {"prefix": "auto"}}
 
