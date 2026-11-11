@@ -101,7 +101,7 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
 
     for i, step in enumerate(steps):
         action = step.get("action")
-        LOG.debug(f"    执行步骤 {i+1}/{len(steps)}: {action}")
+        LOG.info(f"    执行步骤 {i+1}/{len(steps)}: {action}")
 
         # 每步执行前检查页面是否崩溃
         if await _is_page_crashed(page):
@@ -270,6 +270,10 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
             elif action == "click_row_button":
                 ctx["url_before_click"] = page.url
                 await _step_click_row_button(page, step, button_driver, marker)
+                # 等待 Vue 事件处理和弹窗渲染（与 click_button 保持一致）
+                await page.wait_for_timeout(1500)
+                from .wait_helpers import wait_for_loading_complete
+                await wait_for_loading_complete(page, timeout=10000)
 
             elif action == "click_row_more":
                 ctx["url_before_click"] = page.url
@@ -344,6 +348,9 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
 
             elif action == "toggle_switch":
                 await _step_toggle_switch(page, step)
+
+            elif action == "click_radio":
+                await _step_click_radio(page, step)
 
             elif action == "assert_table_has_data":
                 await _step_assert_table_has_data(page)
@@ -669,6 +676,16 @@ async def _step_wait_for_dialog(page, step: dict, ctx: dict):
         # Page-nav 模式：等待页面加载完成
         await page.wait_for_load_state("networkidle", timeout=10000)
         await page.wait_for_timeout(1000)
+    elif interaction_mode == "readonly_dialog":
+        # Readonly_dialog 模式：等待只读弹窗出现（无表单，仅查看）
+        try:
+            await page.wait_for_selector(locator, state="visible", timeout=timeout)
+            await page.wait_for_timeout(1000)
+            LOG.info(f"    [wait_for_dialog] 只读弹窗已出现: {locator}")
+        except Exception:
+            raise Exception(
+                f"wait_for_dialog 超时：未找到只读弹窗（{locator}）"
+            )
     else:
         raise Exception(f"未知的 interaction_mode: {interaction_mode}")
 
@@ -1491,7 +1508,7 @@ async def _step_click_row_button(page, step: dict, button_driver: ButtonDriver, 
     if not clicked:
         raise Exception(f"未找到行内按钮: {button_text}")
 
-    LOG.debug(f"点击行内按钮: {button_text}")
+    LOG.info(f"    [click_row_button] 成功: {button_text}")
 
 
 async def _step_confirm_dialog(page, step: dict, result: dict = None):
@@ -1794,6 +1811,93 @@ async def _step_toggle_switch(page, step: dict):
         raise Exception(f"switch 切换失败 ({sw_text}): {error_msg}")
 
     LOG.info(f"    ✓ switch '{sw_text}' 切换完成: {detail.get('before_state')} → {detail.get('after_state')}")
+
+
+async def _step_click_radio(page, step: dict):
+    """步骤：点击 radio 选项。
+
+    Radio 是点击操作，不是 fill 操作。Stage 1 已提供精确的 option_locator。
+    处理逻辑与 Stage 1 fill_create_form() 中的 radio 点击保持一致（含 Vue v-model 同步）。
+    """
+    label = step.get("label", "")
+    locator = step.get("playwright_locator", "")
+    first_text = step.get("option_text", "") or step.get("firstOptionText", "")
+
+    if not locator and not first_text:
+        LOG.warning(f"    ⚠️ radio '{label}' 无 locator 和 option_text，跳过")
+        return
+
+    # ★ 如果 option_text 有值但 locator 指向容器，构造具体选项的 locator
+    if first_text and locator and first_text not in locator:
+        locator = (
+            f'{locator} .el-radio:has-text("{first_text}"), '
+            f'{locator} .el-radio-button:has-text("{first_text}")'
+        )
+
+    if not locator:
+        # fallback: 全局搜索 radio 选项
+        locator = (
+            f'.el-radio-group .el-radio:has-text("{first_text}"), '
+            f'.el-radio-group .el-radio-button:has-text("{first_text}")'
+        )
+
+    # 使用 safe_css 处理 Playwright 不支持的伪类
+    from .locator_helpers import safe_css
+    ui_framework = "element-ui"  # 默认 Element UI
+    enhanced = safe_css(locator, ui_framework)
+
+    try:
+        await page.click(enhanced, timeout=3000)
+        await page.wait_for_timeout(300)
+        LOG.info(f"    ✓ radio '{label}' 点击完成: {first_text}")
+    except Exception as e:
+        LOG.warning(f"    ⚠️ radio '{label}' 点击失败: {e}")
+        raise
+
+    # Vue v-model 同步（关键：Element UI 的 radio 点击后 v-model 可能不更新）
+    try:
+        from core.discovery.replay.vue_radio_sync import sync_radio_vue_model
+        vue_result = await sync_radio_vue_model(page, first_text)
+        if vue_result.get("success"):
+            LOG.debug(f"    ✓ Vue v-model 同步成功: {vue_result}")
+        else:
+            LOG.warning(f"    ⚠️ Vue v-model 同步失败: {vue_result}")
+    except Exception as e:
+        LOG.warning(f"    ⚠️ Vue v-model 同步异常: {e}")
+
+    # cascade_actions 处理（如 radio 触发 transfer-box 选择）
+    cascade_actions = step.get("cascade_actions", [])
+    if cascade_actions:
+        LOG.info(f"    → 处理 {len(cascade_actions)} 个 cascade_actions")
+        for ca in cascade_actions:
+            ca_type = ca.get("type", "")
+            if ca_type == "transfer-box":
+                trigger_value = ca.get("trigger_value", "")
+                interaction_steps = ca.get("interaction_steps", [])
+                # 只有当选择的值匹配 trigger_value 时才执行 cascade
+                if not trigger_value or trigger_value == first_text:
+                    LOG.info(f"    [Radio] 执行 cascade: transfer-box (trigger: {trigger_value})")
+                    await page.wait_for_timeout(500)  # 等待动态组件渲染
+
+                    if interaction_steps:
+                        success = await _execute_interaction_steps(
+                            page, interaction_steps, label
+                        )
+                        if success:
+                            LOG.info(f"    [Radio] cascade transfer-box 回放成功")
+                        else:
+                            LOG.warning(f"    [Radio] cascade transfer-box 回放失败")
+                    else:
+                        from .form_filler import MultiStepExecutor
+                        ui_framework = "element-ui"
+                        executor = MultiStepExecutor(page, None, ui_framework)
+                        success, detail = await executor.execute_with_details(
+                            "transfer-box", label, "", None, ""
+                        )
+                        if success:
+                            LOG.info(f"    [Radio] cascade 成功（重新探索）")
+                        else:
+                            LOG.warning(f"    [Radio] cascade 失败")
 
 
 async def _step_assert_table_has_data(page):

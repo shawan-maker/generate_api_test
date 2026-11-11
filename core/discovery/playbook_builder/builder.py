@@ -920,17 +920,16 @@ def _build_create_steps(op_data: dict) -> list:
                 field_info["ip_version"] = ms_field.get("ip_version", "v4")
             fields_info.append(field_info)
 
-        # 添加 radio 字段（带已验证的选项 locator）
-        # 从 op_data 获取 cascade_actions，用于附加到对应的 radio 字段
+        # 收集 radio 字段为独立的 click_radio 步骤（不加入 fill_form）
         cascade_actions = op_data.get("cascade_actions", [])
+        radio_steps = []
         for radio_field in radio_details:
             radio_entry = {
+                "action": "click_radio",
                 "label": radio_field["label"],
                 "playwright_locator": radio_field.get("option_locator", ""),
-                "type": "radio",
-                "kb_category": "radio",
-                "fill_rule": radio_field.get("fill_rule", {}),
                 "option_text": radio_field.get("option_text", ""),
+                "firstOptionText": radio_field.get("firstOptionText", ""),
                 "all_options": radio_field.get("all_options", []),
             }
 
@@ -940,7 +939,7 @@ def _build_create_steps(op_data: dict) -> list:
             if matching_cascades:
                 radio_entry["cascade_actions"] = matching_cascades
 
-            fields_info.append(radio_entry)
+            radio_steps.append(radio_entry)
 
         # ★ Phase 4b: 为 el-select 附加 cascade_actions
         for field_info in fields_info:
@@ -965,6 +964,10 @@ def _build_create_steps(op_data: dict) -> list:
                 "fields": fields_info,
                 "description": "填充表单字段"
             })
+
+        # ★ Radio 点击步骤（独立于 fill_form）
+        for rs in radio_steps:
+            steps.append(rs)
 
     # Step 4: 点击提交按钮（使用已验证的 locator）
     submit_locator = op_data.get("submit_locator_verified") or op_data.get("submit_locator")
@@ -1018,17 +1021,32 @@ def _build_delete_steps(op_data: dict, create_marker=None) -> list:
             "description": "勾选行 checkbox"
         })
 
-    # Step 3: 点击删除按钮（只使用已验证的 locator）
+    # Step 3: 点击删除按钮（区分行级操作和全局操作）
     selectors = op_data.get("selectors", {})
     trigger = selectors.get("trigger")
-    trigger_locator = op_data.get("trigger_locator_verified")
-    if trigger_locator:
-        steps.append({
-            "action": "click_button",
-            "text": trigger,
-            "playwright_locator": trigger_locator,
-            "description": "点击删除按钮"
-        })
+    is_row_action = op_data.get("is_row_action", False) or op_data.get("btn_location") == "row_action"
+
+    if is_row_action:
+        # 行级操作：先定位行，再在行内点击按钮（与 Stage 1 click_row_button_v2 对齐）
+        button_text = op_data.get("button_text") or trigger
+        trigger_locator = op_data.get("trigger_locator_verified")
+        if button_text:
+            steps.append({
+                "action": "click_row_button",
+                "button_text": button_text,
+                "playwright_locator": trigger_locator,
+                "description": f"点击行内{trigger}按钮"
+            })
+    else:
+        # 全局按钮（只使用已验证的 locator）
+        trigger_locator = op_data.get("trigger_locator_verified")
+        if trigger_locator:
+            steps.append({
+                "action": "click_button",
+                "text": trigger,
+                "playwright_locator": trigger_locator,
+                "description": "点击删除按钮"
+            })
 
     # Step 4: 处理确认对话框（仅当 Stage 1 记录 confirmed=True 时生成）
     confirmed = op_data.get("confirmed") or op_data.get("selectors", {}).get("confirm")
@@ -1240,17 +1258,16 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
                 field_info["ip_version"] = ms_field.get("ip_version", "v4")
             fields_info.append(field_info)
 
-        # 添加 radio 字段（带已验证的选项 locator）
-        # 从 op_data 获取 cascade_actions，用于附加到对应的 radio 字段
+        # 收集 radio 字段为独立的 click_radio 步骤（不加入 fill_form）
         cascade_actions = op_data.get("cascade_actions", [])
+        radio_steps = []
         for radio_field in radio_details:
             radio_entry = {
+                "action": "click_radio",
                 "label": radio_field["label"],
                 "playwright_locator": radio_field.get("option_locator", ""),
-                "type": "radio",
-                "kb_category": "radio",
-                "fill_rule": radio_field.get("fill_rule", {}),
                 "option_text": radio_field.get("option_text", ""),
+                "firstOptionText": radio_field.get("firstOptionText", ""),
                 "all_options": radio_field.get("all_options", []),
             }
 
@@ -1260,7 +1277,7 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
             if matching_cascades:
                 radio_entry["cascade_actions"] = matching_cascades
 
-            fields_info.append(radio_entry)
+            radio_steps.append(radio_entry)
 
         # ★ Phase 4b: 为 el-select 附加 cascade_actions
         for field_info in fields_info:
@@ -1276,6 +1293,10 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
                 "fields": fields_info,
                 "description": "填充编辑表单"
             })
+
+        # ★ Radio 点击步骤（独立于 fill_form）
+        for rs in radio_steps:
+            steps.append(rs)
 
     # Step 5: 点击提交（使用已验证的 locator）
     submit_locator = op_data.get("submit_locator_verified") or op_data.get("submit_locator")
@@ -1586,6 +1607,22 @@ def _build_generic_steps(op_data: dict, create_marker=None) -> list:
         steps.append({
             "action": "close_dialog",
             "description": "关闭残留对话框"
+        })
+
+    # readonly_dialog：点击按钮弹出只读查看弹窗，关闭即为成功
+    if op_data.get("readonly_dialog") or op_data.get("interaction_mode") == "readonly_dialog":
+        # 使用 Stage 1 实际记录的弹窗选择器（而非硬编码）
+        dialog_locator = op_data.get("dialog_locator",
+            ".el-dialog__wrapper:not([style*=\"display: none\"]), .el-drawer:not([style*=\"display: none\"])")
+        steps.append({
+            "action": "wait_for_dialog",
+            "playwright_locator": dialog_locator,
+            "interaction_mode": "readonly_dialog",
+            "description": "等待只读弹窗出现"
+        })
+        steps.append({
+            "action": "close_dialog",
+            "description": "关闭只读弹窗"
         })
 
     # 如果有导航返回，添加 navigate_back 步骤

@@ -191,8 +191,8 @@ async def click_row_button(
             from core.discovery.replay.wait_helpers import wait_for_loading_complete
             await wait_for_loading_complete(page, timeout=10000)
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        LOG.warning(f"click_row_button_v2 异常，尝试 JS 降级: {e}")
 
     # 降级：JS click（兼容 Element UI 固定列）
     if marker:

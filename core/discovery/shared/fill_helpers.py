@@ -184,10 +184,8 @@ def generate_fill_rules(fields: list) -> dict:
         input_type = field.get("inputType", "text")
         required = field.get("required", False)
 
-        # 特殊处理 radio 字段：使用 firstOptionText 作为固定值
-        if kb_category == "radio" or field_type == "radio":
-            first_option = field.get("firstOptionText", "")
-            rules[label] = {"rule": "fixed_value", "params": {"value": first_option}}
+        # 跳过 radio 字段（现在使用 click_radio 步骤，不需要 fill_rules）
+        if kb_category == "radio":
             continue
 
         # 特殊处理 IP 输入字段
@@ -261,10 +259,6 @@ def _infer_fill_rule(label: str, field_type: str, input_type: str, required: boo
         return {"rule": "password_pattern", "params": {"prefix": "Test@"}}
 
     # 基于字段类型推断
-    if field_type == "radio":
-        # radio 字段应通过 generate_fill_rules 处理（需要 firstOptionText）
-        # 这里是安全兜底：无选项信息时返回空固定值
-        return {"rule": "fixed_value", "params": {"value": ""}}
     if field_type == "textarea":
         return {"rule": "description_pattern", "params": {"prefix": "auto"}}
 

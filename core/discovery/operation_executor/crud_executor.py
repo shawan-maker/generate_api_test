@@ -3460,6 +3460,8 @@ async def _do_delete(page, context: dict) -> dict:
             "selectors": selectors,
             "confirmed": confirmed,
             "is_delete": True,
+            "is_row_action": btn_location == "row_action",
+            "btn_location": btn_location,
             "requires_marker": True,
             "marker": marker,
             "trigger_text": trigger_text_normalized,
@@ -3486,6 +3488,8 @@ async def _do_delete(page, context: dict) -> dict:
             "selectors": selectors,
             "confirmed": confirmed,
             "is_delete": True,
+            "is_row_action": btn_location == "row_action",
+            "btn_location": btn_location,
             "requires_marker": True,
             "marker": marker,
             "trigger_text": trigger_text_normalized,
@@ -4164,6 +4168,9 @@ async def _do_generic_operation(page, context: dict) -> dict:
                         "selectors": {"trigger": btn_text},
                         "interaction_mode": "readonly_dialog",
                         "readonly_dialog": True,
+                        "trigger_locator_verified": _verified_trigger_locator,
+                        "dialog_locator": _sel_q,
+                        "container_type": _container_type,
                     }
             else:
                 # ★ 修复: 无确认按钮时，尝试关闭弹窗（取消/关闭按钮）
