@@ -1882,6 +1882,10 @@ async def _do_create(page, context: dict) -> dict:
                 entry["sub_selectors"] = field.get("subSelectors", [])
                 entry["input_count"] = field.get("inputCount", 4)
                 entry["ip_version"] = field.get("ipVersion", "v4")
+            # ★ composite-input: 显式标记为"复合输入字段"（使用 sub_components，不需要 locator）
+            if kb_cat == "composite-input":
+                entry["requires_locator"] = False
+                entry["sub_components"] = field.get("subComponents", [])
             multi_step_field_details.append(entry)
 
     # 5. 填充表单（传入预生成的 fill_data）
@@ -1946,14 +1950,16 @@ async def _do_create(page, context: dict) -> dict:
     # 确保 playbook 不包含 Stage 1 未完成的步骤
     for detail in ms_details:
         label = detail["label"]
+        kb_cat = detail.get("kb_category", "")
         if detail.get("skipped_reason"):
             # 从 multi_step_field_details 中移除跳过的字段
             multi_step_field_details = [
-                f for f in multi_step_field_details if f["label"] != label
+                f for f in multi_step_field_details
+                if not (f["label"] == label and f.get("kb_category", "") == kb_cat)
             ]
             continue
         for ms_field in multi_step_field_details:
-            if ms_field["label"] == label:
+            if ms_field["label"] == label and ms_field.get("kb_category", "") == kb_cat:
                 ms_field["is_editable"] = detail.get("is_editable", False)
                 # 移除 option_text（Stage 2 不再依赖文本回放）
                 if "select_sub_type" in detail:

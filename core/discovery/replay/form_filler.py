@@ -140,6 +140,9 @@ class FormFiller:
                 entry["inputCount"] = f["inputCount"]
             if f.get("ipVersion"):
                 entry["ipVersion"] = f["ipVersion"]
+            # ★ 复合输入专用字段
+            if f.get("subComponents"):
+                entry["subComponents"] = f["subComponents"]
             result.append(entry)
         return result
 
@@ -599,72 +602,6 @@ class FormFiller:
                 from .locator_helpers import safe_css
                 input_count = field.get("inputCount", 1)
 
-                # ★ 复合字段特殊处理：智能判断主输入框
-                if input_count >= 2:
-                    LOG.info(f"    [DEBUG-FILL] 复合字段 {label}: inputCount={input_count}, 智能定位主输入框")
-                    # 通过 label 在 el-form-item 中找到所有 input
-                    form_item_css = f'.el-form-item:has(.el-form-item__label:has-text("{label}"))'
-                    form_items = await self.page.locator(form_item_css).all()
-                    for fi in form_items:
-                        inputs = await fi.locator('input:not([readonly]):visible').all()
-                        if len(inputs) >= 2:
-                            # 智能判断：优先选空值 + 有"请输入"placeholder 的 input
-                            main_input = None
-                            main_idx = -1
-
-                            # 第一轮：找空值 + "请输入" placeholder
-                            for idx, inp in enumerate(inputs):
-                                try:
-                                    val = await inp.input_value()
-                                    placeholder = await inp.get_attribute('placeholder') or ''
-                                    if not val and ('请输入' in placeholder or 'Enter' in placeholder):
-                                        main_input = inp
-                                        main_idx = idx
-                                        LOG.info(f"    [DEBUG-FILL] {label}: 找到空值+请输入 placeholder 的 input (idx={idx})")
-                                        break
-                                except:
-                                    continue
-
-                            # 第二轮：找空值的 input（可能无 placeholder）
-                            if not main_input:
-                                for idx, inp in enumerate(inputs):
-                                    try:
-                                        val = await inp.input_value()
-                                        if not val:
-                                            main_input = inp
-                                            main_idx = idx
-                                            LOG.info(f"    [DEBUG-FILL] {label}: 找到空值 input (idx={idx})")
-                                            break
-                                    except:
-                                        continue
-
-                            # 第三轮：找有"请输入"的 input（即使有值也覆盖）
-                            if not main_input:
-                                for idx, inp in enumerate(inputs):
-                                    try:
-                                        placeholder = await inp.get_attribute('placeholder') or ''
-                                        if '请输入' in placeholder or 'Enter' in placeholder:
-                                            main_input = inp
-                                            main_idx = idx
-                                            LOG.info(f"    [DEBUG-FILL] {label}: 找到请输入 placeholder 的 input (idx={idx})")
-                                            break
-                                    except:
-                                        continue
-
-                            # 兜底：选第一个 input
-                            if not main_input:
-                                main_input = inputs[0]
-                                main_idx = 0
-                                LOG.info(f"    [DEBUG-FILL] {label}: 兜底选第一个 input")
-
-                            await main_input.fill(value, timeout=3000)
-                            LOG.info(f"    [DEBUG-FILL] ✓ {label}: 填充主输入框 (idx={main_idx})")
-                            filled += 1
-                            break
-                    else:
-                        LOG.warning(f"    [DEBUG-FILL] {label}: 未找到复合字段的主输入框")
-                    continue
-
                 # 优先使用 scan 返回的精确 selector
                 if selector:
                     enhanced = safe_css(selector)
@@ -812,6 +749,11 @@ class FormFiller:
                         "sub_selectors": field.get("subSelectors", []),
                         "input_count": field.get("inputCount", 4),
                         "ip_version": field.get("ipVersion", "v4"),
+                    }
+                elif kb_cat == "composite-input":
+                    extra_kwargs = {
+                        "sub_components": field.get("subComponents", []),
+                        "fill_rule": field.get("fill_rule", {}),
                     }
 
                 success, detail = await executor.execute_with_details(
@@ -1808,13 +1750,57 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                         }})),
                     }});
 
-                    // 复合输入组：过滤辅助输入，选择主输入
+                    // ★ 复合输入检测：收集所有可见子组件（select/cascader/date-picker/input 等）
+                    const subComponents = [];
+
+                    // 收集 el-select 子组件
+                    for (const s of fi.querySelectorAll('.el-select')) {{
+                        if (s.offsetWidth > 0 && s.offsetHeight > 0) {{
+                            subComponents.push(Object.assign({{
+                                type: 'select',
+                                componentType: 'el-select',
+                            }}, _buildSelector(s, label)));
+                        }}
+                    }}
+
+                    // 收集 el-cascader 子组件
+                    for (const c of fi.querySelectorAll('.el-cascader')) {{
+                        if (c.offsetWidth > 0 && c.offsetHeight > 0) {{
+                            subComponents.push(Object.assign({{
+                                type: 'cascader',
+                                componentType: 'el-cascader',
+                            }}, _buildSelector(c, label)));
+                        }}
+                    }}
+
+                    // 收集独立 input 子组件（排除 el-select/el-cascader/el-date-editor 内部的）
+                    for (const inp of allInputs) {{
+                        if (inp.closest('.el-select') || inp.closest('.el-cascader') || inp.closest('.el-date-editor')) continue;
+                        if (inp.offsetWidth <= 0 || inp.offsetHeight <= 0) continue;
+                        subComponents.push(Object.assign({{
+                            type: 'input',
+                            placeholder: inp.placeholder || '',
+                            inputType: inp.type || 'text',
+                        }}, _buildSelector(inp, label)));
+                    }}
+
+                    if (subComponents.length >= 2) {{
+                        fields.push({{
+                            label,
+                            type: 'composite-input',
+                            kb_category: 'composite-input',
+                            inputCount: allInputs.length,
+                            subComponents: subComponents,
+                            required,
+                        }});
+                        return;
+                    }}
+
+                    // 回退：纯多 input（无 select 子组件），选主 input
                     const mainInput = allInputs.find(inp => {{
-                        // 优先选择 placeholder 包含"请输入"的
                         if (inp.placeholder && (inp.placeholder.includes('请输入') || inp.placeholder.includes('Enter'))) {{
                             return true;
                         }}
-                        // 或选择宽度最大的
                         return false;
                     }}) || allInputs.reduce((max, inp) => inp.offsetWidth > max.offsetWidth ? inp : max, allInputs[0]);
 
@@ -2297,6 +2283,7 @@ class MultiStepExecutor:
             "list-selector": self._execute_list_selector_with_details,
             "transfer-box": self._execute_transfer_box,
             "ip-input": self._execute_ip_input_with_details,
+            "composite-input": self._execute_composite_input_with_details,
         }
         handler = handlers.get(kb_category)
         if not handler:
@@ -2304,7 +2291,7 @@ class MultiStepExecutor:
             return False, {}
 
         try:
-            if kb_category == "ip-input":
+            if kb_category in ("ip-input", "composite-input"):
                 return await handler(label, kwargs)
             else:
                 # 所有处理器统一接收双选择器
@@ -2357,15 +2344,26 @@ class MultiStepExecutor:
                     };
                 }
 
-                // 单选模式
-                const input = sel.querySelector('.el-input__inner');
-                const selectedLabel = sel.querySelector('.el-select__selected-item');
-                const value = selectedLabel?.textContent?.trim() || input?.value || '';
-                if (value) {
-                    return {hasValue: true, mode: 'single', value: value};
+                // 单选模式 — 增加 Vue model 验证
+                const vue = sel.__vue__;
+                if (vue) {
+                    const modelValue = vue.value !== undefined ? vue.value
+                                     : vue.currentValue !== undefined ? vue.currentValue
+                                     : null;
+                    if (modelValue === '' || modelValue === null || modelValue === undefined
+                        || (Array.isArray(modelValue) && modelValue.length === 0)) {
+                        return {hasValue: false};
+                    }
+                    const selectedLabel = sel.querySelector('.el-select__selected-item');
+                    const input = sel.querySelector('.el-input__inner');
+                    const displayValue = selectedLabel?.textContent?.trim() || input?.value || '';
+                    return {hasValue: true, mode: 'single', value: displayValue};
                 }
 
-                return {hasValue: false};
+                // 无 Vue 实例时回退到 DOM 检测
+                const input = sel.querySelector('.el-input__inner');
+                const value = input?.value || '';
+                return value ? {hasValue: true, mode: 'single', value} : {hasValue: false};
             }""", selector)
 
             if has_default.get("hasValue"):
@@ -3585,6 +3583,152 @@ class MultiStepExecutor:
 
         LOG.info(f"    ✅ IP 填充成功: {filled_count}/{input_count} 段, 已记录 {len(interaction_steps)} 个操作步骤")
         return True, {"option_text": ip_value, "input_count": filled_count, "interaction_steps": interaction_steps}
+
+    async def _execute_composite_input_with_details(self, label: str, kwargs: dict) -> Tuple[bool, Dict]:
+        """复合输入组件处理器（泛化设计，支持任意子组件组合）。
+
+        子组件类型：select / cascader / date-picker / input 等
+
+        Args:
+            label: 字段标签
+            kwargs: 额外参数
+                - sub_components: 子组件列表 [{type, selector, componentType, ...}, ...]
+                - fill_rule: 填充规则
+
+        Returns:
+            Tuple[bool, Dict]: (是否成功, {"interaction_steps": list, ...})
+        """
+        sub_components = kwargs.get("sub_components", [])
+        fill_rule = kwargs.get("fill_rule", {})
+        interaction_steps = []
+        filled_count = 0
+
+        for comp in sub_components:
+            comp_type = comp.get("type", "")
+            selector = comp.get("selector", "")
+            if not selector:
+                continue
+
+            if comp_type == "select":
+                # el-select 子组件：展开 → 选第一项
+                try:
+                    el = self.page.locator(selector).first
+                    if await el.count() > 0 and await el.is_visible():
+                        await el.click(timeout=3000)
+                        await self.page.wait_for_timeout(500)
+                        # 选第一个可见选项
+                        option = self.page.locator(
+                            ".el-select-dropdown:not([style*='display: none']) "
+                            ".el-select-dropdown__item:not(.is-disabled)"
+                        ).first
+                        if await option.count() > 0:
+                            option_text = (await option.text_content() or "").strip()
+                            await option.click(timeout=3000)
+                            filled_count += 1
+                            interaction_steps.extend([
+                                {"op": "click", "selector": selector,
+                                 "desc": f"展开{label}下拉框"},
+                                {"op": "wait", "duration": 500,
+                                 "desc": "等待选项加载"},
+                                {"op": "click_first",
+                                 "selector": ".el-select-dropdown:not([style*='display: none']) "
+                                             ".el-select-dropdown__item:not(.is-disabled)",
+                                 "desc": f"选择选项: {option_text or '第一项'}"},
+                            ])
+                            LOG.info(f"    [composite-input] {label}: select 子组件已选择 '{option_text}'")
+                except Exception as e:
+                    LOG.warning(f"    [composite-input] {label}: select 子组件填充失败: {e}")
+
+                # 关闭可能残留的下拉框
+                try:
+                    await self.page.keyboard.press("Escape")
+                    await self.page.wait_for_timeout(200)
+                except Exception:
+                    pass
+
+            elif comp_type == "cascader":
+                # el-cascader 子组件：点击 → 选第一级第一项 → 逐级选择
+                try:
+                    el = self.page.locator(selector).first
+                    if await el.count() > 0 and await el.is_visible():
+                        await el.click(timeout=3000)
+                        await self.page.wait_for_timeout(500)
+                        # 逐级选择第一项
+                        for level in range(3):  # 最多 3 级
+                            item = self.page.locator(
+                                ".el-cascader-panel .el-cascader-menu:first-child "
+                                ".el-cascader-node:not(.is-disabled)"
+                            ).first
+                            if await item.count() > 0:
+                                await item.click(timeout=2000)
+                                await self.page.wait_for_timeout(300)
+                                filled_count += 1
+                                interaction_steps.append({
+                                    "op": "click_first",
+                                    "selector": ".el-cascader-panel .el-cascader-menu:first-child "
+                                                ".el-cascader-node:not(.is-disabled)",
+                                    "desc": f"选择级联第{level+1}级第一项",
+                                })
+                            else:
+                                break
+                        LOG.info(f"    [composite-input] {label}: cascader 子组件已选择")
+                except Exception as e:
+                    LOG.warning(f"    [composite-input] {label}: cascader 子组件填充失败: {e}")
+
+                # 关闭可能残留的级联面板
+                try:
+                    await self.page.keyboard.press("Escape")
+                    await self.page.wait_for_timeout(200)
+                except Exception:
+                    pass
+
+            elif comp_type == "input":
+                # input 子组件：使用 fill_rule 生成值
+                value = ""
+                if fill_rule:
+                    value = apply_fill_rule(fill_rule)
+                if not value:
+                    placeholder = comp.get("placeholder", "")
+                    if "手机" in label or "phone" in label.lower():
+                        value = f"138{__import__('random').randint(10000000, 99999999)}"
+                    else:
+                        value = f"test_{__import__('random').randint(100000, 999999)}"
+
+                try:
+                    await self.page.fill(selector, str(value), timeout=3000)
+                    # 触发 Vue 响应式更新
+                    safe_sel = selector.replace("'", "\\'")
+                    await self.page.evaluate(f"""() => {{
+                        const input = document.querySelector('{safe_sel}');
+                        if (input) {{
+                            input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                            input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                        }}
+                    }}""")
+                    filled_count += 1
+                    interaction_steps.append({
+                        "op": "fill",
+                        "selector": selector,
+                        "value": str(value),
+                        "desc": f"填充{label}: {str(value)[:20]}",
+                    })
+                    LOG.info(f"    [composite-input] {label}: input 子组件已填充 '{value[:20]}'")
+                except Exception as e:
+                    LOG.warning(f"    [composite-input] {label}: input 子组件填充失败: {e}")
+
+            else:
+                LOG.warning(f"    [composite-input] {label}: 未知子组件类型 '{comp_type}'，跳过")
+
+        if filled_count == 0:
+            return False, {"skipped_reason": "all_components_failed"}
+
+        LOG.info(f"    ✅ 复合输入填充成功: {filled_count}/{len(sub_components)} 子组件, "
+                 f"已记录 {len(interaction_steps)} 个操作步骤")
+        return True, {
+            "interaction_steps": interaction_steps,
+            "filled_count": filled_count,
+            "option_text": "",
+        }
 
     def _parse_ip_segments(self, ip_value: str, input_count: int, ip_version: str) -> list:
         """解析 IP 值为各段列表。

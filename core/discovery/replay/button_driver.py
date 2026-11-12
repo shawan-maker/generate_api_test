@@ -381,11 +381,13 @@ class ButtonDriver:
         return False
 
     async def click_row_button_v2(self, row: Locator, button_text: str) -> bool:
-        """点击行内按钮（v2 版本）
+        """点击行内按钮（v2 版本，使用 KB XPath 模板）
 
-        降级链：
-        1. JS btn.click()（行内作用域）— 在 Element UI 上可正确触发 Vue 事件
-        2. KB XPath 模板（Playwright 原生 click）— 处理固定列场景
+        使用 probe_knowledge.json 的 table-action-button 模板的 fallback 链：
+        1. 行内直接定位（最优先，避免双 tab 取错行）
+        2. fixed-right 列
+        3. body-wrapper 主体
+        4. fixed-body-wrapper
 
         支持：
         - 隐藏元素过滤（display:none, is-hidden）
@@ -399,11 +401,8 @@ class ButtonDriver:
             LOG.warning("无法获取行索引，使用默认值 0")
             row_index = 0
 
+        # ★ 修复双 tab bug：优先行内直接定位，避免全局 XPath 取错行
         button_text_escaped = button_text.replace('\\', '\\\\').replace("'", "\\'")
-
-        # ★ 方法 1: JS click（行内作用域）
-        # Element UI 的 Vue 事件委托在 DOM 层监听，JS btn.click() 分发标准
-        # click 事件，可以正确触发 Vue 事件处理器（$confirm 弹窗等）。
         try:
             clicked = await row.evaluate(f"""(rowEl) => {{
                 const buttons = rowEl.querySelectorAll('button, .el-button, a, span');
@@ -420,22 +419,21 @@ class ButtonDriver:
                 return false;
             }}""")
             if clicked:
-                LOG.info(f"    ✓ 行内 JS 点击按钮 '{button_text}' (行索引={row_index})")
+                LOG.debug(f"    ✓ 行内直接点击按钮 '{button_text}' (行索引={row_index})")
                 from .wait_helpers import wait_for_loading_complete
                 await wait_for_loading_complete(self.page)
                 return True
         except Exception as e:
-            LOG.debug(f"行内 JS 点击失败: {e}")
+            LOG.debug(f"行内点击失败: {e}")
 
-        # ★ 方法 2: KB XPath 模板（Playwright 原生 click，全局定位）
-        # 当 JS click 在主体 tr 中找不到可见按钮时（如按钮只在 fixed-right 列），
-        # 使用全局 XPath 定位 fixed-right 列中的按钮。
+        # 加载 KB 模板
         kb = get_kb()
         patterns = kb.get_patterns("table-action-button", framework=self.framework)
 
         # 检测活跃覆盖层
         overlay_prefix = await self._detect_active_overlay()
 
+        # 按 fallback 顺序尝试（全局 XPath）
         for pattern in patterns:
             xpath = kb.expand_step(
                 pattern,
@@ -445,14 +443,14 @@ class ButtonDriver:
                 apply_hidden=True
             )
 
+            # 如果有活跃覆盖层，尝试覆盖层内定位
             if overlay_prefix:
                 scoped_xpath = apply_overlay_scope(xpath, overlay_prefix)
                 if await self._click_by_xpath_with_wait(scoped_xpath):
-                    LOG.info(f"    ✓ KB XPath 覆盖层点击 '{button_text}' (行索引={row_index})")
                     return True
 
+            # 全局定位
             if await self._click_by_xpath_with_wait(xpath):
-                LOG.info(f"    ✓ KB XPath 全局点击 '{button_text}' (行索引={row_index})")
                 return True
 
         LOG.warning(f"未找到按钮 '{button_text}' (行索引={row_index})")

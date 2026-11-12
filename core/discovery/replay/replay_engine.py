@@ -349,9 +349,6 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
             elif action == "toggle_switch":
                 await _step_toggle_switch(page, step)
 
-            elif action == "click_radio":
-                await _step_click_radio(page, step)
-
             elif action == "assert_table_has_data":
                 await _step_assert_table_has_data(page)
 
@@ -865,8 +862,8 @@ async def _execute_interaction_steps(page, steps: list, label: str) -> bool:
                 }""", selector)
 
                 if has_value:
-                    LOG.info(f"    [step {i}/{len(steps)}] {desc}: 已有默认值，跳过后续步骤")
-                    return True  # 提前返回，跳过后续步骤
+                    LOG.info(f"    [step {i}/{len(steps)}] {desc}: 检测到已有值，继续执行后续步骤")
+                    # 不 return，让 for 循环继续执行后续 click/wait/click_first 步骤
                 else:
                     LOG.info(f"    [step {i}/{len(steps)}] {desc}: 无默认值，继续执行")
 
@@ -954,6 +951,84 @@ async def _fill_ip_input(page, sub_selectors: list, option_text: str, label: str
             return False
 
     return True
+
+
+async def _fill_composite_input(page, sub_components: list, fill_rule: dict, label: str) -> bool:
+    """回退填充复合输入字段（无 interaction_steps 时使用）
+
+    按子组件类型分别处理：select → 展开选第一项，input → fill_rule 生成值填充
+
+    Args:
+        page: Playwright Page 对象
+        sub_components: 子组件列表 [{type, selector, ...}, ...]
+        fill_rule: 填充规则
+        label: 字段标签（用于日志）
+
+    Returns:
+        bool: 是否至少成功填充一个子组件
+    """
+    filled = 0
+    for comp in sub_components:
+        comp_type = comp.get("type", "")
+        selector = comp.get("selector", "")
+        if not selector:
+            continue
+
+        if comp_type == "select":
+            try:
+                await page.click(selector, timeout=3000)
+                await page.wait_for_timeout(500)
+                options = await page.query_selector_all(
+                    ".el-select-dropdown:not([style*='display: none']) .el-select-dropdown__item:not(.is-disabled)"
+                )
+                if options:
+                    await options[0].click()
+                    filled += 1
+            except Exception:
+                pass
+            await page.wait_for_timeout(300)
+
+        elif comp_type == "cascader":
+            try:
+                await page.click(selector, timeout=3000)
+                await page.wait_for_timeout(500)
+                for _ in range(3):
+                    items = await page.query_selector_all(
+                        ".el-cascader-panel .el-cascader-menu:first-child .el-cascader-node:not(.is-disabled)"
+                    )
+                    if items:
+                        await items[0].click()
+                        filled += 1
+                        await page.wait_for_timeout(300)
+                    else:
+                        break
+            except Exception:
+                pass
+            try:
+                await page.keyboard.press("Escape")
+                await page.wait_for_timeout(200)
+            except Exception:
+                pass
+
+        elif comp_type == "input":
+            value = ""
+            if fill_rule:
+                value = apply_fill_rule(fill_rule)
+            if not value:
+                if "手机" in label or "phone" in label.lower():
+                    import random
+                    value = f"138{random.randint(10000000, 99999999)}"
+                else:
+                    import random
+                    value = f"test_{random.randint(100000, 999999)}"
+            if value:
+                try:
+                    await page.fill(selector, str(value), timeout=3000)
+                    filled += 1
+                except Exception:
+                    pass
+
+    return filled > 0
 
 
 async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: str = None) -> str | None:
@@ -1225,15 +1300,32 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
                         await page.fill(enhanced, str(value), timeout=3000)
                         LOG.info(f"      填充[候选{cand_idx}]: {label} = {value}")
 
-                    # ★ 填充后验证 — 检查值是否真的写入了目标字段
+                    # ★ 填充后验证 — 用与 fill 相同的增强选择器定位可见 input
                     await page.wait_for_timeout(200)  # 等待 Vue 响应式更新
-                    actual_value = await page.evaluate("""(sel) => {
-                        try {
-                            const el = document.querySelector(sel);
-                            if (el && el.value) return el.value;
-                        } catch(e) {}
-                        return null;
-                    }""", cand_sel)
+                    actual_value = None
+                    try:
+                        # ★ 修复根因：验证用 enhanced（含 :not(display:none)）而非原始 cand_sel
+                        # 原始 cand_sel 会匹配隐藏 dialog 中的 input → 值为空 → 验证失败
+                        # → is_marker 字段不提取 → created_marker=None → 后续操作使用 Stage 1 残留 marker
+                        visible_locator = page.locator(enhanced).first
+                        if await visible_locator.count() > 0:
+                            actual_value = await visible_locator.input_value(timeout=2000)
+                    except Exception:
+                        # input_value 失败时降级为 JS 查询（用增强选择器）
+                        try:
+                            actual_value = await page.evaluate("""(sel) => {
+                                try {
+                                    const els = document.querySelectorAll(sel);
+                                    for (const el of els) {
+                                        if (el.offsetWidth > 0 && el.offsetHeight > 0 && el.value) {
+                                            return el.value;
+                                        }
+                                    }
+                                } catch(e) {}
+                                return null;
+                            }""", enhanced)
+                        except Exception:
+                            pass
 
                     if actual_value and str(actual_value).strip():
                         fill_success = True
@@ -1241,7 +1333,7 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
                         LOG.info(f"      ✓ 验证通过: {label} = {actual_value} (候选{cand_idx})")
                         break
                     else:
-                        LOG.warning(f"      ⚠️ 候选{cand_idx} 验证失败（值为空），尝试下一个")
+                        LOG.warning(f"      ⚠️ 候选{cand_idx} 验证失败（值为空: {actual_value}），尝试下一个")
                         continue
                 except Exception as cand_err:
                     LOG.warning(f"      ⚠️ 候选{cand_idx} 失败: {cand_err}")
@@ -1292,6 +1384,21 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
                             LOG.warning(f"    [ip-input] {label}: 填充失败")
                     except Exception as e:
                         LOG.warning(f"    [ip-input] {label}: 异常: {e}")
+            elif kb_cat == "composite-input":
+                # 无 interaction_steps 时的回退处理
+                sub_components = f.get("sub_components", [])
+                fill_rule = f.get("fill_rule", {})
+                label = f.get("label", "")
+                if sub_components:
+                    try:
+                        success = await _fill_composite_input(page, sub_components, fill_rule, label)
+                        if success:
+                            filled_count += 1
+                            LOG.info(f"    [composite-input] {label}: 回退填充成功")
+                        else:
+                            LOG.warning(f"    [composite-input] {label}: 回退填充失败")
+                    except Exception as e:
+                        LOG.warning(f"    [composite-input] {label}: 异常: {e}")
             else:
                 normal_fields.append(f)
 
@@ -1811,93 +1918,6 @@ async def _step_toggle_switch(page, step: dict):
         raise Exception(f"switch 切换失败 ({sw_text}): {error_msg}")
 
     LOG.info(f"    ✓ switch '{sw_text}' 切换完成: {detail.get('before_state')} → {detail.get('after_state')}")
-
-
-async def _step_click_radio(page, step: dict):
-    """步骤：点击 radio 选项。
-
-    Radio 是点击操作，不是 fill 操作。Stage 1 已提供精确的 option_locator。
-    处理逻辑与 Stage 1 fill_create_form() 中的 radio 点击保持一致（含 Vue v-model 同步）。
-    """
-    label = step.get("label", "")
-    locator = step.get("playwright_locator", "")
-    first_text = step.get("option_text", "") or step.get("firstOptionText", "")
-
-    if not locator and not first_text:
-        LOG.warning(f"    ⚠️ radio '{label}' 无 locator 和 option_text，跳过")
-        return
-
-    # ★ 如果 option_text 有值但 locator 指向容器，构造具体选项的 locator
-    if first_text and locator and first_text not in locator:
-        locator = (
-            f'{locator} .el-radio:has-text("{first_text}"), '
-            f'{locator} .el-radio-button:has-text("{first_text}")'
-        )
-
-    if not locator:
-        # fallback: 全局搜索 radio 选项
-        locator = (
-            f'.el-radio-group .el-radio:has-text("{first_text}"), '
-            f'.el-radio-group .el-radio-button:has-text("{first_text}")'
-        )
-
-    # 使用 safe_css 处理 Playwright 不支持的伪类
-    from .locator_helpers import safe_css
-    ui_framework = "element-ui"  # 默认 Element UI
-    enhanced = safe_css(locator, ui_framework)
-
-    try:
-        await page.click(enhanced, timeout=3000)
-        await page.wait_for_timeout(300)
-        LOG.info(f"    ✓ radio '{label}' 点击完成: {first_text}")
-    except Exception as e:
-        LOG.warning(f"    ⚠️ radio '{label}' 点击失败: {e}")
-        raise
-
-    # Vue v-model 同步（关键：Element UI 的 radio 点击后 v-model 可能不更新）
-    try:
-        from core.discovery.replay.vue_radio_sync import sync_radio_vue_model
-        vue_result = await sync_radio_vue_model(page, first_text)
-        if vue_result.get("success"):
-            LOG.debug(f"    ✓ Vue v-model 同步成功: {vue_result}")
-        else:
-            LOG.warning(f"    ⚠️ Vue v-model 同步失败: {vue_result}")
-    except Exception as e:
-        LOG.warning(f"    ⚠️ Vue v-model 同步异常: {e}")
-
-    # cascade_actions 处理（如 radio 触发 transfer-box 选择）
-    cascade_actions = step.get("cascade_actions", [])
-    if cascade_actions:
-        LOG.info(f"    → 处理 {len(cascade_actions)} 个 cascade_actions")
-        for ca in cascade_actions:
-            ca_type = ca.get("type", "")
-            if ca_type == "transfer-box":
-                trigger_value = ca.get("trigger_value", "")
-                interaction_steps = ca.get("interaction_steps", [])
-                # 只有当选择的值匹配 trigger_value 时才执行 cascade
-                if not trigger_value or trigger_value == first_text:
-                    LOG.info(f"    [Radio] 执行 cascade: transfer-box (trigger: {trigger_value})")
-                    await page.wait_for_timeout(500)  # 等待动态组件渲染
-
-                    if interaction_steps:
-                        success = await _execute_interaction_steps(
-                            page, interaction_steps, label
-                        )
-                        if success:
-                            LOG.info(f"    [Radio] cascade transfer-box 回放成功")
-                        else:
-                            LOG.warning(f"    [Radio] cascade transfer-box 回放失败")
-                    else:
-                        from .form_filler import MultiStepExecutor
-                        ui_framework = "element-ui"
-                        executor = MultiStepExecutor(page, None, ui_framework)
-                        success, detail = await executor.execute_with_details(
-                            "transfer-box", label, "", None, ""
-                        )
-                        if success:
-                            LOG.info(f"    [Radio] cascade 成功（重新探索）")
-                        else:
-                            LOG.warning(f"    [Radio] cascade 失败")
 
 
 async def _step_assert_table_has_data(page):

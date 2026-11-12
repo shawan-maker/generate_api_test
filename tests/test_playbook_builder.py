@@ -424,7 +424,7 @@ class TestBuildCreateSteps:
         assert role_field["interaction"]["component_type"] == "el-select"
 
     def test_create_with_radio_field(self):
-        """radio_field_details → 生成独立的 click_radio 步骤（不在 fill_form 内）"""
+        """radio_field_details → 生成在 fill_form 步骤内（不是独立的 click_radio）"""
         op_data = {
             "trigger_locator_verified": "button.new",
             "form_fields": [
@@ -442,18 +442,19 @@ class TestBuildCreateSteps:
             "submit_locator_verified": "button.ok",
         }
         steps = _build_create_steps(op_data)
-        # radio 不在 fill_form 步骤中
+        # radio 在 fill_form 步骤中
         fill_steps = [s for s in steps if s["action"] == "fill_form"]
-        if fill_steps:
-            radio_in_fill = [f for f in fill_steps[0]["fields"] if f["label"] == "状态"]
-            assert len(radio_in_fill) == 0, "radio 不应出现在 fill_form 字段中"
-        # radio 作为独立的 click_radio 步骤
-        radio_steps = [s for s in steps if s["action"] == "click_radio"]
-        assert len(radio_steps) == 1
-        radio = radio_steps[0]
-        assert radio["label"] == "状态"
+        assert len(fill_steps) == 1, "应有 1 个 fill_form 步骤"
+        radio_in_fill = [f for f in fill_steps[0]["fields"] if f["label"] == "状态"]
+        assert len(radio_in_fill) == 1, "radio 应出现在 fill_form 字段中"
+        radio = radio_in_fill[0]
+        assert radio["kb_category"] == "radio"
+        assert radio["type"] == "radio"
         assert radio["playwright_locator"] == ".radio-active"
         assert radio["option_text"] == "启用"
+        # 不应有独立的 click_radio 步骤
+        radio_steps = [s for s in steps if s.get("action") == "click_radio"]
+        assert len(radio_steps) == 0, "不应有独立的 click_radio 步骤"
 
     def test_create_marker_field_detection(self):
         """名称字段被标记为 is_marker"""

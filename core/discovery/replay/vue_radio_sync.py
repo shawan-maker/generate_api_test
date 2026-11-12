@@ -65,7 +65,14 @@ _VUE_FORCE_UPDATE_JS = """async (text) => {
             // 记录更新前的值
             result.beforeValue = vueGroup.value;
 
-            const targetValue = input.value;
+            // 类型推断与转换
+            let targetValue = input.value;
+            if (typeof vueGroup.value === 'boolean') {
+                targetValue = targetValue.toLowerCase() === 'true';
+            } else if (typeof vueGroup.value === 'number') {
+                const num = parseFloat(targetValue);
+                if (!isNaN(num)) targetValue = num;
+            }
 
             // 方法 1: 直接设置 value 属性
             vueGroup.value = targetValue;

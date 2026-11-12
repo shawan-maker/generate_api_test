@@ -918,16 +918,23 @@ def _build_create_steps(op_data: dict) -> list:
                 field_info["sub_selectors"] = ms_field.get("sub_selectors", [])
                 field_info["input_count"] = ms_field.get("input_count", 4)
                 field_info["ip_version"] = ms_field.get("ip_version", "v4")
+            # ★ composite-input: 显式标记 requires_locator = False + 子组件信息
+            if ms_field.get("kb_category") == "composite-input":
+                field_info["requires_locator"] = False
+                field_info["sub_components"] = ms_field.get("sub_components", [])
+                field_info["input_count"] = ms_field.get("input_count", 0)
             fields_info.append(field_info)
 
-        # 收集 radio 字段为独立的 click_radio 步骤（不加入 fill_form）
+        # 添加 radio 字段（带已验证的选项 locator）
+        # 从 op_data 获取 cascade_actions，用于附加到对应的 radio 字段
         cascade_actions = op_data.get("cascade_actions", [])
-        radio_steps = []
         for radio_field in radio_details:
             radio_entry = {
-                "action": "click_radio",
                 "label": radio_field["label"],
                 "playwright_locator": radio_field.get("option_locator", ""),
+                "type": "radio",
+                "kb_category": "radio",
+                "fill_rule": radio_field.get("fill_rule", {}),
                 "option_text": radio_field.get("option_text", ""),
                 "firstOptionText": radio_field.get("firstOptionText", ""),
                 "all_options": radio_field.get("all_options", []),
@@ -939,7 +946,7 @@ def _build_create_steps(op_data: dict) -> list:
             if matching_cascades:
                 radio_entry["cascade_actions"] = matching_cascades
 
-            radio_steps.append(radio_entry)
+            fields_info.append(radio_entry)
 
         # ★ Phase 4b: 为 el-select 附加 cascade_actions
         for field_info in fields_info:
@@ -964,10 +971,6 @@ def _build_create_steps(op_data: dict) -> list:
                 "fields": fields_info,
                 "description": "填充表单字段"
             })
-
-        # ★ Radio 点击步骤（独立于 fill_form）
-        for rs in radio_steps:
-            steps.append(rs)
 
     # Step 4: 点击提交按钮（使用已验证的 locator）
     submit_locator = op_data.get("submit_locator_verified") or op_data.get("submit_locator")
@@ -1256,16 +1259,23 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
                 field_info["sub_selectors"] = ms_field.get("sub_selectors", [])
                 field_info["input_count"] = ms_field.get("input_count", 4)
                 field_info["ip_version"] = ms_field.get("ip_version", "v4")
+            # ★ composite-input: 显式标记 requires_locator = False + 子组件信息
+            if ms_field.get("kb_category") == "composite-input":
+                field_info["requires_locator"] = False
+                field_info["sub_components"] = ms_field.get("sub_components", [])
+                field_info["input_count"] = ms_field.get("input_count", 0)
             fields_info.append(field_info)
 
-        # 收集 radio 字段为独立的 click_radio 步骤（不加入 fill_form）
+        # 添加 radio 字段（带已验证的选项 locator）
+        # 从 op_data 获取 cascade_actions，用于附加到对应的 radio 字段
         cascade_actions = op_data.get("cascade_actions", [])
-        radio_steps = []
         for radio_field in radio_details:
             radio_entry = {
-                "action": "click_radio",
                 "label": radio_field["label"],
                 "playwright_locator": radio_field.get("option_locator", ""),
+                "type": "radio",
+                "kb_category": "radio",
+                "fill_rule": radio_field.get("fill_rule", {}),
                 "option_text": radio_field.get("option_text", ""),
                 "firstOptionText": radio_field.get("firstOptionText", ""),
                 "all_options": radio_field.get("all_options", []),
@@ -1277,7 +1287,7 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
             if matching_cascades:
                 radio_entry["cascade_actions"] = matching_cascades
 
-            radio_steps.append(radio_entry)
+            fields_info.append(radio_entry)
 
         # ★ Phase 4b: 为 el-select 附加 cascade_actions
         for field_info in fields_info:
@@ -1293,10 +1303,6 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
                 "fields": fields_info,
                 "description": "填充编辑表单"
             })
-
-        # ★ Radio 点击步骤（独立于 fill_form）
-        for rs in radio_steps:
-            steps.append(rs)
 
     # Step 5: 点击提交（使用已验证的 locator）
     submit_locator = op_data.get("submit_locator_verified") or op_data.get("submit_locator")
