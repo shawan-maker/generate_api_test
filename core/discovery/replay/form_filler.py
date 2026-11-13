@@ -1255,7 +1255,9 @@ class FormFiller:
                 return {
                     "text": result.get("text", detected_text),
                     "locator": result.get("locator", ""),
-                    "click_strategy": result.get("strategy", "playwright"),
+                    "click_strategy": result.get("strategy", ""),
+                    "xpath_index": result.get("xpath_index", -1),
+                    "clean_text": result.get("clean_text", ""),
                 }
 
         # 逐个尝试 SUBMIT_TEXTS
@@ -1269,7 +1271,9 @@ class FormFiller:
                 return {
                     "text": result.get("text", text),
                     "locator": result.get("locator", ""),
-                    "click_strategy": result.get("strategy", "playwright"),
+                    "click_strategy": result.get("strategy", ""),
+                    "xpath_index": result.get("xpath_index", -1),
+                    "clean_text": result.get("clean_text", ""),
                 }
 
         # 最终回退: primary 按钮
@@ -1290,12 +1294,18 @@ class FormFiller:
                 from .wait_helpers import wait_for_loading_complete
                 await wait_for_loading_complete(self.page)
                 LOG.info(f"    [submit_form_v2] Primary 回退成功: '{actual_text}'")
-                return {"text": actual_text, "locator": "button.el-button--primary", "click_strategy": "playwright"}
+                return {
+                    "text": actual_text,
+                    "locator": "button.el-button--primary",
+                    "click_strategy": "playwright",
+                    "xpath_index": -1,
+                    "clean_text": "",
+                }
         except Exception as e:
             LOG.debug(f"尝试 primary 按钮失败: {e}")
 
         LOG.warning(f"    [submit_form_v2] 所有策略均失败，未找到提交按钮")
-        return {"text": "", "locator": ""}
+        return {"text": "", "locator": "", "xpath_index": -1, "clean_text": ""}
 
     async def _detect_submit_button_text(self, scope_selector: str = "") -> str:
         """快速探测页面中是否存在 SUBMIT_TEXTS 中的按钮文本，返回第一个匹配的文本。"""

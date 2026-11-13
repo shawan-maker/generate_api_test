@@ -799,8 +799,12 @@ def _build_create_steps(op_data: dict) -> list:
     if trigger_locator:
         steps.append({
             "action": "click_button",
+            "text": op_data.get("trigger_text", ""),
             "playwright_locator": trigger_locator,
-            "description": "点击创建按钮"
+            "description": "点击创建按钮",
+            "strategy": op_data.get("trigger_click_strategy", ""),
+            "xpath_index": op_data.get("trigger_xpath_index", -1),
+            "clean_text": op_data.get("trigger_clean_text", "")
         })
 
     # Step 2: 等待对话框（添加 interaction_mode）
@@ -1047,7 +1051,10 @@ def _build_delete_steps(op_data: dict, create_marker=None) -> list:
                 "action": "click_button",
                 "text": trigger,
                 "playwright_locator": trigger_locator,
-                "description": "点击删除按钮"
+                "description": "点击删除按钮",
+                "strategy": op_data.get("trigger_click_strategy", ""),
+                "xpath_index": op_data.get("trigger_xpath_index", -1),
+                "clean_text": op_data.get("trigger_clean_text", "")
             })
 
     # Step 4: 处理确认对话框（仅当 Stage 1 记录 confirmed=True 时生成）
@@ -1122,7 +1129,10 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
                 "action": "click_button",
                 "text": trigger,
                 "playwright_locator": trigger_locator,
-                "description": "点击编辑按钮"
+                "description": "点击编辑按钮",
+                "strategy": op_data.get("trigger_click_strategy", ""),
+                "xpath_index": op_data.get("trigger_xpath_index", -1),
+                "clean_text": op_data.get("trigger_clean_text", "")
             })
 
     # Step 3: 等待对话框（添加 interaction_mode）
@@ -1371,8 +1381,12 @@ def _build_query_steps(op_data: dict, create_marker=None) -> list:
         else:
             steps.append({
                 "action": "click_button",
+                "text": op_data.get("trigger_text", ""),
                 "playwright_locator": trigger_locator,
-                "description": "点击查询按钮"
+                "description": "点击查询按钮",
+                "strategy": op_data.get("trigger_click_strategy", ""),
+                "xpath_index": op_data.get("trigger_xpath_index", -1),
+                "clean_text": op_data.get("trigger_clean_text", "")
             })
     elif trigger_mode == "enter":
         steps.append({
@@ -1385,8 +1399,12 @@ def _build_query_steps(op_data: dict, create_marker=None) -> list:
         if trigger_locator:
             steps.append({
                 "action": "click_button",
+                "text": op_data.get("trigger_text", ""),
                 "playwright_locator": trigger_locator,
-                "description": "点击查询按钮"
+                "description": "点击查询按钮",
+                "strategy": op_data.get("trigger_click_strategy", ""),
+                "xpath_index": op_data.get("trigger_xpath_index", -1),
+                "clean_text": op_data.get("trigger_clean_text", "")
             })
 
     # 等待表格刷新（不检查成功消息）
@@ -1441,7 +1459,10 @@ def _build_generic_steps(op_data: dict, create_marker=None) -> list:
             "action": "click_button",
             "text": trigger,
             "playwright_locator": trigger_locator,
-            "description": "点击操作按钮"
+            "description": "点击操作按钮",
+            "strategy": op_data.get("trigger_click_strategy", ""),
+            "xpath_index": op_data.get("trigger_xpath_index", -1),
+            "clean_text": op_data.get("trigger_clean_text", "")
         })
     elif dropdown_item_text:
         # dropdown 子项点击（如"更多 > 冻结"）

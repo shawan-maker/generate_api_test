@@ -1724,10 +1724,14 @@ def _build_create_error_result(
     result["multi_step_field_details"] = multi_step_field_details
     result["radio_field_details"] = radio_field_details  # ★ 错误路径也需记录 radio 详情
     result["cascade_actions"] = cascade_actions  # ★ 错误路径也需记录级联操作（如 transfer-box）
+    result["trigger_xpath_index"] = btn_click_result.get("xpath_index", -1)
+    result["trigger_clean_text"] = btn_click_result.get("clean_text", "")
     result["submit_locator"] = submit_locator
     result["submit_locator_verified"] = submit_locator
     result["submit_text"] = submit_text_normalized
     result["submit_click_strategy"] = submit_result.get("click_strategy", "playwright")
+    result["submit_xpath_index"] = submit_result.get("xpath_index", -1)
+    result["submit_clean_text"] = submit_result.get("clean_text", "")
     result["dialog_detected"] = True
     result["interaction_mode"] = "dialog"
     result["selectors"] = {
@@ -2650,6 +2654,8 @@ async def _do_edit(page, context: dict) -> dict:
             return make_error("new_tab_edit_failed", error_text,
                              trigger_text=btn_text,
                              trigger_locator_verified=btn_click_result.get("locator"),
+                             trigger_xpath_index=btn_click_result.get("xpath_index", -1),
+                             trigger_clean_text=btn_click_result.get("clean_text", ""),
                              nav_info=nav_info)
 
     elif obs["scenario"] == "page_nav":
@@ -2686,7 +2692,9 @@ async def _do_edit(page, context: dict) -> dict:
     elif obs["scenario"] != "dialog":
         return no_dialog("点击编辑后未出现编辑弹窗",
                         trigger_text=btn_text,
-                        trigger_locator_verified=btn_click_result.get("locator"))
+                        trigger_locator_verified=btn_click_result.get("locator"),
+                        trigger_xpath_index=btn_click_result.get("xpath_index", -1),
+                        trigger_clean_text=btn_click_result.get("clean_text", ""))
 
     # ── 弹窗编辑模式 (obs["scenario"] == "dialog") ──
     # 扫描字段并修改
@@ -2848,8 +2856,12 @@ async def _do_edit(page, context: dict) -> dict:
         "form_fields": fields,
         "fill_rules": generate_fill_rules(fields),
         "trigger_locator_verified": trigger_locator,
+        "trigger_xpath_index": btn_click_result.get("xpath_index", -1),
+        "trigger_clean_text": btn_click_result.get("clean_text", ""),
         "submit_locator_verified": submit_locator,
         "submit_text": submit_text_normalized,
+        "submit_xpath_index": submit_result.get("xpath_index", -1),
+        "submit_clean_text": submit_result.get("clean_text", ""),
         "interaction_mode": "dialog" if dialog_detected else "page-nav",
         "dialog_locator": ".el-dialog__wrapper",
         "success_locator": ".el-message--success",
