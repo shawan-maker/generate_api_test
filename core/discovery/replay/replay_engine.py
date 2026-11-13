@@ -382,250 +382,45 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
 # ============================================================
 
 async def _step_click_button(page, step: dict, button_driver: ButtonDriver, ctx: dict):
-    """步骤：点击按钮（纯执行，不做探测）
+    """步骤：点击按钮（委托 shared/button_clicker 统一实现）
 
-    Stage 2 直接使用 Stage 1 提供的精确 locator 和成功策略。
-    降级链：指定策略 → Playwright CSS → 空格容错 → JS 去空格点击。
+    Stage 2 复用 Stage 1 的统一按钮点击逻辑，按按钮类型区分而非按阶段区分。
+    优先使用 Stage 1 记录的成功路径（xpath_index），失败才降级到全量遍历。
     """
-    locator = step.get("playwright_locator")
     btn_text = step.get("text", "")
-    preferred_strategy = step.get("click_strategy")  # Stage 1 记录的成功策略
+    locator = step.get("playwright_locator", "")
 
-    if not locator:
-        raise Exception("click_button 步骤缺少 playwright_locator（Stage 1 未提供）")
-
-    # ★ 如果 btn_text 为空，从 locator 中提取（如 button:has-text("增加授权")）
-    if not btn_text:
+    # 从 locator 提取文本（如果 btn_text 为空）
+    if not btn_text and locator:
         import re
         text_match = re.search(r'has-text\(["\']([^"\']+)["\']\)', locator)
         if text_match:
             btn_text = text_match.group(1)
             LOG.info(f"    [click_button] 从 locator 提取文本: '{btn_text}'")
 
-    LOG.info(f"    [click_button] text='{btn_text}', locator='{locator}', strategy={preferred_strategy}")
+    if not btn_text:
+        raise Exception("click_button 步骤缺少 text 字段（Stage 1 未提供）")
 
-    # ★ DEBUG: 检查元素是否存在（特别是 el-switch）
-    if 'el-switch' in locator:
-        element_count = await page.locator(locator).count()
-        LOG.info(f"    [SWITCH-DEBUG] locator='{locator}' 匹配元素数量: {element_count}")
-        if element_count == 0:
-            LOG.warning(f"    [SWITCH-DEBUG] el-switch 元素不存在！")
-            # 尝试查找所有 el-switch
-            all_switches = await page.locator('.el-switch').count()
-            LOG.info(f"    [SWITCH-DEBUG] 页面上所有 .el-switch 数量: {all_switches}")
+    # 读取 Stage 1 记录的成功路径
+    recorded_xpath_index = step.get("xpath_index", -1)
+    recorded_clean_text = step.get("clean_text", "")
 
-    # 增强：为 CSS 选择器添加隐藏过滤（防止匹配到 hidden/disabled 按钮）
-    from .locator_helpers import safe_css
+    LOG.info(f"    [click_button] text='{btn_text}', xpath_index={recorded_xpath_index}")
+
+    # 委托统一实现
+    from core.discovery.shared.button_clicker import click_page_button
     ui_framework = getattr(button_driver, 'framework', 'element-ui')
-    enhanced_locator = safe_css(locator, ui_framework)
+    result = await click_page_button(
+        page, btn_text,
+        ui_framework=ui_framework,
+        xpath_index=recorded_xpath_index,
+        clean_text=recorded_clean_text,
+    )
 
-    # ★ 与 Stage 1 _click_button_escalating 保持一致的按钮定位逻辑
-    # Stage 1 使用 button, span, a 三种元素匹配，然后通过 JS 评估选择优先级最高的
-    if btn_text:
-        enhanced_locator = safe_css(
-            f'button:has-text("{btn_text}"), span:has-text("{btn_text}"), '
-            f'a:has-text("{btn_text}")'
-        )
+    if not result.get("clicked"):
+        raise Exception(f"click_button 失败: 所有策略均未命中 '{btn_text}'")
 
-    # 策略 1: Playwright click（真实鼠标事件，触发 Vue/React 事件处理器）
-    try:
-        # ★ 第一步：JavaScript 评估，确定应该点击哪个元素（与 Stage 1 一致）
-        click_result = await page.evaluate("""(btnText) => {
-            const els = document.querySelectorAll('button, span, a');
-            const candidates = [];
-            for (const el of els) {
-                if (el.offsetWidth === 0 || el.offsetHeight === 0) continue;
-                if (el.closest('.is-hidden') || el.closest('[style*="display: none"]')) continue;
-                if ((el.textContent || '').includes(btnText)) {
-                    const isDisabled = el.disabled || el.classList.contains('is-disabled');
-                    candidates.push({ el, isDisabled });
-                }
-            }
-            // 优先选择 enabled 的 BUTTON，其次 enabled 的 A，其次 enabled 的 SPAN
-            const enabledButton = candidates.find(c => c.el.tagName === 'BUTTON' && !c.isDisabled);
-            const enabledLink = candidates.find(c => c.el.tagName === 'A' && !c.isDisabled);
-            const enabledSpan = candidates.find(c => c.el.tagName === 'SPAN' && !c.isDisabled);
-            const chosen = enabledButton || enabledLink || enabledSpan
-                        || candidates.find(c => c.el.tagName === 'BUTTON')
-                        || candidates.find(c => c.el.tagName === 'A')
-                        || candidates.find(c => c.el.tagName === 'SPAN');
-            if (chosen) {
-                const el = chosen.el;
-                const rect = el.getBoundingClientRect();
-                return {
-                    clicked: true,
-                    tag: el.tagName.toLowerCase(),
-                    isDisabled: chosen.isDisabled,
-                    text: el.textContent.trim().substring(0, 30),
-                    rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-                    hasVueListeners: !!(el.__vue__ && el.__vue__._events),
-                    vueComponentName: el.__vue__ ? (el.__vue__.$options.name || 'anonymous') : null
-                };
-            }
-            return { clicked: false };
-        }""", btn_text)
-
-        if click_result.get("clicked"):
-            tag = click_result.get("tag")
-            is_disabled = click_result.get("isDisabled")
-            rect = click_result.get("rect", {})
-
-            if is_disabled:
-                LOG.warning(f"    [click_button] 按钮 '{btn_text}' 处于禁用状态")
-
-            # 策略 1a: Playwright CSS click（与 Stage 1 一致，优先使用）
-            try:
-                click_locator = page.locator(
-                    safe_css(f'{tag}:has-text("{btn_text}")')
-                ).first
-                await click_locator.click(timeout=3000)
-                LOG.info(f"    [click_button] Playwright CSS click 成功 (tag={tag}, vue={click_result.get('vueComponentName')})")
-                return
-            except Exception as css_err:
-                LOG.warning(f"    [click_button] Playwright CSS click 失败: {str(css_err)[:100]}")
-
-            # 策略 1b: 坐标点击（Stage 1 的最后手段）
-            try:
-                x = rect.get("x", 0) + rect.get("width", 0) / 2
-                y = rect.get("y", 0) + rect.get("height", 0) / 2
-                LOG.info(f"    [click_button] 尝试坐标点击 (x={x:.1f}, y={y:.1f})")
-                await page.mouse.click(x, y)
-                LOG.info(f"    [click_button] 坐标点击成功")
-                return
-            except Exception as coord_err:
-                LOG.warning(f"    [click_button] 坐标点击也失败: {coord_err}")
-                raise Exception(f"所有点击策略都失败: CSS={css_err}, Coord={coord_err}")
-        else:
-            LOG.info(f"    [click_button] 未找到匹配的按钮")
-
-        # 诊断：点击前检查匹配的元素
-        match_info = await page.evaluate("""(locator_text) => {
-            const target = locator_text.replace(/\\s+/g, '');
-            const results = [];
-            const elements = document.querySelectorAll('button, span, a');
-            for (const el of elements) {
-                if (el.offsetWidth === 0 || el.offsetHeight === 0) continue;
-                if (el.disabled || el.classList.contains('is-disabled')) continue;
-                const elText = el.textContent.trim().replace(/\\s+/g, '');
-                if (elText.includes(target) && (el.tagName === 'BUTTON' || el.closest('button'))) {
-                    results.push({
-                        tag: el.tagName,
-                        text: el.textContent.trim(),
-                        class: el.className,
-                        inDialog: !!el.closest('.el-dialog:not([style*="display: none"])'),
-                        rect: el.getBoundingClientRect().toJSON()
-                    });
-                }
-            }
-            return results;
-        }""", btn_text or locator.split('"')[1] if '"' in locator else "")
-        LOG.info(f"    [click_button] 匹配元素: {match_info}")
-
-        await page.click(enhanced_locator, timeout=5000)
-        LOG.info(f"    [click_button] Playwright 成功")
-
-        # 诊断：点击后检查表单状态和错误消息
-        await page.wait_for_timeout(500)  # 短暂等待让表单验证完成
-        _submit_check_js = const.js_normalize_in(const.SUBMIT_TEXTS, 'text')
-        form_state = await page.evaluate(f"""() => {{
-            // 检查表单验证错误
-            const errors = [];
-            document.querySelectorAll('.el-form-item__error, .el-form-item.is-error').forEach(el => {{
-                if (el.offsetWidth > 0 || el.offsetHeight > 0) {{
-                    errors.push(el.textContent.trim());
-                }}
-            }});
-
-            // 检查对话框是否还在
-            const dialogs = document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"])');
-            const dialogVisible = Array.from(dialogs).some(d => d.offsetWidth > 0);
-
-            // 检查是否有提交按钮被禁用（使用统一去空格归一化匹配）
-            const submitButtons = document.querySelectorAll('button.el-button--primary');
-            const disabledSubmit = Array.from(submitButtons).filter(b => {{
-                const text = b.textContent.trim();
-                return {_submit_check_js};
-            }}).map(b => ({{
-                disabled: b.disabled,
-                loading: b.classList.contains('is-loading'),
-                text: b.textContent.trim()
-            }}));
-
-            return {{
-                formErrors: errors,
-                dialogVisible,
-                submitButtons: disabledSubmit,
-                openDialogCount: dialogs.length
-            }};
-        }}""")
-        LOG.info(f"    [click_button] 点击后表单状态: {form_state}")
-
-        from .wait_helpers import wait_for_loading_complete
-        await wait_for_loading_complete(page, timeout=10000)
-        return
-    except Exception as e:
-        LOG.info(f"    [click_button] Playwright 失败: {str(e)[:100]}")
-
-    # 策略 2: 空格容错（仅针对中文 has-text 的空格变体）
-    import re
-    has_text_match = re.search(r"has-text\(['\"](.+?)['\"]\)", enhanced_locator)
-    if has_text_match:
-        original_text = has_text_match.group(1)
-        if any('一' <= c <= '鿿' for c in original_text):
-            normalized_text = original_text.replace(' ', '')
-            if normalized_text != original_text:
-                normalized_locator = enhanced_locator.replace(
-                    f"has-text('{original_text}')",
-                    f"has-text('{normalized_text}')"
-                ).replace(
-                    f'has-text("{original_text}")',
-                    f'has-text("{normalized_text}")'
-                )
-                try:
-                    await page.click(normalized_locator, timeout=3000)
-                    LOG.info(f"    [click_button] 空格容错成功: '{original_text}' → '{normalized_text}'")
-                    from .wait_helpers import wait_for_loading_complete
-                    await wait_for_loading_complete(page, timeout=10000)
-                    return
-                except Exception:
-                    pass
-
-    # 策略 3: JS 回退（仅在 Playwright 全部失败时使用，用 dispatchEvent）
-    if has_text_match:
-        btn_text_for_js = has_text_match.group(1)
-
-        clicked = await page.evaluate("""(text) => {
-            const target = text.replace(/\\s+/g, '');
-            const elements = document.querySelectorAll('button, span, a, .el-button');
-            let candidates = [];
-            for (const el of elements) {
-                if (el.offsetWidth === 0 || el.offsetHeight === 0) continue;
-                if (el.disabled || el.classList.contains('is-disabled')) continue;
-                const elText = el.textContent.trim().replace(/\\s+/g, '');
-                if (elText.includes(target)) {
-                    candidates.push(el);
-                }
-            }
-            // 优先选择 BUTTON 标签
-            let target_el = candidates.find(el => el.tagName === 'BUTTON') || candidates[0];
-            if (target_el) {
-                target_el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-                return {
-                    clicked: true,
-                    tag: target_el.tagName,
-                    text: target_el.textContent.trim()
-                };
-            }
-            return {clicked: false};
-        }""", btn_text_for_js)
-        if clicked.get("clicked"):
-            LOG.info(f"    [click_button] JS 回退成功: {clicked.get('tag')} '{clicked.get('text')}'")
-            await page.wait_for_timeout(1000)
-            from .wait_helpers import wait_for_loading_complete
-            await wait_for_loading_complete(page, timeout=10000)
-            return
-
-    raise Exception(f"click_button 失败: 所有策略均未命中 locator={locator}")
+    LOG.info(f"    [click_button] 成功: '{btn_text}' (strategy={result.get('strategy')})")
 
 
 async def _step_wait_for_dialog(page, step: dict, ctx: dict):

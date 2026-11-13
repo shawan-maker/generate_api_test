@@ -86,7 +86,7 @@ async def _prewarm_table_data(page, form_fields: list, toolbar_buttons: list,
          "created_marker": str|None, "success": bool}
     """
     # Lazy imports for cross-module dependencies
-    from core.discovery.operation_executor.base_executor import _click_button_escalating
+    from core.discovery.shared.button_clicker import click_page_button
     from core.discovery.ui_scanner.element_scanner import (
         _get_kb, _scan_candidates, _discover_dropdowns, _snapshot_page_structure,
     )
@@ -161,7 +161,7 @@ async def _prewarm_table_data(page, form_fields: list, toolbar_buttons: list,
         LOG.info(f"    预热: 点击创建按钮 '{btn_text}'")
 
         # Step 2: 点击创建按钮
-        click_result = await _click_button_escalating(page, btn_text)
+        click_result = await click_page_button(page, btn_text)
         if not click_result.get("clicked"):
             LOG.warning(f"    预热: 点击创建按钮失败")
             return result

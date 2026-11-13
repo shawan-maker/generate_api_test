@@ -475,16 +475,18 @@ class TestBuildCreateSteps:
         assert name_field.get("is_marker") is True
         assert "is_marker" not in remark_field
 
-    def test_create_js_click_strategy(self):
-        """submit_click_strategy=js → 步骤中含 click_strategy=js"""
+    def test_create_xpath_index_recorded(self):
+        """submit_xpath_index 和 submit_clean_text 会被记录到 playbook"""
         op_data = {
             "trigger_locator_verified": "button.new",
             "submit_locator_verified": "button.ok",
-            "submit_click_strategy": "js",
+            "submit_xpath_index": 2,
+            "submit_clean_text": "确定",
         }
         steps = _build_create_steps(op_data)
         submit_step = [s for s in steps if s["action"] == "click_button" and "提交" in s.get("description", "")][0]
-        assert submit_step["click_strategy"] == "js"
+        assert submit_step["xpath_index"] == 2
+        assert submit_step["clean_text"] == "确定"
 
     def test_create_skips_select_fields_in_normal_loop(self):
         """kb_category 为 el-select / radio 等的字段在普通循环中被跳过"""

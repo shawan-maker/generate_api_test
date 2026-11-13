@@ -381,13 +381,12 @@ class ButtonDriver:
         return False
 
     async def click_row_button_v2(self, row: Locator, button_text: str) -> bool:
-        """点击行内按钮（v2 版本，使用 KB XPath 模板）
+        """点击行内按钮（v2 版本）
 
-        使用 probe_knowledge.json 的 table-action-button 模板的 fallback 链：
-        1. 行内直接定位（最优先，避免双 tab 取错行）
-        2. fixed-right 列
-        3. body-wrapper 主体
-        4. fixed-body-wrapper
+        降级链（Playwright 原生 click 优先，确保触发 Vue 事件）：
+        1. Playwright 原生 click（行内作用域 locator）
+        2. KB XPath 模板遍历（Playwright 原生 click，支持 fixed 列 + overlay）
+        3. JS btn.click()（最终降级，兼容 Element UI 固定列）
 
         支持：
         - 隐藏元素过滤（display:none, is-hidden）
@@ -401,8 +400,50 @@ class ButtonDriver:
             LOG.warning("无法获取行索引，使用默认值 0")
             row_index = 0
 
-        # ★ 修复双 tab bug：优先行内直接定位，避免全局 XPath 取错行
         button_text_escaped = button_text.replace('\\', '\\\\').replace("'", "\\'")
+
+        # ★ 方法 1: Playwright 原生 click（行内作用域，正确分发浏览器事件）
+        try:
+            btn_locator = row.locator(
+                f"button:has-text('{button_text_escaped}'), "
+                f".el-button:has-text('{button_text_escaped}'), "
+                f"a:has-text('{button_text_escaped}'), "
+                f"span:has-text('{button_text_escaped}')"
+            ).first
+            if await btn_locator.count() > 0:
+                is_visible = await btn_locator.is_visible()
+                if is_visible:
+                    await btn_locator.click(timeout=3000)
+                    LOG.info(f"    ✓ Playwright 原生点击行内按钮 '{button_text}' (行索引={row_index})")
+                    from .wait_helpers import wait_for_loading_complete
+                    await wait_for_loading_complete(self.page)
+                    return True
+        except Exception as e:
+            LOG.debug(f"Playwright 原生行内点击失败: {e}")
+
+        # ★ 方法 2: KB XPath 模板（Playwright 原生 click，支持 fixed 列）
+        kb = get_kb()
+        patterns = kb.get_patterns("table-action-button", framework=self.framework)
+        overlay_prefix = await self._detect_active_overlay()
+
+        for pattern in patterns:
+            xpath = kb.expand_step(
+                pattern,
+                label=button_text,
+                idx=row_index + 1,
+                framework=self.framework,
+                apply_hidden=True
+            )
+
+            if overlay_prefix:
+                scoped_xpath = apply_overlay_scope(xpath, overlay_prefix)
+                if await self._click_by_xpath_with_wait(scoped_xpath):
+                    return True
+
+            if await self._click_by_xpath_with_wait(xpath):
+                return True
+
+        # ★ 方法 3: JS click 降级（最后手段，兼容 Element UI 固定列）
         try:
             clicked = await row.evaluate(f"""(rowEl) => {{
                 const buttons = rowEl.querySelectorAll('button, .el-button, a, span');
@@ -419,39 +460,12 @@ class ButtonDriver:
                 return false;
             }}""")
             if clicked:
-                LOG.debug(f"    ✓ 行内直接点击按钮 '{button_text}' (行索引={row_index})")
+                LOG.info(f"    ✓ JS 降级点击行内按钮 '{button_text}' (行索引={row_index})")
                 from .wait_helpers import wait_for_loading_complete
                 await wait_for_loading_complete(self.page)
                 return True
         except Exception as e:
-            LOG.debug(f"行内点击失败: {e}")
-
-        # 加载 KB 模板
-        kb = get_kb()
-        patterns = kb.get_patterns("table-action-button", framework=self.framework)
-
-        # 检测活跃覆盖层
-        overlay_prefix = await self._detect_active_overlay()
-
-        # 按 fallback 顺序尝试（全局 XPath）
-        for pattern in patterns:
-            xpath = kb.expand_step(
-                pattern,
-                label=button_text,
-                idx=row_index + 1,
-                framework=self.framework,
-                apply_hidden=True
-            )
-
-            # 如果有活跃覆盖层，尝试覆盖层内定位
-            if overlay_prefix:
-                scoped_xpath = apply_overlay_scope(xpath, overlay_prefix)
-                if await self._click_by_xpath_with_wait(scoped_xpath):
-                    return True
-
-            # 全局定位
-            if await self._click_by_xpath_with_wait(xpath):
-                return True
+            LOG.debug(f"JS 降级点击失败: {e}")
 
         LOG.warning(f"未找到按钮 '{button_text}' (行索引={row_index})")
         return False

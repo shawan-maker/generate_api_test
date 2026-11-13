@@ -18,8 +18,9 @@ from core.discovery.replay.form_filler import (
     FormFiller, read_form_errors, scan_form_fields,
 )
 from core.discovery.shared import generate_fill_data, generate_fill_rules
+from core.discovery.shared.button_clicker import click_page_button
 from core.discovery.operation_executor.base_executor import (
-    _click_button_escalating, _install_message_capture, _get_captured_messages,
+    _install_message_capture, _get_captured_messages,
     _verify_operation_success,
 )
 from core.discovery.operation_executor.result_factory import (
@@ -542,7 +543,7 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
             LOG.info(f"    [EDIT-FLOW-DEBUG] 提交按钮: {btn_text}")
             LOG.info(f"    [EDIT-FLOW-DEBUG] URL (提交前): {url_before_submit}")
 
-            btn_click_result = await _click_button_escalating(page, btn_text)
+            btn_click_result = await click_page_button(page, btn_text)
 
             if not btn_click_result["clicked"]:
                 nav_info["error_type"] = "click_submit_failed"
@@ -1102,7 +1103,7 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
         }}""")
         LOG.info(f"    [DIAG-submitB-vue] 点击前 Vue 状态: {_json_p5.dumps(_vue_diag_pre, ensure_ascii=False)}")
 
-        btn_click_result = await _click_button_escalating(page, btn_text)
+        btn_click_result = await click_page_button(page, btn_text)
 
         # === DIAG-P5-1: 点击结果详情 ===
         LOG.info(f"    [DIAG-submitB-click] 点击结果: clicked={btn_click_result.get('clicked')}, "

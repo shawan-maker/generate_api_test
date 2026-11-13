@@ -20,8 +20,9 @@ from core.discovery.replay.form_filler import (
     FormFiller, read_form_errors,
 )
 from core.discovery.shared import generate_fill_data, generate_fill_rules
+from core.discovery.shared.button_clicker import click_page_button
 from core.discovery.operation_executor.base_executor import (
-    _click_button_escalating, _install_message_capture, _get_captured_messages,
+    _install_message_capture, _get_captured_messages,
     _verify_operation_success, _check_data_changed,
     _extract_fallback_marker, _ensure_row_selected, _try_fill_empty_selects,
     _check_create_api_triggered_simple, _ensure_switch_enabled,
@@ -1759,7 +1760,7 @@ async def _do_create(page, context: dict) -> dict:
     url_before = page.url
     new_tab_event, new_tab_ref, cleanup_tab_listener = _setup_new_tab_listener(page)
 
-    btn_click_result = await _click_button_escalating(page, btn_text)
+    btn_click_result = await click_page_button(page, btn_text)
     if not btn_click_result["clicked"]:
         cleanup_tab_listener()
         return click_failed(f"无法点击按钮: {btn_text}",
@@ -2125,7 +2126,7 @@ async def _do_create(page, context: dict) -> dict:
     submit_locator = submit_result["locator"]
     trigger_text_normalized = " ".join(btn_text.split())
 
-    # 使用 _click_button_escalating 返回的实际 locator（已验证）
+    # 使用 click_page_button 返回的实际 locator（已验证）
     trigger_locator = btn_click_result.get("locator")
     if not trigger_locator:
         trigger_tag = btn_click_result.get("tag", "button")
@@ -2174,10 +2175,14 @@ async def _do_create(page, context: dict) -> dict:
         "trigger_locator": trigger_locator,
         "trigger_locator_verified": trigger_locator,  # Phase 1.1: 已验证的 locator
         "trigger_text": trigger_text_normalized,
+        "trigger_xpath_index": btn_click_result.get("xpath_index", -1),
+        "trigger_clean_text": btn_click_result.get("clean_text", ""),
         "submit_locator": submit_locator,
         "submit_locator_verified": submit_locator,  # Phase 1.1: 已验证的 locator
         "submit_text": submit_text_normalized,
         "submit_click_strategy": submit_result.get("click_strategy", "playwright"),
+        "submit_xpath_index": submit_result.get("xpath_index", -1),
+        "submit_clean_text": submit_result.get("clean_text", ""),
         "dialog_detected": bool(dialog_detected),
         "interaction_mode": "dialog" if dialog_detected else "page-nav",  # Phase 1.1
         "dialog_locator": ".el-dialog__wrapper",
@@ -2324,7 +2329,7 @@ async def _do_query(page, context: dict) -> dict:
         LOG.debug(f"  [query] 异常堆栈:\n{traceback.format_exc()}")
 
     # 点击搜索按钮
-    btn_click_result = await _click_button_escalating(page, btn_text)
+    btn_click_result = await click_page_button(page, btn_text)
     if not btn_click_result["clicked"]:
         return click_failed(f"无法点击搜索按钮: {btn_text}")
 
@@ -2337,7 +2342,7 @@ async def _do_query(page, context: dict) -> dict:
     )
 
     trigger_text_normalized = " ".join(btn_text.split())
-    # 使用 _click_button_escalating 返回的已验证 locator（不重建）
+    # 使用 click_page_button 返回的已验证 locator（不重建）
     trigger_locator = btn_click_result.get("locator")
     if not trigger_locator:
         trigger_tag = btn_click_result.get("tag", "button")
@@ -2387,7 +2392,7 @@ async def _do_detail(page, context: dict) -> dict:
         clicked = await driver.click_row_button_v2(row, btn_text)
         row_selector = btn_text
     else:
-        btn_click_result = await _click_button_escalating(page, btn_text)
+        btn_click_result = await click_page_button(page, btn_text)
         clicked = btn_click_result["clicked"]
 
     if not clicked:
@@ -2491,7 +2496,7 @@ async def _do_edit(page, context: dict) -> dict:
             row_selector = btn_text
         else:
             _log.info(f"    [EDIT-DEBUG] 使用 toolbar 按钮点击方式")
-            btn_click_result = await _click_button_escalating(page, btn_text)
+            btn_click_result = await click_page_button(page, btn_text)
             clicked = btn_click_result["clicked"]
 
         if clicked:
@@ -2801,7 +2806,7 @@ async def _do_edit(page, context: dict) -> dict:
     if dialog_detected and not submit_locator.startswith(".el-dialog"):
         submit_locator = f".el-dialog__footer {submit_locator}"
 
-    # 使用 _click_button_escalating 返回的实际 locator（已验证）
+    # 使用 click_page_button 返回的实际 locator（已验证）
     trigger_locator = btn_click_result.get("locator")
     if not trigger_locator:
         trigger_tag = btn_click_result.get("tag", "button")
@@ -3252,7 +3257,7 @@ async def _do_delete(page, context: dict) -> dict:
             clicked = await driver.click_row_button_v2(row, btn_text)
             row_selector = btn_text
         else:
-            btn_click_result = await _click_button_escalating(page, btn_text)
+            btn_click_result = await click_page_button(page, btn_text)
             clicked = btn_click_result["clicked"]
 
         if clicked:
@@ -3449,7 +3454,7 @@ async def _do_delete(page, context: dict) -> dict:
 
     # Phase 1: 增强字段
     trigger_text_normalized = " ".join(btn_text.split())
-    # 使用 _click_button_escalating 返回的实际 locator（已验证）
+    # 使用 click_page_button 返回的实际 locator（已验证）
     trigger_locator_verified = btn_click_result.get("locator")
     if not trigger_locator_verified:
         trigger_tag = btn_click_result.get("tag", "button")
@@ -3521,7 +3526,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
     """执行通用操作（lock/unlock/reset/authorize 等）。"""
     # Lazy imports to avoid circular dependencies
     from core.discovery.operation_executor.base_executor import (
-        _install_message_capture, _ensure_row_selected, _click_button_escalating,
+        _install_message_capture, _ensure_row_selected,
         _try_fill_empty_selects, _get_captured_messages, _verify_operation_success,
     )
     from core.discovery.operation_executor.navigation_executor import (
@@ -3819,7 +3824,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
     else:
         # toolbar 按钮：checkbox 已由调用方 (_validate_business_flow) 勾选，
         # 此处不再重复 toggle，避免双重点击导致取消勾选
-        btn_click_result = await _click_button_escalating(page, btn_text)
+        btn_click_result = await click_page_button(page, btn_text)
         clicked = btn_click_result["clicked"]
         dropdown_click_result = None
 
@@ -4848,7 +4853,7 @@ async def _do_generic_operation(page, context: dict) -> dict:
 
     # success 为 True 才会执行到这里（not success 已在上方 return _fail）
 
-    # 记录 trigger_locator_verified（使用 _click_button_escalating 返回的实际 locator）
+    # 记录 trigger_locator_verified（使用 click_page_button 返回的实际 locator）
     if btn_location not in ("dropdown",):
         verified_locator = btn_click_result.get("locator")
         if not verified_locator:
@@ -4908,7 +4913,7 @@ async def _do_save_or_confirm(page, context: dict) -> dict:
     btn_text = btn.get("text", "")
 
     # 点击保存/确认按钮
-    btn_click_result = await _click_button_escalating(page, btn_text)
+    btn_click_result = await click_page_button(page, btn_text)
     if not btn_click_result["clicked"]:
         return click_failed(f"无法点击按钮: {btn_text}")
 
@@ -4995,7 +5000,7 @@ def _apply_fix(error_result: dict, context: dict) -> dict:
                 overrides[label] = f"auto_{str(int(time.time()))[-4:]}"
 
     elif error_type == "click_failed":
-        # 点击失败：已在 _click_button_escalating 中尝试过所有策略
+        # 点击失败：已在 click_page_button 中尝试过所有策略
         # 标记为不可恢复
         pass
 

@@ -398,8 +398,8 @@ async def _discover_once(page, kb: ProbeKB, framework: str) -> dict:
             LOG.info(f"  form_page 交互扫描: 点击 '{btn_text}' 以发现表单字段和隐藏按钮...")
 
             try:
-                from core.discovery.operation_executor.base_executor import _click_button_escalating
-                click_result = await _click_button_escalating(page, btn_text)
+                from core.discovery.shared.button_clicker import click_page_button
+                click_result = await click_page_button(page, btn_text)
 
                 if click_result.get("clicked"):
                     await page.wait_for_timeout(1000)

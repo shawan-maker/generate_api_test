@@ -220,11 +220,13 @@ class ProbeKB:
             apply_hidden: 是否追加隐藏过滤器（交互操作时传 True）
             framework: UI 框架（决定使用哪套过滤器）
         """
-        chars = list(label) if label else []
+        # 过滤空格：去掉空格后再拆字符，避免空格干扰 XPath 匹配
+        clean_label = label.replace(" ", "") if label else ""
+        chars = list(clean_label)
         chars_all = " and ".join(f"contains(.,'{c}')" for c in chars) if chars else ""
 
         result = pattern
-        result = result.replace("{label}", label)
+        result = result.replace("{label}", clean_label)
         result = result.replace("{chars_all}", chars_all)
         result = result.replace("{char1}", chars[0] if chars else "")
         result = result.replace("{char2}", chars[1] if len(chars) > 1 else "")

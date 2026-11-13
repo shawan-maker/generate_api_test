@@ -68,6 +68,11 @@ from .tab_helpers import restore_active_tab
 
 from .transition_helpers import transition_to_next
 
+from .button_clicker import (
+    click_page_button,
+    click_more_menu,
+)
+
 __all__ = [
     # marker
     "extract_marker_from_row",
@@ -107,4 +112,7 @@ __all__ = [
     "restore_active_tab",
     # transition
     "transition_to_next",
+    # button clicker
+    "click_page_button",
+    "click_more_menu",
 ]

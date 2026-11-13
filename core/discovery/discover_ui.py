@@ -50,7 +50,6 @@ from core.discovery.ui_scanner.form_scanner import (
 from core.discovery.operation_executor.base_executor import (
     cleanup_ui_overlays,
     wait_for_spa_ready,
-    _click_button_escalating,
     _extract_fallback_marker,
     _ensure_row_selected,
     _try_fill_empty_selects,
@@ -133,7 +132,6 @@ __all__ = [
     # Operation Executor - Base Executor
     "cleanup_ui_overlays",
     "wait_for_spa_ready",
-    "_click_button_escalating",
     "_extract_fallback_marker",
     "_ensure_row_selected",
     "_try_fill_empty_selects",

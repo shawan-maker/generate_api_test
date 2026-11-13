@@ -1231,133 +1231,52 @@ class FormFiller:
         return checked
 
     async def submit_form_v2(self, scope_selector: str = "") -> dict:
-        """提交表单（v2 版本），返回已验证的 locator、原始文本和成功策略。
+        """提交表单（v2 版本），委托 click_page_button 统一实现。
 
-        中文按钮文本常含空格（如 "确 定"、"保 存"），使用 JavaScript
-        去掉空格后匹配，避免 Playwright has-text 匹配失败。
+        从 SUBMIT_TEXTS 列表中探测按钮文本，找到后委托 click_page_button 点击。
 
         Args:
-            scope_selector: 可选，限定搜索范围的 CSS 选择器（如 '.el-drawer:not([style*="display: none"])'）
+            scope_selector: 可选，限定搜索范围的 CSS 选择器
 
         Returns:
             dict: {"text": str, "locator": str, "click_strategy": str}
-            - text: 按钮原始文本（保留空格），如 "确 定"
-            - locator: 已验证的 playwright_locator，如 "button:has-text('确 定')"
-            - click_strategy: 成功策略 "js" / "playwright"
         """
-        from .wait_helpers import wait_for_loading_complete
+        from core.discovery.shared.button_clicker import click_page_button
 
-        # JavaScript 方式：统一去空格归一化匹配提交按钮文本，返回原始文本 + 标签
-        try:
-            # 如果有 scope_selector，使用 querySelectorAll 收集所有匹配范围的元素
-            # （修复：querySelector 只返回第一个匹配，逗号分隔的多选择器会丢失后续范围）
-            if scope_selector:
-                scope_js = f"Array.from(document.querySelectorAll('{scope_selector}'))"
-                gather_js = f"Array.from(new Set(scopes.flatMap(s => Array.from(s.querySelectorAll('button, span, a')))))"
-            else:
-                scope_js = "null"
-                gather_js = "Array.from(document.querySelectorAll('button, span, a'))"
+        # 先探测哪个提交按钮文本存在（JS 快速检查，不点击）
+        detected_text = await self._detect_submit_button_text(scope_selector)
+        if detected_text:
+            result = await click_page_button(
+                self.page, detected_text,
+                scope_selector=scope_selector,
+            )
+            if result.get("clicked"):
+                LOG.info(f"    [submit_form_v2] 成功: '{detected_text}' (strategy={result.get('strategy')})")
+                return {
+                    "text": result.get("text", detected_text),
+                    "locator": result.get("locator", ""),
+                    "click_strategy": result.get("strategy", "playwright"),
+                }
 
-            clicked = await self.page.evaluate(f"""(() => {{
-                const scopes = {scope_js};
-
-                // 从所有 scope 元素中收集按钮（去重）
-                const allButtons = {gather_js};
-                const visible = allButtons.filter(b => {{
-                    if (b.offsetWidth <= 0 || b.offsetHeight <= 0) return false;
-                    if (b.disabled || b.classList.contains('is-disabled')) return false;
-                    if (b.closest('.is-hidden') || b.closest('[style*="display: none"]')) return false;
-                    if (b.getAttribute('role') === 'heading') return false;
-                    if (/^H[1-6]$/.test(b.tagName)) return false;
-                    return true;
-                }});
-
-                // 按优先级排序：button > a > span
-                visible.sort((a, b) => {{
-                    const priority = {{ BUTTON: 1, A: 2, SPAN: 3 }};
-                    return (priority[a.tagName] || 99) - (priority[b.tagName] || 99);
-                }});
-
-                // 收集所有可见按钮的文本用于调试
-                const allVisibleTexts = visible.map(b => b.tagName + ':' + b.textContent.trim().substring(0, 20));
-
-                for (const btn of visible) {{
-                    const originalText = btn.textContent.trim();
-                    // 统一去空格归一化匹配（长度限制 < 10 避免误中长文本）
-                    if (originalText.replace(/\\s+/g, '').length < 10 && {const.js_normalize_in(const.SUBMIT_TEXTS, 'originalText')}) {{
-                        btn.click();
-                        return {{original: originalText, tag: btn.tagName.toLowerCase(), allVisibleTexts: allVisibleTexts}};
-                    }}
-                }}
-                return {{original: null, tag: null, allVisibleTexts: allVisibleTexts}};
-            }})()""")
-            if clicked and clicked.get('original'):
-                await wait_for_loading_complete(self.page)
-                original = clicked['original']
-                tag = clicked['tag']
-                LOG.info(f"    [submit_form_v2] JS 匹配成功: '{original}' (tag={tag}), scope_selector={scope_selector[:80] if scope_selector else '(全页面)'}")
-                verified_locator = f"{tag}:has-text(\"{original}\")"
-                return {"text": original, "locator": verified_locator, "click_strategy": "js"}
-            else:
-                # JS 未匹配到，输出调试信息
-                debug_texts = (clicked or {}).get('allVisibleTexts', [])
-                LOG.info(f"    [submit_form_v2] JS 未匹配提交按钮, scope_selector={scope_selector[:80] if scope_selector else '(全页面)'}, 可见按钮({len(debug_texts)}个): {debug_texts[:15]}")
-        except Exception as e:
-            LOG.warning(f"    [submit_form_v2] JavaScript 提交按钮匹配异常: {e}")
-
-        # Playwright locator 回退（带隐藏过滤，使用 SUBMIT_TEXTS 列表）
-        from .locator_helpers import safe_css
+        # 逐个尝试 SUBMIT_TEXTS
         for text in const.SUBMIT_TEXTS:
-            try:
-                # 尊重 scope_selector 限定范围
-                if scope_selector:
-                    selector_parts = [s.strip() for s in scope_selector.split(',')]
-                    btn = None
-                    for part in selector_parts:
-                        loc = self.page.locator(f'{part} button:has-text("{text}"):visible').first
-                        if await loc.count() > 0:
-                            btn = loc
-                            break
-                else:
-                    enhanced = safe_css(f'button:has-text("{text}"):visible')
-                    btn = self.page.locator(enhanced).first
-                if btn and await btn.count() > 0:
-                    actual_text = await self.page.evaluate(f"""() => {{
-                        const allBtns = Array.from(document.querySelectorAll('button'));
-                        for (const b of allBtns) {{
-                            if (b.offsetWidth > 0 && b.offsetHeight > 0 && !b.disabled) {{
-                                const txt = b.textContent.trim();
-                                if (txt.includes("{text}")) {{
-                                    return txt;
-                                }}
-                            }}
-                        }}
-                        return "{text}";
-                    }}""")
-                    await btn.click()
-                    await wait_for_loading_complete(self.page)
-                    LOG.info(f"    [submit_form_v2] Playwright 回退匹配成功: '{actual_text}', scope_selector={scope_selector[:80] if scope_selector else '(全页面)'}")
-                    verified_locator = f"button:has-text(\"{actual_text}\")"
-                    return {"text": actual_text, "locator": verified_locator, "click_strategy": "playwright"}
-            except Exception as e:
-                LOG.debug(f"尝试提交按钮 {text} 失败: {e}")
-                continue
+            result = await click_page_button(
+                self.page, text,
+                scope_selector=scope_selector,
+            )
+            if result.get("clicked"):
+                LOG.info(f"    [submit_form_v2] 成功: '{text}' (strategy={result.get('strategy')})")
+                return {
+                    "text": result.get("text", text),
+                    "locator": result.get("locator", ""),
+                    "click_strategy": result.get("strategy", "playwright"),
+                }
 
-        # 最终回退: primary 按钮（带隐藏过滤）
+        # 最终回退: primary 按钮
         try:
-            # 尊重 scope_selector 限定范围
-            if scope_selector:
-                selector_parts = [s.strip() for s in scope_selector.split(',')]
-                primary_btn = None
-                for part in selector_parts:
-                    loc = self.page.locator(f'{part} button.el-button--primary:visible').first
-                    if await loc.count() > 0:
-                        primary_btn = loc
-                        break
-            else:
-                enhanced_primary = safe_css('button.el-button--primary:visible')
-                primary_btn = self.page.locator(enhanced_primary).first
-            if primary_btn and await primary_btn.count() > 0:
+            from .locator_helpers import safe_css
+            primary = self.page.locator(safe_css('button.el-button--primary', 'element-ui')).first
+            if await primary.count() > 0 and await primary.is_visible():
                 actual_text = await self.page.evaluate("""() => {
                     const btns = Array.from(document.querySelectorAll('button.el-button--primary'));
                     for (const b of btns) {
@@ -1367,15 +1286,52 @@ class FormFiller:
                     }
                     return "primary";
                 }""")
-                await primary_btn.click()
+                await primary.click()
+                from .wait_helpers import wait_for_loading_complete
                 await wait_for_loading_complete(self.page)
-                LOG.info(f"    [submit_form_v2] Primary 回退匹配成功: '{actual_text}', scope_selector={scope_selector[:80] if scope_selector else '(全页面)'}")
+                LOG.info(f"    [submit_form_v2] Primary 回退成功: '{actual_text}'")
                 return {"text": actual_text, "locator": "button.el-button--primary", "click_strategy": "playwright"}
         except Exception as e:
             LOG.debug(f"尝试 primary 按钮失败: {e}")
 
-        LOG.warning(f"    [submit_form_v2] 所有策略均失败，未找到提交按钮, scope_selector={scope_selector[:80] if scope_selector else '(全页面)'}")
+        LOG.warning(f"    [submit_form_v2] 所有策略均失败，未找到提交按钮")
         return {"text": "", "locator": ""}
+
+    async def _detect_submit_button_text(self, scope_selector: str = "") -> str:
+        """快速探测页面中是否存在 SUBMIT_TEXTS 中的按钮文本，返回第一个匹配的文本。"""
+        try:
+            if scope_selector:
+                scope_js = f"Array.from(document.querySelectorAll('{scope_selector}'))"
+                gather_js = f"Array.from(new Set(scopes.flatMap(s => Array.from(s.querySelectorAll('button, span, a')))))"
+            else:
+                scope_js = "null"
+                gather_js = "Array.from(document.querySelectorAll('button, span, a'))"
+
+            detected = await self.page.evaluate(f"""(() => {{
+                const scopes = {scope_js};
+                const allButtons = {gather_js};
+                const visible = allButtons.filter(b => {{
+                    if (b.offsetWidth <= 0 || b.offsetHeight <= 0) return false;
+                    if (b.disabled || b.classList.contains('is-disabled')) return false;
+                    if (b.closest('.is-hidden') || b.closest('[style*="display: none"]')) return false;
+                    return true;
+                }});
+                // 按优先级排序：button > a > span
+                visible.sort((a, b) => {{
+                    const priority = {{ BUTTON: 1, A: 2, SPAN: 3 }};
+                    return (priority[a.tagName] || 99) - (priority[b.tagName] || 99);
+                }});
+                for (const btn of visible) {{
+                    const originalText = btn.textContent.trim();
+                    if (originalText.replace(/\\s+/g, '').length < 10 && {const.js_normalize_in(const.SUBMIT_TEXTS, 'originalText')}) {{
+                        return originalText;
+                    }}
+                }}
+                return null;
+            }})()""")
+            return detected if detected else ""
+        except Exception:
+            return ""
 
 
 async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_selector: str = "") -> List[Dict]:

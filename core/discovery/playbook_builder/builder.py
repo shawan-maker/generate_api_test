@@ -975,17 +975,16 @@ def _build_create_steps(op_data: dict) -> list:
     # Step 4: 点击提交按钮（使用已验证的 locator）
     submit_locator = op_data.get("submit_locator_verified") or op_data.get("submit_locator")
     submit_text = op_data.get("submit_text") or op_data.get("selectors", {}).get("submit")
-    submit_strategy = op_data.get("submit_click_strategy", "playwright")  # 默认 playwright
     if submit_locator:
         step_entry = {
             "action": "click_button",
             "playwright_locator": submit_locator,
             "text": submit_text,
-            "description": "点击提交按钮"
+            "description": "点击提交按钮",
+            "strategy": op_data.get("submit_click_strategy", ""),
+            "xpath_index": op_data.get("submit_xpath_index", -1),
+            "clean_text": op_data.get("submit_clean_text", ""),
         }
-        # 如果 Stage 1 使用 JS 点击成功，记录策略供 Stage 2 优先使用
-        if submit_strategy == "js":
-            step_entry["click_strategy"] = "js"
         steps.append(step_entry)
 
     # Step 5: 验证成功
@@ -1305,19 +1304,19 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
             })
 
     # Step 5: 点击提交（使用已验证的 locator）
+    # Step 5: 点击提交（使用已验证的 locator）
     submit_locator = op_data.get("submit_locator_verified") or op_data.get("submit_locator")
     submit_text = op_data.get("submit_text") or op_data.get("selectors", {}).get("submit")
-    # ★ Fix 9: 传递 submit_click_strategy
-    submit_click_strategy = op_data.get("submit_click_strategy", "playwright")
     if submit_locator:
         click_step = {
             "action": "click_button",
             "playwright_locator": submit_locator,
             "text": submit_text,
-            "description": "点击提交按钮"
+            "description": "点击提交按钮",
+            "strategy": op_data.get("submit_click_strategy", ""),
+            "xpath_index": op_data.get("submit_xpath_index", -1),
+            "clean_text": op_data.get("submit_clean_text", ""),
         }
-        if submit_click_strategy != "playwright":
-            click_step["click_strategy"] = submit_click_strategy
         steps.append(click_step)
 
     # Step 6: 验证成功
