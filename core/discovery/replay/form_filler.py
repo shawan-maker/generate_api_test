@@ -2336,7 +2336,7 @@ class MultiStepExecutor:
                 mode = has_default.get("mode", "single")
                 if mode == "multiple":
                     vals = has_default.get("values", [])
-                    LOG.info(f"    el-select {label}: 多选已有默认值 {vals}，跳过")
+                    LOG.info(f"    el-select {label}: 多选已有默认值 {vals}，记录完整步骤后继续")
                     # 记录检查默认值步骤
                     interaction_steps.append({
                         "op": "check_default_value",
@@ -2344,14 +2344,9 @@ class MultiStepExecutor:
                         "desc": f"检查默认值: {', '.join(vals)}",
                         "value": ', '.join(vals)
                     })
-                    return True, {
-                        "is_editable": False,
-                        "option_text": ", ".join(vals),
-                        "select_sub_type": select_sub_type,
-                        "selection_strategy": selection_strategy,
-                        "interaction_steps": interaction_steps,
-                        "execution_path": "has_default_value"
-                    }
+                    # ★ Fix: 不提前返回，继续执行展开和选择流程
+                    # 后续代码会正常记录 expand + wait + click_first 步骤
+                    # 子类型检测在展开后执行，确保 select_sub_type 正确
                 else:
                     val = has_default.get("value", "")
                     LOG.info(f"    el-select {label}: 单选已有默认值 '{val}'，记录完整步骤后继续")

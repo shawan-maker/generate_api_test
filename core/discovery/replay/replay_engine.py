@@ -14,6 +14,8 @@ replay_engine.py — Playbook 回放引擎
 
 import logging
 import json
+import random as _rand
+import time as _time
 from typing import Optional
 from .button_driver import ButtonDriver
 from .form_filler import FormFiller
@@ -551,8 +553,11 @@ async def _execute_interaction_steps(page, steps: list, label: str) -> bool:
 
                 LOG.debug(f"click_text: selector={selector}, text={text}, level={level}")
 
-                # 构建包含文本的选择器
-                text_selector = f"{selector}:has-text('{text}')"
+                # ★ Fix: 使用 level 精确定位到具体列（级联选择器有多列）
+                if level > 0:
+                    text_selector = f"{selector}:nth-child({level}):has-text('{text}')"
+                else:
+                    text_selector = f"{selector}:has-text('{text}')"
 
                 try:
                     await page.wait_for_selector(text_selector, state="visible", timeout=5000)
@@ -573,6 +578,27 @@ async def _execute_interaction_steps(page, steps: list, label: str) -> bool:
                 value = step.get("value", "")
                 if not selector:
                     raise Exception(f"fill 操作缺少 selector")
+
+                # ★ 唯一性字段重新生成值，避免 Stage 1 冻结值回放冲突
+                desc_lower = desc.lower()
+                label_lower = label.lower()
+                is_phone = any(kw in desc_lower or kw in label_lower
+                               for kw in ("手机", "phone", "tel"))
+                is_email = any(kw in desc_lower or kw in label_lower
+                               for kw in ("邮箱", "email"))
+                is_account = any(kw in desc_lower or kw in label_lower
+                                 for kw in ("账号", "帐号", "账户", "account"))
+                if is_phone:
+                    value = f"138{_rand.randint(10000000, 99999999)}"
+                    LOG.info(f"    [regenerate] {label}: 手机号重新生成 → {value}")
+                elif is_email:
+                    ts = str(int(_time.time()))[-6:]
+                    value = f"at_{ts}@test.com"
+                    LOG.info(f"    [regenerate] {label}: 邮箱重新生成 → {value}")
+                elif is_account:
+                    ts = str(int(_time.time()))[-6:]
+                    value = f"AT_test_{ts}"
+                    LOG.info(f"    [regenerate] {label}: 账号重新生成 → {value}")
 
                 # 等待输入框可见
                 try:
