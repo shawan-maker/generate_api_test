@@ -6,6 +6,7 @@ error-driven retry logic, and individual CRUD operation executors
 (create, query, detail, edit, delete, save/confirm).
 """
 
+import copy
 import logging
 import time
 from core.discovery import const
@@ -1575,6 +1576,7 @@ async def _error_driven_retry(page, operation_fn, context: dict) -> dict:
     last_error_key = None
     vision_used_for_state = set()  # 已截图的页面状态 key
     max_rounds = 10  # 安全上限
+    first_ms_details = None  # ★ 保存第一次 attempt 的 multi_step_field_details（从空状态记录，最完整）
 
     for round_num in range(max_rounds):
         try:
@@ -1583,9 +1585,20 @@ async def _error_driven_retry(page, operation_fn, context: dict) -> dict:
             LOG.warning(f"    操作异常: {e}")
             result = exception(str(e))
 
+        # ★ 保存第一次 attempt 的 multi_step_field_details
+        # 第一次从空表单开始，记录的 interaction_steps 最完整
+        # 后续 attempt 因表单状态残留（multi-select 有值、cascader 有预选），步骤可能不完整
+        if round_num == 0 and result.get("multi_step_field_details"):
+            first_ms_details = copy.deepcopy(result["multi_step_field_details"])
+            LOG.debug(f"    [_error_driven_retry] 保存第 1 轮的 multi_step_field_details ({len(first_ms_details)} 个字段)")
+
         if result.get("success"):
             if round_num > 0:
                 LOG.info(f"    第 {round_num + 1} 轮尝试成功")
+            # ★ 成功时，用第一次的 multi_step_field_details 替换（第一次从空状态记录，步骤最完整）
+            if first_ms_details and round_num > 0:
+                result["multi_step_field_details"] = first_ms_details
+                LOG.info(f"    [_error_driven_retry] 使用第 1 轮的 multi_step_field_details 替换（共 {len(first_ms_details)} 个字段）")
             # ★ O1: 将按钮状态注入到返回结果
             if context.get("_button_state"):
                 result["button_state"] = context["_button_state"]

@@ -2336,7 +2336,7 @@ class MultiStepExecutor:
                 mode = has_default.get("mode", "single")
                 if mode == "multiple":
                     vals = has_default.get("values", [])
-                    LOG.info(f"    el-select {label}: 多选已有默认值 {vals}，记录完整步骤后继续")
+                    LOG.info(f"    el-select {label}: 多选已有默认值 {vals}，跳过")
                     # 记录检查默认值步骤
                     interaction_steps.append({
                         "op": "check_default_value",
@@ -2344,9 +2344,49 @@ class MultiStepExecutor:
                         "desc": f"检查默认值: {', '.join(vals)}",
                         "value": ', '.join(vals)
                     })
-                    # ★ Fix: 不提前返回，继续执行展开和选择流程
-                    # 后续代码会正常记录 expand + wait + click_first 步骤
-                    # 子类型检测在展开后执行，确保 select_sub_type 正确
+                    # ★ 在返回前检测子类型
+                    sub_type_info = None
+                    try:
+                        sub_type_info = await self.page.evaluate("""(selector) => {
+                            const sel = document.querySelector(selector);
+                            if (!sel) return null;
+                            const isMulti = sel.classList.contains('el-select--multiple') || sel.querySelector('.el-select__tags');
+                            const input = sel.querySelector('input.el-input__inner');
+                            const isFilterable = input && !input.readOnly;
+                            const vue = sel.__vue__;
+                            const isRemote = vue && vue.remote === true;
+                            const dds = document.querySelectorAll('.el-select-dropdown');
+                            let hasTree = false, hasGroup = false;
+                            for (const dd of dds) {
+                                if (dd.offsetWidth > 0 && dd.offsetHeight > 0) {
+                                    if (dd.querySelector('.el-tree')) hasTree = true;
+                                    if (dd.querySelector('.el-select-group__wrap')) hasGroup = true;
+                                }
+                            }
+                            return { isMulti: !!isMulti, isFilterable: !!isFilterable, isRemote: !!isRemote, hasTree, hasGroup };
+                        }""", selector)
+                    except Exception as e:
+                        LOG.debug(f"    el-select {label}: sub-type detection failed: {e}")
+
+                    if sub_type_info:
+                        if sub_type_info.get("hasTree"):
+                            select_sub_type = "select-tree"
+                        elif sub_type_info.get("isMulti"):
+                            select_sub_type = "select-multi"
+                        elif sub_type_info.get("isRemote"):
+                            select_sub_type = "select-remote"
+                        elif sub_type_info.get("isFilterable"):
+                            select_sub_type = "select-searchable"
+                        elif sub_type_info.get("hasGroup"):
+                            select_sub_type = "select-group"
+
+                    return True, {
+                        "select_sub_type": select_sub_type,
+                        "interaction_steps": interaction_steps,
+                        "selection_strategy": selection_strategy,
+                        "has_default_value": True,
+                        "default_values": vals,
+                    }
                 else:
                     val = has_default.get("value", "")
                     LOG.info(f"    el-select {label}: 单选已有默认值 '{val}'，记录完整步骤后继续")
@@ -2577,6 +2617,13 @@ class MultiStepExecutor:
                 debug_info = verify.get("debug", {})
                 LOG.warning(f"    ⚠️ select 填充后验证失败: {label} 仍为空 "
                            f"debug={debug_info}")
+                LOG.debug(f"    [DEBUG] 验证信号详情: hasTags={debug_info.get('hasTags')}, "
+                         f"hasValue={debug_info.get('hasValue')}, "
+                         f"hasSelectedText={debug_info.get('hasSelectedText')}, "
+                         f"hasTreeSelected={debug_info.get('hasTreeSelected')}, "
+                         f"hasVueModelValue={debug_info.get('hasVueModelValue')}, "
+                         f"hasTagsContainerText={debug_info.get('hasTagsContainerText')}, "
+                         f"vueFoundLevel={debug_info.get('vueFoundLevel')}")
                 # ★ Fix 2: 保留已执行的 interaction_steps
                 return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "editable_verify_failed", "interaction_steps": interaction_steps}
             LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
@@ -2617,6 +2664,13 @@ class MultiStepExecutor:
                 debug_info = verify.get("debug", {})
                 LOG.warning(f"    ⚠️ select 填充后验证失败: {label} 仍为空 "
                            f"debug={debug_info}")
+                LOG.debug(f"    [DEBUG] 验证信号详情: hasTags={debug_info.get('hasTags')}, "
+                         f"hasValue={debug_info.get('hasValue')}, "
+                         f"hasSelectedText={debug_info.get('hasSelectedText')}, "
+                         f"hasTreeSelected={debug_info.get('hasTreeSelected')}, "
+                         f"hasVueModelValue={debug_info.get('hasVueModelValue')}, "
+                         f"hasTagsContainerText={debug_info.get('hasTagsContainerText')}, "
+                         f"vueFoundLevel={debug_info.get('vueFoundLevel')}")
                 # ★ Fix 2: 保留已执行的 interaction_steps
                 return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "readonly_verify_failed", "interaction_steps": interaction_steps}
             LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
@@ -4181,9 +4235,62 @@ class MultiStepExecutor:
             const selectedLabel = sel.querySelector('.el-select__selected-item, .el-select__tags-text');
             const tagsContainer = sel.querySelector('.el-select__tags');
 
+            // ★ Fix B: 多信号检测 isMultiSelect（兼容自定义组件如 cmss-select）
+            const isMultiSelect = sel.classList.contains('el-select--multiple')
+                || (tagsContainer !== null)  // 有 tags 容器
+                || (sel.__vue__ && sel.__vue__.multiple === true);  // Vue multiple 属性
+
             const hasTags = tags.length > 0;
             const hasValue = input && input.value.trim().length > 0;
             const hasSelectedText = selectedLabel && selectedLabel.textContent.trim().length > 0;
+
+            // ★ Fix B: Vue model 值检测（通过父级链查找 Vue 实例，兼容自定义组件如 cmss-select）
+            let hasVueModelValue = false;
+            let vueModelText = '';
+            let vueFoundLevel = -1;
+            {
+                // 向上查找 Vue 实例（自定义组件的 __vue__ 可能不在 .el-select 上）
+                let vueEl = null;
+                if (sel.__vue__) { vueEl = sel; vueFoundLevel = 0; }
+                else {
+                    let parent = sel.parentElement;
+                    for (let i = 1; i <= 5 && parent; i++) {
+                        if (parent.__vue__) { vueEl = parent; vueFoundLevel = i; break; }
+                        parent = parent.parentElement;
+                    }
+                }
+                if (vueEl && vueEl.__vue__) {
+                    const vue = vueEl.__vue__;
+                    const modelValue = vue.modelValue || vue.value || vue.selected || vue.selectedLabel;
+                    if (Array.isArray(modelValue) && modelValue.length > 0) {
+                        hasVueModelValue = true;
+                        vueModelText = modelValue.join(', ');
+                    } else if (typeof modelValue === 'string' && modelValue.trim()) {
+                        hasVueModelValue = true;
+                        vueModelText = modelValue.trim();
+                    }
+                }
+            }
+
+            // ★ Fix B: tagsContainer 非 input 子元素文本检测（自定义多选组件可能用非 .el-tag 元素显示选中项）
+            let hasTagsContainerText = false;
+            let tagsContainerText = '';
+            if (tagsContainer && isMultiSelect) {
+                const nonInputChildren = Array.from(tagsContainer.children)
+                    .filter(c => c.tagName !== 'INPUT' && !c.classList.contains('el-input'));
+                if (nonInputChildren.length > 0) {
+                    const text = nonInputChildren.map(c => {
+                        // 递归提取文本（排除 input 和关闭按钮的 × 符号）
+                        const clone = c.cloneNode(true);
+                        clone.querySelectorAll('input, .el-tag__close, .el-icon-close').forEach(e => e.remove());
+                        return clone.textContent.trim();
+                    }).filter(t => t && t !== '×').join(', ');
+                    if (text) {
+                        hasTagsContainerText = true;
+                        tagsContainerText = text;
+                    }
+                }
+            }
 
             // tree-select 特殊检测：多种策略
             let hasTreeSelected = false;
@@ -4284,22 +4391,26 @@ class MultiStepExecutor:
             const displayed = hasTags
                 ? Array.from(tags).map(t => t.textContent.trim()).join(', ')
                 : hasTreeSelected ? treeSelectedText
+                : hasVueModelValue ? vueModelText
+                : hasTagsContainerText ? tagsContainerText
                 : (input ? input.value : '') || (selectedLabel ? selectedLabel.textContent.trim() : '');
 
-            const filled = hasTags || hasValue || hasSelectedText || hasTreeSelected;
+            // ★ Fix B: 加入 hasVueModelValue 和 hasTagsContainerText 作为额外成功信号
+            const filled = hasTags || hasValue || hasSelectedText || hasTreeSelected || hasVueModelValue || hasTagsContainerText;
 
             return {
                 filled: filled,
                 displayed_value: displayed,
                 is_empty: !filled,
                 debug: {
-                    hasTags, hasValue, hasSelectedText, hasTreeSelected,
+                    hasTags, hasValue, hasSelectedText, hasTreeSelected, hasVueModelValue, hasTagsContainerText,
+                    vueFoundLevel,
                     tagCount: tags.length,
                     inputValue: input ? input.value : null,
                     inputPlaceholder: input ? input.placeholder : null,
                     hasTagsContainer: !!tagsContainer,
                     tagsContainerChildren: tagsContainer ? tagsContainer.children.length : 0,
-                    isMultiSelect: sel.classList.contains('el-select--multiple'),
+                    isMultiSelect: isMultiSelect,
                     isTreeSelect: isTreeSelect,
                     selClassName: sel.className
                 }
@@ -4879,6 +4990,7 @@ class MultiStepExecutor:
         - 如果有子级指示（箭头图标），点击第一项展开下一级
         - 如果无子级（叶子节点），直接点击选择
         - 最大深度 10 级保护
+        - ★ 如果有预选值（多列可见），读取所有面板重建完整路径
 
         Returns:
             tuple: (success: bool, selected_path: list[str])
@@ -4886,6 +4998,13 @@ class MultiStepExecutor:
         """
         max_depth = 10
         selected_path = []
+
+        # ★ Fix: 检测是否有预选值（多列面板可见），如果有则读取完整路径
+        preselected_path = await self._read_cascader_all_levels()
+        if preselected_path and len(preselected_path) > 1:
+            LOG.info(f"    级联自动发现: 检测到预选值，完整路径={preselected_path}")
+            # 预选值已存在，无需重新选择，直接返回完整路径
+            return True, preselected_path
 
         for depth in range(max_depth):
             items = await self._read_cascader_current_items()
@@ -4928,6 +5047,192 @@ class MultiStepExecutor:
 
         LOG.warning("级联超过最大深度，中止")
         return False, selected_path
+
+    async def _read_cascader_all_levels(self) -> list:
+        """读取级联选择器所有可见面板的选中项，重建完整路径。
+
+        当 cascader 有预选值时，会显示多级面板（如省/市/区三列）。
+        此函数读取每一列的选中项，返回完整路径。
+
+        Returns:
+            list[str]: 完整路径，如 ['北京市', '北京市', '东城区']
+                      如果没有预选值或读取失败，返回空列表
+        """
+        LOG.debug(f"    [cascader-debug] 开始读取所有层级的选中项")
+
+        if self.framework == "ant-design":
+            js = """() => {
+                const menus = document.querySelectorAll('.ant-cascader-menu');
+                const debugInfo = {
+                    menuCount: menus.length,
+                    menus: []
+                };
+
+                if (!menus.length) return { path: [], debug: debugInfo };
+
+                const path = [];
+                for (let i = 0; i < menus.length; i++) {
+                    const menu = menus[i];
+                    const menuDebug = {
+                        index: i,
+                        itemCount: 0,
+                        selectedText: null,
+                        selector: '.ant-cascader-menu-item-active'
+                    };
+
+                    const items = menu.querySelectorAll('.ant-cascader-menu-item');
+                    menuDebug.itemCount = items.length;
+
+                    const selected = menu.querySelector('.ant-cascader-menu-item-active');
+                    if (selected) {
+                        const text = selected.textContent.trim();
+                        menuDebug.selectedText = text;
+                        if (text) path.push(text);
+                    } else {
+                        debugInfo.menus.push(menuDebug);
+                        break;
+                    }
+                    debugInfo.menus.push(menuDebug);
+                }
+
+                return { path, debug: debugInfo };
+            }"""
+        else:
+            js = """() => {
+                const menus = document.querySelectorAll('.el-cascader-menu');
+                const debugInfo = {
+                    menuCount: menus.length,
+                    menus: []
+                };
+
+                if (!menus.length) return { path: [], debug: debugInfo };
+
+                const path = [];
+                for (let i = 0; i < menus.length; i++) {
+                    const menu = menus[i];
+                    const menuDebug = {
+                        index: i,
+                        liCount: 0,
+                        divCount: 0,
+                        selectedText: null,
+                        selectedSelector: null,
+                        allItems: []
+                    };
+
+                    // 尝试多种选择器：li[role="menuitem"], div.el-cascader-node, 其他
+                    const liItems = menu.querySelectorAll('li[role="menuitem"]');
+                    const divItems = menu.querySelectorAll('div.el-cascader-node');
+                    menuDebug.liCount = liItems.length;
+                    menuDebug.divCount = divItems.length;
+
+                    let found = false;
+                    let selectedElement = null;
+                    let selectedSelector = null;
+
+                    // 策略1: 查找 li 中的 in-active-path
+                    for (const item of liItems) {
+                        if (item.classList.contains('in-active-path')) {
+                            selectedElement = item;
+                            selectedSelector = 'li.in-active-path';
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    // 策略2: 查找 div.el-cascader-node 中的 is-active
+                    if (!found) {
+                        for (const item of divItems) {
+                            if (item.classList.contains('is-active') || item.classList.contains('in-active-path')) {
+                                selectedElement = item;
+                                selectedSelector = 'div.el-cascader-node.is-active';
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    // 策略3: 查找任何有 is-active 类的元素
+                    if (!found) {
+                        const anyActive = menu.querySelector('.is-active, .in-active-path');
+                        if (anyActive) {
+                            selectedElement = anyActive;
+                            selectedSelector = '.is-active/.in-active-path';
+                            found = true;
+                        }
+                    }
+
+                    menuDebug.selectedSelector = selectedSelector;
+
+                    if (selectedElement) {
+                        // 提取文本：优先使用 span，否则使用元素本身
+                        const textSpan = selectedElement.querySelector('span');
+                        const text = (textSpan || selectedElement).textContent.trim();
+                        menuDebug.selectedText = text;
+
+                        // 记录所有项的文本（用于调试）
+                        const allItems = menu.querySelectorAll('li, div.el-cascader-node');
+                        menuDebug.allItems = Array.from(allItems).slice(0, 5).map(el => {
+                            const span = el.querySelector('span');
+                            return {
+                                text: (span || el).textContent.trim(),
+                                classes: el.className,
+                                tagName: el.tagName
+                            };
+                        });
+
+                        if (text) path.push(text);
+                    } else {
+                        // 记录所有项（调试用）
+                        const allItems = menu.querySelectorAll('li, div.el-cascader-node');
+                        menuDebug.allItems = Array.from(allItems).slice(0, 5).map(el => {
+                            const span = el.querySelector('span');
+                            return {
+                                text: (span || el).textContent.trim(),
+                                classes: el.className,
+                                tagName: el.tagName
+                            };
+                        });
+                    }
+
+                    debugInfo.menus.push(menuDebug);
+
+                    if (!found) {
+                        break;
+                    }
+                }
+
+                return { path, debug: debugInfo };
+            }"""
+
+        try:
+            result = await self.page.evaluate(js)
+            path = result.get('path', [])
+            debug = result.get('debug', {})
+
+            # 输出调试信息
+            LOG.debug(f"    [cascader-debug] 面板数量: {debug.get('menuCount', 0)}")
+            for menu_info in debug.get('menus', []):
+                idx = menu_info.get('index', -1)
+                if self.framework == "ant-design":
+                    LOG.debug(f"      面板{idx}: 项数={menu_info.get('itemCount', 0)}, "
+                             f"选中文本={menu_info.get('selectedText', None)}, "
+                             f"选择器={menu_info.get('selector', '')}")
+                else:
+                    LOG.debug(f"      面板{idx}: li数={menu_info.get('liCount', 0)}, "
+                             f"div数={menu_info.get('divCount', 0)}, "
+                             f"选中文本={menu_info.get('selectedText', None)}, "
+                             f"选择器={menu_info.get('selectedSelector', None)}")
+                    # 输出前5个项的详细信息
+                    for i, item in enumerate(menu_info.get('allItems', [])):
+                        LOG.debug(f"        项{i}: text='{item.get('text', '')}', "
+                                 f"tag={item.get('tagName', '')}, "
+                                 f"classes='{item.get('classes', '')}'")
+
+            LOG.debug(f"    [cascader-debug] 最终路径: {path}")
+            return path
+        except Exception as e:
+            LOG.warning(f"    [cascader-debug] 读取失败: {e}")
+            return []
 
     async def discover_options(self, kb_category: str, label: str) -> dict:
         """发现组件的可用选项（不选择，仅读取）。

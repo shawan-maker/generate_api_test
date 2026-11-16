@@ -555,7 +555,13 @@ async def _execute_interaction_steps(page, steps: list, label: str) -> bool:
 
                 # ★ Fix: 使用 level 精确定位到具体列（级联选择器有多列）
                 if level > 0:
-                    text_selector = f"{selector}:nth-child({level}):has-text('{text}')"
+                    if 'cascader' in selector:
+                        # 级联选择器：先定位到第 level 个菜单，然后在其中查找包含文本的选项
+                        # 避免匹配整个菜单容器，而是匹配具体的选项元素（li）
+                        menu_selector = f"{selector}:nth-child({level})"
+                        text_selector = f"{menu_selector} li:has-text('{text}')"
+                    else:
+                        text_selector = f"{selector}:nth-child({level}):has-text('{text}')"
                 else:
                     text_selector = f"{selector}:has-text('{text}')"
 
@@ -571,6 +577,12 @@ async def _execute_interaction_steps(page, steps: list, label: str) -> bool:
 
                 await elements[0].click()
                 LOG.info(f"    [step {i}/{len(steps)}] {desc}: 点击文本 '{text}' 成功")
+
+                # ★ Fix: cascader 点击后等待子面板加载渲染
+                # Element UI 级联选择器点击一级选项后，子面板异步加载，需要等待
+                if selector and 'cascader' in selector:
+                    await page.wait_for_timeout(500)
+                    LOG.debug(f"    [step {i}/{len(steps)}] cascader: 等待子面板渲染 500ms")
 
             elif op == "fill":
                 # 填充输入框
@@ -1640,6 +1652,7 @@ async def _step_precondition(page, step: dict):
     pc_type = step.get("type", "click_first_leaf")
     selector = step.get("selector", "")
     wait_ms = step.get("wait_ms", 1500)
+    text_matched = step.get("text_matched", "")  # ★ 读取目标文本
 
     if pc_type in ("click_first_leaf", "click_first_visible"):
         if not selector:
@@ -1647,9 +1660,9 @@ async def _step_precondition(page, step: dict):
             return
 
         try:
-            # 查找并点击第一个可见的叶子节点
+            # ★ Fix: 使用 text_matched 精确匹配目标节点，而非盲目点击第一个未选中的节点
             clicked = await page.evaluate(f"""
-            () => {{
+            (targetText) => {{
                 function _isLeafNode(sel, node) {{
                     const cls = (node.className || '').toString();
                     if (cls.includes('is-leaf') || cls.includes('tree-leaf')) {{
@@ -1670,41 +1683,69 @@ async def _step_precondition(page, step: dict):
                     return true;
                 }}
 
+                function _checkSelected(node) {{
+                    return node.classList.contains('is-current') ||
+                           node.getAttribute('aria-selected') === 'true' ||
+                           node.classList.contains('active') ||
+                           node.classList.contains('selected');
+                }}
+
                 const nodes = document.querySelectorAll('{selector}');
+
+                // 策略1：如果指定了 targetText，优先按文本精确匹配
+                if (targetText) {{
+                    for (const node of nodes) {{
+                        const rect = node.getBoundingClientRect();
+                        if (rect.width > 0 && rect.height > 0) {{
+                            const needLeafCheck = {str(pc_type == 'click_first_leaf').lower()};
+                            if (needLeafCheck && !_isLeafNode('{selector}', node)) {{
+                                continue;
+                            }}
+                            const nodeText = node.textContent.trim();
+                            if (nodeText === targetText) {{
+                                if (_checkSelected(node)) {{
+                                    return {{clicked: false, reason: 'already_selected', text: nodeText, matched: true}};
+                                }}
+                                node.click();
+                                return {{clicked: true, text: nodeText, matched: true}};
+                            }}
+                        }}
+                    }}
+                    // 目标文本未找到，记录日志并降级
+                    return {{clicked: false, reason: 'target_not_found', targetText: targetText}};
+                }}
+
+                // 策略2：未指定 targetText，降级到原逻辑（点击第一个未选中的可见叶子节点）
                 for (const node of nodes) {{
                     const rect = node.getBoundingClientRect();
                     if (rect.width > 0 && rect.height > 0) {{
-                        // 如果是 click_first_leaf 模式，需要检查是否是叶子节点
                         const needLeafCheck = {str(pc_type == 'click_first_leaf').lower()};
                         if (needLeafCheck && !_isLeafNode('{selector}', node)) {{
                             continue;
                         }}
-
-                        // 检查是否已选中（避免重复点击）
-                        const isSelected = node.classList.contains('is-current') ||
-                                           node.getAttribute('aria-selected') === 'true' ||
-                                           node.classList.contains('active') ||
-                                           node.classList.contains('selected');
-                        if (isSelected) {{
+                        if (_checkSelected(node)) {{
                             return {{clicked: false, reason: 'already_selected'}};
                         }}
                         node.click();
-                        return {{
-                            clicked: true,
-                            text: node.textContent.trim().substring(0, 60)
-                        }};
+                        return {{clicked: true, text: node.textContent.trim().substring(0, 60)}};
                     }}
                 }}
                 return {{clicked: false, reason: 'no_visible_node'}};
             }}
-            """)
+            """, text_matched)
 
             if clicked.get("clicked"):
                 text = clicked.get("text", "")
-                LOG.info(f"    ✓ precondition: 已点击树节点 '{text}'")
+                matched = clicked.get("matched", False)
+                LOG.info(f"    ✓ precondition: 已点击树节点 '{text}'" + (" (精确匹配)" if matched else ""))
                 await page.wait_for_timeout(wait_ms)
             elif clicked.get("reason") == "already_selected":
-                LOG.debug(f"    ✓ precondition: 树节点已选中，跳过")
+                text = clicked.get("text", "")
+                LOG.debug(f"    ✓ precondition: 树节点" + (f" '{text}'" if text else "") + "已选中，跳过")
+            elif clicked.get("reason") == "target_not_found":
+                target_text = clicked.get("targetText", "")
+                LOG.warning(f"    ⚠️ precondition: 目标节点 '{target_text}' 未找到，树节点可能已变化")
+                # precondition 失败不应中断整个操作，允许继续
             else:
                 LOG.warning(f"    ⚠️ precondition: 未找到可见的树节点")
 
