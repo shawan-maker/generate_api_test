@@ -61,6 +61,74 @@ LOG = logging.getLogger("run")
 
 # ---- 重定向检测辅助函数 ----
 
+
+async def _extract_rsa_public_key(page) -> str:
+    """从前端页面提取 RSA 公钥（用于加密敏感字段）。
+
+    扫描前端 JS 代码，提取 setPublicKey() 调用中的 Base64 编码公钥。
+    用于生成有效的 RSA 加密值（phone/email/password）。
+
+    Args:
+        page: Playwright page 对象
+
+    Returns:
+        Base64 编码的 DER 格式公钥，提取失败返回 None
+    """
+    try:
+        # 提取前端 JS 中的 RSA 公钥
+        rsa_key = await page.evaluate("""() => {
+            // 方法 1: 从全局变量查找
+            if (window.__RSA_PUBLIC_KEY__) {
+                return window.__RSA_PUBLIC_KEY__;
+            }
+
+            // 方法 2: 从 JS 代码中提取 setPublicKey 调用的参数
+            const scripts = document.querySelectorAll('script[src]');
+            for (const script of scripts) {
+                const src = script.src;
+                if (src.includes('.js')) {
+                    try {
+                        const xhr = new XMLHttpRequest();
+                        xhr.open('GET', src, false);
+                        xhr.send();
+                        const jsCode = xhr.responseText;
+
+                        // 匹配 setPublicKey("...") 或 setPublicKey('...')
+                        const match = jsCode.match(/setPublicKey\\(['"]([A-Za-z0-9+\\/=]+)['"]\\)/);
+                        if (match && match[1]) {
+                            return match[1];
+                        }
+                    } catch (e) {
+                        continue;
+                    }
+                }
+            }
+
+            // 方法 3: 从页面所有脚本内容中搜索
+            const allScripts = document.querySelectorAll('script');
+            for (const script of allScripts) {
+                const content = script.textContent || '';
+                const match = content.match(/setPublicKey\\(['"]([A-Za-z0-9+\\/=]+)['"]\\)/);
+                if (match && match[1]) {
+                    return match[1];
+                }
+            }
+
+            return null;
+        }""")
+
+        if rsa_key and len(rsa_key) > 100:  # 公钥通常 200+ 字符
+            LOG.info(f"  ✅ RSA 公钥提取成功: {len(rsa_key)} 字符")
+            return rsa_key
+        else:
+            LOG.debug("  RSA 公钥未找到或长度不足")
+            return None
+
+    except Exception as e:
+        LOG.debug(f"  RSA 公钥提取失败: {e}")
+        return None
+
+
 def _is_login_redirect(page) -> bool:
     """检测当前页面是否被重定向到登录页。
 
@@ -251,6 +319,11 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str,
     # 清理 UI 残留
     await cleanup_ui_overlays(page)
 
+    # 提取 RSA 公钥（用于加密敏感字段）
+    rsa_public_key = await _extract_rsa_public_key(page)
+    if rsa_public_key:
+        LOG.info("  🔑 RSA 公钥已提取")
+
     # Phase A+B: 探测 + 业务闭环验证（一体化）
     ui_result = await discover_and_validate(page)
 
@@ -314,16 +387,13 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str,
     if "_debug_composite" in ui_result:
         del ui_result["_debug_composite"]
 
-    # 保存
-    ws_dir = get_workspace_dir(project_dir)
-    ws_dir.mkdir(parents=True, exist_ok=True)
-    out_path = ws_dir / "kb" / "module_discovered" / f"{module_name}_ui.json"
-    _save_json(ui_result, out_path)
-    LOG.info(f"结果已保存: {out_path}")
-
     # 注入 meta 信息到 ui_result（供 build_playbook 使用）
     ui_result["module_name"] = module_name
     ui_result["target_url"] = target_url
+
+    # 注入 RSA 公钥（如果提取到）— 必须在保存前注入，确保序列化到 _ui.json
+    if rsa_public_key:
+        ui_result["rsa_public_key"] = rsa_public_key
     # 从 target_url 推导 base_url
     from urllib.parse import urlparse
     parsed_url = urlparse(target_url)
@@ -341,6 +411,13 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str,
         "token_storage": profile_auth.get("token_storage", "localStorage"),
         "cookie_token_key": profile_auth.get("cookie_token_key", ""),
     }
+
+    # 保存（所有注入字段已就绪）
+    ws_dir = get_workspace_dir(project_dir)
+    ws_dir.mkdir(parents=True, exist_ok=True)
+    out_path = ws_dir / "kb" / "module_discovered" / f"{module_name}_ui.json"
+    _save_json(ui_result, out_path)
+    LOG.info(f"结果已保存: {out_path}")
 
     # 生成并保存 playbook（即使 Stage 1 验证失败也要生成，确保旧 playbook 被覆盖）
     from core.discovery.discover_ui import build_playbook

@@ -63,47 +63,47 @@ class TestAnalyzeValuePattern:
             assert result.get("pattern") != "hex_hash"
 
     def test_base64_sensitive_phone(self):
-        """50+ 字符 base64 值 + phone 字段名 → static/encrypted_sensitive"""
+        """50+ 字符 base64 值 + phone 字段名 → generate/encrypted_phone"""
         b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx+/"
         assert len(b64) >= 50
         result = _analyze_value_pattern("phone", b64)
-        assert result == {"role": "static", "pattern": "encrypted_sensitive"}
+        assert result == {"role": "generate", "pattern": "encrypted_phone"}
 
     def test_base64_sensitive_mobile(self):
-        """50+ 字符 base64 值 + mobile 字段名 → static/encrypted_sensitive"""
+        """50+ 字符 base64 值 + mobile 字段名 → generate/encrypted_phone"""
         b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx+/"
         result = _analyze_value_pattern("mobileNo", b64)
-        assert result == {"role": "static", "pattern": "encrypted_sensitive"}
+        assert result == {"role": "generate", "pattern": "encrypted_phone"}
 
     def test_base64_sensitive_email(self):
-        """50+ 字符 base64 值 + email 字段名 → static/encrypted_sensitive"""
+        """50+ 字符 base64 值 + email 字段名 → generate/encrypted_email"""
         b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx+/"
         result = _analyze_value_pattern("emailAddr", b64)
-        assert result == {"role": "static", "pattern": "encrypted_sensitive"}
+        assert result == {"role": "generate", "pattern": "encrypted_email"}
 
     def test_base64_sensitive_password(self):
-        """50+ 字符 base64 值 + password 字段名 → static/encrypted_sensitive"""
+        """50+ 字符 base64 值 + password 字段名 → generate/encrypted_password"""
         b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx+/"
         result = _analyze_value_pattern("password", b64)
-        assert result == {"role": "static", "pattern": "encrypted_sensitive"}
+        assert result == {"role": "generate", "pattern": "encrypted_password"}
 
     def test_base64_sensitive_pwd(self):
-        """50+ 字符 base64 值 + pwd 字段名 → static/encrypted_sensitive"""
+        """50+ 字符 base64 值 + pwd 字段名 → generate/encrypted_password"""
         b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx+/"
         result = _analyze_value_pattern("userPwd", b64)
-        assert result == {"role": "static", "pattern": "encrypted_sensitive"}
+        assert result == {"role": "generate", "pattern": "encrypted_password"}
 
     def test_base64_non_sensitive(self):
-        """50+ 字符 base64 值 + 非敏感字段名 → static/base64_encrypted"""
+        """50+ 字符 base64 值 + 非敏感字段名 → generate/base64_encrypted"""
         b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx+/"
         result = _analyze_value_pattern("data", b64)
-        assert result == {"role": "static", "pattern": "base64_encrypted"}
+        assert result == {"role": "generate", "pattern": "base64_encrypted"}
 
     def test_base64_with_equals_padding(self):
-        """含 = 填充的 base64 值 + 非敏感字段 → static/base64_encrypted"""
+        """含 = 填充的 base64 值 + 非敏感字段 → generate/base64_encrypted"""
         b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+="
         result = _analyze_value_pattern("payload", b64)
-        assert result == {"role": "static", "pattern": "base64_encrypted"}
+        assert result == {"role": "generate", "pattern": "base64_encrypted"}
 
     def test_email_pattern(self):
         """邮箱格式 → generate/email"""
@@ -755,12 +755,12 @@ class TestClassifyFields:
         assert roles["token"]["pattern"] == "hex_hash"
 
     def test_generate_base64(self):
-        """Pass 4: 长 base64 串 → static/base64_encrypted (无法加密，复用原值)"""
+        """Pass 4: 长 base64 串 → generate/base64_encrypted"""
         vi = ValueIndex()
         b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx+/"
         body = {"data": b64}
         roles = classify_fields(body, vi)
-        assert roles["data"]["role"] == "static"
+        assert roles["data"]["role"] == "generate"
         assert roles["data"]["pattern"] == "base64_encrypted"
 
     def test_static_fallback(self):

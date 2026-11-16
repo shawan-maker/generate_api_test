@@ -219,7 +219,7 @@ def sanitize_group_name(name: str) -> str:
 def _generate_modules_yaml(discovered: list, project_dir: Path, base_url: str):
     """从导航发现结果自动生成 modules.yaml。
 
-    仅在 modules.yaml 不存在时生成，不覆盖用户手动编辑的内容。
+    仅在 modules.yaml 不存在或为空时生成，不覆盖用户手动编辑的内容。
 
     Args:
         discovered: 导航发现结果 [{"label": ..., "url": ..., "group": ...}, ...]
@@ -227,8 +227,20 @@ def _generate_modules_yaml(discovered: list, project_dir: Path, base_url: str):
         base_url: 基础 URL（用于将完整 URL 转为相对路径）
     """
     modules_yaml_path = project_dir / "modules.yaml"
+
+    # 检查文件是否存在且非空
     if modules_yaml_path.exists():
-        return  # 不覆盖已有文件
+        try:
+            import yaml
+            existing_content = modules_yaml_path.read_text(encoding='utf-8').strip()
+            if existing_content:
+                # 文件存在且有内容，不覆盖
+                existing_data = yaml.safe_load(existing_content) or {}
+                if existing_data.get('modules'):
+                    return
+        except Exception:
+            pass
+        # 文件存在但为空或无效，继续生成
 
     try:
         import yaml
@@ -281,13 +293,25 @@ def export_modules_from_cache(project_dir: Path, workspace_dir: Path, base_url: 
     供 --export-modules 参数调用。
 
     Returns:
-        True = 成功生成，False = 缓存不存在或 modules.yaml 已存在
+        True = 成功生成，False = 缓存不存在或 modules.yaml 已存在且有效
     """
     modules_yaml_path = project_dir / "modules.yaml"
+
+    # 检查文件是否存在且有效
     if modules_yaml_path.exists():
-        LOG.info(f"modules.yaml 已存在，跳过生成: {modules_yaml_path}")
-        LOG.info("  如需重新生成，请先手动删除该文件")
-        return False
+        try:
+            import yaml
+            existing_content = modules_yaml_path.read_text(encoding='utf-8').strip()
+            if existing_content:
+                existing_data = yaml.safe_load(existing_content) or {}
+                if existing_data.get('modules'):
+                    LOG.info(f"modules.yaml 已存在且有效，跳过生成: {modules_yaml_path}")
+                    LOG.info("  如需重新生成，请先手动删除该文件")
+                    return False
+                else:
+                    LOG.info(f"modules.yaml 存在但为空，将重新生成")
+        except Exception as e:
+            LOG.warning(f"读取 modules.yaml 失败: {e}，将重新生成")
 
     cached = load_discovery_result(workspace_dir, max_age_days=30)
     if not cached:

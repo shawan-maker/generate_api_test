@@ -40,15 +40,18 @@ def _analyze_value_pattern(field_name: str, value) -> dict:
     if re.fullmatch(r'[0-9a-fA-F]{32,}', value):
         return {"role": "generate", "pattern": "hex_hash"}
 
-    # 2. 长 Base64 串（≥50 字符，含 +/=）→ 加密值，不可重放
+    # 2. 长 Base64 串（≥50 字符，含 +/=）→ 加密值
     #    对加密值用字段名辅助判断应生成什么类型的测试值
     if len(value) >= 50 and re.search(r'[+/=]', value) and re.fullmatch(r'[A-Za-z0-9+/=]+', value):
-        # 所有加密字段都标记为 static，复用原始加密值
-        # 原因：服务端要求加密后的值，我们无法生成有效的加密值（不知道公钥）
-        # 即使是非敏感字段（如 detailAddress），也无法生成有效加密值
-        if any(kw in fn_lower for kw in ('phone', 'mobile', 'cell', 'email', 'mail', 'password', 'passwd', 'pwd')):
-            return {"role": "static", "pattern": "encrypted_sensitive"}
-        return {"role": "static", "pattern": "base64_encrypted"}
+        # 敏感字段按类型分发到不同生成器（phone/email/password 需要不同明文格式）
+        if any(kw in fn_lower for kw in ('phone', 'mobile', 'cell')):
+            return {"role": "generate", "pattern": "encrypted_phone"}
+        if any(kw in fn_lower for kw in ('email', 'mail')):
+            return {"role": "generate", "pattern": "encrypted_email"}
+        if any(kw in fn_lower for kw in ('password', 'passwd', 'pwd')):
+            return {"role": "generate", "pattern": "encrypted_password"}
+        # 非敏感加密字段（如 detailAddress）生成随机密文
+        return {"role": "generate", "pattern": "base64_encrypted"}
 
     # 3. 短可读字符串 — 进一步分析子模式
     if len(value) < 80:

@@ -164,6 +164,12 @@ def build_manifest(analysis: dict, capture_result: dict,
     infra_apis = infra_apis or set()
     pre_api_candidates = capture_result.get("pre_api_candidates", [])
 
+    # 提取 RSA 公钥（如果存在）
+    rsa_public_key = None
+    if ui_result and ui_result.get("rsa_public_key"):
+        rsa_public_key = ui_result["rsa_public_key"]
+        LOG.info(f"  🔑 RSA 公钥已注入到 manifest: {len(rsa_public_key)} 字符")
+
     # 获取 id_producer（用于替代硬编码的 "create"）
     id_producer = analysis.get("dependencies", {}).get("id_producer")
 
@@ -1808,6 +1814,10 @@ def build_manifest(analysis: dict, capture_result: dict,
         "steps": steps,
         "state_assertions": analysis.get("state_assertions", {}),
     }
+
+    # 添加 RSA 公钥（如果存在）
+    if rsa_public_key:
+        manifest["rsa_public_key"] = rsa_public_key
 
     # 标记只读模块
     if is_read_only_module:

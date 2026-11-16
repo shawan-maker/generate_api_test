@@ -626,9 +626,13 @@ def export_helpers(manifest: dict, output_path: Path):
       gen_hex_id           — 32 位十六进制 ID（generate/hex_id 模式）
       gen_random_int       — 8 位随机整数（generate/random_int 模式）
       gen_text             — 通用文本（generate/text 模式）
+      gen_encrypted_phone  — RSA 加密手机号（generate/encrypted_phone 模式）
+      gen_encrypted_email  — RSA 加密邮箱（generate/encrypted_email 模式）
+      gen_encrypted_password — RSA 加密密码（generate/encrypted_password 模式）
     """
     auth_profile = manifest.get("auth_profile", {})
     cookie_token_key = auth_profile.get("cookie_token_key", "accessToken")
+    rsa_public_key = manifest.get("rsa_public_key", "")
 
     helpers_code = '''"""
 helpers.py — 由 module_discovery Stage 5 自动导出
@@ -641,7 +645,12 @@ import json
 import time
 import random
 import uuid as _uuid_mod
+import base64
 from pathlib import Path
+
+# ────────────────── RSA 公钥 ──────────────────
+# 从前端 JS 提取的 RSA 公钥（Base64 DER 格式），用于加密敏感字段
+_RSA_PUBLIC_KEY_B64 = "{rsa_public_key}"
 
 
 # ────────────────── 认证 ──────────────────
@@ -776,18 +785,51 @@ def gen_text() -> str:
 
 def gen_base64_encrypted() -> str:
     """
-    生成 Base64 编码的随机字符串（用于加密字段的占位符）。
-
-    注意：此函数生成的是随机值，不能用于需要真实加密的场景。
-    如果服务端要求有效的加密值，应将字段分类为 static 并复用原始值。
+    生成 Base64 编码的随机字符串（用于非敏感加密字段的占位符）。
 
     Returns:
         88 字符的 Base64 字符串（64 字节编码后）
     """
-    import base64
     random_bytes = bytes([random.randint(0, 255) for _ in range(64)])
     return base64.b64encode(random_bytes).decode('utf-8')
-'''.format(cookie_token_key=cookie_token_key)
+
+
+def _rsa_encrypt(plaintext: str) -> str:
+    """RSA 加密明文，返回 Base64 编码密文。公钥不可用时降级为随机 Base64。"""
+    if not _RSA_PUBLIC_KEY_B64:
+        # 无公钥时降级为随机 128 字节 Base64（模拟密文长度）
+        random_bytes = bytes([random.randint(0, 255) for _ in range(128)])
+        return base64.b64encode(random_bytes).decode('utf-8')
+    try:
+        from cryptography.hazmat.primitives.serialization import load_der_public_key
+        from cryptography.hazmat.primitives.asymmetric import padding
+        key_bytes = base64.b64decode(_RSA_PUBLIC_KEY_B64)
+        pub_key = load_der_public_key(key_bytes)
+        encrypted = pub_key.encrypt(plaintext.encode('utf-8'), padding.PKCS1v15())
+        return base64.b64encode(encrypted).decode('utf-8')
+    except Exception as e:
+        print(f"  ⚠️ RSA 加密失败: {{e}}，降级为随机 Base64")
+        random_bytes = bytes([random.randint(0, 255) for _ in range(128)])
+        return base64.b64encode(random_bytes).decode('utf-8')
+
+
+def gen_encrypted_phone() -> str:
+    """生成 RSA 加密的手机号密文（明文: 11位随机手机号）。"""
+    plaintext = f"138{{random.randint(10000000, 99999999)}}"
+    return _rsa_encrypt(plaintext)
+
+
+def gen_encrypted_email() -> str:
+    """生成 RSA 加密的邮箱密文（明文: 时间戳邮箱）。"""
+    plaintext = f"at_{{_ts6()}}@test.com"
+    return _rsa_encrypt(plaintext)
+
+
+def gen_encrypted_password() -> str:
+    """生成 RSA 加密的密码密文（明文: 随机密码）。"""
+    plaintext = f"Test@{{_ts6()}}!Ab"
+    return _rsa_encrypt(plaintext)
+'''.format(cookie_token_key=cookie_token_key, rsa_public_key=rsa_public_key)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(helpers_code, encoding="utf-8")
