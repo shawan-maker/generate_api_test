@@ -43,11 +43,12 @@ def _analyze_value_pattern(field_name: str, value) -> dict:
     # 2. 长 Base64 串（≥50 字符，含 +/=）→ 加密值，不可重放
     #    对加密值用字段名辅助判断应生成什么类型的测试值
     if len(value) >= 50 and re.search(r'[+/=]', value) and re.fullmatch(r'[A-Za-z0-9+/=]+', value):
-        # 字段名含敏感信息（phone/email/password）→ 标记为 static，复用原始加密值
+        # 所有加密字段都标记为 static，复用原始加密值
         # 原因：服务端要求加密后的值，我们无法生成有效的加密值（不知道公钥）
+        # 即使是非敏感字段（如 detailAddress），也无法生成有效加密值
         if any(kw in fn_lower for kw in ('phone', 'mobile', 'cell', 'email', 'mail', 'password', 'passwd', 'pwd')):
             return {"role": "static", "pattern": "encrypted_sensitive"}
-        return {"role": "generate", "pattern": "base64_encrypted"}
+        return {"role": "static", "pattern": "base64_encrypted"}
 
     # 3. 短可读字符串 — 进一步分析子模式
     if len(value) < 80:
@@ -466,14 +467,13 @@ def classify_fields(body_sample: dict, value_index: ValueIndex,
             roles[key] = {"role": "context", "source": match["source_path"]}
             continue
 
-        # ── Pass 4: generate（值模式分析） ──
+        # ── Pass 4: generate/static（值模式分析） ──
         if isinstance(value, str) and len(value) > 20:
             pattern = _analyze_value_pattern(key, value)
-            if pattern and pattern.get("role") == "generate":
-                roles[key] = {"role": "generate", "pattern": pattern["pattern"]}
-                LOG.debug(f"    classify_fields: {key} → generate/{pattern['pattern']}")
+            if pattern:
+                roles[key] = {"role": pattern["role"], "pattern": pattern["pattern"]}
+                LOG.debug(f"    classify_fields: {key} → {pattern['role']}/{pattern['pattern']}")
                 continue
-            # encrypted_sensitive 返回 role="static" → 落入 Pass 5
 
         # ── Pass 5: static（兜底） ──
         roles[key] = {"role": "static"}

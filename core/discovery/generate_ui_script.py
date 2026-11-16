@@ -73,39 +73,64 @@ def _transform_imports(content: str, is_subpackage: bool = False) -> str:
           - False (replay/*.py → ui/lib/*.py): from .. import X → from . import X
           - True  (shared/*.py → ui/lib/shared/*.py): from .. import X → 保持不变
 
+    生成的 ui/lib/ 目录结构（扁平化）：
+      ui/lib/
+        replay_engine.py      ← core/discovery/replay/replay_engine.py
+        form_filler.py        ← core/discovery/replay/form_filler.py
+        button_driver.py      ← core/discovery/replay/button_driver.py
+        wait_helpers.py       ← core/discovery/replay/wait_helpers.py
+        shared/
+          button_clicker.py   ← core/discovery/shared/button_clicker.py
+          ...
+
     转换规则:
       from .. import const (replay/)  → from . import const
       from .. import const (shared/)  → from .. import const (不变)
       from ..kb_loader import X       → from .kb_loader import X (replay/ only)
+      from ..replay.X import Y (shared/) → from ..X import Y (去掉 replay 中间层)
       from . import X                 → 不变（兄弟引用）
       from .button_driver import      → 不变（兄弟引用）
       from core.discovery import X    → from . import X (replay/) / from .. import X (shared/)
-      from core.discovery.replay.X    → from ..X import Y (both)
+      from core.discovery.replay.X    → from .X (replay/) / from ..X (shared/)
+      from core.discovery.shared.X    → from .shared.X (replay/) / from .X (shared/)
     """
     lines = content.split("\n")
     result = []
     for line in lines:
         stripped = line.lstrip()
-        # from .. import const
+        # Rule 1: from .. import const
         if stripped.startswith("from .. import "):
             if not is_subpackage:
                 # replay/ 扁平到 ui/lib/，const 在同级
                 line = line.replace("from .. import ", "from . import ", 1)
             # shared/ 保持在子包，from .. 访问上级 ui/lib/，保持不变
-        # from ..kb_loader import → from .kb_loader import (仅 replay/)
+        # Rule 2a: from ..replay.X → from ..X (仅 shared/，去掉扁平后不存在的 replay 中间层)
+        elif stripped.startswith("from ..replay."):
+            if is_subpackage:
+                line = line.replace("from ..replay.", "from ..", 1)
+            # 非 subpackage 不会出现此模式，保持不变
+        # Rule 2b: from ..kb_loader import → from .kb_loader import (仅 replay/)
         elif stripped.startswith("from .."):
             if not is_subpackage:
                 line = line.replace("from ..", "from .", 1)
             # shared/ 保持不变
-        # from core.discovery.replay.X import Y → from ..X import Y
+        # Rule 3: from core.discovery.replay.X import Y → from .X / from ..X
         elif stripped.startswith("from core.discovery.replay."):
             if is_subpackage:
-                # shared/ 在子包，需要 .. 访问 ui/lib/replay 同级
+                # shared/ 在子包，需要 .. 访问 ui/lib/ 同级
                 line = line.replace("from core.discovery.replay.", "from ..", 1)
             else:
                 # replay/ 扁平，访问兄弟模块
                 line = line.replace("from core.discovery.replay.", "from .", 1)
-        # from core.discovery import X
+        # Rule 4: from core.discovery.shared.X → from .shared.X / from .X
+        elif stripped.startswith("from core.discovery.shared."):
+            if is_subpackage:
+                # shared/ 在子包，引用兄弟模块（同目录）
+                line = line.replace("from core.discovery.shared.", "from .", 1)
+            else:
+                # replay/ 扁平，shared/ 是子目录
+                line = line.replace("from core.discovery.shared.", "from .shared.", 1)
+        # Rule 5: from core.discovery import X
         elif stripped.startswith("from core.discovery import "):
             if is_subpackage:
                 # shared/ 在子包，需要 .. 访问上级 ui/lib/const

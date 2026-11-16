@@ -772,6 +772,21 @@ def gen_text() -> str:
         例如 'auto_a3f2c1'
     """
     return f"auto_{{_ts6()}}"
+
+
+def gen_base64_encrypted() -> str:
+    """
+    生成 Base64 编码的随机字符串（用于加密字段的占位符）。
+
+    注意：此函数生成的是随机值，不能用于需要真实加密的场景。
+    如果服务端要求有效的加密值，应将字段分类为 static 并复用原始值。
+
+    Returns:
+        88 字符的 Base64 字符串（64 字节编码后）
+    """
+    import base64
+    random_bytes = bytes([random.randint(0, 255) for _ in range(64)])
+    return base64.b64encode(random_bytes).decode('utf-8')
 '''.format(cookie_token_key=cookie_token_key)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
