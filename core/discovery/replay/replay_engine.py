@@ -19,6 +19,12 @@ import time as _time
 from typing import Optional
 from .button_driver import ButtonDriver
 from .form_filler import FormFiller
+from .anchor_helpers import (
+    AnchorResolutionError,
+    build_anchor_css,
+    read_transfer_box_state,
+    resolve_anchor_handle,
+)
 from .wait_helpers import wait_for_table_ready
 from .. import const
 from ..shared import (
@@ -530,6 +536,15 @@ async def _execute_interaction_steps(page, steps: list, label: str) -> bool:
     """
     LOG.info(f"    [interaction_steps] {label}: 开始执行 {len(steps)} 个步骤")
 
+    def _composed_selector(step, key):
+        """★ 锚点模型: 步骤含 anchor 时，selector 为锚点容器内相对选择器，合成引擎链。
+        无 anchor 的步骤（如 radio 点击本身）行为不变。"""
+        v = step.get(key)
+        anchor = step.get("anchor")
+        if v and anchor:
+            return build_anchor_css(anchor) + " >> " + v
+        return v
+
     for i, step in enumerate(steps, 1):
         op = step.get("op")
         desc = step.get("desc", "未描述操作")
@@ -537,7 +552,7 @@ async def _execute_interaction_steps(page, steps: list, label: str) -> bool:
         try:
             if op == "click":
                 # 点击元素
-                selector = step.get("selector")
+                selector = _composed_selector(step, "selector")
                 if not selector:
                     raise Exception(f"click 操作缺少 selector")
 
@@ -547,13 +562,21 @@ async def _execute_interaction_steps(page, steps: list, label: str) -> bool:
                 except Exception:
                     raise Exception(f"等待元素超时: {selector}")
 
+                # ★ 行文本断言（锚点化步骤）: 实际点击元素文本必须与记录一致（防异步换相后静默错选）
+                expect_text = (step.get("expect_text") or "").strip()
+                if expect_text:
+                    actual_text = (await page.locator(selector).first.text_content() or "").strip()
+                    if actual_text != expect_text:
+                        raise Exception(
+                            f"行文本断言失败: 期望 '{expect_text}' 实际 '{actual_text}' ({selector})")
+
                 # 点击
                 await page.click(selector, timeout=3000)
                 LOG.info(f"    [step {i}/{len(steps)}] {desc}: 点击成功")
 
             elif op == "click_first":
                 # 点击第一个匹配的元素
-                selector = step.get("selector")
+                selector = _composed_selector(step, "selector")
                 if not selector:
                     raise Exception(f"click_first 操作缺少 selector")
 
@@ -659,7 +682,8 @@ async def _execute_interaction_steps(page, steps: list, label: str) -> bool:
 
             elif op in ("wait_selector", "wait_visible", "wait_for_selector"):
                 # 等待选择器出现（多个别名统一处理）
-                selector = step.get("selector")
+                # ★ 锚点模型: 含 anchor 的步骤为容器内相对选择器，合成引擎链
+                selector = _composed_selector(step, "selector")
                 timeout = step.get("timeout", 5000)
                 if not selector:
                     raise Exception(f"{op} 操作缺少 selector")
@@ -677,50 +701,44 @@ async def _execute_interaction_steps(page, steps: list, label: str) -> bool:
                 if not xpath:
                     raise Exception(f"wait_xpath 操作缺少 xpath")
 
+                # ★ 锚点模型: 相对 xpath 合成为锚点容器引擎链
+                if step.get("anchor"):
+                    xpath = build_anchor_css(step["anchor"]) + " >> xpath=" + xpath
+                else:
+                    xpath = f"xpath={xpath}"
+
                 try:
-                    await page.wait_for_selector(f"xpath={xpath}", state="visible", timeout=timeout)
+                    await page.wait_for_selector(xpath, state="visible", timeout=timeout)
                     LOG.info(f"    [step {i}/{len(steps)}] {desc}: XPath 元素已出现")
                 except Exception:
                     raise Exception(f"等待 XPath 元素超时 ({timeout}ms): {xpath}")
 
             elif op == "wait_condition":
-                # ★ P3: 条件等待（如 transfer_box_right_updated——级联选择生效确认）
-                # 判据与 Stage 1 记录侧（form_filler._execute_transfer_box）完全一致，
-                # 保证"记录时判定成功"的状态在回放时也能判出成功
+                # ★ P3(锚点化): 条件等待（如 transfer_box_right_updated——级联选择生效确认）
+                # 判据为 anchor_helpers.read_transfer_box_state 共享 R1 组合判据——
+                # Stage 1 记录侧与 Stage 2 回放侧同一权威实现，杜绝双端判据漂移
                 condition = step.get("condition", "")
-                selector = step.get("selector", "")
                 timeout = step.get("timeout", 3000)
-                if not condition or not selector:
-                    raise Exception(f"wait_condition 操作缺少 condition 或 selector")
+                if condition != "transfer_box_right_updated":
+                    raise Exception(f"wait_condition 未知条件类型: {condition}")
+
+                anchor = step.get("anchor")
+                if not anchor:
+                    raise Exception(
+                        "wait_condition transfer_box_right_updated 缺少 anchor"
+                        "（旧版全局定位 KB 不再支持，请重跑 Stage 1 生成锚点化记录）")
+
+                # 解析锚点容器（失败显式抛错，不回退全局）
+                container = await resolve_anchor_handle(page, anchor)
+                exclude_texts = step.get("exclude_texts") or ["暂无数据", "无数据"]
 
                 poll_ms = 300
                 attempts = max(1, int(timeout / poll_ms))
                 last_state = None
                 ok = False
                 for _ in range(attempts):
-                    last_state = await page.evaluate("""(args) => {
-                        const [sel, excludeTexts] = args;
-                        const right = document.querySelector(sel);
-                        if (!right) return { ok: false, why: 'right_panel_not_found' };
-                        const r = right.getBoundingClientRect();
-                        if (r.width <= 0 || r.height <= 0) return { ok: false, why: 'right_panel_not_visible' };
-                        const text = (right.textContent || '').trim();
-                        if (excludeTexts.some(x => text.includes(x))) {
-                            return { ok: false, why: 'right_panel_no_data', text: text.substring(0, 50) };
-                        }
-                        const countMatch = text.match(/已选择\\s*[（(]\\s*(\\d+)\\s*[项个]/);
-                        if (countMatch) {
-                            return parseInt(countMatch[1], 10) > 0
-                                ? { ok: true, why: 'right_panel_count_positive', text: text.substring(0, 60) }
-                                : { ok: false, why: 'right_panel_count_zero', text: text.substring(0, 60) };
-                        }
-                        if (right.querySelector('[class*="remove"], button') && text.includes('移除')) {
-                            return { ok: true, why: 'right_panel_has_remove', text: text.substring(0, 60) };
-                        }
-                        return text
-                            ? { ok: true, why: 'right_panel_has_content', text: text.substring(0, 60) }
-                            : { ok: false, why: 'right_panel_empty' };
-                    }""", [selector, step.get("exclude_texts") or []])
+                    box_state = await read_transfer_box_state(page, container, exclude_texts)
+                    last_state = box_state.get("right", {})
                     if last_state and last_state.get("ok"):
                         ok = True
                         break
@@ -736,8 +754,14 @@ async def _execute_interaction_steps(page, steps: list, label: str) -> bool:
                 if not xpath:
                     raise Exception(f"click_xpath 操作缺少 xpath")
 
+                # ★ 锚点模型: 相对 xpath 合成为锚点容器引擎链
+                if step.get("anchor"):
+                    xpath = build_anchor_css(step["anchor"]) + " >> xpath=" + xpath
+                else:
+                    xpath = f"xpath={xpath}"
+
                 try:
-                    await page.click(f"xpath={xpath}", timeout=5000)
+                    await page.click(xpath, timeout=5000)
                     LOG.info(f"    [step {i}/{len(steps)}] {desc}: XPath 点击成功")
                 except Exception:
                     raise Exception(f"XPath 点击失败: {xpath}")

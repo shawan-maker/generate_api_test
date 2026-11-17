@@ -66,6 +66,12 @@ def _extract_radio_fields_from_nav(nav_info: dict) -> list:
             # 传递 cascade_actions（如 radio 触发 transfer-box）
             if "cascade_actions" in field:
                 radio_details[-1]["cascade_actions"] = field["cascade_actions"]
+            # ★ 透传 radio 回放元数据（interaction_steps / all_options / 显隐字段 diff）
+            # 空列表 [] 也要保留（= 探测过但无变化），仅键缺失/None 时跳过
+            _dst = radio_details[-1]
+            for _k in ("interaction_steps", "all_options", "revealed_fields", "hidden_fields"):
+                if field.get(_k) is not None:
+                    _dst[_k] = field[_k]
 
     return radio_details
 
@@ -1925,7 +1931,7 @@ async def _do_create(page, context: dict) -> dict:
                 "option_text": actual_option_text,
                 "fill_rule": field.get("fill_rule", {}),
             })
-    # ★ R3: 合并 FormFiller 记录的 radio 详情（interaction_steps / all_options）
+    # ★ R3: 合并 FormFiller 记录的 radio 详情（interaction_steps / all_options / 显隐字段 diff）
     _radio_details_from_fill = fill_result.get("radio_field_details", []) if isinstance(fill_result, dict) else []
     if _radio_details_from_fill:
         _radio_by_label = {rd.get("label"): rd for rd in _radio_details_from_fill}
@@ -1936,6 +1942,11 @@ async def _do_create(page, context: dict) -> dict:
                     rd_entry["interaction_steps"] = _src["interaction_steps"]
                 if _src.get("all_options"):
                     rd_entry["all_options"] = _src["all_options"]
+                # ★ 显隐输入项 diff（泛化能力）: 空列表 [] 也要保留（= 探测过但无变化）
+                if _src.get("revealed_fields") is not None:
+                    rd_entry["revealed_fields"] = _src["revealed_fields"]
+                if _src.get("hidden_fields") is not None:
+                    rd_entry["hidden_fields"] = _src["hidden_fields"]
     # 重新扫描以获取最新字段状态
     if context.get("fill_overrides"):
         for label, value in context["fill_overrides"].items():
@@ -2187,7 +2198,7 @@ async def _do_create(page, context: dict) -> dict:
                 "option_text": actual_option_text,
                 "fill_rule": field.get("fill_rule", {}),
             })
-    # ★ R3: 合并 FormFiller 记录的 radio 详情（interaction_steps / all_options）
+    # ★ R3: 合并 FormFiller 记录的 radio 详情（interaction_steps / all_options / 显隐字段 diff）
     _radio_details_from_fill = fill_result.get("radio_field_details", []) if isinstance(fill_result, dict) else []
     if _radio_details_from_fill:
         _radio_by_label = {rd.get("label"): rd for rd in _radio_details_from_fill}
@@ -2198,6 +2209,11 @@ async def _do_create(page, context: dict) -> dict:
                     rd_entry["interaction_steps"] = _src["interaction_steps"]
                 if _src.get("all_options"):
                     rd_entry["all_options"] = _src["all_options"]
+                # ★ 显隐输入项 diff（泛化能力）: 空列表 [] 也要保留（= 探测过但无变化）
+                if _src.get("revealed_fields") is not None:
+                    rd_entry["revealed_fields"] = _src["revealed_fields"]
+                if _src.get("hidden_fields") is not None:
+                    rd_entry["hidden_fields"] = _src["hidden_fields"]
 
     return {
         "success": True,

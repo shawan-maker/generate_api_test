@@ -946,6 +946,12 @@ def _build_create_steps(op_data: dict) -> list:
             # ★ R3: 透传 Stage 1 记录的 radio 显式回放步骤（P1 忠实回放依赖此键）
             if radio_field.get("interaction_steps"):
                 radio_entry["interaction_steps"] = radio_field["interaction_steps"]
+            # ★ 显隐输入项 diff（泛化能力）: radio 切换实际引起的新增/消失字段
+            # 空列表 [] 也要保留（= 探测过但无变化），仅键缺失/None 时跳过
+            if radio_field.get("revealed_fields") is not None:
+                radio_entry["revealed_fields"] = radio_field["revealed_fields"]
+            if radio_field.get("hidden_fields") is not None:
+                radio_entry["hidden_fields"] = radio_field["hidden_fields"]
 
             # ★ 附加该 radio 触发的 cascade 操作（如 transfer-box）
             radio_label = radio_field.get("label")
@@ -1295,6 +1301,12 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
             # ★ R3: 透传 Stage 1 记录的 radio 显式回放步骤（P1 忠实回放依赖此键）
             if radio_field.get("interaction_steps"):
                 radio_entry["interaction_steps"] = radio_field["interaction_steps"]
+            # ★ 显隐输入项 diff（泛化能力）: radio 切换实际引起的新增/消失字段
+            # 空列表 [] 也要保留（= 探测过但无变化），仅键缺失/None 时跳过
+            if radio_field.get("revealed_fields") is not None:
+                radio_entry["revealed_fields"] = radio_field["revealed_fields"]
+            if radio_field.get("hidden_fields") is not None:
+                radio_entry["hidden_fields"] = radio_field["hidden_fields"]
 
             # ★ 附加该 radio 触发的 cascade 操作（如 transfer-box）
             radio_label = radio_field.get("label")
@@ -1848,6 +1860,11 @@ def _build_page_nav_steps(op_data: dict) -> list:
                 # ★ R3: 透传 Stage 1 记录的 radio 显式回放步骤（P1 忠实回放依赖此键）
                 if field.get("interaction_steps"):
                     radio_field["interaction_steps"] = field["interaction_steps"]
+                # ★ 显隐输入项 diff（泛化能力）; 空列表 [] 保留（= 探测过但无变化）
+                if field.get("revealed_fields") is not None:
+                    radio_field["revealed_fields"] = field["revealed_fields"]
+                if field.get("hidden_fields") is not None:
+                    radio_field["hidden_fields"] = field["hidden_fields"]
                 # ★ 传递 cascade_actions（如 radio 触发 transfer-box 选择）
                 if "cascade_actions" in field:
                     radio_field["cascade_actions"] = field["cascade_actions"]

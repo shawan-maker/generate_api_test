@@ -199,7 +199,7 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
                         if matching_cascades:
                             field["cascade_actions"] = matching_cascades
 
-            # ★ R3: 合并 radio_field_details（interaction_steps / all_options）到对应 radio 字段
+            # ★ R3: 合并 radio_field_details（interaction_steps / all_options / 显隐字段 diff）到对应 radio 字段
             # 修复缺口：Fix 11 生成的 radio 回放步骤此前未进 playbook，Stage 2 被迫重新发明定位逻辑
             _radio_details_from_fill = fill_result.get("radio_field_details", []) if isinstance(fill_result, dict) else []
             if _radio_details_from_fill:
@@ -210,6 +210,11 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
                                 field["interaction_steps"] = rd["interaction_steps"]
                             if rd.get("all_options"):
                                 field["all_options"] = rd["all_options"]
+                            # ★ 显隐输入项 diff（泛化能力）: 空列表 [] 也要保留（= 探测过但无变化）
+                            if rd.get("revealed_fields") is not None:
+                                field["revealed_fields"] = rd["revealed_fields"]
+                            if rd.get("hidden_fields") is not None:
+                                field["hidden_fields"] = rd["hidden_fields"]
                             break
 
             # ★ 将 close_dropdown_actions 附加到对应的 el-select 字段
@@ -725,7 +730,7 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
                     if matching_cascades:
                         field["cascade_actions"] = matching_cascades
 
-        # ★ R3: 合并 radio_field_details（interaction_steps / all_options）到对应 radio 字段
+        # ★ R3: 合并 radio_field_details（interaction_steps / all_options / 显隐字段 diff）到对应 radio 字段
         # 修复缺口：Fix 11 生成的 radio 回放步骤此前未进 playbook，Stage 2 被迫重新发明定位逻辑
         _radio_details_from_fill = fill_result.get("radio_field_details", []) if isinstance(fill_result, dict) else []
         if _radio_details_from_fill:
@@ -736,6 +741,11 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
                             field["interaction_steps"] = rd["interaction_steps"]
                         if rd.get("all_options"):
                             field["all_options"] = rd["all_options"]
+                        # ★ 显隐输入项 diff（泛化能力）: 空列表 [] 也要保留（= 探测过但无变化）
+                        if rd.get("revealed_fields") is not None:
+                            field["revealed_fields"] = rd["revealed_fields"]
+                        if rd.get("hidden_fields") is not None:
+                            field["hidden_fields"] = rd["hidden_fields"]
                         break
 
         # ★ 将 close_dropdown_actions 附加到对应的 el-select 字段

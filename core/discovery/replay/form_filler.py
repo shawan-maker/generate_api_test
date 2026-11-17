@@ -16,6 +16,14 @@ from typing import Dict, List, Tuple
 
 from .. import const
 from ..shared import apply_fill_rule
+from .anchor_helpers import (
+    AnchorResolutionError,
+    build_anchor_css,
+    establish_anchor,
+    read_transfer_box_state,
+    resolve_anchor_handle,
+    scoped_query_handle,
+)
 
 LOG = logging.getLogger("form_filler")
 
@@ -74,27 +82,17 @@ def _log_scan_debug(raw_result: dict):
                      f"maxLength={sub.get('maxLength')}")
 
 
-async def probe_transfer_box_state(page: Page) -> dict:
-    """探测页面中 transfer-box 组件的当前渲染状态（R2: 级联打开语义记录）。
+async def probe_transfer_box_state(page: Page, container) -> dict:
+    """探测锚点容器内 transfer-box 组件的当前渲染状态（R2: 级联打开语义记录）。
 
-    用于 radio 点击前后各探测一次，判断级联组件是否依赖 change 事件渲染：
-    - 点击前不存在、点击后出现 → depends_on_radio_change = True（回放需制造变更）
-    - 点击前已存在 → False（初始渲染，回放直接执行级联步骤即可）
+    ★ 锚点模型: 探测限定在输入项锚点容器内（container 为必传 ElementHandle），
+    禁止全局第一命中。判据为 anchor_helpers.read_transfer_box_state 的共享
+    R1 组合判据（Stage 1 / Stage 2 同一权威实现）。
 
     Returns:
-        dict: {"exists": bool}（右侧面板存在且可见即视为组件已渲染）
+        dict: {"exists": bool, "left_rows": [...], "right": {ok, why, text}}
     """
-    try:
-        state = await page.evaluate("""() => {
-            const right = document.querySelector('[class*="transfer-box-right"]');
-            if (!right) return { exists: false };
-            const r = right.getBoundingClientRect();
-            if (r.width <= 0 || r.height <= 0) return { exists: false };
-            return { exists: true };
-        }""")
-        return state or {"exists": False}
-    except Exception:
-        return {"exists": False}
+    return await read_transfer_box_state(page, container)
 
 
 class FormFiller:
@@ -466,9 +464,6 @@ class FormFiller:
                         from .locator_helpers import safe_css
                         import json as _json
 
-                        # ★ R2: radio 点击前探测 transfer-box 渲染状态（判断级联打开语义）
-                        box_before_click = await probe_transfer_box_state(self.page)
-
                         # 第一次尝试：Playwright click wrapper
                         radio_wrapper = self.page.locator(
                             safe_css(
@@ -478,6 +473,25 @@ class FormFiller:
                         ).first
 
                         if await radio_wrapper.count() > 0:
+                            # ★ 锚点模型: 从 radio 元素建立输入项锚点（容器作用域，禁止全局定位）
+                            # 探测/执行/记录全部限定在锚点容器内
+                            _anchor = None
+                            _container = None
+                            try:
+                                _anchor, _container = await establish_anchor(self.page, radio_wrapper)
+                                LOG.info(f"    [anchor] {label}: 锚点建立成功 text='{_anchor.get('text')}' "
+                                         f"strategy={_anchor.get('strategy')} css={build_anchor_css(_anchor)}")
+                            except AnchorResolutionError as _ae:
+                                LOG.error(f"    [anchor] {label}: 锚点建立失败，级联探测/记录被跳过: {_ae} "
+                                          f"(diag={_ae.diagnostics})")
+
+                            # ★ R2(锚点化): radio 点击前探测锚点容器内 transfer-box 渲染状态
+                            if _container is not None:
+                                box_before_click = await read_transfer_box_state(self.page, _container)
+                            else:
+                                box_before_click = {"exists": False, "left_rows": [],
+                                                    "right": {"ok": False, "why": "anchor_unresolved"}}
+
                             await radio_wrapper.click()
                             await self.page.wait_for_timeout(300)
 
@@ -508,9 +522,52 @@ class FormFiller:
                             except Exception:
                                 pass
 
-                            # ★ Fix 11: 记录 radio interaction_steps
+                            # radio 级联：检测动态组件并自动处理
+                            await self.page.wait_for_timeout(1000)  # 等待动态组件渲染
+
+                            # ★ R2(锚点化): radio 点击后探测锚点容器内 transfer-box 状态（与点击前对比得出打开语义）
+                            if _container is not None:
+                                box_after_click = await read_transfer_box_state(self.page, _container)
+                            else:
+                                box_after_click = {"exists": False, "left_rows": [],
+                                                   "right": {"ok": False, "why": "anchor_unresolved"}}
+                            _depends_on_change = (not box_before_click.get("exists", False)) and box_after_click.get("exists", False)
+                            _left_rows_changed = (box_before_click.get("left_rows") or []) != (box_after_click.get("left_rows") or [])
+                            LOG.info(f"    [radio-cascade] {label}: 容器内 transfer-box "
+                                     f"before(exists={box_before_click.get('exists')}, rows={box_before_click.get('left_rows')}) "
+                                     f"after(exists={box_after_click.get('exists')}, rows={box_after_click.get('left_rows')}) "
+                                     f"depends_on_change={_depends_on_change} left_rows_changed={_left_rows_changed}")
+
+                            # ★ 显隐输入项（泛化能力）: radio 切换前后字段扫描 diff——实际发生什么记什么
+                            # （新增=revealed_fields / 消失=hidden_fields），不硬编码任何字段名
+                            _revealed_fields, _hidden_fields = [], []
+                            try:
+                                post_scan_result = await scan_form_fields(self.page)
+                                # 兼容新的返回格式（包含调试信息）
+                                post_fields = post_scan_result.get('fields', []) if isinstance(post_scan_result, dict) else post_scan_result
+                                current_labels = {f['label'] for f in fields}
+                                post_labels = {f['label'] for f in post_fields}
+                                _revealed_fields = [f['label'] for f in post_fields if f['label'] not in current_labels]
+                                _hidden_fields = [lab for lab in current_labels if lab not in post_labels]
+                                if _revealed_fields:
+                                    LOG.info(f"    [radio-cascade] radio 切换后新增字段: {_revealed_fields}")
+                                if _hidden_fields:
+                                    LOG.info(f"    [radio-cascade] radio 切换后隐藏字段: {_hidden_fields}")
+                            except Exception:
+                                pass
+
+                            # ★ Fix 11: 记录 radio interaction_steps（含显隐字段 diff）
+                            # ★ selector 镜像实际点击的组合选择器（.el-radio / .el-radio-button 并集）——
+                            # Stage 2 忠实回放严格匹配无变体兜底，单变体在 el-radio-button 页面会超时失败
                             _radio_interactions = [
-                                {"op": "click", "selector": f'.el-radio-group .el-radio:has-text("{first_text}")', "desc": f"点击 radio: {first_text}"}
+                                {
+                                    "op": "click",
+                                    "selector": (
+                                        f'.el-radio-group .el-radio:has-text("{first_text}"), '
+                                        f'.el-radio-group .el-radio-button:has-text("{first_text}")'
+                                    ),
+                                    "desc": f"点击 radio: {first_text}",
+                                }
                             ]
                             if vue_update_result and vue_update_result.get("found"):
                                 _radio_interactions.append({
@@ -523,92 +580,52 @@ class FormFiller:
                                 "option_text": first_text,
                                 "all_options": _all_options,
                                 "interaction_steps": _radio_interactions,
+                                "revealed_fields": _revealed_fields,
+                                "hidden_fields": _hidden_fields,
                             })
-
-                            # radio 级联：检测动态组件并自动处理
-                            await self.page.wait_for_timeout(1000)  # 等待动态组件渲染
-
-                            # ★ R2: radio 点击后探测 transfer-box 渲染状态（与点击前对比得出打开语义）
-                            box_after_click = await probe_transfer_box_state(self.page)
-                            _depends_on_change = (not box_before_click.get("exists", False)) and box_after_click.get("exists", False)
-
-                            # 检测新增 form fields
-                            try:
-                                post_scan_result = await scan_form_fields(self.page)
-                                # 兼容新的返回格式（包含调试信息）
-                                post_fields = post_scan_result.get('fields', []) if isinstance(post_scan_result, dict) else post_scan_result
-                                current_labels = {f['label'] for f in fields}
-                                new_fields = [f for f in post_fields if f['label'] not in current_labels]
-                                if new_fields:
-                                    LOG.info(f"    [radio-cascade] 新增 {len(new_fields)} 个字段")
-                            except Exception:
-                                pass
 
                             # 检测 transfer-box 是否需要选择（如"授权"选择"组织架构"后）
                             # 如果右侧面板为空（无选择），则执行选择
+                            # ★ 锚点模型: 判据改为锚点容器内状态读取（共享 R1 判据），级联执行传入锚点；
+                            # 授权主体等锚点容器内无 transfer-box 的 radio 不再产生伪级联
                             try:
-                                right_panel_status = await self.page.evaluate("""() => {
-                                    const rightPanel = document.querySelector('[class*="transfer-box-right"]');
-                                    if (!rightPanel) return { exists: false, hasSelection: false };
-                                    const r = rightPanel.getBoundingClientRect();
-                                    if (r.width <= 0 || r.height <= 0) return { exists: false, hasSelection: false };
-
-                                    const text = rightPanel.textContent || '';
-                                    const hasNoData = text.includes('暂无数据');
-                                    const hasSelection = !hasNoData && (text.includes('已选择') || text.includes('已选项'));
-
-                                    return { exists: true, hasSelection };
-                                }""")
-
-                                if right_panel_status.get('exists') and not right_panel_status.get('hasSelection'):
-                                    LOG.info(f"    [radio-cascade] transfer-box 需要选择")
-                                    executor = self._get_executor()
-                                    # transfer-box 不需要 selector，使用 None
-                                    success, detail = await executor.execute_with_details(
-                                        "transfer-box", label, "", None, None
-                                    )
-                                    if success:
-                                        LOG.info(f"    [radio-cascade] transfer-box 选择成功")
-                                        # ★ 记录 cascade 操作，供 Stage 2 回放
-                                        interaction_steps = detail.get("interaction_steps", [])
-
-                                        # ★ 查找 transfer-box 关联的表单字段标签
-                                        _transfer_target_label = ""
-                                        try:
-                                            _transfer_target_label = await self.page.evaluate("""() => {
-                                                const boxes = document.querySelectorAll(
-                                                    '[class*="transfer-box"], [class*="el-transfer"]'
-                                                );
-                                                for (const box of boxes) {
-                                                    const r = box.getBoundingClientRect();
-                                                    if (r.width <= 0 || r.height <= 0) continue;
-                                                    const formItem = box.closest('.el-form-item, .ant-form-item');
-                                                    if (formItem) {
-                                                        const labelEl = formItem.querySelector(
-                                                            '.el-form-item__label, .ant-form-item-label label'
-                                                        );
-                                                        if (labelEl) return labelEl.textContent.trim().replace(/[：:]/g, '');
-                                                    }
-                                                }
-                                                return '';
-                                            }""")
-                                        except Exception:
-                                            pass
-
-                                        cascade_actions.append({
-                                            "type": "transfer-box",
-                                            "trigger_field": label,
-                                            "trigger_value": first_text,
-                                            "target_label": _transfer_target_label,
-                                            # ★ R2: 记录级联打开语义（Stage 2 据此决定是否需制造 no-op 变更触发）
-                                            "open_semantics": {
-                                                "depends_on_radio_change": _depends_on_change,
-                                                "settle_wait_ms": 1000,  # Stage 1 实测渲染稳定等待
-                                            },
-                                            "interaction_steps": interaction_steps,
-                                        })
+                                _box_right = box_after_click.get("right", {})
+                                if box_after_click.get("exists") and not _box_right.get("ok"):
+                                    LOG.info(f"    [radio-cascade] transfer-box 需要选择 (right: {_box_right.get('why')})")
+                                    if _anchor is None:
+                                        LOG.error(f"    [radio-cascade] {label}: 无锚点——transfer-box 执行被跳过（禁止全局定位）")
                                     else:
-                                        LOG.warning(f"    [radio-cascade] transfer-box 选择失败")
+                                        executor = self._get_executor()
+                                        success, detail = await executor.execute_with_details(
+                                            "transfer-box", label, "", None, None, anchor=_anchor
+                                        )
+                                        if success:
+                                            LOG.info(f"    [radio-cascade] transfer-box 选择成功")
+                                            # ★ 记录 cascade 操作，供 Stage 2 回放
+                                            interaction_steps = detail.get("interaction_steps", [])
+
+                                            # ★ 锚点模型: target_label 由锚点描述符直接派生（不再全局反查 DOM）
+                                            _transfer_target_label = _anchor.get("norm_text", "")
+
+                                            cascade_actions.append({
+                                                "type": "transfer-box",
+                                                "trigger_field": label,
+                                                "trigger_value": first_text,
+                                                "target_label": _transfer_target_label,
+                                                # ★ 锚点描述符: Stage 2 由此解析容器，全部定位为容器内相对定位
+                                                "anchor": detail.get("anchor") or _anchor,
+                                                # ★ R2: 记录级联打开语义（Stage 2 据此决定是否需制造 no-op 变更触发）
+                                                "open_semantics": {
+                                                    "depends_on_radio_change": _depends_on_change,
+                                                    "left_rows_changed": _left_rows_changed,
+                                                    "settle_wait_ms": 1000,  # Stage 1 实测渲染稳定等待
+                                                },
+                                                # ★ 记录实际点选的行文本（回放侧行文本断言依据）
+                                                "selected_row": detail.get("selected_row"),
+                                                "interaction_steps": interaction_steps,
+                                            })
+                                        else:
+                                            LOG.warning(f"    [radio-cascade] transfer-box 选择失败: {detail}")
                             except Exception:
                                 pass
 
@@ -2315,9 +2332,16 @@ class MultiStepExecutor:
         try:
             if kb_category in ("ip-input", "composite-input"):
                 return await handler(label, kwargs)
+            elif kb_category == "transfer-box":
+                # ★ 锚点模型: transfer-box 必须在锚点容器内执行（禁止全局定位）
+                return await handler(label, option_text, options, selector, playwright_locator,
+                                     anchor=kwargs.get("anchor"))
             else:
                 # 所有处理器统一接收双选择器
                 return await handler(label, option_text, options, selector, playwright_locator)
+        except AnchorResolutionError as e:
+            LOG.error(f"MultiStepExecutor: {kb_category}({label}) 锚点解析失败: {e} (diag={e.diagnostics})")
+            return False, {"skipped_reason": "anchor_resolution_failed"}
         except Exception as e:
             LOG.warning(f"MultiStepExecutor: {kb_category}({label}) 失败: {e}")
             return False, {}
@@ -3883,9 +3907,11 @@ class MultiStepExecutor:
 
     async def _execute_transfer_box(self, label: str, option_text: str = "",
                                     _options=None, selector: str = "",
-                                    playwright_locator: str = None) -> Tuple[bool, Dict]:
-        """transfer-box 穿梭框专用处理器
+                                    playwright_locator: str = None,
+                                    anchor: dict = None) -> Tuple[bool, Dict]:
+        """transfer-box 穿梭框专用处理器（锚点模型版）
 
+        ★ 全部定位限定在输入项锚点容器内（anchor 为必传描述符），禁止全局第一命中。
         处理 el-table 结构的穿梭框（tbody/tr/span），不包含 checkbox 或 li 的 fallback。
 
         Args:
@@ -3894,29 +3920,57 @@ class MultiStepExecutor:
             selector: 组件容器 selector（未使用）
             _options: 未使用
             playwright_locator: Playwright locator（未使用，保持接口一致）
+            anchor: 输入项锚点描述符（{text, norm_text, strategy, attr, ordinal}）
 
         Returns:
-            Tuple[bool, Dict]: (是否成功, {"option_text": str, "selected_count": int})
+            Tuple[bool, Dict]: (是否成功, {"option_text", "selected_count",
+                              "anchor", "selected_row", "interaction_steps"})
         """
         import json
 
-        # 定位左侧面板
-        transfer_left = await self.page.query_selector(
+        # ★ 锚点模型: 无锚点即显式失败（不做全局兜底）
+        if anchor is None:
+            LOG.error(f"    transfer-box {label}: 缺少 anchor——拒绝执行（禁止全局定位，请重跑 Stage 1）")
+            return False, {"skipped_reason": "missing_anchor"}
+
+        try:
+            container = await resolve_anchor_handle(self.page, anchor)
+        except AnchorResolutionError as e:
+            LOG.error(f"    transfer-box {label}: 锚点解析失败: {e} (diag={e.diagnostics})")
+            return False, {"skipped_reason": "anchor_resolution_failed"}
+
+        # ★ 锚点容器内定位左侧面板（禁止越出容器）
+        transfer_left = await scoped_query_handle(
+            self.page, container,
             '[class*="transfer-box-left"], [class*="transfer-left"], '
             '.el-transfer-panel:first-child, [class*="transfer"] .panel:first-child'
         )
 
         if not transfer_left:
-            LOG.warning(f"    transfer-box {label}: 未找到左侧面板")
-            return False, {"skipped_reason": "no_transfer_box_found"}
+            LOG.warning(f"    transfer-box {label}: 锚点容器内未找到左侧面板")
+            return False, {"skipped_reason": "no_transfer_box_in_anchor"}
 
-        LOG.info(f"    检测到自定义穿梭框左侧面板，搜索可点击元素...")
+        # ★ 从实际 DOM 类名派生记录用相对选择器（回放侧容器内相对定位的权威依据）
+        _left_cls_token = await transfer_left.evaluate(
+            "el => (Array.from(el.classList).find(c => c.indexOf('transfer') !== -1) || el.classList[0] || '')")
+        left_selector = f'[class*="{_left_cls_token}"]' if _left_cls_token else '[class*="transfer-box-left"]'
+        transfer_right = await scoped_query_handle(
+            self.page, container,
+            '[class*="transfer-box-right"], [class*="transfer-right"], .el-transfer-panel:last-child')
+        _right_cls_token = ""
+        if transfer_right:
+            _right_cls_token = await transfer_right.evaluate(
+                "el => (Array.from(el.classList).find(c => c.indexOf('transfer') !== -1) || el.classList[0] || '')")
+        right_selector = f'[class*="{_right_cls_token}"]' if _right_cls_token else '[class*="transfer-box-right"]'
+
+        LOG.info(f"    检测到自定义穿梭框左侧面板（锚点容器内定位），搜索可点击元素...")
 
         # === STEP 1: 优先使用 xpath 点击（用户验证的路径）===
-        # //tbody//tr[@class="el-table__row"]//span[1]
-        LOG.info(f"    [transfer-box] 尝试 xpath 点击: //tbody//tr[@class='el-table__row']//span[1]")
+        # ★ 容器内相对 xpath: 以左面板为 contextNode，.// 前缀防止 document.evaluate
+        # 的绝对 // 越出容器回退到文档根（旧版 //tbody... 实际是全局定位）
+        LOG.info(f"    [transfer-box] 尝试 xpath 点击（锚点容器内相对）: .//tbody//tr[@class='el-table__row']//span[1]")
         xpath_click_result = await self.page.evaluate("""(container) => {
-            const xpath = '//tbody//tr[@class="el-table__row"]//span[1]';
+            const xpath = './/tbody//tr[@class="el-table__row"]//span[1]';
             const result = document.evaluate(xpath, container, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
             const span = result.singleNodeValue;
 
@@ -4035,33 +4089,15 @@ class MultiStepExecutor:
             LOG.info(f"    [transfer-box] === 诊断信息结束 ===")
 
             # === 多次检查右侧面板（Vue 可能需要时间更新）===
-            # ★ R1 改动 2: 成功语义修正——空面板也含"已选择 (0项)"类头部文本，
-            # 故 itemCount>0 恒真不可靠；改为"计数>0 / 含移除按钮 / 非空文本"组合判据
+            # ★ R1 判据（锚点化）: 共享 anchor_helpers.read_transfer_box_state——
+            # Stage 1 记录侧与 Stage 2 回放侧同一权威实现（组合判据：计数>0/移除按钮/非空文本）
             right_panel_updated = False
             _last_right_state = None
             for attempt in range(3):
                 await self.page.wait_for_timeout(300)  # 每次等待 300ms
 
-                _last_right_state = await self.page.evaluate("""(sel) => {
-                    const right = document.querySelector(sel);
-                    if (!right) return { ok: false, why: 'right_panel_not_found' };
-                    const r = right.getBoundingClientRect();
-                    if (r.width <= 0 || r.height <= 0) return { ok: false, why: 'right_panel_not_visible' };
-                    const text = (right.textContent || '').trim();
-                    if (text.includes('暂无数据') || text.includes('无数据')) return { ok: false, why: 'right_panel_no_data', text: text.substring(0, 50) };
-                    const countMatch = text.match(/已选择\\s*[（(]\\s*(\\d+)\\s*[项个]/);
-                    if (countMatch) {
-                        return parseInt(countMatch[1], 10) > 0
-                            ? { ok: true, why: 'right_panel_count_positive', text: text.substring(0, 60) }
-                            : { ok: false, why: 'right_panel_count_zero', text: text.substring(0, 60) };
-                    }
-                    if (right.querySelector('[class*="remove"], button') && text.includes('移除')) {
-                        return { ok: true, why: 'right_panel_has_remove', text: text.substring(0, 60) };
-                    }
-                    return text
-                        ? { ok: true, why: 'right_panel_has_content', text: text.substring(0, 60) }
-                        : { ok: false, why: 'right_panel_empty' };
-                }""", '[class*="transfer-box-right"]')
+                _box_state = await read_transfer_box_state(self.page, container)
+                _last_right_state = _box_state.get("right", {})
 
                 LOG.info(f"    [transfer-box] 右侧面板检查 (attempt {attempt + 1}/3): {json.dumps(_last_right_state, ensure_ascii=False)}")
 
@@ -4074,31 +4110,37 @@ class MultiStepExecutor:
                 LOG.warning(f"    [transfer-box] ⚠ 右侧面板未更新，选择未生效 (最后状态: {json.dumps(_last_right_state, ensure_ascii=False)})")
                 LOG.warning(f"    [transfer-box] 建议检查：1) 是否需要点击父元素(tr/td) 2) 是否需要用 Playwright click 3) 是否需要触发 Vue 事件")
 
-            # ★ R1 改动 1: 记录完整回放步骤序列（等待渲染 → 等待数据 → 点击 → 确认生效）
-            # Stage 2 忠实回放此序列，不再依赖隐式渲染时机
+            # ★ R1 改动 1(锚点化): 记录完整回放步骤序列（等待渲染 → 等待数据 → 点击 → 确认生效）
+            # Stage 2 忠实回放此序列；每步携带 anchor 描述符 + 容器内相对选择器（回放侧合成引擎链）
             # 注意：Playwright 引擎前缀用等号（xpath=...），冒号形式（xpath:...）会被当 CSS 解析直接报错
             interaction_steps = [
                 {
                     "op": "wait_visible",
-                    "selector": '[class*="transfer-box-left"], [class*="transfer-left"], .el-transfer-panel:first-child',
+                    "anchor": anchor,
+                    "selector": left_selector,
                     "timeout": 5000,
                     "desc": "等待穿梭框左侧面板渲染"
                 },
                 {
                     "op": "wait_visible",
-                    "selector": "xpath=//tbody//tr[@class='el-table__row']//span[1]",
+                    "anchor": anchor,
+                    "selector": f"{left_selector} >> xpath=.//tbody//tr[@class='el-table__row']//span[1]",
                     "timeout": 5000,
                     "desc": "等待左侧列表数据加载"
                 },
                 {
                     "op": "click",
-                    "selector": "xpath=//tbody//tr[@class='el-table__row']//span[1]",
-                    "desc": "点击穿梭框左侧行"
+                    "anchor": anchor,
+                    "selector": f"{left_selector} >> xpath=.//tbody//tr[@class='el-table__row']//span[1]",
+                    # ★ 行文本断言: 回放时实际点击元素文本必须与记录一致（防异步换相后静默错选）
+                    "expect_text": target_text,
+                    "desc": f"点击穿梭框左侧行: {target_text}"
                 },
                 {
                     "op": "wait_condition",
                     "condition": "transfer_box_right_updated",
-                    "selector": '[class*="transfer-box-right"]',
+                    "anchor": anchor,
+                    "selector": right_selector,
                     "exclude_texts": ["暂无数据", "无数据"],
                     "timeout": 3000,
                     "desc": "确认右侧面板已更新（选中生效）"
@@ -4110,6 +4152,7 @@ class MultiStepExecutor:
                 return False, {
                     "option_text": target_text,
                     "selected_count": 0,
+                    "anchor": anchor,
                     "failure_reason": _last_right_state.get("why", "right_panel_not_updated") if _last_right_state else "right_panel_not_updated",
                     "interaction_steps": interaction_steps
                 }
@@ -4117,6 +4160,8 @@ class MultiStepExecutor:
             return True, {
                 "option_text": target_text,
                 "selected_count": 1,
+                "anchor": anchor,
+                "selected_row": {"text": target_text, "strategy": "first-row"},
                 "interaction_steps": interaction_steps
             }
 
@@ -4208,9 +4253,9 @@ class MultiStepExecutor:
                 await self.page.wait_for_timeout(500)
                 LOG.info(f"    穿梭框点击成功: '{target_text}'")
 
-                # === DIAG: 检查右侧面板是否更新 ===
-                right_panel = await self.page.evaluate("""() => {
-                    const right = document.querySelector('[class*="transfer-box-right"]');
+                # === DIAG: 检查右侧面板是否更新（锚点容器内） ===
+                right_panel = await self.page.evaluate("""(container) => {
+                    const right = container.querySelector('[class*="transfer-box-right"]');
                     if (!right) return { found: false };
                     const items = right.querySelectorAll('div, span, p');
                     const texts = [];
@@ -4219,13 +4264,13 @@ class MultiStepExecutor:
                         if (t && t.length < 80) texts.push(t);
                     }
                     return { found: true, itemCount: items.length, texts: texts.slice(0, 10) };
-                }""")
+                }""", container)
                 LOG.info(f"    [DIAG-transfer] 右侧面板: {json.dumps(right_panel, ensure_ascii=False)}")
 
-                # === DIAG: 如果右侧面板为空，dump 左侧 DOM 树 ===
+                # === DIAG: 如果右侧面板为空，dump 左侧 DOM 树（锚点容器内） ===
                 if right_panel.get("itemCount", 0) == 0:
-                    deep_diag = await self.page.evaluate("""() => {
-                        const left = document.querySelector('[class*="transfer-box-left"]');
+                    deep_diag = await self.page.evaluate("""(container) => {
+                        const left = container.querySelector('[class*="transfer-box-left"]');
                         if (!left) return { found: false };
                         function dumpTree(el, depth) {
                             if (depth > 3) return null;
@@ -4246,14 +4291,16 @@ class MultiStepExecutor:
                             return result;
                         }
                         return { found: true, tree: dumpTree(left, 0) };
-                    }""")
+                    }""", container)
                     LOG.info(f"    [DIAG-transfer] 左侧 DOM 树: {json.dumps(deep_diag, ensure_ascii=False)}")
 
-                # ★ 记录 interaction_steps
+                # ★ 记录 interaction_steps（锚点化: 容器内相对 text= 定位 + 行文本断言）
                 interaction_steps = [
                     {
                         "op": "click",
-                        "selector": f"text:{target_text}",
+                        "anchor": anchor,
+                        "selector": f"text={target_text}",
+                        "expect_text": target_text,
                         "desc": "点击穿梭框左侧元素（回退方案）"
                     }
                 ]
@@ -4261,6 +4308,8 @@ class MultiStepExecutor:
                 return True, {
                     "option_text": target_text,
                     "selected_count": 1,
+                    "anchor": anchor,
+                    "selected_row": {"text": target_text, "strategy": "fallback-text"},
                     "interaction_steps": interaction_steps
                 }
             else:
