@@ -143,6 +143,15 @@ def _call_has_business_data(call: dict, samples: dict) -> bool:
                             if any(_is_id_like_field(k) for k in first):
                                 return True
 
+                # ★ 空数据放行：写操作（POST/PUT/PATCH/DELETE）+ 显式 success=true 信封
+                # + entity 为结构化 dict（如分页信封 total:0/list:[]）→ 保留为候选。
+                # 空数据环境下查询类写 API（POST xxx/list）天然无业务数据字段，
+                # 不能因响应为空而误判为校验类接口（导入历史曾因此被 GET 顶替首候选）。
+                # 校验类接口（entity 为字符串，如 /users/check 返回 UUID）仍被上方
+                # continue 排除，不受此放行影响。
+                if method in ("POST", "PUT", "PATCH", "DELETE") and body.get("success") is True:
+                    return True
+
             if isinstance(entity, list) and len(entity) > 0:
                 first = entity[0]
                 if isinstance(first, dict):
