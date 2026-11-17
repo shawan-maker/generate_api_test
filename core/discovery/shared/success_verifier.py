@@ -5,7 +5,7 @@ shared/success_verifier.py — 操作成功验证（Stage 1/2 统一实现）
 1. 方法只定义一次，Stage 1/2 同时调用
 2. 验证标准完全一致，避免 "Stage 1 通过但 Stage 2 失败" 的不一致
 
-统一六层策略链：
+统一六层策略链（mode="message" 写操作语义）：
   0.   快速检查可见通知 — 语义分类
   0.5. 失败文本优先检测 — 通知组件内搜索"失败"
   1.   成功文本匹配 — 通知组件内搜索"成功"
@@ -14,9 +14,15 @@ shared/success_verifier.py — 操作成功验证（Stage 1/2 统一实现）
   F.   主动失败检测 — dialog / error message / form validation
   兜底: 仅 PROCESSING → 成功；无信号 → 失败
 
+mode="read_complete"（只读查看/查询类语义）:
+  策略 3 与 F 的弹窗全文扫描跳过（只读内容防误报）；
+  保留通知组件错误检测与表单校验（不吞错）；
+  无失败信号 → 成功 (read_complete:no_failure)
+
 调用方：
     - Stage 1: base_executor.py (_verify_operation_success)
-    - Stage 2: replay_engine.py (_step_assert_success)
+    - Stage 2 / UI 脚本: replay_engine.py (_step_assert_success)
+    - Stage 1 readonly 分支: crud_executor.py (统一入口，mode="read_complete")
 """
 
 import logging
@@ -29,6 +35,7 @@ LOG = logging.getLogger(__name__)
 async def verify_operation_success(
     page: Page,
     operation_type: str = "",
+    mode: str = "message",
     strict: bool = False,
     timeout: int = 5000,
     captured_messages: list = None,
@@ -38,6 +45,11 @@ async def verify_operation_success(
     Args:
         page: Playwright Page 对象
         operation_type: 操作类型 (create/update/delete/lock/unlock/...)
+        mode: 断言模式（KB assert_mode 契约，三处 UI 环节统一）
+            - "message": 写操作语义——需要正向成功信号；无信号判失败（现状行为）
+            - "read_complete": 只读查看/查询类语义——交互序列完成即成功；
+              跳过弹窗全文扫描（防只读内容误报），保留结构化错误通道（不吞错）；
+              无失败信号判成功
         strict: 严格模式（需要正向成功信号，而非"无错误即成功"）
         timeout: 轮询超时（毫秒）
         captured_messages: 由 get_captured_messages() 返回的捕获消息列表
@@ -253,7 +265,9 @@ async def verify_operation_success(
                 pass
 
     # ── 策略 3: 轮询等待 dialog/message-box 中的成功/错误消息 ──
-    if matched_method is None and failure_reason is None:
+    # ★ read_complete 跳过：弹窗全文扫描是"提交反馈弹窗"语义，
+    #   只读弹窗内容（历史记录/业务详情）天然可能含失败关键词，不跳过必误报
+    if matched_method is None and failure_reason is None and mode != "read_complete":
         for _poll in range(5):
             dialog_result = await page.evaluate(r"""() => {
                 const successKw = ['成功', '完成', '已保存', '已添加', '已删除', '已更新'];
@@ -314,31 +328,37 @@ async def verify_operation_success(
             await page.wait_for_timeout(1000)
 
     # ── 策略 F: 主动失败检测 ──
+    # ★ read_complete 模式：跳过 dialog/message-box 全文扫描（只读内容防误报），
+    #   保留 error toast / 表单校验两类结构化错误通道（不吞真实错误）
     if matched_method is None and failure_reason is None:
         try:
-            failure_signals = await page.evaluate("""() => {
+            failure_signals = await page.evaluate("""(skipDialogScan) => {
                 const failKw = ['失败', '错误', '异常', 'error', '无权', '权限不足'];
                 const results = [];
 
-                // 1. el-dialog 中的失败文本
-                document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"])')
-                    .forEach(d => {
-                        if (d.offsetWidth === 0) return;
-                        const text = (d.textContent || '').trim();
-                        if (failKw.some(kw => text.includes(kw))) {
-                            results.push({source: 'dialog', text: text.substring(0, 200)});
-                        }
-                    });
+                // 1. el-dialog 中的失败文本（read_complete 跳过——只读弹窗内容非错误反馈）
+                if (!skipDialogScan) {
+                    document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"])')
+                        .forEach(d => {
+                            if (d.offsetWidth === 0) return;
+                            const text = (d.textContent || '').trim();
+                            if (failKw.some(kw => text.includes(kw))) {
+                                results.push({source: 'dialog', text: text.substring(0, 200)});
+                            }
+                        });
+                }
 
-                // 2. el-message-box 中的失败文本
-                document.querySelectorAll('.el-message-box__wrapper:not([style*="display: none"])')
-                    .forEach(d => {
-                        if (d.offsetWidth === 0) return;
-                        const text = (d.textContent || '').trim();
-                        if (failKw.some(kw => text.includes(kw))) {
-                            results.push({source: 'message_box', text: text.substring(0, 200)});
-                        }
-                    });
+                // 2. el-message-box 中的失败文本（read_complete 跳过，同上）
+                if (!skipDialogScan) {
+                    document.querySelectorAll('.el-message-box__wrapper:not([style*="display: none"])')
+                        .forEach(d => {
+                            if (d.offsetWidth === 0) return;
+                            const text = (d.textContent || '').trim();
+                            if (failKw.some(kw => text.includes(kw))) {
+                                results.push({source: 'message_box', text: text.substring(0, 200)});
+                            }
+                        });
+                }
 
                 // 3. el-message--error / el-message--warning（★ B2: 跳过 __op_baseline 残留）
                 const errEls = document.querySelectorAll('.el-message--error, .el-message--warning');
@@ -363,7 +383,7 @@ async def verify_operation_success(
                 }
 
                 return results.length > 0 ? results : null;
-            }""")
+            }""", mode == "read_complete")
             if failure_signals:
                 failure_reason = failure_signals[0]["text"]
                 failure_type = failure_signals[0]["source"]
@@ -398,7 +418,18 @@ async def verify_operation_success(
             "has_processing": True,
         }
 
-    # 完全无信号
+    # ★ read_complete（只读查看/查询类）: 交互序列已完成且无失败信号 → 成功
+    # （结构化错误通道已在上游检测：error toast / 表单校验；弹窗全文已跳过）
+    if mode == "read_complete":
+        LOG.info("    ✓ [read_complete] 只读交互完成且无失败信号，标记为成功")
+        return True, {
+            "matched_method": "read_complete:no_failure",
+            "failure_reason": None,
+            "failure_type": None,
+            "has_processing": False,
+        }
+
+    # 完全无信号（message 模式）
     LOG.warning("    ⚠️ 未检测到明确的成功/失败信号，标记为失败")
     return False, {
         "matched_method": "none",

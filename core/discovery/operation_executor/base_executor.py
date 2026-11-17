@@ -685,7 +685,7 @@ async def _get_captured_messages(page, msg_type: str = None, clear: bool = False
 
 
 async def _verify_operation_success(page, operation_type: str, strict: bool = False,
-                                     captured_messages: list = None) -> tuple:
+                                     captured_messages: list = None, mode: str = "message") -> tuple:
     """验证操作是否成功（弹窗关闭 / 成功提示 / 列表变化 / 捕获的消息）。
 
     ★ 已委托给 shared/verify_operation_success（Stage 1/2 统一实现）
@@ -695,6 +695,7 @@ async def _verify_operation_success(page, operation_type: str, strict: bool = Fa
         operation_type: 操作类型 (create/update/delete/lock/unlock/...)
         strict: 严格模式（需要正向成功信号，而非"无错误即成功"）
         captured_messages: 由 _get_captured_messages() 返回的捕获消息列表
+        mode: 断言模式（"message"=写操作需成功信号 / "read_complete"=只读完成即成功）
 
     Returns:
         (success: bool, detail: dict)
@@ -710,6 +711,7 @@ async def _verify_operation_success(page, operation_type: str, strict: bool = Fa
     return await verify_operation_success(
         page,
         operation_type=operation_type,
+        mode=mode,
         strict=strict,
         captured_messages=captured_messages,
     )

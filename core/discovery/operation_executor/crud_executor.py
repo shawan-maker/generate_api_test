@@ -4231,21 +4231,38 @@ async def _do_generic_operation(page, context: dict) -> dict:
                     LOG.info(f"    已点击确认按钮: {confirmed}")
                 else:
                     # confirm_dialog 返回了非确认按钮文本（可能是弹窗标题或内容文本）
-                    # 说明弹窗内没有确认按钮 → 只读查看型弹窗，关闭即为成功
+                    # 说明弹窗内没有确认按钮 → 只读查看型弹窗
+                    # ★ 统一判定器：关闭前以 read_complete 模式验证（无失败信号即成功）。
+                    #   read_complete 不扫弹窗全文（防只读内容误报），但保留 error toast /
+                    #   表单校验两类结构化错误通道（真实加载错误仍判失败）
                     LOG.info(f"    confirm_dialog 返回了非确认文本: '{confirmed[:40]}'（只读查看型弹窗）")
-                    closed = await confirm_dialog(page, confirm=False)
-                    if not closed:
-                        await _close_dialog(page)
-                    return {
-                        "success": True,
-                        "trigger_text": trigger_text_normalized,
-                        "selectors": {"trigger": btn_text},
-                        "interaction_mode": "readonly_dialog",
-                        "readonly_dialog": True,
-                        "trigger_locator_verified": _verified_trigger_locator,
-                        "dialog_locator": _sel_q,
-                        "container_type": _container_type,
-                    }
+                    _rd_msgs = await _get_captured_messages(page)
+                    _rd_ok, _rd_detail = await _verify_operation_success(
+                        page, action, mode="read_complete", captured_messages=_rd_msgs)
+                    if _rd_ok:
+                        closed = await confirm_dialog(page, confirm=False)
+                        if not closed:
+                            await _close_dialog(page)
+                        return {
+                            "success": True,
+                            "trigger_text": trigger_text_normalized,
+                            "selectors": {"trigger": btn_text},
+                            "interaction_mode": "readonly_dialog",
+                            "readonly_dialog": True,
+                            "matched_method": _rd_detail.get("matched_method"),
+                            "trigger_locator_verified": _verified_trigger_locator,
+                            "dialog_locator": _sel_q,
+                            "container_type": _container_type,
+                        }
+                    else:
+                        # 判定器检出失败信号 → 关闭弹窗清理现场后如实判失败
+                        await confirm_dialog(page, confirm=False)
+                        return _fail(
+                            "readonly_dialog_error",
+                            f"{action} 只读弹窗操作检出失败信号: "
+                            f"{_rd_detail.get('failure_reason', 'unknown')}",
+                            trigger_locator_verified=_verified_trigger_locator,
+                        )
             else:
                 # ★ 修复: 无确认按钮时，尝试关闭弹窗（取消/关闭按钮）
                 # 只读查看型 dialog（如"导入历史"）只有取消按钮，关闭即为成功

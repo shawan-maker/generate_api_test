@@ -473,6 +473,7 @@ def _build_form_page_playbook(ui_result: dict, form_actions: list) -> dict:
 
         # Step 6: 验证操作成功（检查成功通知）
         steps.append({"action": "assert_success",
+                       "assert_mode": "message",
                        "playwright_locator": ".el-message--success, .el-notification__content:has-text('成功'), [role='alert']:has-text('成功')",
                        "description": f"验证 {btn_text} 操作成功"})
 
@@ -659,6 +660,12 @@ def build_playbook(ui_result: dict) -> dict:
                 "replayable": replayable,
                 "api_capture": api_capture,
             }
+            # ★ 操作级语义同步（可观测性）: 交互模式/只读标记随操作顶层落盘，
+            #   与步骤级 assert_mode 契约同源（均来自 op_data 结构事实）
+            if op_data.get("interaction_mode"):
+                entry["interaction_mode"] = op_data["interaction_mode"]
+            if op_data.get("readonly_dialog"):
+                entry["readonly_dialog"] = op_data["readonly_dialog"]
             # ★ 多 Tab 页面：记录操作归属的 tab
             if len(tabs) > 1 and tab_name:
                 entry["tab"] = tab_name
@@ -1004,6 +1011,7 @@ def _build_create_steps(op_data: dict) -> list:
     success_locator = op_data.get("success_locator", ".el-message--success")
     steps.append({
         "action": "assert_success",
+        "assert_mode": "message",
         "playwright_locator": success_locator,
         "description": "验证创建成功"
     })
@@ -1086,6 +1094,7 @@ def _build_delete_steps(op_data: dict, create_marker=None) -> list:
     # 用于处理"同名数据仍存在"等场景：toast 已确认成功，行消失验证降级为警告
     steps.append({
         "action": "assert_success",
+        "assert_mode": "message",
         "playwright_locator": ".el-message--success, .el-notification__content:has-text('成功'), [role='alert']:has-text('成功')",
         "description": "验证操作成功",
     })
@@ -1351,6 +1360,7 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
     success_locator = op_data.get("success_locator", ".el-message--success")
     steps.append({
         "action": "assert_success",
+        "assert_mode": "message",
         "playwright_locator": success_locator,
         "description": "验证更新成功"
     })
@@ -1682,6 +1692,11 @@ def _build_generic_steps(op_data: dict, create_marker=None) -> list:
     has_ui_action = bool(trigger_locator or dropdown_item_text or confirmed
                          or needs_checkbox or selectors.get("row_selector") or dialog_fills)
     if has_ui_action:
+        # ★ assert_mode 派生（单点，基于 op_data 结构事实）:
+        #   只读查看型弹窗 → read_complete（关闭即成功，无失败信号判成功）
+        #   其余（确认/表单/提交等写路径）→ message（需正向成功信号）
+        is_readonly = bool(op_data.get("readonly_dialog")
+                           or op_data.get("interaction_mode") == "readonly_dialog")
         # 使用多选择器兼容不同 UI 框架的成功提示：
         # - .el-message--success: Element UI 标准成功消息
         # - .el-notification__content:has-text('成功'): Element UI 通知组件
@@ -1690,8 +1705,9 @@ def _build_generic_steps(op_data: dict, create_marker=None) -> list:
             ".el-message--success, .el-notification__content:has-text('成功'), [role='alert']:has-text('成功')")
         steps.append({
             "action": "assert_success",
+            "assert_mode": "read_complete" if is_readonly else "message",
             "playwright_locator": success_locator,
-            "description": "验证操作成功"
+            "description": "只读弹窗打开并关闭完成" if is_readonly else "验证操作成功"
         })
 
     return steps
@@ -1929,12 +1945,17 @@ def _build_page_nav_steps(op_data: dict) -> list:
         })
 
     # Step 6: 验证成功（无论成功失败都生成，assert_success 会做语义判断）
+    # ★ assert_mode 派生（单点，基于 nav_info 结构事实）:
+    #   有表单字段 = 有写动作（如授权）→ message（需正向成功信号）
+    #   无表单字段 = 只读跳转型页面（如详情查看）→ read_complete（完成即成功）
     success_locator = op_data.get("success_locator",
         ".el-message--success, .el-notification__content:has-text('成功'), [role='alert']:has-text('成功')")
+    _nav_has_form = bool(nav_info.get("form_fields"))
     steps.append({
         "action": "assert_success",
+        "assert_mode": "message" if _nav_has_form else "read_complete",
         "playwright_locator": success_locator,
-        "description": "验证操作成功"
+        "description": "验证操作成功" if _nav_has_form else "只读页面访问完成"
     })
 
     # Step 7: 导航回原页面
