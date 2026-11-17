@@ -74,6 +74,29 @@ def _log_scan_debug(raw_result: dict):
                      f"maxLength={sub.get('maxLength')}")
 
 
+async def probe_transfer_box_state(page: Page) -> dict:
+    """探测页面中 transfer-box 组件的当前渲染状态（R2: 级联打开语义记录）。
+
+    用于 radio 点击前后各探测一次，判断级联组件是否依赖 change 事件渲染：
+    - 点击前不存在、点击后出现 → depends_on_radio_change = True（回放需制造变更）
+    - 点击前已存在 → False（初始渲染，回放直接执行级联步骤即可）
+
+    Returns:
+        dict: {"exists": bool}（右侧面板存在且可见即视为组件已渲染）
+    """
+    try:
+        state = await page.evaluate("""() => {
+            const right = document.querySelector('[class*="transfer-box-right"]');
+            if (!right) return { exists: false };
+            const r = right.getBoundingClientRect();
+            if (r.width <= 0 || r.height <= 0) return { exists: false };
+            return { exists: true };
+        }""")
+        return state or {"exists": False}
+    except Exception:
+        return {"exists": False}
+
+
 class FormFiller:
     """表单填充封装类，供 capture_apis 调用"""
 
@@ -443,6 +466,9 @@ class FormFiller:
                         from .locator_helpers import safe_css
                         import json as _json
 
+                        # ★ R2: radio 点击前探测 transfer-box 渲染状态（判断级联打开语义）
+                        box_before_click = await probe_transfer_box_state(self.page)
+
                         # 第一次尝试：Playwright click wrapper
                         radio_wrapper = self.page.locator(
                             safe_css(
@@ -463,6 +489,25 @@ class FormFiller:
                             radio_selections[label] = first_text  # ★ 记录实际选择的值
                             LOG.info(f"    选择 radio: {label} = {first_text}")
 
+                            # ★ R2 改动 3: 实时收集 radio-group 全部选项文本（供 Stage 2 no-op 变更序列使用）
+                            _all_options = list(field.get("allOptions", []) or [])
+                            try:
+                                _live_options = await self.page.evaluate("""(optText) => {
+                                    const groups = document.querySelectorAll('.el-radio-group');
+                                    let fallback = null;
+                                    for (const g of groups) {
+                                        const texts = [...g.querySelectorAll('.el-radio, .el-radio-button')]
+                                            .map(o => (o.textContent || '').trim()).filter(Boolean);
+                                        if (texts.some(t => t === optText)) return texts;
+                                        if (!fallback && texts.some(t => t.includes(optText))) fallback = texts;
+                                    }
+                                    return fallback || [];
+                                }""", first_text)
+                                if _live_options:
+                                    _all_options = _live_options
+                            except Exception:
+                                pass
+
                             # ★ Fix 11: 记录 radio interaction_steps
                             _radio_interactions = [
                                 {"op": "click", "selector": f'.el-radio-group .el-radio:has-text("{first_text}")', "desc": f"点击 radio: {first_text}"}
@@ -476,12 +521,16 @@ class FormFiller:
                             radio_field_details.append({
                                 "label": label,
                                 "option_text": first_text,
-                                "all_options": field.get("allOptions", []),
+                                "all_options": _all_options,
                                 "interaction_steps": _radio_interactions,
                             })
 
                             # radio 级联：检测动态组件并自动处理
                             await self.page.wait_for_timeout(1000)  # 等待动态组件渲染
+
+                            # ★ R2: radio 点击后探测 transfer-box 渲染状态（与点击前对比得出打开语义）
+                            box_after_click = await probe_transfer_box_state(self.page)
+                            _depends_on_change = (not box_before_click.get("exists", False)) and box_after_click.get("exists", False)
 
                             # 检测新增 form fields
                             try:
@@ -551,6 +600,11 @@ class FormFiller:
                                             "trigger_field": label,
                                             "trigger_value": first_text,
                                             "target_label": _transfer_target_label,
+                                            # ★ R2: 记录级联打开语义（Stage 2 据此决定是否需制造 no-op 变更触发）
+                                            "open_semantics": {
+                                                "depends_on_radio_change": _depends_on_change,
+                                                "settle_wait_ms": 1000,  # Stage 1 实测渲染稳定等待
+                                            },
                                             "interaction_steps": interaction_steps,
                                         })
                                     else:
@@ -670,6 +724,8 @@ class FormFiller:
             "filled": filled,
             "cascade_actions": cascade_actions,
             "radio_selections": radio_selections,  # ★ 记录 radio 实际选择的值
+            # ★ R3: radio 字段详情（含 interaction_steps / all_options），供 playbook 记录完整回放步骤
+            "radio_field_details": radio_field_details,
         }
 
     async def fill_multi_step_fields(self, fields: List[Dict], framework: str = "element-ui",
@@ -3979,56 +4035,88 @@ class MultiStepExecutor:
             LOG.info(f"    [transfer-box] === 诊断信息结束 ===")
 
             # === 多次检查右侧面板（Vue 可能需要时间更新）===
+            # ★ R1 改动 2: 成功语义修正——空面板也含"已选择 (0项)"类头部文本，
+            # 故 itemCount>0 恒真不可靠；改为"计数>0 / 含移除按钮 / 非空文本"组合判据
             right_panel_updated = False
+            _last_right_state = None
             for attempt in range(3):
                 await self.page.wait_for_timeout(300)  # 每次等待 300ms
 
-                right_panel = await self.page.evaluate("""() => {
-                    const right = document.querySelector('[class*="transfer-box-right"]');
-                    if (!right) return { found: false };
-
-                    const items = right.querySelectorAll('div, span, p, li');
-                    const texts = [];
-                    for (const el of items) {
-                        const t = (el.textContent || '').trim();
-                        if (t && t.length < 80) texts.push(t);
+                _last_right_state = await self.page.evaluate("""(sel) => {
+                    const right = document.querySelector(sel);
+                    if (!right) return { ok: false, why: 'right_panel_not_found' };
+                    const r = right.getBoundingClientRect();
+                    if (r.width <= 0 || r.height <= 0) return { ok: false, why: 'right_panel_not_visible' };
+                    const text = (right.textContent || '').trim();
+                    if (text.includes('暂无数据') || text.includes('无数据')) return { ok: false, why: 'right_panel_no_data', text: text.substring(0, 50) };
+                    const countMatch = text.match(/已选择\\s*[（(]\\s*(\\d+)\\s*[项个]/);
+                    if (countMatch) {
+                        return parseInt(countMatch[1], 10) > 0
+                            ? { ok: true, why: 'right_panel_count_positive', text: text.substring(0, 60) }
+                            : { ok: false, why: 'right_panel_count_zero', text: text.substring(0, 60) };
                     }
+                    if (right.querySelector('[class*="remove"], button') && text.includes('移除')) {
+                        return { ok: true, why: 'right_panel_has_remove', text: text.substring(0, 60) };
+                    }
+                    return text
+                        ? { ok: true, why: 'right_panel_has_content', text: text.substring(0, 60) }
+                        : { ok: false, why: 'right_panel_empty' };
+                }""", '[class*="transfer-box-right"]')
 
-                    return {
-                        found: true,
-                        itemCount: items.length,
-                        texts: texts.slice(0, 10),
-                        rect: (() => {
-                            const r = right.getBoundingClientRect();
-                            return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
-                        })()
-                    };
-                }""")
+                LOG.info(f"    [transfer-box] 右侧面板检查 (attempt {attempt + 1}/3): {json.dumps(_last_right_state, ensure_ascii=False)}")
 
-                LOG.info(f"    [transfer-box] 右侧面板检查 (attempt {attempt + 1}/3): itemCount={right_panel.get('itemCount', 0)}, texts={right_panel.get('texts', [])[:5]}")
-
-                # 如果右侧面板有内容，说明点击成功
-                if right_panel.get('itemCount', 0) > 0:
-                    LOG.info(f"    [transfer-box] ✓ 右侧面板已更新，点击成功")
+                if _last_right_state.get('ok'):
+                    LOG.info(f"    [transfer-box] ✓ 右侧面板已更新，选择生效")
                     right_panel_updated = True
                     break
 
             if not right_panel_updated:
-                LOG.warning(f"    [transfer-box] ⚠ 右侧面板未更新，可能点击未生效")
+                LOG.warning(f"    [transfer-box] ⚠ 右侧面板未更新，选择未生效 (最后状态: {json.dumps(_last_right_state, ensure_ascii=False)})")
                 LOG.warning(f"    [transfer-box] 建议检查：1) 是否需要点击父元素(tr/td) 2) 是否需要用 Playwright click 3) 是否需要触发 Vue 事件")
 
-            # ★ 记录 interaction_steps
+            # ★ R1 改动 1: 记录完整回放步骤序列（等待渲染 → 等待数据 → 点击 → 确认生效）
+            # Stage 2 忠实回放此序列，不再依赖隐式渲染时机
+            # 注意：Playwright 引擎前缀用等号（xpath=...），冒号形式（xpath:...）会被当 CSS 解析直接报错
             interaction_steps = [
                 {
+                    "op": "wait_visible",
+                    "selector": '[class*="transfer-box-left"], [class*="transfer-left"], .el-transfer-panel:first-child',
+                    "timeout": 5000,
+                    "desc": "等待穿梭框左侧面板渲染"
+                },
+                {
+                    "op": "wait_visible",
+                    "selector": "xpath=//tbody//tr[@class='el-table__row']//span[1]",
+                    "timeout": 5000,
+                    "desc": "等待左侧列表数据加载"
+                },
+                {
                     "op": "click",
-                    "selector": "xpath://tbody//tr[@class='el-table__row']//span[1]",
+                    "selector": "xpath=//tbody//tr[@class='el-table__row']//span[1]",
                     "desc": "点击穿梭框左侧行"
+                },
+                {
+                    "op": "wait_condition",
+                    "condition": "transfer_box_right_updated",
+                    "selector": '[class*="transfer-box-right"]',
+                    "exclude_texts": ["暂无数据", "无数据"],
+                    "timeout": 3000,
+                    "desc": "确认右侧面板已更新（选中生效）"
                 }
             ]
 
+            # ★ R1 改动 2: 右侧未更新 → 判定失败（不再返回 success=True 的假成功记录）
+            if not right_panel_updated:
+                return False, {
+                    "option_text": target_text,
+                    "selected_count": 0,
+                    "failure_reason": _last_right_state.get("why", "right_panel_not_updated") if _last_right_state else "right_panel_not_updated",
+                    "interaction_steps": interaction_steps
+                }
+
             return True, {
                 "option_text": target_text,
-                "selected_count": 1 if right_panel_updated else 0,
+                "selected_count": 1,
                 "interaction_steps": interaction_steps
             }
 

@@ -477,6 +477,20 @@ def deduplicate_calls(all_calls: List[Dict], samples: Dict,
                 }]
                 continue
 
+            # ★ P2: 回放失败操作（replay_failed: 表单关键失败，提交被跳过）：
+            # 窗口内只有级联尝试产生的查询类 API，归因只会制造噪声（历史上授权操作
+            # 因此被误配到 POST menu/tree 基础设施 API）——跳过归因，输出标记，
+            # Stage 3/4 经既有 api_captured=False 路径感知该操作不可用
+            if window.get("replay_failed"):
+                core_api_map[action] = [{
+                    "api_captured": False,
+                    "reason": "replay_failed",
+                    "pathname": "",
+                    "critical_form_failures": window.get("critical_form_failures", []),
+                }]
+                LOG.info(f"  {action}: 跳过 API 归因（replay_failed: 表单关键失败）")
+                continue
+
             # 筛选时间窗口内的 API 调用，按时间排序
             window_calls = sorted(
                 [c for c in all_calls if start <= c.get("ts", 0) <= end],

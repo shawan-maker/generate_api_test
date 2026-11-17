@@ -187,6 +187,13 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
             LOG.debug(f"跳过 {action}: Playbook 中无定义")
             continue
 
+        # ★ B1: 释放上一操作钉住的通知（本操作窗口的起点）
+        # 钉住的正确语义是"本操作的验证与截图完成前保活"；操作间必须释放，
+        # 否则残留通知跨操作存活，污染下一操作的 assert_success 判定。
+        # 放在循环体开头可覆盖所有退出路径（正常/异常/崩溃恢复 continue）。
+        from .shared.message_capture import unpin_notifications
+        await unpin_notifications(page)
+
         op_status = op.get("detection_status", "success")
         if op_status == "failed":
             LOG.info(f"▶ 回放 {action} (Stage 1 标记为失败: {op.get('error_type', 'unknown')})")
@@ -238,7 +245,9 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
 
             # 记录成功使用的断言方式
             assert_methods = result.get("assert_methods", {})
-            if assert_methods:
+            # ★ B3 守卫: 断言失败时不得回写 matched_method——防止误报匹配方式
+            # （如残留钉住通知）被固化进 playbook，造成跨运行的知识库污染
+            if assert_methods and not result.get("assertion_failed"):
                 LOG.info(f"  ✓ 断言方式: {assert_methods}")
                 # 更新 playbook 中的 assert_success 步骤，记录实际使用的断言方式
                 for step in steps:
@@ -328,6 +337,11 @@ async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: 
         replay_windows[action] = {"start": op_start, "end": op_end}
         if result.get("assertion_failed"):
             replay_windows[action]["assertion_failed"] = True
+        # ★ P2: 载荷级表单失败（提交被跳过）——标记 replay_failed，
+        # classifier 据此跳过该操作的 API 归因（窗口内只有级联尝试产生的查询 API，归因只会制造噪声）
+        if result.get("critical_form_failures"):
+            replay_windows[action]["replay_failed"] = True
+            replay_windows[action]["critical_form_failures"] = result["critical_form_failures"]
             # 传递失败详情，供 Stage 3-4 分析使用
             if result.get("failure_type"):
                 replay_windows[action]["failure_type"] = result["failure_type"]

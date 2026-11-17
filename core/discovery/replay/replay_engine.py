@@ -83,6 +83,9 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
         dict: 执行结果，包含 marker（如果是 create 操作）
     """
     result = {"success": True}
+    # ★ P2: 表单关键失败（载荷级）收集与提交门控状态
+    critical_form_failures = []
+    skip_remaining_interactions = False
 
     # ---- 空步骤标记（供调用方判断） ----
     if not steps:
@@ -104,6 +107,20 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
     for i, step in enumerate(steps):
         action = step.get("action")
         LOG.info(f"    执行步骤 {i+1}/{len(steps)}: {action}")
+
+        # ★ P2: 表单关键失败（载荷级）后的步骤门控——禁止空提交，断言直接置红，
+        # 环境恢复步骤（navigate_back / close_or_go_back / wait_for_table_ready 等）照常执行
+        if skip_remaining_interactions:
+            if action in ("click_button", "confirm_dialog", "confirm_dialog_if_present"):
+                LOG.warning(f"    ⏭️ 跳过 {action}（表单关键失败，禁止空提交）")
+                continue
+            if action == "assert_success":
+                LOG.warning(f"    ⏭️ assert_success 直接判定失败（表单关键失败，未提交）")
+                result["assertion_failed"] = True
+                step["success"] = False
+                result["failure_type"] = "critical_form_failure"
+                result["failure_reason"] = f"fill_form 关键失败: {critical_form_failures}"
+                continue
 
         # 每步执行前检查页面是否崩溃
         if await _is_page_crashed(page):
@@ -220,7 +237,14 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
                     except Exception:
                         LOG.warning(f"    ⚠️ 等待抽屉/对话框超时，继续尝试填充")
 
-                marker_value = await _step_fill_form(page, step, button_driver, role)
+                # ★ P2: fill_form 返回结构化结果 {marker, critical_failures}
+                fill_outcome = await _step_fill_form(page, step, button_driver, role)
+                marker_value = fill_outcome.get("marker")
+                if fill_outcome.get("critical_failures"):
+                    critical_form_failures.extend(fill_outcome["critical_failures"])
+                    skip_remaining_interactions = True
+                    LOG.warning(f"    ⚠️ fill_form 关键失败（载荷级，共 {len(fill_outcome['critical_failures'])} 项）: "
+                                f"{fill_outcome['critical_failures']}，后续提交将被跳过")
                 if marker_value:
                     # fill_form 提取的值始终优先（动态值 > 静态值）
                     if marker and marker != marker_value:
@@ -375,6 +399,10 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
         except Exception as e:
             LOG.warning(f"    步骤 {i+1} 执行失败: {e}")
             raise
+
+    # ★ P2: 关键失败传递给调用方（capture_apis 据此标记 replay_failed 并阻止断言方式回写）
+    if critical_form_failures:
+        result["critical_form_failures"] = critical_form_failures
 
     return result
 
@@ -655,6 +683,53 @@ async def _execute_interaction_steps(page, steps: list, label: str) -> bool:
                 except Exception:
                     raise Exception(f"等待 XPath 元素超时 ({timeout}ms): {xpath}")
 
+            elif op == "wait_condition":
+                # ★ P3: 条件等待（如 transfer_box_right_updated——级联选择生效确认）
+                # 判据与 Stage 1 记录侧（form_filler._execute_transfer_box）完全一致，
+                # 保证"记录时判定成功"的状态在回放时也能判出成功
+                condition = step.get("condition", "")
+                selector = step.get("selector", "")
+                timeout = step.get("timeout", 3000)
+                if not condition or not selector:
+                    raise Exception(f"wait_condition 操作缺少 condition 或 selector")
+
+                poll_ms = 300
+                attempts = max(1, int(timeout / poll_ms))
+                last_state = None
+                ok = False
+                for _ in range(attempts):
+                    last_state = await page.evaluate("""(args) => {
+                        const [sel, excludeTexts] = args;
+                        const right = document.querySelector(sel);
+                        if (!right) return { ok: false, why: 'right_panel_not_found' };
+                        const r = right.getBoundingClientRect();
+                        if (r.width <= 0 || r.height <= 0) return { ok: false, why: 'right_panel_not_visible' };
+                        const text = (right.textContent || '').trim();
+                        if (excludeTexts.some(x => text.includes(x))) {
+                            return { ok: false, why: 'right_panel_no_data', text: text.substring(0, 50) };
+                        }
+                        const countMatch = text.match(/已选择\\s*[（(]\\s*(\\d+)\\s*[项个]/);
+                        if (countMatch) {
+                            return parseInt(countMatch[1], 10) > 0
+                                ? { ok: true, why: 'right_panel_count_positive', text: text.substring(0, 60) }
+                                : { ok: false, why: 'right_panel_count_zero', text: text.substring(0, 60) };
+                        }
+                        if (right.querySelector('[class*="remove"], button') && text.includes('移除')) {
+                            return { ok: true, why: 'right_panel_has_remove', text: text.substring(0, 60) };
+                        }
+                        return text
+                            ? { ok: true, why: 'right_panel_has_content', text: text.substring(0, 60) }
+                            : { ok: false, why: 'right_panel_empty' };
+                    }""", [selector, step.get("exclude_texts") or []])
+                    if last_state and last_state.get("ok"):
+                        ok = True
+                        break
+                    await page.wait_for_timeout(poll_ms)
+                if not ok:
+                    raise Exception(f"wait_condition 超时({timeout}ms): {condition} (最后状态: {last_state})")
+                LOG.info(f"    [step {i}/{len(steps)}] {desc}: 条件满足 ({condition}) "
+                         f"content='{(last_state or {}).get('text', '')[:30]}'")
+
             elif op == "click_xpath":
                 # 使用 XPath 点击元素
                 xpath = step.get("xpath")
@@ -864,7 +939,66 @@ async def _fill_composite_input(page, sub_components: list, fill_rule: dict, lab
     return filled > 0
 
 
-async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: str = None) -> str | None:
+async def _is_radio_option_checked(page, option_text: str) -> bool:
+    """P2: 检查页面中 radio 指定选项当前是否已选中（no-op 点击风险检测）。
+
+    定位策略与 Stage 1 fill_create_form 一致：在包含目标选项的 radio-group 内
+    检查 is-checked / is-active 类或内部 input.checked。
+    """
+    try:
+        checked = await page.evaluate("""(optText) => {
+            const groups = document.querySelectorAll('.el-radio-group');
+            for (const g of groups) {
+                const opts = [...g.querySelectorAll('.el-radio, .el-radio-button')];
+                let candidates = opts.filter(o => (o.textContent || '').trim() === optText);
+                if (!candidates.length) candidates = opts.filter(o => ((o.textContent || '').trim()).includes(optText));
+                for (const o of candidates) {
+                    const input = o.querySelector('input');
+                    if (o.classList.contains('is-checked') || o.classList.contains('is-active')
+                        || (input && input.checked)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }""", option_text)
+        return bool(checked)
+    except Exception:
+        return False
+
+
+async def _flip_radio_and_back(page, away_option: str, back_option: str, label: str,
+                               ui_framework: str = "element-ui") -> bool:
+    """P2: no-op 变更序列——先点击备选项再切回目标项，保证 change 事件真实触发。
+
+    回放时若目标 radio 已是选中态，直接点击是 no-op（Element UI 对已选中项
+    不触发 change），依赖 change 渲染的级联组件（如 transfer-box）不会打开。
+    使用真实点击序列（与 Stage 1 同源），不使用 dispatchEvent(change)——
+    合成事件可能绕过 Vue v-model 更新链路。
+    """
+    from .locator_helpers import safe_css
+    from .vue_radio_sync import sync_radio_vue_model
+    away_loc = (f'.el-radio-group .el-radio:has-text("{away_option}"), '
+                f'.el-radio-group .el-radio-button:has-text("{away_option}")')
+    back_loc = (f'.el-radio-group .el-radio:has-text("{back_option}"), '
+                f'.el-radio-group .el-radio-button:has-text("{back_option}")')
+    try:
+        await page.click(safe_css(away_loc, ui_framework), timeout=3000)
+        await page.wait_for_timeout(300)
+        await sync_radio_vue_model(page, away_option)
+        await page.wait_for_timeout(300)
+        await page.click(safe_css(back_loc, ui_framework), timeout=3000)
+        await page.wait_for_timeout(300)
+        await sync_radio_vue_model(page, back_option)
+        await page.wait_for_timeout(500)
+        LOG.info(f"      [Radio] no-op 变更序列完成: {label}: {away_option} → {back_option} (change 已真实触发)")
+        return True
+    except Exception as e:
+        LOG.warning(f"      [Radio] no-op 变更序列失败: {label}: {e}")
+        return False
+
+
+async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: str = None) -> dict:
     """步骤：填充表单字段（纯执行，不做推断）
 
     Args:
@@ -872,10 +1006,18 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
         step: 步骤定义
         button_driver: ButtonDriver 实例
         role: 操作类型（create/query/update/delete/generic），只有 create 操作才提取 marker
+
+    Returns:
+        dict: {
+            "marker": str | None,          # 从 is_marker 字段提取的标识值
+            "critical_failures": list,     # ★ P2: 载荷级关键失败（级联/字段失败），
+                                            # 非空时调用方应跳过提交并判定断言失败
+        }
     """
     fields = step.get("fields", [])
     filled_count = 0
     marker_value = None
+    critical_failures = []  # ★ P2: 载荷级关键失败收集
 
     # ★ 密码缓存：同一表单内"密码"和"确认密码"必须相同
     _password_cache = {}
@@ -928,69 +1070,117 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
         input_type = field.get("inputType", "text")
 
         # Radio 字段：Stage 1 已提供精确的 option_locator
+        # ★ P1: 优先忠实回放 Stage 1 记录的 interaction_steps；无记录时回退到原有 locator 路径
         # 处理逻辑与 Stage 1 fill_create_form() 保持一致（含 Vue v-model 同步）
         if kb_category == "radio":
             try:
                 # ★ 优先使用 option_text（Stage 1 实际选择的值）
                 first_text = field.get("option_text", "") or field.get("firstOptionText", "")
 
-                # ★ 如果 option_text 有值但 locator 指向容器，构造具体选项的 locator
-                if first_text and locator and first_text not in locator:
-                    locator = (
-                        f'{locator} .el-radio:has-text("{first_text}"), '
-                        f'{locator} .el-radio-button:has-text("{first_text}")'
-                    )
+                recorded_steps = field.get("interaction_steps")
+                radio_replay_failed = False
+                if recorded_steps:
+                    # ★ P1: 忠实回放 Stage 1 记录的步骤序列（click → sync_vue_model）
+                    ok = await _execute_interaction_steps(page, recorded_steps, label)
+                    if ok:
+                        filled_count += 1
+                        LOG.info(f"      [Radio] 回放完成: {label} ({len(recorded_steps)} 步)")
+                    else:
+                        radio_replay_failed = True
+                        LOG.warning(f"      [Radio] 记录步骤回放失败: {label}")
+                else:
+                    # 无记录步骤：走原有 locator 路径
 
-                enhanced = safe_css(locator, ui_framework) if locator else locator
-                await page.click(enhanced, timeout=3000)
-                LOG.info(f"      [Radio] 点击完成: {label}")
+                    # ★ 如果 option_text 有值但 locator 指向容器，构造具体选项的 locator
+                    if first_text and locator and first_text not in locator:
+                        locator = (
+                            f'{locator} .el-radio:has-text("{first_text}"), '
+                            f'{locator} .el-radio-button:has-text("{first_text}")'
+                        )
 
-                # 等待 Vue 响应
-                await page.wait_for_timeout(300)
+                    enhanced = safe_css(locator, ui_framework) if locator else locator
+                    await page.click(enhanced, timeout=3000)
+                    LOG.info(f"      [Radio] 点击完成: {label}")
 
-                # 通过共享工具强制同步 Vue v-model
-                if first_text:
-                    from .vue_radio_sync import sync_radio_vue_model
-                    vue_update_result = await sync_radio_vue_model(page, first_text)
+                    # 等待 Vue 响应
+                    await page.wait_for_timeout(300)
 
-                # ★ 处理 cascade_actions（如 radio 触发 transfer-box 选择）
-                cascade_actions = field.get("cascade_actions", [])
-                if cascade_actions:
-                    LOG.info(f"      [Radio] 检测到 {len(cascade_actions)} 个 cascade 操作")
-                    for ca in cascade_actions:
-                        if ca.get("type") == "transfer-box":
-                            trigger_value = ca.get("trigger_value", "")
-                            interaction_steps = ca.get("interaction_steps", [])
-                            # 只有当选择的值匹配 trigger_value 时才执行 cascade
-                            if not trigger_value or trigger_value == first_text:
-                                LOG.info(f"      [Radio] 执行 cascade: transfer-box (trigger: {trigger_value})")
-                                await page.wait_for_timeout(500)  # 等待动态组件渲染
+                    # 通过共享工具强制同步 Vue v-model
+                    if first_text:
+                        from .vue_radio_sync import sync_radio_vue_model
+                        vue_update_result = await sync_radio_vue_model(page, first_text)
 
-                                if interaction_steps:
-                                    # 优先使用 interaction_steps 回放（与 el-select 一致）
-                                    success = await _execute_interaction_steps(
-                                        page, interaction_steps, label
-                                    )
-                                    if success:
-                                        LOG.info(f"      [Radio] cascade transfer-box 回放成功")
+                    filled_count += 1
+
+                # ★ P2: 处理 cascade_actions（如 radio 触发 transfer-box 选择）——严格回放模式
+                # 无 interaction_steps = Stage 1 记录缺失 → 直接判关键失败（不再重新探索）
+                if not radio_replay_failed:
+                    cascade_actions = field.get("cascade_actions", [])
+                    if cascade_actions:
+                        LOG.info(f"      [Radio] 检测到 {len(cascade_actions)} 个 cascade 操作")
+                        for ca in cascade_actions:
+                            if ca.get("type") == "transfer-box":
+                                trigger_value = ca.get("trigger_value", "")
+                                ca_steps = ca.get("interaction_steps", [])
+                                open_sem = ca.get("open_semantics", {})
+                                # 只有当选择的值匹配 trigger_value 时才执行 cascade
+                                if not trigger_value or trigger_value == first_text:
+                                    LOG.info(f"      [Radio] 执行 cascade: transfer-box (trigger: {trigger_value})")
+                                    settle_ms = open_sem.get("settle_wait_ms", 500)
+
+                                    # ★ P2-1: no-op 变更检测——目标 radio 已选中时 change 不触发，
+                                    # 依赖 change 渲染的级联组件不会打开；用真实点击序列制造变更
+                                    if open_sem.get("depends_on_radio_change"):
+                                        already_checked = await _is_radio_option_checked(page, trigger_value)
+                                        if already_checked:
+                                            other_options = [o for o in (field.get("all_options") or [])
+                                                             if o and o != trigger_value]
+                                            if other_options:
+                                                flip_ok = await _flip_radio_and_back(
+                                                    page, other_options[0], trigger_value, label, ui_framework
+                                                )
+                                                if not flip_ok:
+                                                    critical_failures.append({
+                                                        "field": label, "cascade": trigger_value,
+                                                        "reason": "radio_noop_flip_failed",
+                                                    })
+                                                    continue
+                                            else:
+                                                LOG.warning(f"      [Radio] 目标 radio 已选中且无备选项可切换，"
+                                                            f"直接尝试级联步骤（change 可能未触发）")
+                                        else:
+                                            await page.wait_for_timeout(settle_ms)  # 等待动态组件渲染
                                     else:
-                                        LOG.warning(f"      [Radio] cascade transfer-box 回放失败")
-                                else:
-                                    # 回退到重新探索
-                                    from .form_filler import MultiStepExecutor
-                                    executor = MultiStepExecutor(page, None, ui_framework)
-                                    success, detail = await executor.execute_with_details(
-                                        "transfer-box", label, "", None, ""
-                                    )
-                                    if success:
-                                        LOG.info(f"      [Radio] cascade 成功（重新探索）")
-                                    else:
-                                        LOG.warning(f"      [Radio] cascade 失败")
+                                        await page.wait_for_timeout(settle_ms)  # 等待动态组件渲染
 
-                filled_count += 1
-                LOG.info(f"      [Radio] 处理完成: {label}")
+                                    # ★ P2-2: 严格回放级联步骤
+                                    if ca_steps:
+                                        success = await _execute_interaction_steps(
+                                            page, ca_steps, f"{label}→transfer-box"
+                                        )
+                                        if success:
+                                            LOG.info(f"      [Radio] cascade transfer-box 回放成功")
+                                        else:
+                                            critical_failures.append({
+                                                "field": label, "cascade": trigger_value,
+                                                "reason": "cascade_interaction_steps_failed",
+                                            })
+                                            LOG.warning(f"      [Radio] cascade transfer-box 回放失败（载荷级，禁止空提交）")
+                                    else:
+                                        critical_failures.append({
+                                            "field": label, "cascade": trigger_value,
+                                            "reason": "cascade_missing_interaction_steps",
+                                        })
+                                        LOG.error(f"      [Radio] cascade 无 interaction_steps（Stage 1 记录缺失），"
+                                                  f"判定失败（严格模式，不重新探索）")
+
+                if radio_replay_failed:
+                    critical_failures.append({"field": label, "reason": "radio_interaction_steps_failed"})
+                else:
+                    LOG.info(f"      [Radio] 处理完成: {label}")
             except Exception as e:
                 LOG.error(f"      [Radio] 处理失败: {label}: {e}", exc_info=True)
+                critical_failures.append({"field": label, "reason": f"radio_exception: {e}"})
             continue
 
         # 普通 input/textarea：生成填充值 + page.fill()
@@ -1259,6 +1449,7 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
                 LOG.info(f"    multi_step 检测到 {len(close_dropdown_actions)} 个下拉框关闭操作")
 
         # ★ Phase 4b: 处理 el-select 的 cascade_actions（覆盖所有 multi_step_fields）
+        # P2: 严格回放模式——无 interaction_steps = Stage 1 记录缺失 → 判关键失败（不再重新探索）
         for ms_field in multi_step_fields:
             if ms_field.get("kb_category") == "el-select":
                 cascade_actions = ms_field.get("cascade_actions", [])
@@ -1270,8 +1461,9 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
                         if ca_type == "transfer-box":
                             trigger_value = ca.get("trigger_value", "")
                             interaction_steps = ca.get("interaction_steps", [])
+                            open_sem = ca.get("open_semantics", {})
                             LOG.info(f"    [el-select] 执行 cascade: transfer-box (trigger: {trigger_value})")
-                            await page.wait_for_timeout(500)
+                            await page.wait_for_timeout(open_sem.get("settle_wait_ms", 500))
 
                             if interaction_steps:
                                 # 使用 interaction_steps 回放
@@ -1281,21 +1473,25 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
                                 if success:
                                     LOG.info(f"    [el-select] cascade transfer-box 回放成功")
                                 else:
-                                    LOG.warning(f"    [el-select] cascade transfer-box 回放失败")
+                                    critical_failures.append({
+                                        "field": field_label, "cascade": trigger_value,
+                                        "reason": "cascade_interaction_steps_failed",
+                                    })
+                                    LOG.warning(f"    [el-select] cascade transfer-box 回放失败（载荷级，禁止空提交）")
                             else:
-                                # 无 interaction_steps 时回退到实时探索
-                                from .form_filler import MultiStepExecutor
-                                executor = MultiStepExecutor(page, None, ui_framework)
-                                success, detail = await executor.execute_with_details(
-                                    "transfer-box", field_label, "", None, ""
-                                )
-                                if success:
-                                    LOG.info(f"    [el-select] cascade 成功: {detail}")
-                                else:
-                                    LOG.warning(f"    [el-select] cascade 失败")
+                                critical_failures.append({
+                                    "field": field_label, "cascade": trigger_value,
+                                    "reason": "cascade_missing_interaction_steps",
+                                })
+                                LOG.error(f"    [el-select] cascade 无 interaction_steps（Stage 1 记录缺失），"
+                                          f"判定失败（严格模式，不重新探索）")
 
     LOG.info(f"    已填充 {filled_count}/{len(fields)} 个字段")
-    return marker_value
+    # ★ P2: 返回结构化结果——critical_failures 非空时调用方跳过提交并判定断言失败
+    return {
+        "marker": marker_value,
+        "critical_failures": critical_failures,
+    }
 
 
 async def _step_click_row_more(page, step: dict, button_driver: ButtonDriver, marker: str):

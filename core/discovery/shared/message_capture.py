@@ -46,6 +46,27 @@ async def install_message_capture(page: Page, pin: bool = False) -> None:
             window.__captured_messages = [];
             console.log(`[MSG-CAPTURE] 清空消息数组 (之前有 ${oldCount} 条)`);
 
+            // ★ B2: 操作边界基线打标——本操作开始前 DOM 中已存在的通知
+            // （上一操作残留，含未及释放的钉住节点/仍在 TTL 窗口内的普通 toast）
+            // 全部标记为基线，verify_operation_success 扫描时跳过，
+            // 从机制上消除跨操作残留通知参与本操作的成败判定。
+            // 每次安装（=每个操作开始）都执行，幂等；新操作产生的通知不在此刻存在，天然不受影响。
+            const _baselineSelectors = [
+                '.el-message', '.el-message--success', '.el-message--error',
+                '.el-message--warning', '.el-message--info',
+                '.el-notification', '.el-alert', '[role="alert"]',
+                '.ant-message-notice', '.ant-notification-notice'
+            ];
+            let _marked = 0;
+            for (const _sel of _baselineSelectors) {
+                document.querySelectorAll(_sel).forEach(n => {
+                    if (!n.__op_baseline) { n.__op_baseline = true; _marked++; }
+                });
+            }
+            if (_marked > 0) {
+                console.log(`[MSG-CAPTURE] 已将 ${_marked} 个先前残留通知标记为基线`);
+            }
+
             if (!window.__pinned_notifications) {
                 window.__pinned_notifications = [];
             }

@@ -943,6 +943,9 @@ def _build_create_steps(op_data: dict) -> list:
                 "firstOptionText": radio_field.get("firstOptionText", ""),
                 "all_options": radio_field.get("all_options", []),
             }
+            # ★ R3: 透传 Stage 1 记录的 radio 显式回放步骤（P1 忠实回放依赖此键）
+            if radio_field.get("interaction_steps"):
+                radio_entry["interaction_steps"] = radio_field["interaction_steps"]
 
             # ★ 附加该 radio 触发的 cascade 操作（如 transfer-box）
             radio_label = radio_field.get("label")
@@ -1289,6 +1292,9 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
                 "firstOptionText": radio_field.get("firstOptionText", ""),
                 "all_options": radio_field.get("all_options", []),
             }
+            # ★ R3: 透传 Stage 1 记录的 radio 显式回放步骤（P1 忠实回放依赖此键）
+            if radio_field.get("interaction_steps"):
+                radio_entry["interaction_steps"] = radio_field["interaction_steps"]
 
             # ★ 附加该 radio 触发的 cascade 操作（如 transfer-box）
             radio_label = radio_field.get("label")
@@ -1839,6 +1845,9 @@ def _build_page_nav_steps(op_data: dict) -> list:
                     # ★ 保留 firstOptionText（来自 scan_form_fields_v2），供 Stage 2 Vue v-model 同步使用
                     "firstOptionText": field.get("firstOptionText", ""),
                 }
+                # ★ R3: 透传 Stage 1 记录的 radio 显式回放步骤（P1 忠实回放依赖此键）
+                if field.get("interaction_steps"):
+                    radio_field["interaction_steps"] = field["interaction_steps"]
                 # ★ 传递 cascade_actions（如 radio 触发 transfer-box 选择）
                 if "cascade_actions" in field:
                     radio_field["cascade_actions"] = field["cascade_actions"]

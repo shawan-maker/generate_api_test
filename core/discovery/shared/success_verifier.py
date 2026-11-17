@@ -64,10 +64,14 @@ async def verify_operation_success(
                 '[role="alert"]'
             ];
             for (const sel of selectors) {
-                const el = document.querySelector(sel);
-                if (el && el.offsetParent !== null) {
-                    const text = (el.textContent || '').trim();
-                    if (text) return text.substring(0, 100);
+                // ★ B2: 遍历全部节点，跳过 __op_baseline（上一操作残留）
+                const els = document.querySelectorAll(sel);
+                for (const el of els) {
+                    if (el.__op_baseline) continue;
+                    if (el.offsetParent !== null) {
+                        const text = (el.textContent || '').trim();
+                        if (text) return text.substring(0, 100);
+                    }
                 }
             }
             return null;
@@ -97,12 +101,16 @@ async def verify_operation_success(
                     '.el-notification', '.el-alert',
                     '[role="alert"]'
                 ];
+                // ★ B2: 遍历全部节点，跳过 __op_baseline（上一操作残留）
                 for (const sel of selectors) {
-                    const el = document.querySelector(sel);
-                    if (el && el.offsetParent !== null) {
-                        const text = (el.textContent || '').trim();
-                        if (text && failKw.some(kw => text.includes(kw))) {
-                            return text.substring(0, 200);
+                    const els = document.querySelectorAll(sel);
+                    for (const el of els) {
+                        if (el.__op_baseline) continue;
+                        if (el.offsetParent !== null) {
+                            const text = (el.textContent || '').trim();
+                            if (text && failKw.some(kw => text.includes(kw))) {
+                                return text.substring(0, 200);
+                            }
                         }
                     }
                 }
@@ -125,12 +133,16 @@ async def verify_operation_success(
                     '.el-notification', '.el-alert',
                     '[role="alert"]'
                 ];
+                // ★ B2: 遍历全部节点，跳过 __op_baseline（上一操作残留）
                 for (const sel of selectors) {
-                    const el = document.querySelector(sel);
-                    if (el && el.offsetParent !== null) {
-                        const text = (el.textContent || '').trim();
-                        if (text && successKw.some(kw => text.includes(kw))) {
-                            return text.substring(0, 200);
+                    const els = document.querySelectorAll(sel);
+                    for (const el of els) {
+                        if (el.__op_baseline) continue;
+                        if (el.offsetParent !== null) {
+                            const text = (el.textContent || '').trim();
+                            if (text && successKw.some(kw => text.includes(kw))) {
+                                return text.substring(0, 200);
+                            }
                         }
                     }
                 }
@@ -152,19 +164,35 @@ async def verify_operation_success(
         ]
         for selector in css_selectors:
             try:
-                el = await page.wait_for_selector(selector, state="visible", timeout=2000)
-                if el:
-                    text = await el.text_content()
-                    text = (text or "").strip()
-                    semantic = const.classify_notification(text)
+                # ★ B2: 轮询等待非基线通知（保留原 wait_for_selector 的 ~2s 等待语义，
+                # 但跳过 __op_baseline 残留节点——page.wait_for_selector 无法表达该过滤，
+                # 会让钉住的上一操作残留 toast 直接命中）
+                text_found = None
+                for _attempt in range(7):  # ~2s @300ms
+                    text_found = await page.evaluate("""(sel) => {
+                        const els = document.querySelectorAll(sel);
+                        for (const el of els) {
+                            if (el.__op_baseline) continue;
+                            if (el.offsetParent !== null) {
+                                const text = (el.textContent || '').trim();
+                                if (text) return text.substring(0, 200);
+                            }
+                        }
+                        return null;
+                    }""", selector)
+                    if text_found:
+                        break
+                    await page.wait_for_timeout(300)
+                if text_found:
+                    semantic = const.classify_notification(text_found)
                     if semantic == "success":
-                        matched_method = f"css:{selector}:{text[:30]}"
+                        matched_method = f"css:{selector}:{text_found[:30]}"
                         LOG.info(f"    ✓ 操作成功验证通过: {matched_method}")
                         break
                     elif semantic == "failure":
-                        failure_reason = text
+                        failure_reason = text_found
                         failure_type = f"css:{selector}"
-                        LOG.info(f"    ✗ CSS选择器检测到失败: {text[:60]}")
+                        LOG.info(f"    ✗ CSS选择器检测到失败: {text_found[:60]}")
                         break
                     elif semantic == "processing":
                         has_processing = True
@@ -272,8 +300,13 @@ async def verify_operation_success(
 
             # 成功 toast 出现 → 立即跳出
             has_success_toast = await page.evaluate("""() => {
-                const el = document.querySelector('.el-message--success, .el-message .el-icon-success');
-                return el && el.offsetWidth > 0;
+                // ★ B2: 遍历全部节点，跳过 __op_baseline（上一操作残留）
+                const els = document.querySelectorAll('.el-message--success, .el-message .el-icon-success');
+                for (const el of els) {
+                    if (el.__op_baseline) continue;
+                    if (el.offsetWidth > 0) return true;
+                }
+                return false;
             }""")
             if has_success_toast:
                 matched_method = "toast:success_toast"
@@ -307,10 +340,14 @@ async def verify_operation_success(
                         }
                     });
 
-                // 3. el-message--error / el-message--warning
-                const errMsg = document.querySelector('.el-message--error, .el-message--warning');
-                if (errMsg && errMsg.offsetParent !== null) {
-                    results.push({source: 'error_message', text: errMsg.textContent.trim().substring(0, 200)});
+                // 3. el-message--error / el-message--warning（★ B2: 跳过 __op_baseline 残留）
+                const errEls = document.querySelectorAll('.el-message--error, .el-message--warning');
+                for (const el of errEls) {
+                    if (el.__op_baseline) continue;
+                    if (el.offsetParent !== null) {
+                        results.push({source: 'error_message', text: el.textContent.trim().substring(0, 200)});
+                        break;
+                    }
                 }
 
                 // 4. 表单校验错误

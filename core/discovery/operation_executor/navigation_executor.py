@@ -199,6 +199,19 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
                         if matching_cascades:
                             field["cascade_actions"] = matching_cascades
 
+            # ★ R3: 合并 radio_field_details（interaction_steps / all_options）到对应 radio 字段
+            # 修复缺口：Fix 11 生成的 radio 回放步骤此前未进 playbook，Stage 2 被迫重新发明定位逻辑
+            _radio_details_from_fill = fill_result.get("radio_field_details", []) if isinstance(fill_result, dict) else []
+            if _radio_details_from_fill:
+                for rd in _radio_details_from_fill:
+                    for field in form_field_details:
+                        if field.get("label") == rd.get("label") and field.get("kb_category") == "radio":
+                            if rd.get("interaction_steps"):
+                                field["interaction_steps"] = rd["interaction_steps"]
+                            if rd.get("all_options"):
+                                field["all_options"] = rd["all_options"]
+                            break
+
             # ★ 将 close_dropdown_actions 附加到对应的 el-select 字段
             if close_dropdown_actions:
                 for field in form_field_details:
@@ -711,6 +724,19 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
                                          if c["trigger_value"] == field.get("firstOptionText")]
                     if matching_cascades:
                         field["cascade_actions"] = matching_cascades
+
+        # ★ R3: 合并 radio_field_details（interaction_steps / all_options）到对应 radio 字段
+        # 修复缺口：Fix 11 生成的 radio 回放步骤此前未进 playbook，Stage 2 被迫重新发明定位逻辑
+        _radio_details_from_fill = fill_result.get("radio_field_details", []) if isinstance(fill_result, dict) else []
+        if _radio_details_from_fill:
+            for rd in _radio_details_from_fill:
+                for field in form_field_details:
+                    if field.get("label") == rd.get("label") and field.get("kb_category") == "radio":
+                        if rd.get("interaction_steps"):
+                            field["interaction_steps"] = rd["interaction_steps"]
+                        if rd.get("all_options"):
+                            field["all_options"] = rd["all_options"]
+                        break
 
         # ★ 将 close_dropdown_actions 附加到对应的 el-select 字段
         if close_dropdown_actions:

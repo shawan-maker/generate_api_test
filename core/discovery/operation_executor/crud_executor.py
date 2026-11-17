@@ -1925,6 +1925,17 @@ async def _do_create(page, context: dict) -> dict:
                 "option_text": actual_option_text,
                 "fill_rule": field.get("fill_rule", {}),
             })
+    # ★ R3: 合并 FormFiller 记录的 radio 详情（interaction_steps / all_options）
+    _radio_details_from_fill = fill_result.get("radio_field_details", []) if isinstance(fill_result, dict) else []
+    if _radio_details_from_fill:
+        _radio_by_label = {rd.get("label"): rd for rd in _radio_details_from_fill}
+        for rd_entry in radio_field_details:
+            _src = _radio_by_label.get(rd_entry.get("label"))
+            if _src:
+                if _src.get("interaction_steps"):
+                    rd_entry["interaction_steps"] = _src["interaction_steps"]
+                if _src.get("all_options"):
+                    rd_entry["all_options"] = _src["all_options"]
     # 重新扫描以获取最新字段状态
     if context.get("fill_overrides"):
         for label, value in context["fill_overrides"].items():
@@ -2176,6 +2187,17 @@ async def _do_create(page, context: dict) -> dict:
                 "option_text": actual_option_text,
                 "fill_rule": field.get("fill_rule", {}),
             })
+    # ★ R3: 合并 FormFiller 记录的 radio 详情（interaction_steps / all_options）
+    _radio_details_from_fill = fill_result.get("radio_field_details", []) if isinstance(fill_result, dict) else []
+    if _radio_details_from_fill:
+        _radio_by_label = {rd.get("label"): rd for rd in _radio_details_from_fill}
+        for rd_entry in radio_field_details:
+            _src = _radio_by_label.get(rd_entry.get("label"))
+            if _src:
+                if _src.get("interaction_steps"):
+                    rd_entry["interaction_steps"] = _src["interaction_steps"]
+                if _src.get("all_options"):
+                    rd_entry["all_options"] = _src["all_options"]
 
     return {
         "success": True,
