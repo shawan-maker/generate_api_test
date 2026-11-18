@@ -1459,7 +1459,17 @@ def build_manifest(analysis: dict, capture_result: dict,
                     prefix = "/".join(segments[:-2]) if "/update" in pn or segments[-1] != "update" else "/".join(segments[:-3])
                     write_path_prefixes.add(prefix)
 
-        # 从 all_endpoints 中找匹配的列表查询
+        # ★ P1-C: 初始列表查询端点必须与写操作同资源（前缀关联），
+        # 防止无关 GET（如菜单访问日志 GET /pegasi/v1/menu/access-log，
+        # 数组响应结构形似列表、排序靠前）被误选——实证：黑白名单模块
+        # 真实搜索端点 POST /draco/v1/black-white-list 被丢，初始查询错用
+        # access-log，且随后反向覆写了 verify_endpoints 中优先级 1 正确选出的端点。
+        # 选择优先级：POST /list+前缀 → GET 列表+前缀 → verify_endpoints["query"]
+        # → 末位兜底（任意 GET 列表，无前缀要求）。
+        init_query_ep = None
+        init_query_prefix_matched = False  # 高置信来源标记（允许覆写 verify_endpoints）
+
+        # 1) POST /list + 前缀关联（原有逻辑）
         for ep in capture_result.get("all_endpoints", []):
             pn = ep.get("pathname", "")
             if ep.get("method") == "POST" and pn.endswith("/list"):
@@ -1468,14 +1478,36 @@ def build_manifest(analysis: dict, capture_result: dict,
                     ep_prefix = "/".join(segments[:-1])
                     if any(ep_prefix.startswith(wp) or wp.startswith(ep_prefix) for wp in write_path_prefixes):
                         init_query_ep = ep
+                        init_query_prefix_matched = True
                         break
-            elif ep.get("method") == "GET" and _is_list_query(pn, response_samples):
-                init_query_ep = ep
-                break
 
-        # 降级：使用 verify_endpoints 中的 query
+        # 2) GET 列表 + 前缀关联（★ 与 POST 分支对称，修复点）
+        if init_query_ep is None:
+            for ep in capture_result.get("all_endpoints", []):
+                pn = ep.get("pathname", "")
+                if ep.get("method") == "GET" and _is_list_query(pn, response_samples):
+                    segments = [s for s in pn.split("/") if s]
+                    if len(segments) >= 4:
+                        ep_prefix = "/".join(segments[:-1])
+                        if any(ep_prefix.startswith(wp) or wp.startswith(ep_prefix) for wp in write_path_prefixes):
+                            init_query_ep = ep
+                            init_query_prefix_matched = True
+                            break
+
+        # 降级 1: 使用 verify_endpoints 中的 query（搜索操作/业务阶段列表查询，
+        # 由语义优先级选出，高置信）
         if init_query_ep is None and "query" in verify_endpoints:
             init_query_ep = verify_endpoints["query"]["ep"]
+            init_query_prefix_matched = True
+
+        # 降级 2: 末位兜底——任意 GET 列表查询（无前缀关联要求；
+        # 覆盖跨服务网关路径等无法做前缀匹配的场景），低置信
+        if init_query_ep is None:
+            for ep in capture_result.get("all_endpoints", []):
+                pn = ep.get("pathname", "")
+                if ep.get("method") == "GET" and _is_list_query(pn, response_samples):
+                    init_query_ep = ep
+                    break
 
         if init_query_ep:
             query_ep = init_query_ep
@@ -1506,12 +1538,20 @@ def build_manifest(analysis: dict, capture_result: dict,
             steps.append(init_step)
             LOG.info("  插入初始列表查询步骤（从列表响应提取 ID）")
 
-            # ★ 同时更新 verify_endpoints，让后续验证步骤使用正确的列表查询端点
-            verify_endpoints["query"] = {
-                "ep": query_ep,
-                "body_sample": query_body,
-            }
-            LOG.info(f"  更新验证端点为: {query_ep['method']} {query_ep['pathname']}")
+            # ★ 同时更新验证端点，让后续验证步骤使用正确的列表查询端点
+            # ★ P1-C: 仅高置信来源（前缀关联 / verify_endpoints 语义选出）才允许覆写；
+            #   末位兜底（无前缀关联证据）不得覆盖优先级 1 已正确选出的端点
+            #   （实证：黑白名单 access-log 兜底覆写了正确的 black-white-list）。
+            #   verify_endpoints 原本无 query 时，低置信端点也写入（至少可用）。
+            if init_query_prefix_matched or "query" not in verify_endpoints:
+                verify_endpoints["query"] = {
+                    "ep": query_ep,
+                    "body_sample": query_body,
+                }
+                LOG.info(f"  更新验证端点为: {query_ep['method']} {query_ep['pathname']}")
+            else:
+                LOG.info(f"  初始查询来自末位兜底（低置信），保留原验证端点: "
+                         f"{verify_endpoints['query']['ep']['method']} {verify_endpoints['query']['ep']['pathname']}")
 
     # ★ 多 Tab 支持：跟踪每个 tab 的 create body
     # 用于确保验证步骤使用正确的 create body（而非全局的）

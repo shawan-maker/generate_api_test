@@ -251,15 +251,19 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
             if form_field_details != form_fields:
                 LOG.info(f"    [FIX] 更新 nav_info.form_fields: {len(form_fields)} → {len(form_field_details)} 个字段")
                 # 类型校验：form_fields 元素必须是 dict，不能是 str
+                # ★ 切片安全化：form_fields 可能是 dict（如 scan_form_fields 的
+                # {fields, _debug_*} 包装对象），dict[切片] 直接抛
+                # "unhashable type: 'slice'"，诊断代码自己崩掉整个探索；
+                # list() 包装后对 dict 取 keys、对 list/set 原样，告警可正常打出
                 if all(isinstance(f, dict) for f in form_fields):
                     old_labels = {f.get("label") for f in form_fields}
                 else:
-                    LOG.warning(f"    [FIX] form_fields 元素类型异常: {[type(f).__name__ for f in form_fields[:5]]}")
+                    LOG.warning(f"    [FIX] form_fields 元素类型异常: {[type(f).__name__ for f in list(form_fields)[:5]]}")
                     old_labels = set()
                 if all(isinstance(f, dict) for f in form_field_details):
                     new_labels = {f.get("label") for f in form_field_details}
                 else:
-                    LOG.warning(f"    [FIX] form_field_details 元素类型异常: {[type(f).__name__ for f in form_field_details[:5]]}")
+                    LOG.warning(f"    [FIX] form_field_details 元素类型异常: {[type(f).__name__ for f in list(form_field_details)[:5]]}")
                     new_labels = set()
                 added = new_labels - old_labels
                 removed = old_labels - new_labels

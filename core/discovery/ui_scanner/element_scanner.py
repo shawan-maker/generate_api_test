@@ -409,7 +409,16 @@ async def _discover_once(page, kb: ProbeKB, framework: str) -> dict:
                     # 1. 扫描表单字段（使用 form_filler 的公共方法）
                     if not result["form_fields"]:
                         from core.discovery.replay.form_filler import scan_form_fields
-                        form_fields = await scan_form_fields(page, framework)
+                        _scan_raw = await scan_form_fields(page, framework)
+                        # ★ scan_form_fields 实际返回 {fields: [...], _debug_*: ...}
+                        # 包装 dict（form_filler 内部 6 处调用点均做 isinstance(dict)
+                        # → .get('fields') 解包兼容，此处对齐）。此前直接把 dict 赋给
+                        # form_fields：len(dict)=key 数 误报"6 个字段"，下游
+                        # navigation_executor [FIX] 诊断块对 dict 做 [:5] 切片崩溃
+                        # （unhashable type: 'slice'），探索中断后 nav_info["form_fields"]
+                        # 保留 dict，builder 迭代出 str 键 → str.get 崩掉整个 Stage 1。
+                        form_fields = (_scan_raw.get("fields", [])
+                                       if isinstance(_scan_raw, dict) else _scan_raw)
                         if form_fields:
                             result["form_fields"] = form_fields
                             LOG.info(f"    表单字段: {len(form_fields)} 个")

@@ -101,7 +101,13 @@ def _classify_op_steps_type(op_data: dict) -> str:
 
     # 有表单填充数据
     fill_data = op_data.get("fill_data", {})
-    if fill_data:
+    # ★ P1-B: 全复合字段表单（ip-input/el-select 等）的 fill_data 为空——
+    # generate_fill_data 的 MULTI_STEP_SKIP 有意跳过多步组件（其填充记录在
+    # multi_step_field_details.interaction_steps）。仅凭 fill_data 判 create 会
+    # 把此类新增误判为 generic，导致 form_fields/multi_step 记录整体丢弃
+    # （实证：黑白名单新增 8 个复合字段走 generic 只生成 3 步）。
+    has_form_fill = bool(fill_data) or bool(op_data.get("multi_step_field_details"))
+    if has_form_fill:
         # 检查是否有 marker（用于区分 create vs update）
         if op_data.get("requires_marker"):
             return "update"
@@ -1855,7 +1861,19 @@ def _build_page_nav_steps(op_data: dict) -> list:
         })
 
     # Step 4: 填充表单（从 nav_info 提取）
-    form_fields = nav_info.get("form_fields", [])
+    # ★ 类型防御：nav_info["form_fields"] 必须是 list 且元素为 dict。
+    # 历史实证：discover_all 的 form_page 交互扫描曾把 scan_form_fields 的
+    # {fields: [...], _debug_*} 包装 dict 直接放入 form_fields，此处 for 迭代
+    # dict 得到 str 键，field.get("label") 抛 AttributeError，
+    # 单个 op 的数据畸形炸掉整个 Stage 1 playbook 生成（黑白名单 fix3 轮）。
+    # dict 且含 fields 键 → 解包恢复真实字段；其余形态仅保留 dict 元素。
+    _form_fields_raw = nav_info.get("form_fields", [])
+    if isinstance(_form_fields_raw, dict):
+        LOG.warning(f"[_build_page_nav_steps] nav_info.form_fields 为 dict "
+                    f"(keys={list(_form_fields_raw.keys())[:8]})，尝试解包 fields 键")
+        form_fields = _form_fields_raw.get("fields", [])
+    else:
+        form_fields = [f for f in (_form_fields_raw or []) if isinstance(f, dict)]
     fill_data = nav_info.get("fill_data", {})
     field_states = nav_info.get("field_states", [])
 

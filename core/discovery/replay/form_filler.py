@@ -2021,8 +2021,12 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
             const domPath = path.join(' > ');
 
             // 优先级 3b: Label-based（Playwright 语法，跨会话稳定）
+            // ★ P1-A: 合成后缀（"(N)"/"(掩码)"/"(下拉)"）是扫描器为区分同 form-item
+            // 内多个组件加的标记，DOM label 无此文本，:has-text 永不命中——
+            // 此类字段不生成 label locator，强制走 selector（真实 DOM path）定位。
             let playwrightLocator = null;
-            if (labelText && labelText.length > 0) {{
+            if (labelText && labelText.length > 0
+                    && !/\((掩码|下拉|\d+)\)$/.test(labelText.trim())) {{
                 const escaped = labelText.replace(/"/g, '\\"');
                 playwrightLocator = `.el-form-item:has(.el-form-item__label:has-text("${{escaped}}")) input`;
             }}
@@ -2862,6 +2866,7 @@ class MultiStepExecutor:
                     events: Object.keys(v.$listeners || {}),
                     // 内部状态
                     visible: v.visible,
+                    multiple: v.multiple === true,
                     // 关联的 popper
                     popperEl: v.popperEl ? v.popperEl.className : null,
                     // 检查是否有 tree 相关的 prop 或 ref
@@ -2899,6 +2904,8 @@ class MultiStepExecutor:
                     inDisabled,
                     inDropdown,
                     nodeCount: t.querySelectorAll('.custom-tree-node').length,
+                    // ★ 勾选框模式检测（多选勾选树：真实选中手势 = 勾选 checkbox 而非点击节点文本）
+                    hasCheckbox: !!t.querySelector('.el-tree-node__content .el-checkbox'),
                     parentClasses: t.parentElement ? t.parentElement.className.substring(0, 80) : '',
                     // Vue 事件
                     vueListeners: vue ? Object.keys(vue.$listeners || {}) : [],
@@ -2917,6 +2924,136 @@ class MultiStepExecutor:
             LOG.info(f"    [select-tree] {label}: tree[{ti['idx']}]: visible={ti['visible']}, disabled={ti['inDisabled']}, "
                      f"inDropdown={ti['inDropdown']}, nodes={ti['nodeCount']}, parent={ti['parentClasses'][:60]}, "
                      f"listeners={ti.get('vueListeners')}, events={ti.get('vueEvents', [])[:10]}")
+
+        # ★ 1.5 勾选树（checkbox 模式）优先路径：
+        # 多选勾选树的真实选中手势是「勾选节点 checkbox」，而非点击节点文本、也非直接调事件回调。
+        # 实测证据链（黑白名单 授权主体(2) CmssTreeSelect，多选树）：
+        #   1) 真实 DOM 勾选 checkbox → el-tree check-change → 组件 handleNodeChange →
+        #      selectValue/tags 更新 + $emit("handleNodeClick", checkedNodes) → 父组件 handler 落业务数据；
+        #   2) 点击节点文本仅设 is-current 不设值（multiple 分支为空操作）；
+        #   3) 直接调 $listeners.handleNodeClick(单节点) 签名错误（父组件期望节点数组）且不更新显示。
+        # 单选树（el-select multiple 明确为 false）保持既有节点点击路径。
+        select_diag = diag.get('select') or {}
+        trees_diag = diag.get('trees') or []
+        checkbox_mode = (
+            select_diag.get('multiple') is not False
+            and any(ti.get('inDropdown') and ti.get('visible') and ti.get('hasCheckbox') for ti in trees_diag)
+        )
+        if checkbox_mode:
+            LOG.info(f"    [select-tree] {label}: 检测到勾选树（checkbox 模式），执行勾选手势")
+
+            # ★ 记录步骤 1：点击展开（回放口径；Stage 1 由外层 _expand_by_selector 已展开）
+            interaction_steps.append({
+                "op": "click",
+                "selector": selector,
+                "desc": f"展开{label}下拉框"
+            })
+
+            # ★ 记录步骤 2：等待树渲染
+            tree_selector = ".el-select-dropdown:not([style*='display: none']) .el-tree"
+            interaction_steps.append({
+                "op": "wait_visible",
+                "selector": tree_selector,
+                "timeout": 3000,
+                "desc": "等待树渲染"
+            })
+
+            # 勾选第一个可勾选节点（跳过 disabled / 已勾选节点）
+            # 注意：Element UI 树勾选框的 is-checked 可能标记在 .el-checkbox 根上（ElCheckbox 组件），
+            # 也可能只在 .el-checkbox__input 内层上（el-tree 自渲染），两种形态都要识别
+            check_result = await self.page.evaluate("""(selector) => {
+                const isCbChecked = (cb) => cb.classList.contains('is-checked')
+                    || !!(cb.querySelector && cb.querySelector('.el-checkbox__input.is-checked'));
+                const selectEl = document.querySelector(selector);
+                if (!selectEl) return { success: false, reason: 'no_select' };
+                const allTrees = Array.from(document.querySelectorAll('.el-tree'));
+                const visibleTree = allTrees.find(t => {
+                    if (t.offsetWidth <= 0 || t.offsetHeight <= 0) return false;
+                    return !!t.closest('.el-select-dropdown');
+                }) || allTrees.find(t => {
+                    if (t.offsetWidth <= 0 || t.offsetHeight <= 0) return false;
+                    return !t.closest('.is-disabled');
+                });
+                if (!visibleTree) return { success: false, reason: 'no_visible_tree' };
+                const contents = visibleTree.querySelectorAll('.el-tree-node__content');
+                for (const c of contents) {
+                    if (c.offsetWidth <= 0 || c.offsetHeight <= 0) continue;
+                    const tn = c.closest('.el-tree-node');
+                    if (tn && tn.classList.contains('is-disabled')) continue;
+                    const cb = c.querySelector('.el-checkbox');
+                    if (!cb) continue;
+                    if (isCbChecked(cb)) continue;
+                    const spanEl = c.querySelector('.custom-tree-node span');
+                    const text = spanEl ? spanEl.textContent.trim() : '';
+                    cb.click();
+                    return { success: true, text: text.substring(0, 50) };
+                }
+                return { success: false, reason: 'no_candidate', nodeCount: contents.length };
+            }""", selector)
+            LOG.info(f"    [select-tree] {label}: checkbox 勾选结果: {check_result}")
+
+            if not check_result.get('success'):
+                LOG.warning(f"    [select-tree] {label}: 勾选树无可勾选节点: {check_result.get('reason')}")
+                return False, {
+                    "skipped_reason": "no_checkable_node",
+                    "select_sub_type": "select-tree",
+                    "interaction_steps": interaction_steps,
+                    "selection_strategy": {"method": "checkbox_click"},
+                }
+
+            # ★ 记录步骤 3：勾选树节点复选框（与勾选条件对齐：非 disabled 的第一个节点复选框）
+            checkbox_selector = (
+                ".el-select-dropdown:not([style*='display: none']) "
+                ".el-tree .el-tree-node:not(.is-disabled) > .el-tree-node__content > .el-checkbox"
+            )
+            interaction_steps.append({
+                "op": "click_first",
+                "selector": checkbox_selector,
+                "desc": f"勾选树节点复选框: {check_result.get('text', '')}"
+            })
+
+            # 等待 check-change → handleNodeChange（nextTick 内 $emit）→ 父组件 handler 完成
+            await self.page.wait_for_timeout(1200)
+
+            verify = await self._verify_select_filled(label, selector)
+            if not verify.get("filled"):
+                LOG.warning(f"    [select-tree] {label}: checkbox 勾选后验证失败, displayed='{verify.get('displayed_value', '')}'")
+                return False, {
+                    "skipped_reason": "verify_failed",
+                    "option_text": check_result.get('text', ''),
+                    "select_sub_type": "select-tree",
+                    "interaction_steps": interaction_steps,
+                    "selection_strategy": {"method": "checkbox_click"},
+                    "verify_debug": verify.get("debug", {}),
+                }
+
+            # ★ 记录步骤 4：再次点击收起下拉（勾选不会自动关闭 popper，回放时防止遮挡后续字段）
+            interaction_steps.append({
+                "op": "click",
+                "selector": selector,
+                "desc": f"收起{label}下拉框"
+            })
+            # Stage 1 同步执行收起（勾选值已持久，实测 ESC/重开/再点击均不清除）
+            try:
+                await self.page.click(selector, timeout=3000)
+                await self.page.wait_for_timeout(300)
+            except Exception as e:
+                LOG.debug(f"    [select-tree] {label}: 收起下拉失败（不阻断）: {e}")
+
+            LOG.info(f"    [select-tree] {label}: checkbox 勾选成功, displayed='{verify.get('displayed_value', '')}'")
+            LOG.info(f"    [select-tree] {label}: 已记录 {len(interaction_steps)} 个操作步骤")
+            return True, {
+                "option_text": verify.get("displayed_value", check_result.get('text', '')),
+                "select_sub_type": "select-tree",
+                "interaction_steps": interaction_steps,
+                "selection_strategy": {
+                    "method": "checkbox_click",
+                    "skip_rules": [
+                        {"condition": "is-checked", "reason": "avoid_already_selected"},
+                        {"condition": "node_disabled", "reason": "avoid_disabled_node"}
+                    ]
+                }
+            }
 
         # 2. 通过 el-select 的 handleNodeClick 事件回调设置值
         # handleNodeClick 在 $listeners 中（父组件传入的事件回调）
@@ -3197,6 +3334,21 @@ class MultiStepExecutor:
             el_count = await el.count()
             if el_count == 0:
                 LOG.info(f"    el-select {label}: locator 未匹配 ({primary})")
+                # ★ P1-A: playwright_locator（label-based，扫描器合成后缀如 "(1)/(掩码)"
+                # 导致 :has-text 在 DOM 中永不命中）失败时，回退用字段自带的 selector
+                # （真实 DOM path，Stage 1 扫描时 querySelector 已验证可用）。
+                # 保证存量 playbook（已固化坏 locator 的产物）回放可用。
+                if selector and selector != primary:
+                    try:
+                        el_fb = self.page.locator(selector).first
+                        fb_count = await el_fb.count()
+                        if fb_count > 0:
+                            await el_fb.click(timeout=3000)
+                            LOG.info(f"    el-select {label}: 回退 selector 展开成功 ({selector[:80]})")
+                            return True
+                        LOG.info(f"    el-select {label}: 回退 selector 也未匹配 ({selector[:80]})")
+                    except Exception as e:
+                        LOG.info(f"    el-select {label}: 回退 selector 展开失败: {e}")
                 return False
 
             await el.click(timeout=3000)
@@ -4446,17 +4598,59 @@ class MultiStepExecutor:
                     }
                 }
 
-                // 策略2: 检查 .el-tree-node.is-current（当前选中节点）
+                // 策略2: 检查「可见下拉树内」的选中证据（禁止全文档匹配）
+                // ★ 收紧：全文档 .is-current 存在双重假阳性——
+                //   a) 多选勾选树中点击节点文本只设 is-current 不设值（真实手势是勾选 checkbox）；
+                //   b) 页面无关树（如左侧组织面板）也可能带 is-current。
+                //   → 仅限本字段展开的下拉树内取证据；勾选树的证据是勾选框 is-checked 而非 is-current。
                 // 注意：Element Plus 的 tree 下拉面板 teleport 到 <body>，不在 .el-select 内部
                 if (!hasTreeSelected) {
-                    const currentNode = document.querySelector('.el-tree-node.is-current');
-                    if (currentNode) {
-                        const label = currentNode.querySelector('.el-tree-node__label');
-                        if (label) {
-                            const text = label.textContent.trim();
-                            if (text) {
+                    const isCbChecked = (cbEl) => cbEl.classList.contains('is-checked')
+                        || !!(cbEl.querySelector && cbEl.querySelector('.el-checkbox__input.is-checked'));
+                    const dropdowns = Array.from(document.querySelectorAll('.el-select-dropdown'))
+                        .filter(d => {
+                            const st = window.getComputedStyle(d);
+                            return st.display !== 'none' && st.visibility !== 'hidden' && d.offsetWidth > 0;
+                        });
+                    for (const d of dropdowns) {
+                        const tree = d.querySelector('.el-tree');
+                        if (!tree) continue;
+                        const hasCheckbox = !!tree.querySelector('.el-tree-node__content .el-checkbox');
+                        if (hasCheckbox) {
+                            // 勾选型树：勾选框 is-checked 是唯一可靠证据（is-current 不算）
+                            const checkedNodes = [];
+                            tree.querySelectorAll('.el-tree-node').forEach(tn => {
+                                const cbEl = tn.querySelector(':scope > .el-tree-node__content .el-checkbox');
+                                if (cbEl && isCbChecked(cbEl)) checkedNodes.push(tn);
+                            });
+                            if (checkedNodes.length > 0) {
+                                const texts = [];
+                                checkedNodes.forEach(tn => {
+                                    const spanEl = tn.querySelector(':scope > .el-tree-node__content .custom-tree-node span')
+                                        || tn.querySelector(':scope > .el-tree-node__content .el-tree-node__label');
+                                    if (spanEl) {
+                                        const t = spanEl.textContent.trim();
+                                        if (t) texts.push(t);
+                                    }
+                                });
                                 hasTreeSelected = true;
-                                treeSelectedText = text;
+                                treeSelectedText = texts.length ? texts.join(', ') : (checkedNodes.length + ' 个已勾选节点');
+                                break;
+                            }
+                        } else {
+                            // 非勾选树：is-current 仍是选中证据（单选树点击节点即选中）
+                            const currentNode = tree.querySelector('.el-tree-node.is-current');
+                            if (currentNode) {
+                                const curLabel = currentNode.querySelector('.el-tree-node__label')
+                                    || currentNode.querySelector('.custom-tree-node span');
+                                if (curLabel) {
+                                    const text = curLabel.textContent.trim();
+                                    if (text) {
+                                        hasTreeSelected = true;
+                                        treeSelectedText = text;
+                                        break;
+                                    }
+                                }
                             }
                         }
                     }
@@ -4512,14 +4706,17 @@ class MultiStepExecutor:
                 }
 
                 // 策略4: 检查 input 的 placeholder（兜底检测）
-                // tree-select 选中后 placeholder 变为空字符串（默认值是"请选择"）
-                // 空字符串说明已选中，非"请选择"的文本也说明已选中
+                // ★ 收紧：空 placeholder 不再作为已选证据——部分自定义 tree-select
+                //   基线 placeholder 本身为空字符串（如黑白名单授权主体 CmssTreeSelect），
+                //   曾导致未选任何值时误判 filled=True（掩盖真实填充失败）。
+                //   仅当 placeholder 非空且非"请选择/请输入/搜索"类提示词时才视为已选
                 if (!hasTreeSelected && input) {
                     const ph = input.placeholder;
                     if (ph !== null && ph !== undefined) {
-                        if (ph === '' || (!ph.includes('请选择') && !ph.includes('选择'))) {
+                        const t = String(ph).trim();
+                        if (t && !t.includes('选择') && !t.includes('请输入') && !t.includes('搜索')) {
                             hasTreeSelected = true;
-                            treeSelectedText = ph || '';
+                            treeSelectedText = t;
                         }
                     }
                 }

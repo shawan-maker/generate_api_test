@@ -589,6 +589,9 @@ async def _check_and_execute_newly_enabled(
             continue
         LOG.info(f"{tab_prefix}[STATE-CHANGE] 执行新启用按钮: {text}")
 
+        # ★ P0-A: 级联操作同样在开始时重装捕获器，隔离主操作消息残留
+        await _install_message_capture(page)
+
         # 构建按钮信息
         btn_info = buttons_by_action.get(text, {
             "text": text,
@@ -845,6 +848,14 @@ async def _validate_single_tab_crud(
         btn_location = btn.get("location", "toolbar")
         role = action_roles.get(action, "generic")
         LOG.info(f"{tab_prefix}验证操作: {action} (按钮: {btn_text}, 角色: {role})")
+
+        # ★ P0-A: 每个操作开始时重装消息捕获器（清空 captured 数组 + 重打 __op_baseline 基线）。
+        # 此前只在 Tab 切换时装一次（_validate_business_flow），同 Tab 内前序操作的通知
+        # （3s TTL 后 DOM 消失躲过 B2 基线，但 __captured_messages 数组永久残留）会污染
+        # 本操作的成败判定——实证：黑白名单新增被 10s 前 switch 的「切换黑白名单成功」
+        # 残留通知误判 success（真实反馈是 info 级「请选择组织」）。
+        # install 幂等（observer 复用，仅重复清空数组 + 基线打标），无重复安装副作用。
+        await _install_message_capture(page)
 
         # ★ Switch 操作：统一调度
         if btn.get("_is_switch"):
@@ -1583,6 +1594,7 @@ async def _error_driven_retry(page, operation_fn, context: dict) -> dict:
     vision_used_for_state = set()  # 已截图的页面状态 key
     max_rounds = 10  # 安全上限
     first_ms_details = None  # ★ 保存第一次 attempt 的 multi_step_field_details（从空状态记录，最完整）
+    first_round_result = None  # ★ 保存第 1 轮完整失败结果（信息丰度回退用）
 
     for round_num in range(max_rounds):
         try:
@@ -1591,12 +1603,14 @@ async def _error_driven_retry(page, operation_fn, context: dict) -> dict:
             LOG.warning(f"    操作异常: {e}")
             result = exception(str(e))
 
-        # ★ 保存第一次 attempt 的 multi_step_field_details
+        # ★ 保存第一次 attempt 的 multi_step_field_details 与完整结果
         # 第一次从空表单开始，记录的 interaction_steps 最完整
         # 后续 attempt 因表单状态残留（multi-select 有值、cascader 有预选），步骤可能不完整
-        if round_num == 0 and result.get("multi_step_field_details"):
-            first_ms_details = copy.deepcopy(result["multi_step_field_details"])
-            LOG.debug(f"    [_error_driven_retry] 保存第 1 轮的 multi_step_field_details ({len(first_ms_details)} 个字段)")
+        if round_num == 0:
+            first_round_result = copy.deepcopy(result)
+            if result.get("multi_step_field_details"):
+                first_ms_details = copy.deepcopy(result["multi_step_field_details"])
+                LOG.debug(f"    [_error_driven_retry] 保存第 1 轮的 multi_step_field_details ({len(first_ms_details)} 个字段)")
 
         if result.get("success"):
             if round_num > 0:
@@ -1660,6 +1674,25 @@ async def _error_driven_retry(page, operation_fn, context: dict) -> dict:
                     continue
             # Vision 也用过了或无新 insights — 返回最后一次结果（保留 error_type/selectors）
             LOG.warning(f"    所有补救策略已尝试，操作 {context.get('btn', {}).get('text', '?')} 验证失败")
+            # ★ 信息丰度回退：末轮结果可能因页面状态损坏（如 page-nav 表单页未回退，
+            # 第 2/3 轮 click_failed 连按钮都没点到）丢失全部表单记录；
+            # 第 1 轮（从空表单开始）记录最完整（form_fields + multi_step_field_details
+            # + trigger_locator_verified + 业务错误证据）。若末轮信息缺失而首轮有，
+            # 返回首轮完整失败结果——builder 依赖这些结构字段生成 create 步骤与
+            # expected_failure 断言，丢失会导致 playbook 只剩 1 步 click_tab
+            # （实证：黑白名单新增 form_validation「请选择组织」被末轮 click_failed 覆盖）。
+            if first_round_result:
+                _first_richer = (
+                    (not result.get("form_fields") and bool(first_round_result.get("form_fields")))
+                    or (not result.get("multi_step_field_details")
+                        and bool(first_round_result.get("multi_step_field_details")))
+                    or (not result.get("trigger_locator_verified")
+                        and bool(first_round_result.get("trigger_locator_verified")))
+                )
+                if _first_richer:
+                    LOG.info(f"    [_error_driven_retry] 末轮结果信息不全，回退返回第 1 轮完整失败结果 "
+                             f"(error_type={first_round_result.get('error_type')})")
+                    return first_round_result
             return result
         else:
             last_error_key = current_error_key
@@ -2130,6 +2163,30 @@ async def _do_create(page, context: dict) -> dict:
             # 业务失败但表单已提交，保留表单数据供 playbook 生成完整步骤
             return _build_create_error_result(
                 "api_error", failure_info["error_text"], btn_text, btn_click_result,
+                fill_data, fill_rules, fields, submit_result,
+                multi_step_field_details, username,
+                radio_field_details=radio_field_details,
+                cascade_actions=cascade_actions
+            )
+        # ★ P2-A: 无明确失败关键词时，从本操作捕获的 info 级 toast 中提取
+        # 前端校验拦截提示（如「请选择组织」——el-message--info 全局 toast，
+        # 非 el-form-item 内联校验，read_form_errors 检不到、failKw 也不含此类文本，
+        # 此前会落入 no_success_signal 丢失业务证据）。归为 form_validation，
+        # 与用户管理「请选择部门」（read_form_errors 路径）同构，衔接 D 轮
+        # expected_failure 契约（回放时按 error_text 匹配复现实证）。
+        # 「请」开头 = 前端指令性校验提示的稳定特征；P0-A 修复后 captured_msgs
+        # 已按操作隔离，无跨操作残留；排除 source=dialog（确认弹框正文非失败证据）。
+        validation_hint = None
+        for msg in reversed(captured_msgs or []):
+            text = (msg.get("text") or "").strip()
+            if (msg.get("type") == "info" and msg.get("source") != "dialog"
+                    and text.startswith("请")):
+                validation_hint = text
+                break
+        if validation_hint:
+            LOG.info(f"    [P2-A] 捕获前端校验拦截提示: {validation_hint}")
+            return _build_create_error_result(
+                "form_validation", validation_hint, btn_text, btn_click_result,
                 fill_data, fill_rules, fields, submit_result,
                 multi_step_field_details, username,
                 radio_field_details=radio_field_details,
