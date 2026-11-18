@@ -302,6 +302,19 @@ def _sync_ui_runtime_lib(ui_dir: Path, project_dir: Path):
         LOG.warning("  UI runtime sync: cookies.json 未找到，UI 脚本将无法自动运行")
         LOG.warning(f"    尝试过: {workspace_cookies.relative_to(project_root)}")
 
+    # ★ cookies.localStorage.json → ui/config/（SPA 路由守卫所需的完整状态）
+    #   cookie_client.apply_auth_to_playwright 会读取该文件并全量注入
+    #   （currentUserInfo/userId/权限缓存等），缺失时退回单 token key 注入，
+    #   SPA 会因状态不完整而在内部渲染登录表单（URL 不变、树/表格/按钮全缺）。
+    workspace_ls = workspace_cookies.with_name("cookies.localStorage.json")
+    if workspace_ls.exists():
+        (config_dst / "cookies.localStorage.json").write_text(
+            workspace_ls.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+        LOG.info("  UI runtime sync: config/cookies.localStorage.json")
+    else:
+        LOG.warning("  UI runtime sync: cookies.localStorage.json 未找到（SPA 完整状态注入将退化为单 key）")
+
     # ---- 8. 生成 __init__.py ----
     init_file = dst_lib / "__init__.py"
     init_content = '"""UI automation runtime library — synced from core.discovery."""\n'

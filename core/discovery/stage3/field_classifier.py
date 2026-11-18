@@ -50,6 +50,18 @@ def _analyze_value_pattern(field_name: str, value) -> dict:
             return {"role": "generate", "pattern": "encrypted_email"}
         if any(kw in fn_lower for kw in ('password', 'passwd', 'pwd')):
             return {"role": "generate", "pattern": "encrypted_password"}
+        # ★ RSA 单块密文判定（数据驱动，不依赖字段名）：
+        # 捕获值 base64 解码后恰为 RSA 单块（128 字节=RSA-1024 / 256 字节=RSA-2048），
+        # 说明该字段与 password/email/phone 走同一把公钥的真 RSA 加密
+        #（如 userAddressCreateReqVO.detailAddress）。此类字段必须用 RSA 重新加密，
+        # 随机占位密文（base64_encrypted 的 64 字节）会让后端报「解密失败」。
+        try:
+            import base64 as _b64
+            _raw = _b64.b64decode(value, validate=True)
+            if len(_raw) in (128, 256):
+                return {"role": "generate", "pattern": "encrypted_text"}
+        except Exception:
+            pass
         # 非敏感加密字段（如 detailAddress）生成随机密文
         return {"role": "generate", "pattern": "base64_encrypted"}
 
@@ -453,13 +465,14 @@ def classify_fields(body_sample: dict, value_index: ValueIndex,
                     }
                     LOG.debug(f"    classify_fields: {key} → context/{array_match['source_path']} (array, value match)")
                     continue
-                # 回退：假设来自 create.id
-                roles[key] = {
-                    "role": "context",
-                    "source": "create.id",
-                    "is_array": True,
-                }
-                LOG.debug(f"    classify_fields: {key} → context/create.id (array fallback, {_classify_value_type(first_elem)})")
+                # 精确值未命中 → static 保留捕获原值，不再盲目回退 create.id。
+                # 盲目回退会把 create.id 注入任何未命中的 ID 数组（如授权的
+                # policies 数组实为租户级策略 ID，注入用户 ID 会得业务错误）；
+                # 真正引用 create.id 的数组（如 principleIds）总能通过精确值
+                # 匹配命中（create 响应 entity.id 已入索引）——未命中即证明
+                # 该值另有语义，保留捕获原值（捕获轮真实存在且后端已接受）。
+                roles[key] = {"role": "static", "is_array": True}
+                LOG.debug(f"    classify_fields: {key} → static (array value not in index, keep captured)")
                 continue
 
         # ── Pass 3a: context（精确值匹配） ──

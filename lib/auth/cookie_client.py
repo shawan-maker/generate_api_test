@@ -166,6 +166,26 @@ def require_auth(config_dir, auth_config: dict):
 
 # ==================== UI 脚本专用 ====================
 
+
+def _load_localStorage_state(config_dir) -> dict:
+    """读取 CookieStore 保存的完整 localStorage 状态（cookies.localStorage.json）。
+
+    由 LoginSession 真实登录后保存（persist_localStorage），包含 SPA
+    路由守卫所需的全部 key（token/currentUserInfo/userId/权限缓存等）。
+    不存在或损坏时返回 None（调用方退回单 key 注入）。
+    """
+    path = Path(config_dir) / "cookies.localStorage.json"
+    if not path.exists():
+        return None
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(state, dict) and state:
+            return state
+    except Exception:
+        pass
+    return None
+
+
 async def require_auth_for_ui(config_dir, auth_config: dict, target_url: str = ""):
     """UI 脚本一键鉴权：读 cookie → 注入 BrowserContext → 注入 token → 验证。
 
@@ -184,6 +204,14 @@ async def require_auth_for_ui(config_dir, auth_config: dict, target_url: str = "
 
     if not cookies:
         _auth_fail_exit(cookie_path)
+
+    # ★ 加载完整 localStorage 状态（SPA 路由守卫需要 token 之外的
+    #   currentUserInfo/userId/权限缓存等 key；只注入单 token key 会导致
+    #   SPA 判定未登录、内部渲染登录表单——URL 不变但树/表格/按钮全缺）。
+    #   通过 auth_config["_storage_state"] 传递给 apply_auth_to_playwright。
+    storage_state = _load_localStorage_state(config_dir)
+    if storage_state:
+        auth_config["_storage_state"] = storage_state
 
     return cookies, token
 
@@ -214,8 +242,25 @@ async def apply_auth_to_playwright(context, page, cookies, token, auth_config):
 
     # 3. 注入 token 到 storage
     if token and token_key:
-        await inject_token_to_storage(page, token, token_storage, token_key)
-        print(f"  ✅ 已注入 {token_key} 到 {token_storage}")
+        storage_state = auth_config.pop("_storage_state", None)
+        if storage_state and token_storage == "localStorage":
+            # ★ 完整 localStorage 状态注入：覆写 token_key 为当前 token，
+            #   其余 key（currentUserInfo/userId/权限缓存）全量恢复，
+            #   与 LoginSession.ensure_auth 的持久化注入行为对齐。
+            storage_state[token_key] = token
+            try:
+                await page.evaluate(
+                    "(items) => { for (const [k, v] of Object.entries(items))"
+                    " { try { localStorage.setItem(k, v); } catch (e) {} } }",
+                    storage_state,
+                )
+                print(f"  ✅ 已注入完整 localStorage 状态 ({len(storage_state)} keys, {token_key} 已覆写为当前 token)")
+            except Exception as e:
+                await inject_token_to_storage(page, token, token_storage, token_key)
+                print(f"  ⚠️ 完整状态注入失败 ({e})，退回单 key 注入: {token_key}")
+        else:
+            await inject_token_to_storage(page, token, token_storage, token_key)
+            print(f"  ✅ 已注入 {token_key} 到 {token_storage}")
     else:
         cookie_token_key = auth_config.get('cookie_token_key', '')
         print(f"  ⚠️ 未找到 token (cookie_token_key={cookie_token_key}, token_key={token_key})")

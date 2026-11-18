@@ -829,6 +829,17 @@ def gen_encrypted_password() -> str:
     """生成 RSA 加密的密码密文（明文: 随机密码）。"""
     plaintext = f"Test@{{_ts6()}}!Ab"
     return _rsa_encrypt(plaintext)
+
+def gen_encrypted_text() -> str:
+    """生成 RSA 加密的通用文本密文（明文: 随机地址/备注文本）。
+
+    用于 detailAddress 等任意加密文本字段（捕获值 base64 解码后恰为
+    RSA 单块 128/256 字节——与 password/email/phone 同一把公钥加密）。
+    随机占位密文（base64_encrypted 的 64 字节）后端无法解密，
+    会报「解密失败,请确认传输加密方式」。
+    """
+    plaintext = f"AutoAddress No.{{_ts6()}}"
+    return _rsa_encrypt(plaintext)
 '''.format(cookie_token_key=cookie_token_key, rsa_public_key=rsa_public_key)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
