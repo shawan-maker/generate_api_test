@@ -123,7 +123,26 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
 
         # 2. 探测页面（提取表单字段，忽略菜单栏）
         from core.discovery.ui_scanner.element_scanner import discover_all
-        page_result = await discover_all(page)
+        page_result = await discover_all(page, explore_mode="form_page")
+
+        # ★ URL 一致性校验（防御层）：discover_all 期间若页面被任何路径带离
+        # 目标表单页（历史实证：4.2 段在编辑页误点「取消」导致退回列表页，
+        # 后续 fill/submit 在错误页面上空转），此处强制纠正回 new_url 并重扫，
+        # 保证探索始终在目标表单页进行。path 段比对（忽略 query），URL 一致时零行为变化。
+        def _url_path(u: str) -> str:
+            return (u or "").split("?")[0].rstrip("/")
+        if _url_path(page.url) != _url_path(new_url):
+            LOG.warning(f"    [NAV-GUARD] discover_all 后页面已偏离目标表单页，强制纠正:\n"
+                        f"      期望: {_url_path(new_url)}\n"
+                        f"      实际: {_url_path(page.url)}")
+            try:
+                await page.goto(new_url, wait_until="domcontentloaded", timeout=15000)
+                await page.wait_for_timeout(1500)
+                # 纠正后重扫（新页面 JS 上下文全新，此前结果已失效）
+                page_result = await discover_all(page, explore_mode="form_page")
+                LOG.info(f"    [NAV-GUARD] 已回到目标表单页并重新扫描: {_url_path(page.url)}")
+            except Exception as _nav_e:
+                LOG.warning(f"    [NAV-GUARD] 纠正导航失败: {_nav_e}")
 
         # ★ FIX: 统一在 discover_all 之后安装消息捕获
         # 原因：

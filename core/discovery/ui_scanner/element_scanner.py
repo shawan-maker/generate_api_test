@@ -72,7 +72,7 @@ def _is_navigation_element(btn: dict) -> bool:
     return False
 
 
-async def discover_all(page) -> dict:
+async def discover_all(page, explore_mode: str = "") -> dict:
     """完整探测入口：扫描按钮 + 位置分类 + 下拉菜单 + 表单字段 + 页面结构快照。
 
     支持多 tab 页面：检测到多个 tab 时，逐一切换并扫描每个 tab 下的元素，
@@ -80,6 +80,13 @@ async def discover_all(page) -> dict:
 
     Args:
         page: Playwright Page 对象
+        explore_mode: 调用语境（默认空 = 列表页全量探索）。
+            "form_page" = 调用方已在表单页（如 navigation_executor 的跨页面
+            编辑/新增探索）——此语境下跳过 4.2 form_page 交互扫描段：
+            该段设计场景是「列表页点编辑类按钮展开表单」，在表单页误用会
+            探索性点击表单内功能按钮（如黑白名单编辑页的「添加」IP 行），
+            且段尾点「取消」在表单页语义 = 放弃编辑退出页面，把探索器
+            带离目标表单页（fix4 实证：提交前 URL 已回列表页、全链空转）。
     """
     kb = _get_kb()
     framework = await _detect_ui_framework(page)
@@ -90,7 +97,7 @@ async def discover_all(page) -> dict:
     original_url = page.url
     page_structure = await _snapshot_page_structure(page)
 
-    result = await _discover_once(page, kb, framework)
+    result = await _discover_once(page, kb, framework, explore_mode)
 
     result["page_structure"] = page_structure
     result["framework"] = framework
@@ -144,8 +151,8 @@ async def discover_all(page) -> dict:
                     )
                 await page.wait_for_timeout(2000)  # 等待 tab 切换和数据加载
 
-                # 在该 tab 下扫描
-                tab_result = await _discover_once(page, kb, framework)
+                # 在该 tab 下扫描（explore_mode 透传：form_page 语境下同样跳过 4.2 探索性点击）
+                tab_result = await _discover_once(page, kb, framework, explore_mode)
                 _merge_tab_results(result, tab_result, tab_name)
             except Exception as e:
                 LOG.warning(f"  ⚠️ tab [{tab_name}] 扫描失败: {e}")
@@ -217,13 +224,14 @@ def _merge_tab_results(base: dict, tab_result: dict, tab_name: str):
             sw_list.append(sw)
 
 
-async def _discover_once(page, kb: ProbeKB, framework: str) -> dict:
+async def _discover_once(page, kb: ProbeKB, framework: str, explore_mode: str = "") -> dict:
     """单次探测流程（内部函数，由 discover_all 调用）
 
     Args:
         page: Playwright Page 对象
         kb: 知识库实例
         framework: UI 框架类型
+        explore_mode: 调用语境（见 discover_all docstring；form_page 时跳过 4.2 段）
     """
     # Lazy imports for functions in button_detector (avoid circular imports)
     from core.discovery.ui_scanner.button_detector import (
@@ -382,8 +390,12 @@ async def _discover_once(page, kb: ProbeKB, framework: str) -> dict:
 
     # 4.2 form_page 交互扫描：点击编辑类按钮后扫描完整的表单交互状态
     # 条件：有 form_action 按钮 + 不是 CRUD 页面（无 create_like 按钮）
-    # 类似 _scan_create_dialog()，但针对 form_page 的编辑模式
-    if result["form_actions"] and not has_create:
+    # ★ explore_mode="form_page" 时整段跳过：本段设计场景是「列表页」——点编辑类
+    # 按钮展开表单→扫字段→点取消恢复。在已是表单页的探索语境（跨页面编辑/新增）中
+    # 误用会：①探索性点击表单内功能按钮（如编辑页「添加」IP 行，产生脏数据）；
+    # ②段尾点「取消」= 表单页语义的放弃编辑退出，把探索器带离目标页面
+    # （fix4 实证：提交前 URL 已回列表页，后续 fill/submit 全部空转失败）。
+    if result["form_actions"] and not has_create and explore_mode != "form_page":
         _SUBMIT_KEYWORDS = ["保存", "提交", "确定", "确认", "save", "submit", "confirm"]
 
         # 找出编辑类按钮（非提交类）
@@ -1259,6 +1271,7 @@ async def _discover_dropdowns(page, parent_buttons: list, kb: ProbeKB = None, fr
 
     # 展开每个触发器（优化：去重 + 快速失败）
     for text in triggers:
+        # --- 手势 1：DOM click（既有行为，兼容 click 触发的下拉，如工具栏批量操作）---
         clicked = await page.evaluate(f"""(text) => {{
             // ★ 查找当前可见的表格
             const allTables = document.querySelectorAll('.el-table, table, .ant-table');
@@ -1285,29 +1298,92 @@ async def _discover_dropdowns(page, parent_buttons: list, kb: ProbeKB = None, fr
             }}
             return false;
         }}""", text)
-        if not clicked:
-            continue
-        # 等待下拉菜单出现（快速超时）
-        try:
-            await wait_for_dropdown(page, timeout=1500)
-        except Exception:
-            # 菜单未出现，跳过等待消失
-            await page.keyboard.press("Escape")
-            continue
-        items = await page.evaluate("""() => {
+
+        # --- 收集可见菜单项（已有逻辑：可见 + 非 disabled + 非导航区）---
+        _collect_js = """() => {
             const items = document.querySelectorAll('.el-dropdown-menu__item, .ant-dropdown-menu-item, [role="menuitem"]');
             return Array.from(items)
                 .filter(el => {
                     if (el.offsetWidth <= 0) return false;
-                    // ★ 过滤 disabled 项（cmss-disabled class 或 Vue disabled prop）
-                    if (el.classList.contains('cmss-disabled') || el.classList.contains('is-disabled')) return false;
-                    if (el.__vue__ && el.__vue__.disabled === true) return false;
+                    // ★ 过滤 disabled 项：有 Vue 实例时以 disabled prop 为准。
+                    //   实证（黑白名单探针）：可操作的互斥项（行级'暂停'，offsetWidth=46 可见
+                    //   且 fix5 真实点击成功）也带 cmss-disabled 样式类——按 class 过滤会把
+                    //   唯一可用操作误杀，收集恒为 0；互斥不可用项由可见性（offW=0）表达。
+                    //   无 Vue 实例（非 Vue 页面）保留 class 兜底，不丢旧行为。
+                    if (el.__vue__) {
+                        if (el.__vue__.disabled === true) return false;
+                    } else if (el.classList.contains('cmss-disabled') || el.classList.contains('is-disabled')) {
+                        return false;
+                    }
                     const navParent = el.closest('.el-menu, .ant-menu, .sidebar-menu, nav');
                     return !navParent;
                 })
                 .map(el => el.textContent.trim())
                 .filter(t => t);
-        }""")
+        }"""
+
+        items = []
+        if clicked:
+            try:
+                await wait_for_dropdown(page, timeout=1500)
+            except Exception:
+                pass  # 菜单未出现 → items 为空，走 vue 兜底手势
+            items = await page.evaluate(_collect_js)
+
+        # --- 手势 2：Vue show() 兜底（hover 触发的行级下拉，如黑白名单「更多」）---
+        # DOM click 对 hover 触发的 el-dropdown 不展开菜单（菜单项全部不可见 → 0 收集）。
+        # 调触发器自身的 Vue 实例 show()/handleMouseEnter()，与 crud_executor 增量扫描
+        # 同手法（fix3 实证：dropdown_expand={'method': 'vue_show'} 后 menuInfo 可见子项
+        # 才出现）。
+        # ★ 匹配分两遍：①精确 ===（旧行为）②前缀 startsWith 兜底——菜单渲染在 dd 内部
+        #   时（黑白名单行级 dd textContent='更多 启用 暂停'，fix6 探针实证），=== 匹配
+        #   不到任何 dd；前缀遍可识别此类触发器。
+        # ★ 只收 visible 子项：互斥操作对（启用/暂停）DOM 同时渲染但仅当前行状态
+        # 可用的一项可见，收 visible 保证第一个 generic op 点的是可用的那个。
+        if not items:
+            expand_result = await page.evaluate("""(triggerText) => {
+                const candidates = Array.from(document.querySelectorAll('.el-dropdown'));
+                const tryMatch = (matchFn) => {
+                    for (const dd of candidates) {
+                        if (dd.offsetWidth <= 0 || dd.offsetHeight <= 0) continue;
+                        // 必须是同名触发器本身（防误展开其他下拉）
+                        if (!matchFn((dd.textContent || '').trim())) continue;
+                        // 排除导航区下拉
+                        if (dd.closest('.el-menu, .ant-menu, nav, .sidebar-menu')) continue;
+                        if (dd.__vue__) {
+                            const vm = dd.__vue__;
+                            if (typeof vm.show === 'function') {
+                                vm.show();
+                                return { expanded: true, method: 'vue_show' };
+                            }
+                            if (typeof vm.handleMouseEnter === 'function') {
+                                vm.handleMouseEnter();
+                                return { expanded: true, method: 'vue_handleMouseEnter' };
+                            }
+                        }
+                        dd.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }));
+                        dd.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+                        return { expanded: true, method: 'dispatchEvent' };
+                    }
+                    return null;
+                };
+                // 第一遍：精确匹配（旧行为，不回归）
+                const exact = tryMatch(t => t === triggerText);
+                if (exact) return exact;
+                // 第二遍：前缀匹配兜底（菜单内置渲染的 dd，textContent 含菜单项文本）
+                const prefix = tryMatch(t => t.startsWith(triggerText));
+                return prefix || { expanded: false, reason: 'no_visible_trigger' };
+            }""", text)
+            if expand_result.get("expanded"):
+                LOG.info(f"  [dropdown] '{text}' DOM click 未展开菜单，Vue 兜底展开"
+                         f" (method={expand_result.get('method')})")
+                await page.wait_for_timeout(1200)  # 等 Vue 响应式更新 + 菜单动画
+                items = await page.evaluate(_collect_js)
+            else:
+                LOG.debug(f"  [dropdown] '{text}' 无可见触发器，跳过")
+                await page.keyboard.press("Escape")
+                continue
+
         for item in items:
             # 去重：同一 parent 下不重复添加
             if not any(d["text"] == item and d["parent"] == text for d in dropdown_items):
@@ -1318,12 +1394,35 @@ async def _discover_dropdowns(page, parent_buttons: list, kb: ProbeKB = None, fr
                     "location": "dropdown",
                     "action": item,  # 使用下拉菜单项文本作为 action
                 })
+        # 收起：优先 Vue hide()（vue_show 展开的菜单 ESC 可能不关），再 Escape
+        await page.evaluate("""() => {
+            document.querySelectorAll('.el-dropdown').forEach(dd => {
+                if (dd.__vue__ && typeof dd.__vue__.hide === 'function') {
+                    try { dd.__vue__.hide(); } catch (e) {}
+                }
+            });
+        }""")
         await page.keyboard.press("Escape")
         # 等待下拉菜单消失（快速超时，失败也不阻塞）
         try:
             await wait_for_dialog_dismissed(page, timeout=1000)
         except Exception:
             pass
+        # ★ 兜底收起（fix6 探针实证）：teleport 到 body 的菜单 popper 可见性与
+        # dd vm.visible 解耦——假目标 dd.show() 可经共享 popper 复活行级菜单，
+        # vm.hide()/Escape 均关不掉，dispatch mouseleave/mouseout 可可靠关闭；
+        # 无残留时为 no-op，不影响旧行为。
+        leaked = await page.evaluate("""() => Array.from(
+            document.querySelectorAll('.el-dropdown-menu'))
+            .filter(m => m.offsetWidth > 0 && m.offsetHeight > 0).length""")
+        if leaked:
+            await page.evaluate("""() => {
+                document.querySelectorAll('.el-dropdown').forEach(dd => {
+                    dd.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }));
+                    dd.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+                });
+            }""")
+            await page.wait_for_timeout(400)
     return dropdown_items
 
 
