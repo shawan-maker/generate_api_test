@@ -305,9 +305,18 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
                     targetMenu.querySelectorAll('.el-dropdown-menu__item').forEach(item => {{
                         const text = item.textContent.trim();
                         allItems.push(text);
-                        // ★ 过滤 disabled 项（cmss-disabled/is-disabled class 或 Vue disabled prop）
-                        if (item.classList.contains('cmss-disabled') || item.classList.contains('is-disabled')) return;
-                        if (item.__vue__ && item.__vue__.disabled === true) return;
+                        // ★ 可见性过滤（fix7）：互斥操作对（启用/暂停）DOM 同时渲染但仅
+                        // 当前行状态可用的一项可见（offsetWidth>0）。隐藏项（offW=0）不
+                        // 可点击——入册会导致"先点隐藏的启用→弹框/状态错配→no_signal
+                        // 假失败"（fix6 黑名单/启用回归实证）。等真实状态翻转后增量扫描
+                        // 再次触发，隐藏项变可见再入册，顺序自然正确。
+                        if (item.offsetWidth <= 0) return;
+                        // ★ disabled 判定：有 Vue 实例以 disabled prop 为准（fix6 探针
+                        // 实证：可操作的互斥项也带 cmss-disabled 样式类，按 class 过滤
+                        // 会误杀唯一可用项）；无 Vue 实例保留 class 兜底。
+                        if (item.__vue__) {{
+                            if (item.__vue__.disabled === true) return;
+                        }} else if (item.classList.contains('cmss-disabled') || item.classList.contains('is-disabled')) return;
                         if (text && !existingTexts.includes(text)) {{
                             buttons.push({{
                                 text: text,
@@ -842,6 +851,24 @@ async def _validate_single_tab_crud(
         btn = buttons_by_action.get(action)
         if not btn:
             LOG.debug(f"{tab_prefix}跳过 {action}: 未找到对应按钮")
+            continue
+
+        # ★ 批量操作动态跳过（fix7）：清单已有单操作「XX」时跳过「批量XX」。
+        #   用户规则：有启用则不需要批量启用；删除/批量删除、暂停/批量暂停同理。
+        #   既有静态规则（_validate_business_flow，扫描时刻判定）在行级互斥项
+        #   （启用/暂停）依赖行数据/状态时漏拦——表空时静态收集不到单操作
+        #   （fix6 白名单/批量启用 click_failed 实证）。此处执行时兜底：
+        #   增量扫描入册的单操作此时已在 buttons_by_action。
+        #   前缀与 shared/constants.BATCH_PREFIXES 对齐（此处避免函数级 import 开销用字面量）。
+        _skip_batch = False
+        for _bp in ("批量", "batch", "bulk"):
+            if action.startswith(_bp):
+                _core = action[len(_bp):]
+                if _core and any(a == _core for a in buttons_by_action):
+                    LOG.info(f"{tab_prefix}跳过批量操作: '{action}'（清单已有单操作 '{_core}'，按规则跳过）")
+                    _skip_batch = True
+                    break
+        if _skip_batch:
             continue
 
         btn_text = btn.get("text", "")
