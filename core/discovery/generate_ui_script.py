@@ -680,6 +680,53 @@ async def run_operation(page, operation_name, operations_data, marker=None, tab_
             op_status = "passed"
             op_note = ""
 
+        # ★★ 操作级定性矩阵（Stage 1 期望 × 回放实况）：
+        #   Stage1 success + 回放成功              → passed
+        #   Stage1 success + 回放失败              → failed（意外失败=潜在回归，红线）
+        #   Stage1 failed(env_dependency) + 干净   → expected_failure（业务未闭环：回放只重演
+        #       录制骨架，业务动作未录制故无失败信号；不计红线，原因透传展示）
+        #   Stage1 failed(form_validation) + 干净   → unexpected_pass（未复现失败=环境可能
+        #       已变化，人工确认信号；不计红线）
+        #   Stage1 failed(任何) + 回放失败          → expected_failure（复现实证+原因透传）
+        #   盲区诚实声明：env_dependency 类（如上传墙）业务动作从未被录制，回放永远无法
+        #       感知墙是否消失——此类不做「意外通过」检测，仅如实标注。
+        #   ★ D 轮：判定器层 expected_failure 模式（Stage 1 失败的写操作断言期望）已给出
+        #       复现实证结论时优先采信（matched_method 前缀 / failure_type=unexpected_pass）；
+        #       旧 playbook（message/read_complete 模式的失败操作）退回下方原矩阵口径。
+        if expected_status == "failed":
+            exp_err_type = st.get("error_type", "unknown")
+            exp_err_text = st.get("error_text", "Stage 1 标记为失败")
+            if matched_method.startswith("expected_failure:reproduced:"):
+                # 判定器实证：回放捕获到预期失败信号 → 复现实证通过
+                op_status = "expected_failure"
+                op_note = ("预期失败复现(" + exp_err_type + "): " + exp_err_text + "。"
+                           "回放实证: " + matched_method.split("expected_failure:reproduced:", 1)[1])
+            elif matched_method.startswith("expected_failure:blind_spot"):
+                # 判定器定性：无失败信号且属声明盲区类型（业务动作未被录制） → 业务未闭环
+                op_status = "expected_failure"
+                op_note = ("业务未闭环(" + exp_err_type + "): " + exp_err_text + "。"
+                           "回放仅重演录制的交互骨架且无失败信号——业务动作(如上传)未被录制，"
+                           "业务结果未发生，如实标记为失败（声明盲区，不计红线）")
+            elif failure_type == "unexpected_pass":
+                # 判定器定性：预期失败未复现（意外通过，人工确认信号，不计红线）
+                op_status = "unexpected_pass"
+                op_note = ("意外通过: Stage 1 预期失败(" + exp_err_text + ")，"
+                           "本次回放未复现该失败——环境可能已变化，需人工确认")
+            elif op_status in ("passed", "passed_with_note"):
+                if exp_err_type == "form_validation":
+                    op_status = "unexpected_pass"
+                    op_note = ("意外通过: Stage 1 预期失败(" + exp_err_text + ")，"
+                               "本次回放未复现该失败——环境可能已变化，需人工确认")
+                else:
+                    op_status = "expected_failure"
+                    op_note = ("业务未闭环(" + exp_err_type + "): " + exp_err_text + "。"
+                               "回放仅重演录制的交互骨架且无失败信号——业务动作(如上传)未被录制，"
+                               "业务结果未发生，如实标记为失败")
+            else:  # 回放失败 → 预期失败复现
+                op_status = "expected_failure"
+                op_note = ("预期失败复现(" + exp_err_type + "): " + exp_err_text + "。"
+                           "回放实证: " + (failure_reason or op_note or "步骤失败"))
+
         op_result = {{
             "operation": operation_name,
             "display_name": op.get("display_name", operation_name),
@@ -694,7 +741,11 @@ async def run_operation(page, operation_name, operations_data, marker=None, tab_
             "screenshot": screenshot,
         }}
         if op_status == "failed":
-            print(f"  ⚠ 操作失败: {{failure_reason or '断言失败'}} ({{failure_type or 'unknown'}}, 耗时 {{duration:.2f}}s)")
+            print(f"  ❌ 意外失败(潜在回归): {{failure_reason or '断言失败'}} ({{failure_type or 'unknown'}}, 耗时 {{duration:.2f}}s)")
+        elif op_status == "expected_failure":
+            print(f"  ⛔ {{op_note}} (耗时 {{duration:.2f}}s)")
+        elif op_status == "unexpected_pass":
+            print(f"  ⚠️ {{op_note}} (耗时 {{duration:.2f}}s)")
         elif op_status == "passed_with_note":
             print(f"  ⚠ 操作标记为成功 (仅处理中消息, 耗时 {{duration:.2f}}s)")
         else:
@@ -727,6 +778,16 @@ async def run_operation(page, operation_name, operations_data, marker=None, tab_
             "duration": duration,
             "screenshot": screenshot,
         }}
+        # 异常 = 实况失败，按矩阵定性
+        if expected_status == "failed":
+            exp_err_type = st.get("error_type", "unknown")
+            exp_err_text = st.get("error_text", "")
+            op_result["status"] = "expected_failure"
+            op_result["note"] = ("预期失败复现(" + exp_err_type + "): " + exp_err_text
+                                 + "。回放实证(异常): " + str(e))
+        else:
+            op_result["note"] = "意外失败(潜在回归): " + str(e)
+
         print(f"  ❌ 操作异常: {{e}}")
 
         # 失败后也尝试清理弹窗
@@ -825,6 +886,25 @@ async def main():
         print(f"  ✅ 测试完成")
         print(f"{{'='*60}}")
         print(f"  📊 报告: {{report_path}}")
+
+        # ★ 分层退出码（CI 门禁口径，用户决策：预期失败复现不计红线）
+        #   exit 0 = 无意外失败 & 无意外通过
+        #   exit 1 = 存在意外失败（真回归，红线）
+        #   exit 2 = 存在意外通过（环境变化，人工确认信号，不计红线）
+        n_failed = sum(1 for r in results if r.get("status") == "failed")
+        n_expected = sum(1 for r in results if r.get("status") == "expected_failure")
+        n_upass = sum(1 for r in results if r.get("status") == "unexpected_pass")
+        n_passed = sum(1 for r in results if r.get("status") in ("passed", "passed_with_note"))
+        print(f"  📊 门禁统计: 通过 {{n_passed}} | 预期失败复现 {{n_expected}} (不计红线) | 意外通过 {{n_upass}} | 意外失败 {{n_failed}}")
+        if n_failed > 0:
+            print("  ❌ 门禁红线: 存在意外失败(潜在回归)，退出码 1")
+            await browser.close()
+            sys.exit(1)
+        if n_upass > 0:
+            print("  ⚠️ 存在意外通过(环境可能已变化)，请人工确认，退出码 2")
+            await browser.close()
+            sys.exit(2)
+        print("  ✅ 门禁通过（预期失败复现不计入门禁红线）")
 
         if not (args.headless or CONFIG["headless"]):
             try:

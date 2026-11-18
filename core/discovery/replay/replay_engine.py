@@ -1749,9 +1749,11 @@ async def _step_assert_success(page, step: dict) -> bool:
     # ★ 断言模式契约（assert_mode）: KB 步骤级字段，三处 UI 环节统一语义
     # - "message": 写操作——需正向成功信号，无信号判失败
     # - "read_complete": 只读查看/查询类——交互完成且无失败信号即成功
+    # - "expected_failure"（★ D 轮新增）: Stage 1 标记失败的写操作——复现实证语义，
+    #   携带 error_type/error_text 供判定器分流（复现/意外通过/声明盲区）
     # 旧版 playbook 无该字段 → 显式失败并提示重跑（不保留兼容，与锚点模型同原则）
     mode = step.get("assert_mode")
-    if mode not in ("message", "read_complete"):
+    if mode not in ("message", "read_complete", "expected_failure"):
         LOG.error("    ❌ assert_success 步骤缺少 assert_mode 字段（playbook 为旧版生成）"
                   "——请重跑 Stage 1 重新生成 KB")
         step["failure_reason"] = "assert_mode 缺失（旧版 playbook），需重跑 Stage 1"
@@ -1759,7 +1761,10 @@ async def _step_assert_success(page, step: dict) -> bool:
         await _take_assert_screenshot(page, step)
         return False
 
-    success, detail = await verify_operation_success(page, operation_type=operation_type, mode=mode)
+    success, detail = await verify_operation_success(
+        page, operation_type=operation_type, mode=mode,
+        error_type=step.get("error_type", ""), error_text=step.get("error_text", ""),
+    )
 
     # 更新 step 中的诊断信息
     if detail.get("matched_method"):

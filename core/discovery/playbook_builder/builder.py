@@ -137,6 +137,30 @@ def _is_detail_action(action: str) -> bool:
     return any(kw in action_lower for kw in detail_keywords)
 
 
+def _expected_failure_fields(op_data: dict) -> dict:
+    """★ D 轮语义层修正：Stage 1 预期失败操作的断言期望字段派生（单点契约）。
+
+    判据与 build_playbook 的 detection_status 派生严格等价（结构事实，非操作名）：
+        detection_status == "failed"  ⇔  not success 且 error_type != "skipped"
+    另要求 error_type 非空——空 error_type 的失败无法为判定器提供期望语义
+    （expected_failure 模式需要 error_type/error_text 做复现实证与盲区分流），
+    此类保持原 assert_mode（message/read_complete），意外信号走原有红灯通道。
+
+    Returns:
+        {"error_type": ..., "error_text": ...} —— expected_failure 步骤附加字段；
+        {} 表示非预期失败操作，保持原 assert_mode。
+    """
+    if op_data.get("success", False):
+        return {}
+    err_type = op_data.get("error_type", "")
+    if not err_type or err_type == "skipped":
+        return {}
+    return {
+        "error_type": err_type,
+        "error_text": op_data.get("error_text", ""),
+    }
+
+
 def _build_detail_steps(op_data: dict) -> list:
     """构建查看详情步骤。
 
@@ -1008,12 +1032,16 @@ def _build_create_steps(op_data: dict) -> list:
         steps.append(step_entry)
 
     # Step 5: 验证成功
+    # ★ D 轮：Stage 1 标记失败的写操作 → expected_failure（复现实证语义），
+    #   判定器将捕获失败信号作为"预期复现"实证，而非寻找成功信号
     success_locator = op_data.get("success_locator", ".el-message--success")
+    ef_fields = _expected_failure_fields(op_data)
     steps.append({
         "action": "assert_success",
-        "assert_mode": "message",
+        "assert_mode": "expected_failure" if ef_fields else "message",
+        **ef_fields,
         "playwright_locator": success_locator,
-        "description": "验证创建成功"
+        "description": f"验证预期失败复现（{ef_fields['error_type']}）" if ef_fields else "验证创建成功"
     })
 
     return steps
@@ -1092,11 +1120,14 @@ def _build_delete_steps(op_data: dict, create_marker=None) -> list:
 
     # Step 4.6: ★ 先检查 toast 成功提示（软断言）
     # 用于处理"同名数据仍存在"等场景：toast 已确认成功，行消失验证降级为警告
+    # ★ D 轮：Stage 1 标记失败的删除操作 → expected_failure（复现实证语义）
+    ef_fields = _expected_failure_fields(op_data)
     steps.append({
         "action": "assert_success",
-        "assert_mode": "message",
+        "assert_mode": "expected_failure" if ef_fields else "message",
+        **ef_fields,
         "playwright_locator": ".el-message--success, .el-notification__content:has-text('成功'), [role='alert']:has-text('成功')",
-        "description": "验证操作成功",
+        "description": f"验证预期失败复现（{ef_fields['error_type']}）" if ef_fields else "验证操作成功",
     })
 
     # Step 5: 验证行消失（如果 toast 已通过，降级为软断言）
@@ -1357,12 +1388,15 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
         steps.append(click_step)
 
     # Step 6: 验证成功
+    # ★ D 轮：Stage 1 标记失败的更新操作 → expected_failure（复现实证语义）
     success_locator = op_data.get("success_locator", ".el-message--success")
+    ef_fields = _expected_failure_fields(op_data)
     steps.append({
         "action": "assert_success",
-        "assert_mode": "message",
+        "assert_mode": "expected_failure" if ef_fields else "message",
+        **ef_fields,
         "playwright_locator": success_locator,
-        "description": "验证更新成功"
+        "description": f"验证预期失败复现（{ef_fields['error_type']}）" if ef_fields else "验证更新成功"
     })
 
     return steps
@@ -1694,20 +1728,35 @@ def _build_generic_steps(op_data: dict, create_marker=None) -> list:
     if has_ui_action:
         # ★ assert_mode 派生（单点，基于 op_data 结构事实）:
         #   只读查看型弹窗 → read_complete（关闭即成功，无失败信号判成功）
+        #     ★ D 轮防误伤：只读资格按结构字段（readonly_dialog/interaction_mode）判定、
+        #       无条件优先——如"导入历史"这类正当只读弹窗不受失败状态分流影响，
+        #       判据绝不看操作名（"导入"前缀同名操作语义完全不同）。
+        #   Stage 1 标记失败的非只读操作 → expected_failure（复现实证语义）
         #   其余（确认/表单/提交等写路径）→ message（需正向成功信号）
         is_readonly = bool(op_data.get("readonly_dialog")
                            or op_data.get("interaction_mode") == "readonly_dialog")
+        ef_fields = {} if is_readonly else _expected_failure_fields(op_data)
         # 使用多选择器兼容不同 UI 框架的成功提示：
         # - .el-message--success: Element UI 标准成功消息
         # - .el-notification__content:has-text('成功'): Element UI 通知组件
         # - [role='alert']:has-text('成功'): ARIA 标准通知
         success_locator = op_data.get("success_locator",
             ".el-message--success, .el-notification__content:has-text('成功'), [role='alert']:has-text('成功')")
+        if is_readonly:
+            _mode = "read_complete"
+            _desc = "只读弹窗打开并关闭完成"
+        elif ef_fields:
+            _mode = "expected_failure"
+            _desc = f"验证预期失败复现（{ef_fields['error_type']}）"
+        else:
+            _mode = "message"
+            _desc = "验证操作成功"
         steps.append({
             "action": "assert_success",
-            "assert_mode": "read_complete" if is_readonly else "message",
+            "assert_mode": _mode,
+            **ef_fields,
             "playwright_locator": success_locator,
-            "description": "只读弹窗打开并关闭完成" if is_readonly else "验证操作成功"
+            "description": _desc
         })
 
     return steps
@@ -1945,17 +1994,32 @@ def _build_page_nav_steps(op_data: dict) -> list:
         })
 
     # Step 6: 验证成功（无论成功失败都生成，assert_success 会做语义判断）
-    # ★ assert_mode 派生（单点，基于 nav_info 结构事实）:
+    # ★ assert_mode 派生（单点，基于 nav_info/op_data 结构事实）:
+    #   Stage 1 标记失败 → expected_failure（复现实证语义）
+    #     ★ D 轮收紧：失败操作不得走 read_complete——"访问完成即成功"与 Stage 1
+    #       失败事实矛盾（如导入被上传墙拦截：nav_info.form_fields=[] 是录制不全
+    #       的结果而非只读证据，旧判据"无表单→只读跳转"即语义冒用根因）。
     #   有表单字段 = 有写动作（如授权）→ message（需正向成功信号）
     #   无表单字段 = 只读跳转型页面（如详情查看）→ read_complete（完成即成功）
     success_locator = op_data.get("success_locator",
         ".el-message--success, .el-notification__content:has-text('成功'), [role='alert']:has-text('成功')")
+    ef_fields = _expected_failure_fields(op_data)
     _nav_has_form = bool(nav_info.get("form_fields"))
+    if ef_fields:
+        _mode = "expected_failure"
+        _desc = f"验证预期失败复现（{ef_fields['error_type']}）"
+    elif _nav_has_form:
+        _mode = "message"
+        _desc = "验证操作成功"
+    else:
+        _mode = "read_complete"
+        _desc = "只读页面访问完成"
     steps.append({
         "action": "assert_success",
-        "assert_mode": "message" if _nav_has_form else "read_complete",
+        "assert_mode": _mode,
+        **ef_fields,
         "playwright_locator": success_locator,
-        "description": "验证操作成功" if _nav_has_form else "只读页面访问完成"
+        "description": _desc
     })
 
     # Step 7: 导航回原页面

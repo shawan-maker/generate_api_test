@@ -39,20 +39,34 @@ async def verify_operation_success(
     strict: bool = False,
     timeout: int = 5000,
     captured_messages: list = None,
+    error_type: str = "",
+    error_text: str = "",
 ) -> tuple:
     """验证操作是否成功（统一六层策略链）。
 
     Args:
         page: Playwright Page 对象
         operation_type: 操作类型 (create/update/delete/lock/unlock/...)
-        mode: 断言模式（KB assert_mode 契约，三处 UI 环节统一）
+        mode: 断言模式（KB assert_mode 契约，三处 UI 环节统一语义）
             - "message": 写操作语义——需要正向成功信号；无信号判失败（现状行为）
             - "read_complete": 只读查看/查询类语义——交互序列完成即成功；
               跳过弹窗全文扫描（防只读内容误报），保留结构化错误通道（不吞错）；
               无失败信号判成功
+            - "expected_failure"（★ D 轮新增）: Stage 1 标记失败的写操作语义——
+              回放目标是复现该失败作为实证，而非寻找成功信号：
+              · 捕获失败信号 → 预期失败复现实证通过（success=True，
+                matched_method="expected_failure:reproduced:<捕获文本>"）
+              · 捕获成功信号 → 预期失败未复现=意外通过（success=False，
+                failure_type="unexpected_pass"，人工确认信号）
+              · 无任何信号 → 按 error_type 分流：form_validation → 意外通过；
+                其余（env_dependency 等，业务动作未被录制、回放无法感知环境墙）
+                → 声明盲区（success=True，matched_method="expected_failure:blind_spot:<type>"，
+                交由报告层如实标注"业务未闭环"，不计红线、不谎报成功）
         strict: 严格模式（需要正向成功信号，而非"无错误即成功"）
         timeout: 轮询超时（毫秒）
         captured_messages: 由 get_captured_messages() 返回的捕获消息列表
+        error_type: Stage 1 记录的预期失败类型（expected_failure 模式必需）
+        error_text: Stage 1 记录的预期失败文本（expected_failure 模式可选，用于复现匹配展示）
 
     Returns:
         (success: bool, detail: dict)
@@ -392,6 +406,53 @@ async def verify_operation_success(
             pass
 
     # ── 最终判定 ──
+    # ★ D 轮 expected_failure 模式：预期失败的复现实证定性
+    #   （策略链 0~F 与 message 模式完全一致——写操作语境需要全量失败信号通道；
+    #    仅最终定性反转：失败信号=复现实证，成功信号=意外通过）
+    if mode == "expected_failure":
+        if failure_reason:
+            # 失败信号捕获 → 预期失败复现实证通过
+            LOG.info(f"    ⛔ [expected_failure] 预期失败复现实证通过: {failure_reason[:60]}"
+                     f"（期望 {error_type}: {error_text or '未记录'}）")
+            return True, {
+                "matched_method": f"expected_failure:reproduced:{failure_reason[:40]}",
+                "failure_reason": None,
+                "failure_type": None,
+                "has_processing": has_processing,
+            }
+        if matched_method:
+            # 成功信号 → 预期失败未复现（意外通过，人工确认信号）
+            LOG.warning(f"    ⚠️ [expected_failure] 预期失败未复现——检测到成功信号: {matched_method}")
+            return False, {
+                "matched_method": "expected_failure:not_reproduced",
+                "failure_reason": f"预期失败未复现——检测到成功信号"
+                                  f"（期望 {error_type}: {error_text or '未记录'}）",
+                "failure_type": "unexpected_pass",
+                "has_processing": has_processing,
+            }
+        # 无任何信号 → 按 error_type 分流（与 CI 门禁口径对齐：
+        # 「意外通过」检测仅 form_validation 启用，其余类型如实标注盲区）
+        if error_type == "form_validation":
+            LOG.warning("    ⚠️ [expected_failure] 预期失败未复现（回放无失败信号）"
+                        "——环境可能已变化，需人工确认")
+            return False, {
+                "matched_method": "expected_failure:not_reproduced",
+                "failure_reason": f"预期失败未复现——回放未捕获任何失败信号"
+                                  f"（期望 {error_type}: {error_text or '未记录'}），环境可能已变化",
+                "failure_type": "unexpected_pass",
+                "has_processing": has_processing,
+            }
+        # env_dependency 等：业务动作未被录制（如上传墙），回放只重演交互骨架，
+        # 永远无法感知墙是否消失——如实标注盲区，交由报告层按"业务未闭环"呈现
+        LOG.info(f"    ⛔ [expected_failure] 回放无失败信号——{error_type or 'unknown'} "
+                 f"属声明盲区（业务动作未被录制，无法证伪），按业务未闭环处理")
+        return True, {
+            "matched_method": f"expected_failure:blind_spot:{error_type or 'unknown'}",
+            "failure_reason": None,
+            "failure_type": None,
+            "has_processing": has_processing,
+        }
+
     if matched_method:
         return True, {
             "matched_method": matched_method,

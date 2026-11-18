@@ -188,9 +188,13 @@ def generate_ui_report(results, module_name, group=None, group_index=None):
     total = len(results)
     passed = sum(1 for r in results if r["status"] in ("passed", "passed_with_note"))
     skipped = sum(1 for r in results if r["status"] == "skipped")
-    failed = total - passed - skipped
+    expected_failure = sum(1 for r in results if r["status"] == "expected_failure")
+    unexpected_pass = sum(1 for r in results if r["status"] == "unexpected_pass")
+    failed = sum(1 for r in results if r["status"] == "failed")
     passed_with_note = sum(1 for r in results if r["status"] == "passed_with_note")
-    exec_total = passed + failed
+    # ★ expected_failure(预期失败复现)与 unexpected_pass(意外通过)单独计数，
+    #   不计入「失败」红线（用户决策：预期失败不计入门禁）
+    exec_total = passed + failed + expected_failure + unexpected_pass
     pass_rate = f"{(passed / exec_total * 100) if exec_total > 0 else 0:.1f}%"
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     all_ok = failed == 0 and exec_total > 0
@@ -293,6 +297,14 @@ def generate_ui_report(results, module_name, group=None, group_index=None):
             badge_cls = "badge-fail"
             status_text = "失败"
             row_cls = "fail"
+        elif status == "expected_failure":
+            badge_cls = "badge-expected"
+            status_text = "⛔ 预期失败"
+            row_cls = "expected"
+        elif status == "unexpected_pass":
+            badge_cls = "badge-unexpected"
+            status_text = "⚠️ 意外通过"
+            row_cls = "warn"
         else:
             badge_cls = "badge-skip"
             status_text = "跳过"
@@ -313,7 +325,7 @@ def generate_ui_report(results, module_name, group=None, group_index=None):
             detail_parts.append(f'<div class="failure-info"><span class="failure-label">失败原因:</span> {esc(failure_reason)}</div>')
         if failure_type:
             detail_parts.append(f'<div class="failure-info"><span class="failure-label">失败类型:</span> <code>{esc(failure_type)}</code></div>')
-        if note and not failure_reason:
+        if note:
             detail_parts.append(f'<div class="note-info"><span class="note-label">备注:</span> {esc(note)}</div>')
         if matched_method:
             detail_parts.append(f'<div class="method-info"><span class="method-label">断言策略:</span> <code>{esc(matched_method)}</code></div>')
@@ -369,6 +381,9 @@ tr.skip{{background:#f8f9fa}}
 .badge-ok{{background:#d5f5e3;color:#27ae60;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600}}
 .badge-fail{{background:#fadbd8;color:#e74c3c;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600}}
 .badge-skip{{background:#f2f3f4;color:#95a5a6;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600}}
+.badge-expected{{background:#f5e6cc;color:#b9770e;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600}}
+.badge-unexpected{{background:#fdebd0;color:#ca6f1e;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600}}
+tr.expected{{background:#fdf6ec}}
 .op-key{{font-size:10px;color:#95a5a6;font-weight:400}}
 .screenshot-thumb{{max-width:80px;max-height:60px;border:1px solid #ddd;border-radius:4px;cursor:pointer}}
 .screenshot-link{{display:inline-block}}
@@ -411,6 +426,8 @@ tr.skip{{background:#f8f9fa}}
 <div class="card total"><div class="num">{total}</div><div class="label">总数</div></div>
 <div class="card ok"><div class="num">{passed}</div><div class="label">通过</div></div>
 <div class="card fail"><div class="num">{failed}</div><div class="label">失败</div></div>
+<div class="card warn"><div class="num">{expected_failure}</div><div class="label">预期失败复现</div></div>
+<div class="card warn"><div class="num">{unexpected_pass}</div><div class="label">意外通过</div></div>
 <div class="card warn"><div class="num">{skipped}</div><div class="label">跳过</div></div>
 <div class="card warn"><div class="num">{pass_rate}</div><div class="label">通过率</div></div>
 </div>
