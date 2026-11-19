@@ -793,6 +793,42 @@ def build_playbook(ui_result: dict) -> dict:
     if fallback_count > 0:
         LOG.info(f"  Playbook: 添加 {fallback_count} 个未验证按钮的 fallback 步骤")
 
+    # ★ Cascade 顺序修正（消费 execution_order）：
+    # execution_order 记录了 Stage 1 的实际执行序，其中 phase=cascade 的操作
+    # 是状态恢复对（如 冻结→启用、锁定→解锁），语义上必须排在其 triggered_by
+    # 操作之后。而 validated_operations 的 dict 插入序记录的是"首次写入位置"——
+    # main 阶段失败 + cascade 成功覆盖（crud_executor._validate_business_flow
+    # 的 validated[cascade_action] = cascade_result）会保留 main 失败时的位置，
+    # 早于 triggered_by（实证：用户管理「启用」main 失败于行正常态、冻结成功后
+    # cascade 启用覆盖为成功，dict 位置仍在「冻结」前，UI 门禁按此序执行必然失败
+    # ——行未冻结时「启用」菜单项不可见）。
+    # 修正策略：仅做**局部邻接重排**（cascade 项移到 triggered_by 项之后），
+    # 不做全局重排——无 cascade 依赖对的模块与多 Tab 分组顺序零行为变化；
+    # cascade 本已排在 triggered_by 之后时不动（幂等）。
+    for _eo in (ui_result.get("execution_order") or []):
+        if _eo.get("phase") != "cascade" or not _eo.get("triggered_by"):
+            continue
+        _cascade_op = _eo.get("action")
+        _trigger_op = _eo["triggered_by"]
+        if _cascade_op not in operations or _trigger_op not in operations:
+            continue
+        _items = list(operations.items())
+        _cascade_idx = next((i for i, (k, _) in enumerate(_items) if k == _cascade_op), -1)
+        _trigger_idx = next((i for i, (k, _) in enumerate(_items) if k == _trigger_op), -1)
+        if _cascade_idx < 0 or _trigger_idx < 0:
+            continue
+        if _cascade_idx < _trigger_idx:
+            # 移到 triggered_by 紧邻之后（对齐 Stage 1 真实时序：cascade 状态恢复
+            # 紧随触发操作执行，中间不夹其他操作）。pop 后重算 trigger 索引，
+            # 避免使用 pop 前的旧索引产生 +1 位移（会把无关操作夹进级联对中间）。
+            _cascade_item = _items.pop(_cascade_idx)
+            _trigger_idx_after = next(
+                i for i, (k, _) in enumerate(_items) if k == _trigger_op)
+            _items.insert(_trigger_idx_after + 1, _cascade_item)
+            operations = dict(_items)
+            LOG.info(f"  [Cascade-Order] '{_cascade_op}' 重排到 '{_trigger_op}' 紧邻之后"
+                     f"（state_restore 依赖，execution_order 消费）")
+
     return {
         "meta": meta,
         "page_structure": page_structure,
