@@ -181,13 +181,21 @@ def test_pre_api_tracking():
     # 模拟响应样本
     response_samples = {}
 
+    # 构建值索引（A-3 后 value_index 必传——与 analyze() 生产链同构）
+    from core.discovery.stage3.field_classifier import build_value_index
+    vi = build_value_index(
+        pre_api_candidates=pre_api_candidates,
+        create_body_sample=None,
+    )
+
     # 执行追踪
     result = trace_pre_api_dependencies(
         core_apis=core_apis,
         response_samples=response_samples,
         pre_api_candidates=pre_api_candidates,
         context_fields={},
-        id_field_details={}
+        id_field_details={},
+        value_index=vi,
     )
 
     # 验证结果

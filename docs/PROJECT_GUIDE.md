@@ -1,6 +1,8 @@
 # API_AI_test — 无文档后台系统的 API 自动发现与测试生成框架
 
 > 给定一个 Web 后台模块入口 URL + 登录凭证，自动完成：**UI 探测 → API 捕获 → 逻辑分析 → 脚本生成 → 导出 artifacts**，让没有 API 文档的后台系统无需人工抓包即可得到可运行的 API/UI 测试脚本。
+>
+> **文档版本**: v1.3（2026-11-19）— 同步核心原则审计优化（P0/P1/A/B 清理）后的实现；变更明细见 `docs/debug/core-principles-audit-and-optimization-plan.md` 与 `docs/debug/core-principles-audit-resolution-status.md`
 
 ---
 
@@ -29,13 +31,12 @@ API_AI_test/
 │       ├── nav_discovery.py         导航菜单爬取
 │       ├── kb_loader.py             知识库加载器
 │       ├── ai_debug_assistant.py    AI 辅助调试（LLM 分析失败原因）
-│       ├── feedback_loop.py         反馈循环（Stage 1↔2 联动）
+│       ├── feedback_loop.py         UI 结果修补（Stage 1 补救链 patch_ui_result）
 │       ├── pre_api_merger.py        跨模块前置 API 合并
 │       ├── required_elements.py     必需元素定义
 │       ├── path_mapper.py           路径映射
 │       ├── version.py               版本管理
 │       ├── run_parallel.py          并行执行生成的测试脚本
-│       ├── stage2_errors.py         Stage 2 错误分类
 │       ├── const.py                 常量定义
 │       │
 │       ├── shared/                  ★ Stage 1/2 共享运行时逻辑（统一定义，双阶段调用）
@@ -53,9 +54,9 @@ API_AI_test/
 │       │
 │       ├── replay/                  UI 操作回放引擎
 │       │   ├── replay_engine.py       Playbook 回放执行器（含通知钉住机制）
-│       │   ├── button_driver.py       按钮点击驱动（KB 模板 fallback）
+│       │   ├── button_driver.py       按钮点击驱动（KB 模板 fallback；行内 JS click 委托 row_interaction 单源）
 │       │   ├── form_filler.py         表单智能填充（type-aware 动态构建）
-│       │   ├── locator_helpers.py     定位器辅助工具
+│       │   ├── locator_helpers.py     定位器辅助工具（safe_css 等活跃函数）
 │       │   └── wait_helpers.py        事件驱动等待（表格就绪/弹窗/loading）
 │       │
 │       ├── ui_scanner/              Stage 1 UI 探测子模块
@@ -69,7 +70,7 @@ API_AI_test/
 │       │   └── navigation_executor.py 跨页面导航
 │       │
 │       └── playbook_builder/        Stage 1 Playbook 生成
-│           └── builder.py             Playbook 生成与步骤分类
+│           └── builder.py             Playbook 生成与步骤分类（定位器落盘前合规治理）
 │
 ├── lib/                         共享运行时库
 │   ├── auth/                      统一登录模块（策略模式）
@@ -102,17 +103,23 @@ API_AI_test/
 │
 ├── config/                      全局配置
 │   ├── credentials.yaml           全局凭据库（按 base_url 组织）
-│   ├── debug_strategies.json      调试策略
 │   ├── failure_patterns.yaml      失败模式
 │   └── probe_lessons_kb.json      探测经验知识库
 │
-├── tests/                       单元测试（pytest）
-│   ├── test_module_discovery.py   主管线测试
-│   ├── test_stage5_verification.py Stage 5 导出测试
-│   ├── test_auth_service.py        认证服务测试（AuthService）
+├── tests/                       单元测试（pytest，全量 673 passed / 16 文件）
+│   ├── test_module_discovery.py   主管线测试（含 Stage 1-5 各阶段）
+│   ├── test_manifest_builder.py   Stage 3 manifest 构建测试
+│   ├── test_pre_api_tracer.py     前置 API 追踪测试
+│   ├── test_value_chain.py        值关联链（三原则）测试
+│   ├── test_field_classifier.py   字段五角色分类测试
+│   ├── test_playbook_builder.py   Playbook 构建测试
+│   ├── test_api_classifier.py     API 分类测试
+│   ├── test_auth_service.py       认证服务测试（AuthService）
+│   ├── test_session.py / test_cookie_store.py / test_strategies.py   登录会话/Cookie 存储/登录策略测试
 │   ├── test_run_history.py        运行历史测试
-│   ├── test_utils.py              工具函数测试
-│   └── test_pre_apis_global.py    前置 API 测试
+│   ├── test_stage5_verification.py Stage 5 导出验证测试
+│   ├── test_pre_apis_global.py    前置 API 测试
+│   └── test_utils.py              工具函数测试
 │
 ├── projects/                    项目数据（每个子目录是一个被测系统）
 │   └── <project_name>/
@@ -357,15 +364,15 @@ python projects/ecm-compute/v1.0.0/ui/用户管理.py --operation "创建用户"
 - 相同的 Switch 切换/行定位/弹框关闭逻辑在两个阶段各写一份，修改不同步
 - 新增类似逻辑时不确定该放在哪里
 
-**10 个共享模块**：
+**10 个共享模块**（★ 标记 = 2026-11 核心原则审计后已完成单源化/统一化）：
 
 | 模块 | 功能 | 调用方 |
 |------|------|--------|
 | `transition_helpers.py` | ★ 操作间页面衔接（统一 Stage 1/2） | crud_executor + capture_apis |
-| `success_verifier.py` | 六层策略链验证操作成功 | base_executor + replay_engine |
-| `switch_ops.py` | Switch 切换 + tab-pane 过滤 + 确认弹框 | crud_executor + replay_engine |
+| `success_verifier.py` | 六层策略链验证操作成功；★ 失败/成功关键词表统一（四策略全部从 `constants.py` 词表参数注入，无 JS 内嵌副本） | base_executor + replay_engine |
+| `switch_ops.py` | Switch 切换 + tab-pane 过滤 + 确认弹框；★ Stage 1 主 switch 路径也走本单源（内联 JS 复制版已删） | crud_executor + replay_engine |
 | `message_capture.py` | MutationObserver 注入 + 通知钉住 | base_executor + replay_engine |
-| `row_interaction.py` | 行定位/勾选/点击（含固定列兼容） | crud_executor + replay_engine |
+| `row_interaction.py` | 行定位/勾选/点击（含固定列兼容）；★ `js_click_row_button` 为行内按钮 JS click 唯一实现（Stage 1 crud_executor、Stage 2 button_driver/replay_engine 共用） | crud_executor + replay_engine |
 | `dialog_helpers.py` | 弹框/遮罩层检测与关闭 | base_executor + replay_engine |
 | `form_validation.py` | 表单验证错误检测 | base_executor + replay_engine |
 | `tab_helpers.py` | Tab 切换与恢复（多 Tab 页面） | transition_helpers + replay_engine |
@@ -472,7 +479,7 @@ Stage 3 (`field_classifier.py`) 将请求体字段分为 5 个角色，驱动 Ma
 4. **Pass 4: generate** — 值模式分析（uuid、hex_id、phone、email）
 5. **Pass 5: static** — 兜底
 
-**核心依赖**：`ValueIndex`（`field_classifier.py`）存储前置 API 响应 + 创建体 + 创建响应的值索引，Pass 3 的 context 识别完全依赖值相等匹配，不依赖字段名。
+**核心依赖**：`ValueIndex`（`field_classifier.py`）存储前置 API 响应 + 创建体 + 创建响应的值索引，Pass 3 的 context 识别完全依赖值相等匹配，不依赖字段名。`ValueIndex.lookup` 同分平局时按 **timestamp 最早优先**（首次产生者）打破——与值追溯三原则的时间最早原则一致。
 
 ### 4.10 replay_engine 支持的操作类型
 
@@ -489,6 +496,29 @@ Stage 3 (`field_classifier.py`) 将请求体字段分为 5 个角色，驱动 Ma
 | `click_xpath` | XPath 点击 | 复杂定位点击 |
 | `sync_vue_model` | Vue model 同步验证 | 下拉框值同步 |
 | `check_default_value` | 检查默认值 | 表单默认值验证 |
+
+### 4.11 定位器生成合规（原则 2 源头治理）
+
+定位器生成遵循用户核心原则 2：**文本 + 相对路径 + 属性定位，禁止全局/绝对路径/编号/坐标定位**。2026-11 审计后完成以下源头修复：
+
+| 治理项 | 修复内容 |
+|--------|----------|
+| DOM 路径深度截断（P0-3） | `form_filler._buildSelector` 生成 selector 深度上限 <4，遇到语义容器（`.el-form-item`、`.el-dialog` 等）即截断——消除逐级爬 DOM 到 `#app` 的 9 层绝对路径 |
+| switch 定位（P0-4） | 删除全页面序号 `nth-of-type` 错误分支，改文本锚点定位 + 空 locator 守卫 |
+| tab 定位（P0-5） | tab locator 仅落盘 `#id`；无 id 时不落坏 fallback（回放端已有 tab_name 文本定位） |
+| IP/复合输入（P0-7） | 回放端弱化版 `_fill_ip_input`/`_fill_composite_input` 删除，委托 `form_filler` 完整版（v4/v6 全段型+区间型解析） |
+| strict 死参数（P0-6） | `verify_operation_success(strict=)` 假参数删除，调用点清零 |
+
+已知保留项（经审计论证）：`xpath_index` 回放契约（优先消费 Stage 1 记录的成功路径，有全量遍历降级兜底）、行内坐标点击兜底（运行时即时计算不落盘）、`trigger:has-text` 全局匹配（P2-1 延后，出现点错对象案例即升级加唯一性校验）。
+
+### 4.12 数据格式权威契约与 fail-fast（A-3）
+
+Stage 3 产物字段以单一权威名为准，旧格式数据显式拒绝（不兼容旧产物原则）：
+
+- **analysis 字段权威名**：`crud_order`（执行顺序）/ `api_by_button`（按钮-API 映射）——analyze_flow 生成、manifest_builder/run.py 消费全链同名；`validate_stage3` 对旧名 `order`/`api_mapping` 直接报错
+- **value_index 必传**：`analyze()` Step 6 构建 value_index 后必传给 `build_manifest` / `trace_pre_api_dependencies` 并落盘；缺失时两个消费方都显式抛 `ValueError`（旧格式 Stage 34 产物要求重跑生成），不再内部降级构建
+- **assert_mode 守卫**：playbook 缺 `assert_mode` 字段时回放引擎显式报错（旧 playbook 不兼容）
+- **值追溯三原则**：值匹配 → **时间最早（首次产生者）** → 多级递归（`value_chain._trace_value`，ts 升序取首个 + `ValueIndex.lookup` 同分平局按 timestamp 最早打破）
 
 ---
 

@@ -1350,42 +1350,6 @@ class TestValueIndexIntegration:
             assert roles["tenantId"]["role"] == "context"
             assert "current_user" in roles["tenantId"]["source"]
 
-    def test_no_value_index_backward_compat(self):
-        """analysis 无 value_index 时内部构建（向后兼容）"""
-        create_ep = _make_endpoint("POST", "/api/items/create",
-                                   body={"name": "test"})
-
-        response_samples = {
-            "/api/items/create": [
-                _make_response_sample(
-                    {"success": True, "entity": {"id": "item_001"}},
-                    context="replay:create"
-                ),
-            ],
-        }
-
-        analysis = _make_analysis(
-            core_apis={"create": [create_ep]},
-            crud_order=["create"],
-            dependencies={
-                "id_producer": "create",
-                "id_field_details": {
-                    "id": {"path": "entity.id", "sample_value": "item_001"},
-                },
-            },
-            core_api_map={"create": [create_ep]},
-        )
-        # 移除 value_index 模拟旧数据
-        del analysis["value_index"]
-
-        capture = _make_capture_result(response_samples=response_samples)
-        profile = _make_profile()
-
-        # 不应抛异常
-        manifest = build_manifest(analysis, capture, profile, "items",
-                                  "https://app.example.com/items")
-        assert len(manifest["steps"]) > 0
-
 
 class TestEdgeCases:
     """测试边界情况"""

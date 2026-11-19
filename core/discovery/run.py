@@ -1614,7 +1614,8 @@ async def main():
         LOG.info(f"已从文件加载 manifest: {manifest_path}")
         # 从 modules.yaml 读取 group 信息
         from core.discovery.io_helpers import load_modules_yaml as _load_mod_yaml
-        from core.discovery.io_helpers import get_or_assign_module_index
+        # 注: get_or_assign_module_index 走模块级 import（本函数作用域内再局部 import
+        # 会遮蔽全局名，非 Stage5 路径先于该行执行时抛 UnboundLocalError）
         _s5_group = None
         for m in _load_mod_yaml(project_dir):
             if m.get("name") == args.module:

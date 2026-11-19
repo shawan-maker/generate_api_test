@@ -244,6 +244,7 @@ class TestTracePreApiDependencies:
 
     def test_empty_candidates_empty_result(self):
         """空候选列表 → 空结果"""
+        vi = build_value_index(pre_api_candidates=[], create_body_sample=None)
         core_apis = {
             "update": [_make_endpoint("/api/users/update", {"tenantId": "T123"})],
         }
@@ -253,6 +254,7 @@ class TestTracePreApiDependencies:
             pre_api_candidates=[],
             context_fields={},
             id_field_details={},
+            value_index=vi,
         )
 
         assert result["pre_apis"] == []
@@ -354,29 +356,6 @@ class TestTracePreApiDependencies:
         pre_ids = {p["id"] for p in result["pre_apis"]}
         assert "ext_api" in pre_ids
 
-    def test_without_value_index_built_internally(self):
-        """不传 value_index → 内部自动构建"""
-        pre_api = _make_pre_api(
-            api_id="auto_api",
-            response_body_dict={"regionId": "R777"},
-            extracted_fields=[{"name": "regionId", "path": "regionId"}],
-        )
-
-        core_apis = {
-            "update": [_make_endpoint("/api/u", {"regionId": "R777"})],
-        }
-        # 不传 value_index，让函数内部构建
-        result = trace_pre_api_dependencies(
-            core_apis=core_apis,
-            response_samples={},
-            pre_api_candidates=[pre_api],
-            context_fields={},
-            id_field_details={},
-        )
-
-        pre_ids = {p["id"] for p in result["pre_apis"]}
-        assert "auto_api" in pre_ids
-
     def test_field_resolutions_populated(self):
         """context 字段的 field_resolutions 被正确填充"""
         pre_api = _make_pre_api(
@@ -441,12 +420,14 @@ class TestTracePreApiDependencies:
 
     def test_empty_core_apis(self):
         """空 core_apis → 空结果"""
+        vi = build_value_index(pre_api_candidates=[], create_body_sample=None)
         result = trace_pre_api_dependencies(
             core_apis={},
             response_samples={},
             pre_api_candidates=[],
             context_fields={},
             id_field_details={},
+            value_index=vi,
         )
 
         assert result["pre_apis"] == []

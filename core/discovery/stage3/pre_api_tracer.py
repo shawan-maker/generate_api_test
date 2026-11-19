@@ -15,7 +15,6 @@ import logging
 from core.discovery import const
 from core.discovery.stage3.field_classifier import (
     ValueIndex,
-    build_value_index,
     classify_fields_recursive,
     is_noise_value,
     _get_nested_value,
@@ -28,8 +27,8 @@ LOG = logging.getLogger("pre_api_tracer")
 def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
                                pre_api_candidates: list, context_fields: dict,
                                id_field_details: dict,
-                               id_producer: str = None,
-                               value_index: 'ValueIndex' = None) -> dict:
+                               value_index: 'ValueIndex',
+                               id_producer: str = None) -> dict:
     """
     前置 API 依赖链追踪（v2.0 使用 5 角色分类引擎）。
 
@@ -42,7 +41,7 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
         context_fields: 上下文字段配置
         id_field_details: ID 字段详情
         id_producer: ID 生产者操作名
-        value_index: 外部传入的值索引（与 build_manifest 共享同一份）
+        value_index: 值索引（必传——由 analyze() Step 6 构建后与 build_manifest 共享同一份）
 
     Returns:
         {
@@ -73,13 +72,11 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
             except Exception:
                 pass
 
-    # 2. 使用外部传入的 value_index（与 build_manifest 共享），或内部构建（向后兼容）
+    # 2. 使用外部传入的 value_index（与 build_manifest 共享）
+    # ★ A-3 死兼容删除：不再内部构建（analyze() Step 6 构建后必传）
     if value_index is None:
-        value_index = build_value_index(
-            pre_api_candidates=pre_api_candidates,
-            create_body_sample=create_body_sample,
-            create_response_sample=create_response_sample,
-            context_fields=context_fields,
+        raise ValueError(
+            "trace_pre_api_dependencies 需要 value_index（由 analyze() Step 6 构建后传入）"
         )
 
     # 3. 对每个操作进行分类，收集 used_apis

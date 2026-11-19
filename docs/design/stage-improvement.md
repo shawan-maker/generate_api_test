@@ -1,7 +1,7 @@
 # 五阶段发现引擎实现详解
 
-**文档版本**: v2.0  
-**最后更新**: 2026-09-22  
+**文档版本**: v2.3  
+**最后更新**: 2026-11-19（同步核心原则审计优化：switch/词表/定位器/行内 JS click 单源化，僵尸与死兼容清理，数据契约 fail-fast）  
 **适用范围**: `core/discovery/` 全模块 + `lib/` 运行时
 
 ---
@@ -184,7 +184,7 @@ Stage 2 不重新探测 UI，而是加载 Stage 1 生成的 playbook，按序回
 |-------------|----------|
 | `click_button` | `ButtonDriver` 点击（KB 模板 fallback + 隐藏过滤 + 覆盖层优先 + iframe 穿透） |
 | `fill_form` | `FormFiller` 按 fill_rule 填充（type-aware 动态构建值） |
-| `click_row_button` | 用 marker 定位行 → 点击行内按钮 |
+| `click_row_button` | 用 marker 定位行 → 点击行内按钮（JS click 兜底走 `row_interaction.js_click_row_button` 单源，marker 作用域重找行） |
 | `click_row_more` | 点击"更多"下拉 → 选择子项 |
 | `find_row` | 在表格中搜索含 marker 的行 |
 | `select_option` | `MultiStepExecutor` 处理 el-select/el-cascader |
@@ -269,10 +269,12 @@ Step 4: 数据依赖链分析（ID 生产者识别 + ID 字段追踪）
     ↓
 Step 5: 状态断言推导（跨响应对比找状态变化规律）
     ↓
-Step 6: 构建 value_index（前置 API 和上下文字段的值索引）
+    Step 6: 构建 value_index（前置 API 和上下文字段的值索引）
     ↓
-Step 7: 前置 API 依赖链追踪
+    Step 7: 前置 API 依赖链追踪
 ```
+
+**value_index 契约**（2026-11 A-3 修复）：Step 6 构建的 value_index 是 `build_manifest` 与 `trace_pre_api_dependencies` 的**必传输入**，并随 analysis.json 落盘；缺失时两消费方均显式抛 `ValueError`（旧格式 Stage 34 产物要求重跑），不再有内部降级构建分支。同时 analysis 字段权威名为 `crud_order`/`api_by_button`（旧名 `order`/`api_mapping` 被 `validate_stage3` 拒绝）。
 
 ### 4.2 各步骤详解
 
@@ -544,10 +546,9 @@ def gen_email():
 
 ### 7.1 反馈循环（feedback_loop.py）
 
-Stage 1 ↔ Stage 2 之间的联动：
+Stage 1 补救链的结果合并（历史版本曾包含 `match_debug_strategy` 策略匹配与 D 轮反馈环预留，2026-11 审计后删除）：
 
-- **策略匹配** — `match_debug_strategy()` 根据错误类型从 `debug_strategies.json` 加载诊断策略
-- **结果合并** — `patch_ui_result()` 将修复后的元素合并回 ui_result（去重）
+- **结果合并** — `patch_ui_result()` 将修复后的元素合并回 ui_result（去重），是 `stage1_rescue` Phase C/D 补救的主路径
 
 ### 7.2 知识库体系
 
@@ -555,9 +556,10 @@ Stage 1 ↔ Stage 2 之间的联动：
 config/
 ├── credentials.yaml         全局凭据库
 ├── failure_patterns.yaml    失败模式（run_history 使用）
-├── probe_lessons_kb.json    反模式库 + 系统配置（KB 驱动注入）
-└── debug_strategies.json    诊断策略（feedback_loop 使用）
+└── probe_lessons_kb.json    反模式库 + 系统配置（KB 驱动注入）
 ```
+
+（`debug_strategies.json` 曾由 feedback_loop 使用，其加载逻辑随 D 轮反馈环删除后已无消费者）
 
 ### 7.4 事件驱动等待（wait_helpers.py）
 
@@ -571,7 +573,6 @@ config/
 | `wait_for_loading_complete()` | 浏览器 load + networkidle + 7 种 loading 元素消失 |
 | `wait_for_navigation_complete()` | 页面跳转完成 |
 | `wait_for_dialog_dismissed()` | 弹窗关闭 |
-| `wait_for_api_response()` | 指定 API 响应返回 |
 
 ### 7.5 前置 API 合并（pre_api_merger.py）
 
@@ -581,18 +582,20 @@ config/
 
 > **原则**：Stage 1 负责探测和记录（静态 locator），Stage 2 负责根据 locator 回放。对于无法通过静态 locator 回放的运行时动态逻辑，在 `core/discovery/shared/` 中**只定义一次**，Stage 1 和 Stage 2 同时调用。
 
-**8 个共享模块**：
+**10 个共享模块**（★ 标记 = 2026-11 核心原则审计后已完成单源化/统一化）：
 
 | 模块 | 功能 | Stage 1 调用方 | Stage 2 调用方 |
 |------|------|----------------|----------------|
-| `success_verifier.py` | 六层策略链验证操作成功 | `base_executor._verify_operation_success` | `replay_engine._step_assert_success` |
-| `switch_ops.py` | Switch 切换 + tab-pane 过滤 + 确认弹框 | `crud_executor._do_toggle_switch` | `replay_engine._step_toggle_switch` |
+| `success_verifier.py` | 六层策略链验证操作成功（★ 失败/成功关键词表统一：全部策略从 `constants.py` 词表参数注入，无 JS 内嵌副本） | `base_executor._verify_operation_success` | `replay_engine._step_assert_success` |
+| `switch_ops.py` | Switch 切换 + tab-pane 过滤 + 确认弹框（★ 单源：Stage 1 主 switch 的内联 JS 复制版已删，探测与回放走同一实现） | `crud_executor._do_toggle_switch` | `replay_engine._step_toggle_switch` |
 | `message_capture.py` | MutationObserver 注入 + 通知钉住 | `base_executor._install_message_capture` | `replay_engine._inject_notification_observer` |
-| `row_interaction.py` | 行定位/勾选/点击（含固定列兼容） | `crud_executor._do_edit/_do_delete` | `replay_engine._step_find_row/_step_click_row_button` |
+| `row_interaction.py` | 行定位/勾选/点击（含固定列兼容）（★ `js_click_row_button` 为行内按钮 JS click 唯一实现，Stage 2 button_driver 与回放兜底共用，marker 作用域重找行） | `crud_executor._do_edit/_do_delete` | `replay_engine._step_find_row/_step_click_row_button` + `button_driver` |
 | `dialog_helpers.py` | 弹框/遮罩层检测与关闭 | `base_executor.cleanup_ui_overlays` | `replay_engine._step_close_dialog` |
 | `form_validation.py` | 表单验证错误检测 | `base_executor` | `replay_engine` |
 | `constants.py` | 共享常量（成功/失败关键词等） | `crud_executor` | — |
 | `marker_utils.py` | Marker 提取（表格行标识） | `crud_extractor` | `replay_engine` |
+| `transition_helpers.py` | 操作间页面衔接（弹窗关闭→导航→Tab 恢复→表格等待） | `crud_executor` | `capture_apis` |
+| `tab_helpers.py` | Tab 切换与恢复（多 Tab 页面） | `transition_helpers` | `replay_engine` |
 
 **成功验证六层策略链**（`success_verifier.py`）：
 
@@ -606,6 +609,8 @@ config/
 F.   主动失败检测 → dialog / error message / form validation
 兜底: 仅 PROCESSING → 成功；无信号 → 失败
 ```
+
+**通知关键词词表统一**（2026-11 修复 C-2）：策略 0/0.5/1/3/F 的失败/成功关键词全部来自 `constants.py` 的 18 词统一词表（含「N个失败」豁免正则），通过 Playwright `evaluate` 参数注入传入页面——同一操作换策略链路得到一致语义分类，词表更新单点生效（历史上 JS 内嵌 6 词小词表副本已删除）。
 
 **开发规范**：
 1. 新增运行时动态逻辑 → 在 `shared/` 中创建模块，在 `__init__.py` 中导出
@@ -931,13 +936,13 @@ TestRunner(MANIFEST, shared_context)
 | `core/discovery/gen_test.py` | Stage 4 薄脚本生成 + 运行时同步 |
 | `core/discovery/generate_ui_script.py` | Stage 2b UI 脚本生成 |
 | `core/discovery/export_artifacts.py` | Stage 5 导出（Postman/helpers/Excel） |
-| `core/discovery/feedback_loop.py` | Stage 1↔2 反馈循环 |
+| `core/discovery/feedback_loop.py` | Stage 1 补救链 UI 结果修补（patch_ui_result） |
 | `core/discovery/nav_discovery.py` | 导航菜单爬取 |
 | `core/discovery/discover_navigation.py` | 导航发现编排 + modules.yaml 生成 |
 | `core/discovery/pre_api_merger.py` | 跨模块前置 API 合并 |
 | `core/discovery/const.py` | 常量定义（选择器、字段名、UI 框架配置） |
 | `core/discovery/run_parallel.py` | 并行测试执行 |
-| `core/discovery/shared/` | ★ Stage 1/2 共享运行时逻辑（8 个模块，见 §9） |
+| `core/discovery/shared/` | ★ Stage 1/2 共享运行时逻辑（10 个模块，见 §7.6） |
 | `core/discovery/shared/success_verifier.py` | 操作成功验证（六层策略链） |
 | `core/discovery/shared/switch_ops.py` | Switch 切换（tab-pane 过滤 + 确认弹框） |
 | `core/discovery/shared/message_capture.py` | MutationObserver 消息捕获 + 通知钉住 |
@@ -953,5 +958,5 @@ TestRunner(MANIFEST, shared_context)
 
 ---
 
-**文档版本**: v2.2  
-**最后更新**: 2026-10-19
+**文档版本**: v2.3  
+**最后更新**: 2026-11-19

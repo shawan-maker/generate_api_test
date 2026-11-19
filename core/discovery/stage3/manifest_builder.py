@@ -18,7 +18,7 @@ from collections import defaultdict
 
 from core.discovery import const
 from core.discovery.stage3.field_classifier import (
-    ValueIndex, build_value_index, classify_fields_recursive,
+    ValueIndex, classify_fields_recursive,
     _get_nested_value, _flatten_body_for_match, _extract_by_path_generic,
 )
 from core.discovery.stage3.api_classifier import (
@@ -201,34 +201,14 @@ def build_manifest(analysis: dict, capture_result: dict,
     context_field_names = set(context_fields.keys())
 
     # 6. 复用 analyze() 构建的 value_index（与 Phase B 共享同一份）
+    # ★ A-3 死兼容删除：analysis 缺 value_index（旧格式 Stage 34 产物）不再
+    #   内部构建，显式报错——与 assert_mode 守卫同口径的 fail-fast 设计
     value_index_dict = analysis.get("value_index")
-    if value_index_dict is not None:
-        value_index = ValueIndex.from_dict(value_index_dict)
-    else:
-        # 向后兼容：如果 analysis 中没有 value_index（旧数据），内部构建
-        create_response_sample = None
-        if id_producer and id_producer in core_apis:
-            create_eps = core_apis[id_producer]
-            create_pn = create_eps[0].get("pathname", "")
-            create_resp_samples = response_samples.get(create_pn, [])
-            # ★ 按 context 筛选创建响应样本
-            op_context = f"replay:{id_producer}"
-            matched_samples = [s for s in create_resp_samples if s.get("context") == op_context]
-            if not matched_samples:
-                matched_samples = create_resp_samples
-            if matched_samples:
-                try:
-                    body_text = matched_samples[0].get("body", "{}")
-                    create_response_sample = json.loads(body_text) if isinstance(body_text, str) else body_text
-                except Exception:
-                    pass
-
-        value_index = build_value_index(
-            pre_api_candidates=pre_api_candidates,
-            create_body_sample=create_body_sample,
-            create_response_sample=create_response_sample,
-            context_fields=context_fields,
+    if value_index_dict is None:
+        raise ValueError(
+            "analysis 缺少 value_index（旧格式 Stage 34 产物）——请重跑 Stage 34 重新生成"
         )
+    value_index = ValueIndex.from_dict(value_index_dict)
 
     # 获取可用的验证端点（query / detail）
     # 优先从 core_apis 获取；如果 query/detail 被同现过滤器误杀，

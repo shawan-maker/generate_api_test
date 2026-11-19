@@ -307,7 +307,7 @@ class TestValidateStage3:
     def test_valid_result(self):
         """有效的 Stage 3 结果"""
         result = {
-            "order": [
+            "crud_order": [
                 {"name": "create"},
                 {"name": "query"},
                 {"name": "update"},
@@ -315,7 +315,7 @@ class TestValidateStage3:
             ],
             "dependencies": {"id": "from_create"},
             "state_assertions": {"state_field": "state"},
-            "api_mapping": {"create": "/api/create"},
+            "api_by_button": {"create": "/api/create"},
         }
         is_valid, issues = validate_stage3(result)
         assert is_valid is True
@@ -324,10 +324,10 @@ class TestValidateStage3:
     def test_empty_order(self):
         """执行顺序为空"""
         result = {
-            "order": [],
+            "crud_order": [],
             "dependencies": {},
             "state_assertions": {},
-            "api_mapping": {},
+            "api_by_button": {},
         }
         is_valid, issues = validate_stage3(result)
         assert is_valid is False
@@ -336,10 +336,10 @@ class TestValidateStage3:
     def test_short_order(self):
         """执行顺序过短"""
         result = {
-            "order": [{"name": "query"}],
+            "crud_order": [{"name": "query"}],
             "dependencies": {},
             "state_assertions": {},
-            "api_mapping": {},
+            "api_by_button": {},
         }
         is_valid, issues = validate_stage3(result)
         assert is_valid is False
@@ -348,12 +348,12 @@ class TestValidateStage3:
     def test_missing_create_step(self):
         """order 过短（数据驱动：不再检查具体 action 名）"""
         result = {
-            "order": [
+            "crud_order": [
                 {"name": "query"},
             ],
             "dependencies": {},
             "state_assertions": {},
-            "api_mapping": {},
+            "api_by_button": {},
         }
         is_valid, issues = validate_stage3(result)
         assert is_valid is False
@@ -362,14 +362,14 @@ class TestValidateStage3:
     def test_empty_dependencies(self):
         """依赖关系为空"""
         result = {
-            "order": [
+            "crud_order": [
                 {"name": "create"},
                 {"name": "query"},
                 {"name": "delete"},
             ],
             "dependencies": {},
             "state_assertions": {"state_field": "state"},
-            "api_mapping": {"create": "/api/create"},
+            "api_by_button": {"create": "/api/create"},
         }
         is_valid, issues = validate_stage3(result)
         assert is_valid is False

@@ -252,11 +252,11 @@ def validate_stage3(analysis: dict) -> Tuple[bool, List[str]]:
     if not isinstance(analysis, dict):
         return False, ["analysis 不是字典"]
 
-    # 1. 检查执行顺序（兼容 crud_order 和 order 两个字段名）
-    order = analysis.get("crud_order") or analysis.get("order", [])
+    # 1. 检查执行顺序（字段名 crud_order 与 analyze_flow 生成源一致）
+    order = analysis.get("crud_order", [])
 
     if not order:
-        issues.append("执行顺序为空（crud_order/order 为空），顺序推导可能失败")
+        issues.append("执行顺序为空（crud_order 为空），顺序推导可能失败")
     elif len(order) < 2:
         issues.append(f"执行顺序过短 ({len(order)} 步)，可能遗漏关键步骤")
 
@@ -272,11 +272,11 @@ def validate_stage3(analysis: dict) -> Tuple[bool, List[str]]:
     if not assertions:
         issues.append("状态断言为空（state_assertions 为空），状态推导可能失败")
 
-    # 5. 检查 API 映射（兼容 api_by_button 和 api_mapping 两个字段名）
-    api_mapping = analysis.get("api_by_button") or analysis.get("api_mapping", {})
+    # 5. 检查 API 映射（字段名 api_by_button 与 analyze_flow 生成源一致）
+    api_mapping = analysis.get("api_by_button", {})
 
     if not api_mapping:
-        issues.append("API 映射为空（api_by_button/api_mapping 为空），按钮-API 关联可能失败")
+        issues.append("API 映射为空（api_by_button 为空），按钮-API 关联可能失败")
 
     # 判断是否通过
     is_valid = len(issues) == 0
