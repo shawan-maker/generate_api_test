@@ -83,6 +83,22 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
         )
 
     # 3. 对每个操作进行分类，收集 used_apis
+    def _is_create_like(action_name: str, ep: dict) -> bool:
+        """与 manifest_builder._is_create_like_action 同口径的 create 类判定。
+
+        create 响应回显入值索引后，create 步骤的 body 字段会与
+        create.{field} 精确匹配（如 allocateId 与 create.allocateId 并列
+        display_by_role 评分持平），须排除 create/create_body 源防止
+        前置 API 收集翻转（create 请求只能引用前置 API/auth）。
+        """
+        if action_name == id_producer:
+            return True
+        if ep.get("method") == "POST" and ep.get("response_has_id"):
+            create_keywords = ["新增", "创建", "添加", "create", "add"]
+            if any(kw in action_name.lower() for kw in create_keywords):
+                return True
+        return False
+
     used_apis = {}
     field_resolutions = {}
     for action, endpoints in core_apis.items():
@@ -94,8 +110,8 @@ def trace_pre_api_dependencies(core_apis: dict, response_samples: dict,
             continue
 
         # 使用新的 5 角色分类（递归，含嵌套 dict 字段）
-        # 对 id_producer 操作排除 create_body（与 build_manifest 一致）
-        exclude = {"create_body"} if action == id_producer else None
+        # create-like 操作排除 create/create_body（与 build_manifest 一致）
+        exclude = ({"create", "create_body"} if _is_create_like(action, ep) else None)
         field_roles = classify_fields_recursive(
             body_sample, value_index, create_body_sample, current_action=action,
             exclude_sources=exclude

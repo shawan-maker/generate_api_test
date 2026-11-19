@@ -74,75 +74,6 @@ def load_profile(project_dir: Path) -> dict:
     return profile
 
 
-def save_credentials(project_id: str, credentials: dict):
-    """将项目凭据保存到全局凭据库（credentials.yaml）。
-
-    按 base_url 组织到 sites 下：
-        sites:
-          "https://10.151.61.248":
-            username: estack-yy
-            password: ...
-            auth: { ... }
-
-    Args:
-        project_id: 项目 ID（用作 label，向后兼容）
-        credentials: 凭据字典，必须包含 base_url，可选 username, password, auth, login_url
-    """
-    try:
-        import yaml
-    except ImportError:
-        LOG.warning("PyYAML 未安装，无法保存凭据")
-        return
-
-    try:
-        framework_root = Path(__file__).resolve().parents[2]
-        creds_file = framework_root / "config" / "credentials.yaml"
-
-        # 加载现有凭据
-        all_creds = {}
-        if creds_file.exists():
-            all_creds = yaml.safe_load(creds_file.read_text(encoding="utf-8")) or {}
-
-        # 确保 sites 字典存在
-        sites = all_creds.setdefault("sites", {})
-
-        # 按 base_url 写入
-        base_url = credentials.get("base_url", "")
-        if not base_url:
-            LOG.warning(f"save_credentials: 缺少 base_url，无法保存")
-            return
-
-        if base_url not in sites:
-            sites[base_url] = {}
-
-        # 合并凭据（不覆盖 base_url 本身）
-        for k, v in credentials.items():
-            if k == "base_url":
-                continue
-            if k == "auth" and isinstance(v, dict) and isinstance(sites[base_url].get("auth"), dict):
-                # auth 深度合并
-                sites[base_url]["auth"].update(v)
-            else:
-                sites[base_url][k] = v
-
-        # 确保 label 字段存在
-        if "label" not in sites[base_url]:
-            sites[base_url]["label"] = project_id
-
-        # 确保目录存在
-        creds_file.parent.mkdir(parents=True, exist_ok=True)
-
-        # 写入文件
-        creds_file.write_text(
-            yaml.dump(all_creds, allow_unicode=True, default_flow_style=False, sort_keys=False),
-            encoding="utf-8"
-        )
-
-        LOG.info(f"✅ 凭据已保存到全局凭据库: {base_url}")
-    except Exception as e:
-        LOG.warning(f"保存凭据失败: {e}")
-
-
 def load_ui_result(project_dir: Path, module_name: str) -> dict:
     """加载已保存的 UI 探测结果。"""
     ws = get_workspace_dir(project_dir)
@@ -165,7 +96,7 @@ def save_json(data: dict, path: Path):
 def load_modules_yaml(project_dir: Path) -> list:
     """加载 modules.yaml 模块清单。返回模块列表，按 priority 排序。
 
-    每个模块保证包含 group 字段（兼容旧格式：从 tags 提取或默认 "未分类"）。
+    要求 modules.yaml 中每个模块自带 group 字段（旧格式 tags 补全回退已删除）。
     """
     modules_file = project_dir / "modules.yaml"
     if not modules_file.exists():
@@ -182,17 +113,6 @@ def load_modules_yaml(project_dir: Path) -> list:
 
         # 过滤 enabled=false 的模块
         modules = [m for m in modules if m.get("enabled", True)]
-
-        # 确保每个模块有 group 字段（兼容旧格式）
-        for m in modules:
-            if "group" not in m or not m["group"]:
-                # 从 tags 中提取一级菜单，或默认 "未分类"
-                tags = m.get("tags", [])
-                if tags and isinstance(tags[0], str):
-                    raw = tags[0]
-                    m["group"] = raw.split(" > ")[0].strip() if raw else "未分类"
-                else:
-                    m["group"] = "未分类"
 
         # 按 priority 排序（默认 100）
         modules.sort(key=lambda m: m.get("priority", 100))
@@ -375,39 +295,6 @@ def get_or_assign_group_index(project_dir: Path, version: str,
         return f"{max(numbered) + 1:02d}"
 
     return "01"
-
-
-def get_module_group_index(project_dir: Path, module_name: str) -> str:
-    """获取模块在其分组内的编号（01, 02, 03...）。
-
-    已废弃：请优先使用 get_or_assign_module_index()。
-    此函数保留向后兼容，内部代理到新函数。
-
-    Args:
-        project_dir: 项目目录
-        module_name: 模块名称
-
-    Returns:
-        两位数字编号（如 "01", "02"），找不到时返回 "01"
-    """
-    modules = load_modules_yaml(project_dir)
-    if not modules:
-        return "01"
-
-    # 找到目标模块的 group
-    target_group = None
-    for m in modules:
-        if m.get("name") == module_name:
-            target_group = m.get("group")
-            break
-
-    if not target_group:
-        return "01"
-
-    # 尝试从文件系统获取稳定编号
-    from core.discovery import version as ver_mod
-    version = ver_mod.resolve_version(project_dir)
-    return get_or_assign_module_index(project_dir, version, target_group, module_name)
 
 
 def needs_rediscovery(project_dir: Path, module_name: str, module_url: str,

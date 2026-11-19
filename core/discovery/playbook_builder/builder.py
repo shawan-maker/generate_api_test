@@ -1889,8 +1889,6 @@ def _build_page_nav_steps(op_data: dict) -> list:
 
         # ★ 以 form_fields 为主数据源（含 selector + kb_category，来自 scan_form_fields_v2）
         # field_states 仅补充元数据（isDisabled, isMultiSelect, value）
-        processed_labels = set()
-
         for field in form_fields:
             label = field.get("label", "")
             selector = field.get("selector", "")
@@ -1906,8 +1904,6 @@ def _build_page_nav_steps(op_data: dict) -> list:
             is_disabled = fs.get("isDisabled", False)
             if is_disabled:
                 continue
-
-            processed_labels.add(label)
 
             # 根据 kb_category 构建字段条目（使用 scan_form_fields_v2 的真实类别）
             if kb_category == "el-select":
@@ -1981,17 +1977,6 @@ def _build_page_nav_steps(op_data: dict) -> list:
                     "playwright_locator": selector,
                     "fill_rule": {},
                 })
-
-        # 补充 field_states 中有但 form_fields 中没有的字段（旧 playbook 兼容）
-        for fs in field_states:
-            label = fs.get("label", "")
-            if not label or label in processed_labels:
-                continue
-            is_disabled = fs.get("isDisabled", False)
-            if is_disabled:
-                continue
-            # 无 selector 的字段无法生成可执行步骤，跳过
-            LOG.debug(f"    field_states 字段 {label} 无对应 form_fields 条目，跳过")
 
         if fill_fields:
             steps.append({

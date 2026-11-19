@@ -666,7 +666,7 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
 
             # 验证提交是否成功（使用捕获的消息）
             captured_msgs = await _get_captured_messages(page)
-            success, _detail = await _verify_operation_success(page, "submit", strict=True,
+            success, _detail = await _verify_operation_success(page, "submit",
                                                        captured_messages=captured_msgs)
 
             # ★ 问题三修复：检测部分成功场景
@@ -1377,10 +1377,10 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
             if not captured_msgs:
                 LOG.warning(f"    [DIAG-submitB-verify] ⚠️ DOM 有通知但 captured_msgs 为空，Observer 可能已失效！")
 
-        success, _detail = await _verify_operation_success(page, "submit", strict=True,
+        success, _detail = await _verify_operation_success(page, "submit",
                                                    captured_messages=captured_msgs)
         # === DIAG-P5-2: verify 结果 ===
-        LOG.info(f"    [DIAG-submitB-verify] verify结果: success={success}, detail={_detail}, strict=True")
+        LOG.info(f"    [DIAG-submitB-verify] verify结果: success={success}, detail={_detail}")
 
         # ★ partial_success 检测：通知同时含"成功"和"失败"时标记为部分成功
         if not success and captured_msgs:
@@ -1521,6 +1521,7 @@ async def _navigate_back_to_list(page, original_url: str, tab_name: str = "", ta
             LOG.error(f"    导航回原始页面失败: {e2}")
 
     # ★ Tab 恢复：导航后可能跳回默认 Tab，需要恢复到目标 Tab
-    if tab_name and tab_locator:
-        from core.discovery.operation_executor.base_executor import _restore_active_tab
-        await _restore_active_tab(page, tab_name, tab_locator)
+    # （tab_locator 为空时按文本回退，shared 统一实现）
+    if tab_name:
+        from core.discovery.shared.tab_helpers import restore_active_tab
+        await restore_active_tab(page, tab_name, tab_locator)

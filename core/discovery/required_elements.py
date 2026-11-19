@@ -17,7 +17,7 @@ from typing import Dict, List, Tuple, Optional
 from core.discovery.page_classifier import classify_page_type
 
 
-def check_required_elements(ui_result: Dict, flow_name: str) -> Tuple[bool, List[Dict]]:
+def check_required_elements(ui_result: Dict) -> Tuple[bool, List[Dict]]:
     """检查 ui_result 是否包含必要的结构性元素。
 
     泛化版本：不检查具体按钮文本，只检查：
@@ -32,7 +32,6 @@ def check_required_elements(ui_result: Dict, flow_name: str) -> Tuple[bool, List
 
     Args:
         ui_result: Stage 1 输出
-        flow_name: 流程名称（保留参数以兼容旧接口，实际不使用）
 
     Returns:
         (all_present, missing_elements)

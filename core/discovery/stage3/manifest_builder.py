@@ -955,7 +955,10 @@ def build_manifest(analysis: dict, capture_result: dict,
             # Also exclude uncollected pre-APIs (won't be executed at runtime)
             is_create_like = _is_create_like_action(action, ep)
             if is_create_like:
-                exclude = {"create_body"} | uncollected_pre_api_ids
+                # create 请求不得引用自身响应回显（create.type/create.allocateId 等
+                # ——create 响应入值索引后 Pass 3a 会命中，context 清空后运行时发
+                # null 导致 create 失败）；create_body 排除防自引用
+                exclude = {"create", "create_body"} | uncollected_pre_api_ids
             else:
                 exclude = None
             field_roles = classify_fields_recursive(

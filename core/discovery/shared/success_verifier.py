@@ -31,12 +31,18 @@ from .. import const
 
 LOG = logging.getLogger(__name__)
 
+# ★ P0-2（C-2 修复）：JS 侧词表单源注入——全部源自 const.NOTIFICATION_*_KEYWORDS。
+# 旧实现：策略 0 走 const 全量词表（classify_notification），策略 0.5/1/3/F 用 JS
+# 内嵌 6 词影子词表——同一通知可能被策略 0 判 neutral、被影子词表漏判，语义漂移。
+# 统一后：四策略与 classify_notification 同词表、同小写匹配、同零失败排除。
+_JS_FAIL_KEYWORDS = sorted(kw.lower() for kw in const.NOTIFICATION_FAILURE_KEYWORDS)
+_JS_SUCCESS_KEYWORDS = sorted(kw.lower() for kw in const.NOTIFICATION_SUCCESS_KEYWORDS)
+
 
 async def verify_operation_success(
     page: Page,
     operation_type: str = "",
     mode: str = "message",
-    strict: bool = False,
     timeout: int = 5000,
     captured_messages: list = None,
     error_type: str = "",
@@ -62,7 +68,6 @@ async def verify_operation_success(
                 其余（env_dependency 等，业务动作未被录制、回放无法感知环境墙）
                 → 声明盲区（success=True，matched_method="expected_failure:blind_spot:<type>"，
                 交由报告层如实标注"业务未闭环"，不计红线、不谎报成功）
-        strict: 严格模式（需要正向成功信号，而非"无错误即成功"）
         timeout: 轮询超时（毫秒）
         captured_messages: 由 get_captured_messages() 返回的捕获消息列表
         error_type: Stage 1 记录的预期失败类型（expected_failure 模式必需）
@@ -118,10 +123,11 @@ async def verify_operation_success(
         pass
 
     # ── 策略 0.5: 失败文本优先检测（限定在通知组件范围内） ──
+    # ★ P0-2: failKw 由 const.NOTIFICATION_FAILURE_KEYWORDS 注入（同策略 0 词表），
+    #   小写匹配 + 零失败排除，与 classify_notification 判定口径一致
     if matched_method is None and failure_reason is None:
         try:
-            failure_text = await page.evaluate("""() => {
-                const failKw = ['失败', '错误', '异常', 'error', '无权', '权限不足'];
+            failure_text = await page.evaluate("""(failKw) => {
                 const selectors = [
                     '.el-message', '.el-message--error', '.el-message--warning',
                     '.el-notification', '.el-alert',
@@ -134,14 +140,18 @@ async def verify_operation_success(
                         if (el.__op_baseline) continue;
                         if (el.offsetParent !== null) {
                             const text = (el.textContent || '').trim();
-                            if (text && failKw.some(kw => text.includes(kw))) {
+                            if (!text) continue;
+                            // 零失败模式排除（"0个失败"类文本不算失败信号）
+                            if (/0个失败|0个错误|失败[：:]\s*0|失败数为0|无失败/.test(text)) continue;
+                            const lower = text.toLowerCase();
+                            if (failKw.some(kw => lower.includes(kw))) {
                                 return text.substring(0, 200);
                             }
                         }
                     }
                 }
                 return null;
-            }""")
+            }""", _JS_FAIL_KEYWORDS)
             if failure_text:
                 failure_reason = failure_text
                 failure_type = "notification"
@@ -150,10 +160,10 @@ async def verify_operation_success(
             pass
 
     # ── 策略 1: 成功文本匹配（限定在通知组件内） ──
+    # ★ P0-2: successKw 由 const.NOTIFICATION_SUCCESS_KEYWORDS 注入（同策略 0 词表）
     if matched_method is None and failure_reason is None:
         try:
-            success_text = await page.evaluate("""() => {
-                const successKw = ['成功', '完成', '已保存', '已添加', '已删除', '已更新'];
+            success_text = await page.evaluate("""(successKw) => {
                 const selectors = [
                     '.el-message', '.el-message--success',
                     '.el-notification', '.el-alert',
@@ -166,14 +176,14 @@ async def verify_operation_success(
                         if (el.__op_baseline) continue;
                         if (el.offsetParent !== null) {
                             const text = (el.textContent || '').trim();
-                            if (text && successKw.some(kw => text.includes(kw))) {
+                            if (text && successKw.some(kw => text.toLowerCase().includes(kw))) {
                                 return text.substring(0, 200);
                             }
                         }
                     }
                 }
                 return null;
-            }""")
+            }""", _JS_SUCCESS_KEYWORDS)
             if success_text:
                 matched_method = f"notification_text:成功:{success_text[:30]}"
                 LOG.info(f"    ✓ 操作成功验证通过: {matched_method}")
@@ -283,10 +293,8 @@ async def verify_operation_success(
     #   只读弹窗内容（历史记录/业务详情）天然可能含失败关键词，不跳过必误报
     if matched_method is None and failure_reason is None and mode != "read_complete":
         for _poll in range(5):
-            dialog_result = await page.evaluate(r"""() => {
-                const successKw = ['成功', '完成', '已保存', '已添加', '已删除', '已更新'];
-                const errKw = ['失败', '错误', '异常', 'error', '无权', '权限不足'];
-
+            # ★ P0-2: 词表由 const.NOTIFICATION_*_KEYWORDS 注入（同策略 0 词表）
+            dialog_result = await page.evaluate(r"""([successKw, errKw]) => {
                 const containers = [
                     ...document.querySelectorAll('.el-message-box__wrapper:not([style*="display: none"])'),
                     ...document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"])')
@@ -300,12 +308,13 @@ async def verify_operation_success(
                     if (!content) continue;
                     const text = content.textContent.trim();
                     if (!text) continue;
+                    const lower = text.toLowerCase();
 
                     const zeroFailurePattern = /0个失败|0个错误|失败[：:]\s*0|失败数为0|无失败/;
                     const hasZeroFailure = zeroFailurePattern.test(text);
 
-                    const hasSuccess = successKw.some(kw => text.includes(kw));
-                    const hasError = errKw.some(kw => text.includes(kw));
+                    const hasSuccess = successKw.some(kw => lower.includes(kw));
+                    const hasError = errKw.some(kw => lower.includes(kw));
                     if (hasError && !hasZeroFailure) {
                         return { type: 'error', text: text.substring(0, 200) };
                     }
@@ -314,7 +323,7 @@ async def verify_operation_success(
                     }
                 }
                 return null;
-            }""")
+            }""", [_JS_SUCCESS_KEYWORDS, _JS_FAIL_KEYWORDS])
             if dialog_result:
                 if dialog_result.get('type') == 'success':
                     matched_method = f"dialog:success:{dialog_result['text'][:30]}"
@@ -346,8 +355,9 @@ async def verify_operation_success(
     #   保留 error toast / 表单校验两类结构化错误通道（不吞真实错误）
     if matched_method is None and failure_reason is None:
         try:
-            failure_signals = await page.evaluate("""(skipDialogScan) => {
-                const failKw = ['失败', '错误', '异常', 'error', '无权', '权限不足'];
+            # ★ P0-2: failKw 由 const.NOTIFICATION_FAILURE_KEYWORDS 注入（同策略 0 词表），
+            #   dialog/message-box 关键词扫描补零失败排除（与策略 3 同口径）
+            failure_signals = await page.evaluate("""([skipDialogScan, failKw]) => {
                 const results = [];
 
                 // 1. el-dialog 中的失败文本（read_complete 跳过——只读弹窗内容非错误反馈）
@@ -356,7 +366,10 @@ async def verify_operation_success(
                         .forEach(d => {
                             if (d.offsetWidth === 0) return;
                             const text = (d.textContent || '').trim();
-                            if (failKw.some(kw => text.includes(kw))) {
+                            if (!text) return;
+                            if (/0个失败|0个错误|失败[：:]\s*0|失败数为0|无失败/.test(text)) return;
+                            const lower = text.toLowerCase();
+                            if (failKw.some(kw => lower.includes(kw))) {
                                 results.push({source: 'dialog', text: text.substring(0, 200)});
                             }
                         });
@@ -368,7 +381,10 @@ async def verify_operation_success(
                         .forEach(d => {
                             if (d.offsetWidth === 0) return;
                             const text = (d.textContent || '').trim();
-                            if (failKw.some(kw => text.includes(kw))) {
+                            if (!text) return;
+                            if (/0个失败|0个错误|失败[：:]\s*0|失败数为0|无失败/.test(text)) return;
+                            const lower = text.toLowerCase();
+                            if (failKw.some(kw => lower.includes(kw))) {
                                 results.push({source: 'message_box', text: text.substring(0, 200)});
                             }
                         });
@@ -397,7 +413,7 @@ async def verify_operation_success(
                 }
 
                 return results.length > 0 ? results : null;
-            }""", mode == "read_complete")
+            }""", [mode == "read_complete", _JS_FAIL_KEYWORDS])
             if failure_signals:
                 failure_reason = failure_signals[0]["text"]
                 failure_type = failure_signals[0]["source"]

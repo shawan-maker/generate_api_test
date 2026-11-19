@@ -277,7 +277,10 @@ class ValueIndex:
             s -= entry.get("path_depth", 0) * 10
             return s
 
-        return max(entries, key=score)
+        # ★ P0-8（审计 A-2）: 同分平局时取时间最早的条目——
+        # 对齐 API 值匹配三原则的「时间最早」维度（与 value_chain._trace_value 同口径）
+        return max(entries, key=lambda e: (score(e), -(e.get("timestamp") or 0.0)))
+
 
     def lookup_all(self, value, current_action: str = "") -> list:
         """返回某个值在索引中的所有匹配条目（不评分，不排序）。
@@ -302,7 +305,8 @@ class ValueIndex:
 def build_value_index(pre_api_candidates: list, create_body_sample: dict,
                       create_response_sample: dict = None,
                       context_fields: dict = None,
-                      replay_windows: dict = None) -> ValueIndex:
+                      replay_windows: dict = None,
+                      extra_create_response_samples: list = None) -> ValueIndex:
     """构建值 → 来源路径的索引。
 
     扫描所有可用数据源，将响应中的值扁平化为 value_str → source_path 映射。
@@ -310,7 +314,7 @@ def build_value_index(pre_api_candidates: list, create_body_sample: dict,
     数据源（按添加顺序）：
     1. pre_api_candidates 响应（前置 GET API）
     2. create 请求体本身
-    3. create 响应体（entity 字段）
+    3. create 响应体（entity 字段；id_producer 响应 + extra 多 Tab 其余 create 响应）
 
     Args:
         pre_api_candidates: 前置 API 候选列表
@@ -318,6 +322,8 @@ def build_value_index(pre_api_candidates: list, create_body_sample: dict,
         create_response_sample: 创建步骤的响应体 dict（已解析）
         context_fields: auth_profile 中声明的上下文字段
         replay_windows: 操作时间窗口（用于时序）
+        extra_create_response_samples: 多 Tab 模块其余 create 操作的响应体列表
+            （同一 create 端点、不同 Tab context 的响应样本，已解析为 dict）
 
     Returns:
         ValueIndex 实例
@@ -376,28 +382,49 @@ def build_value_index(pre_api_candidates: list, create_body_sample: dict,
                     context="create",
                 )
 
-    # ── 来源 3: create 响应体 ──
-    if create_response_sample and isinstance(create_response_sample, dict):
-        # 遍历 entity 下的所有字段
+    # ── 来源 3: create 响应体（id_producer + 多 Tab 其余 create 响应）──
+    def _index_create_response(resp: dict):
+        """索引单个 create 响应体（支持 dict 与 list 两种 entity 形态）。
+
+        list 形态（如黑白名单 POST /add 返回 entity: [{id: ...}]）按元素展开，
+        每个元素的标量字段以 create.{field_name} 入索引——保证 Pass 2.5
+        "真正引用 create.id 的数组总能通过精确值匹配命中" 的假设对
+        list entity 同样成立。
+
+        list 元素路径更深（entity[0].x），depth=2 使同值竞争时浅路径的
+        pre-API 来源（depth 更浅）在评分中优先。
+        """
+        if not isinstance(resp, dict):
+            return
         entity = None
         for ek in const.ENVELOPE_KEY_CANDIDATES:
-            if ek in create_response_sample and isinstance(create_response_sample[ek], dict):
-                entity = create_response_sample[ek]
+            if ek in resp and isinstance(resp[ek], (dict, list)):
+                entity = resp[ek]
                 break
         if entity is None:
-            entity = create_response_sample
-        if isinstance(entity, dict):
-            for field_name, value in entity.items():
+            entity = resp
+        is_list_entity = isinstance(entity, list)
+        entities = entity if is_list_entity else [entity]
+        for ent in entities:
+            if not isinstance(ent, dict):
+                continue
+            depth = 2 if is_list_entity else 1
+            for field_name, value in ent.items():
                 if isinstance(value, (str, int, float, bool)):
                     vi.add(
                         value_str=str(value),
                         source_api="create",
                         source_path=f"create.{field_name}",
                         field_leaf=field_name,
-                        path_depth=1,
+                        path_depth=depth,
                         timestamp=0,
                         context="create_response",
                     )
+
+    if create_response_sample:
+        _index_create_response(create_response_sample)
+    for extra_resp in (extra_create_response_samples or []):
+        _index_create_response(extra_resp)
 
     LOG.info(f"  [ValueIndex] 构建完成: {len(vi.index)} 个唯一值")
     return vi

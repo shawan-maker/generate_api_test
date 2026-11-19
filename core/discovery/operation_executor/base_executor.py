@@ -684,7 +684,7 @@ async def _get_captured_messages(page, msg_type: str = None, clear: bool = False
     return await get_captured_messages(page, msg_type, clear=clear)
 
 
-async def _verify_operation_success(page, operation_type: str, strict: bool = False,
+async def _verify_operation_success(page, operation_type: str,
                                      captured_messages: list = None, mode: str = "message") -> tuple:
     """验证操作是否成功（弹窗关闭 / 成功提示 / 列表变化 / 捕获的消息）。
 
@@ -693,7 +693,6 @@ async def _verify_operation_success(page, operation_type: str, strict: bool = Fa
     Args:
         page: Playwright Page 对象
         operation_type: 操作类型 (create/update/delete/lock/unlock/...)
-        strict: 严格模式（需要正向成功信号，而非"无错误即成功"）
         captured_messages: 由 _get_captured_messages() 返回的捕获消息列表
         mode: 断言模式（"message"=写操作需成功信号 / "read_complete"=只读完成即成功）
 
@@ -701,7 +700,7 @@ async def _verify_operation_success(page, operation_type: str, strict: bool = Fa
         (success: bool, detail: dict)
         detail 包含:
         - matched_method: str  匹配的成功方法
-        - failure_reason: str  失败原因（如有）
+        - failure_reason: str 失败原因（如有）
         - failure_type: str    失败类型（如有）:
             "notification" | "css:..." | "captured" | "dialog" |
             "form_validation" | "backend" — 明确失败
@@ -712,7 +711,6 @@ async def _verify_operation_success(page, operation_type: str, strict: bool = Fa
         page,
         operation_type=operation_type,
         mode=mode,
-        strict=strict,
         captured_messages=captured_messages,
     )
 
@@ -807,33 +805,6 @@ async def _extract_business_failure(page) -> dict | None:
     except Exception as e:
         LOG.debug(f"    _extract_business_failure: {e}")
         return None
-
-
-async def _restore_active_tab(page, tab_name: str, tab_locator: str):
-    """检查当前激活的 Tab，如果不是目标 Tab，点击切换。
-
-    多 Tab 页面（如黑白名单）在 create/edit 操作后可能跳回默认 Tab，
-    需要重新切换到目标 Tab 才能继续操作。
-
-    Args:
-        page: Playwright Page 对象
-        tab_name: 目标 Tab 名称
-        tab_locator: 目标 Tab 的 Playwright locator
-    """
-    try:
-        current_tab = await page.evaluate("""() => {
-            const activeItem = document.querySelector('.el-tabs__item.is-active');
-            return activeItem ? activeItem.textContent.trim() : '';
-        }""")
-        if current_tab and current_tab != tab_name:
-            LOG.info(f"    [TAB-RESTORE] 当前 Tab '{current_tab}' ≠ 目标 '{tab_name}'，重新切换")
-            await page.click(tab_locator, timeout=5000)
-            await page.wait_for_timeout(1500)
-        elif not current_tab:
-            # 页面可能没有 tabs 或 tabs 未渲染完成，跳过
-            pass
-    except Exception as e:
-        LOG.debug(f"    _restore_active_tab: {e}")
 
 
 async def _check_create_api_triggered_simple(page, timeout: int = 3000) -> bool:

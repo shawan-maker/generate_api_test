@@ -40,24 +40,3 @@ def classify_skip_reason(manifest: dict, capture_result: dict) -> str:
 
     # 情况 4: 兜底
     return "未知原因（有 steps 但仍被跳过）"
-
-
-def classify_stage1_skip_reason(ui_result: dict) -> str:
-    """分析 Stage 1 探测失败（无 playbook）的原因。
-
-    Args:
-        ui_result: Stage 1 的探测结果
-
-    Returns:
-        跳过原因描述
-    """
-    if not ui_result:
-        return "Stage 1 探测无结果（页面可能无交互元素或加载超时）"
-
-    buttons = ui_result.get("buttons", {})
-    forms = ui_result.get("forms", {})
-
-    if not buttons and not forms:
-        return "Stage 1 未发现任何按钮或表单（页面可能为纯展示型）"
-
-    return "Stage 1 探测到元素但未能生成有效 Playbook（业务闭环验证失败）"

@@ -408,9 +408,3 @@ async def ai_assisted_analysis(page, missing_elements: list, expected_context: O
         "source": "vision_api",
         "diagnosis": diagnosis
     }
-
-
-def clear_vision_cache():
-    """清空 Vision 缓存（用于测试）。"""
-    global _vision_cache
-    _vision_cache.clear()

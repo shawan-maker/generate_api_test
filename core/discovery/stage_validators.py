@@ -13,10 +13,7 @@ from typing import Tuple, List
 LOG = logging.getLogger("stage_validators")
 
 
-def validate_stage1(
-    ui_result: dict,
-    required_flows: list = None
-) -> Tuple[bool, List[str], list]:
+def validate_stage1(ui_result: dict) -> Tuple[bool, List[str], list]:
     """验证 Stage 1 UI 探测结果质量（泛化版本）。
 
     泛化验证逻辑：
@@ -26,7 +23,6 @@ def validate_stage1(
 
     Args:
         ui_result: Stage 1 输出 (buttons.json)
-        required_flows: 保留参数以兼容旧接口（实际不使用，传 None 即可）
 
     Returns:
         (is_valid, issues, missing_elements)
@@ -78,7 +74,7 @@ def validate_stage1(
 
     # 6. 结构性验证（不写死任何按钮文本）
     from .required_elements import check_required_elements
-    all_present, all_missing = check_required_elements(ui_result, flow_name=None)
+    all_present, all_missing = check_required_elements(ui_result)
 
     if not all_present:
         for m in all_missing:

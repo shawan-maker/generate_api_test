@@ -161,30 +161,6 @@ async def wait_for_dialog_dismissed(page: Page, timeout: int = 8000, ui_framewor
         return False
 
 
-async def wait_for_api_response(page: Page, url_pattern: str = "",
-                                timeout: int = 10000) -> bool:
-    """等待特定 API 响应返回。
-
-    替代: wait_for_timeout(2000~5000) after action that triggers API
-    """
-    try:
-        if url_pattern:
-            async with page.expect_response(
-                lambda resp: url_pattern in resp.url and resp.status < 500,
-                timeout=timeout
-            ):
-                pass  # 只是等待响应，不需要 context manager 的返回值
-            await page.wait_for_timeout(300)  # 等前端处理响应
-            return True
-        else:
-            # 等待网络稳定
-            await page.wait_for_load_state('networkidle', timeout=timeout)
-            return True
-    except PlaywrightTimeout:
-        LOG.warning(f"等待 API 响应超时: {url_pattern}")
-        return False
-
-
 async def wait_for_loading_complete(page: Page, timeout: int = 15000) -> bool:
     """等待页面加载完成（浏览器状态 + 网络空闲 + loading 元素消失）。
 

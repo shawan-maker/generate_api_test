@@ -51,14 +51,6 @@ def normalize_text(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "")).strip()
 
 
-def strip_label_decorations(s: str) -> str:
-    """去掉标签尾部冒号/星号装饰（用于 norm_text）。"""
-    s = normalize_text(s)
-    s = re.sub(r"[：:]\s*$", "", s)
-    s = re.sub(r"[*＊]\s*$", "", s)
-    return s.strip()
-
-
 # ---------------------------------------------------------------------------
 # Stage 1: 从组件元素提取锚点描述符
 # ---------------------------------------------------------------------------
@@ -165,11 +157,6 @@ def build_anchor_css(anchor: dict) -> str:
         ordinal = anchor.get("ordinal") or 0
         return f'{base} >> nth={ordinal}'
     return base
-
-
-async def validate_anchor_css(page, css: str) -> int:
-    """记录时校验锚点选择器全页唯一（期望返回 1）。"""
-    return await page.locator(css).count()
 
 
 # ---------------------------------------------------------------------------

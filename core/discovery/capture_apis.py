@@ -101,15 +101,6 @@ def _load_playbook(project_dir: Path, module_name: str) -> dict | None:
         return None
 
 
-async def _cleanup_after_operation(page, ui_framework: str = "element-ui"):
-    """操作后清理：关闭残留弹窗，确保回到列表页状态。
-
-    Deprecated: 请使用 shared.transition_to_next 代替
-    """
-    from .shared.transition_helpers import transition_to_next
-    await transition_to_next(page, ui_framework=ui_framework, wait_table=False)
-
-
 async def _capture_by_playbook(page, playbook: dict, base_url: str, target_url: str,
                                project_dir: Path = None, module_name: str = "",
                                capture_all_mode: bool = False,

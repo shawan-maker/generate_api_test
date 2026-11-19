@@ -49,19 +49,7 @@ def scripts_dir_for(project_dir, version: Optional[str] = None) -> Path:
 
 
 def available_versions(project_dir) -> list:
-    """列出已存在的版本目录。"""
+    """列出已存在的版本目录（仅识别 v* 前缀目录）。"""
     project_dir = Path(project_dir)
-    # 优先查找版本目录（v* 开头）
-    versions = [d.name for d in project_dir.iterdir()
-                if d.is_dir() and d.name.startswith("v")]
-    if versions:
-        return sorted(versions)
-    # 回退到 scripts/ 目录（向后兼容）
-    sd = project_dir / "scripts"
-    if sd.exists():
-        return sorted([d.name for d in sd.iterdir() if d.is_dir()])
-    # 回退到 flows 目录（向后兼容）
-    fd = project_dir / "flows"
-    if not fd.exists():
-        return []
-    return sorted([d.name for d in fd.iterdir() if d.is_dir()])
+    return sorted([d.name for d in project_dir.iterdir()
+                   if d.is_dir() and d.name.startswith("v")])

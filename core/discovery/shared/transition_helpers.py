@@ -233,8 +233,8 @@ async def transition_to_next(
         LOG.warning(f"  [transition] 导航异常: {e}")
         all_ok = False
 
-    # Step 3: 恢复 Tab
-    if tab_name and tab_locator:
+    # Step 3: 恢复 Tab（tab_locator 为空时 restore_active_tab 按文本回退）
+    if tab_name:
         try:
             from core.discovery.shared.tab_helpers import restore_active_tab
             await restore_active_tab(page, tab_name, tab_locator)

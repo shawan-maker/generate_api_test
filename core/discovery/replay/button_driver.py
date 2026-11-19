@@ -14,7 +14,7 @@ from playwright.async_api import Page, Locator
 from typing import List, Dict, Optional
 
 from .. import const
-from ..shared.row_interaction import _TAB_SCOPE_JS
+from ..shared.row_interaction import _TAB_SCOPE_JS, js_click_row_button
 
 LOG = logging.getLogger("button_driver")
 
@@ -444,28 +444,13 @@ class ButtonDriver:
                 return True
 
         # ★ 方法 3: JS click 降级（最后手段，兼容 Element UI 固定列）
-        try:
-            clicked = await row.evaluate(f"""(rowEl) => {{
-                const buttons = rowEl.querySelectorAll('button, .el-button, a, span');
-                for (const btn of buttons) {{
-                    const text = btn.textContent.trim();
-                    if (text.includes('{button_text_escaped}')) {{
-                        if (btn.offsetWidth === 0 || btn.offsetHeight === 0) continue;
-                        if (btn.disabled || btn.classList.contains('is-disabled')) continue;
-                        if (btn.closest('.is-hidden') || btn.closest('[style*="display: none"]')) continue;
-                        btn.click();
-                        return true;
-                    }}
-                }}
-                return false;
-            }}""")
-            if clicked:
-                LOG.info(f"    ✓ JS 降级点击行内按钮 '{button_text}' (行索引={row_index})")
-                from .wait_helpers import wait_for_loading_complete
-                await wait_for_loading_complete(self.page)
-                return True
-        except Exception as e:
-            LOG.debug(f"JS 降级点击失败: {e}")
+        # 单源实现：shared/row_interaction.js_click_row_button（Stage 1/2 兜底统一）
+        clicked = await js_click_row_button(self.page, row, button_text)
+        if clicked:
+            LOG.info(f"    ✓ JS 降级点击行内按钮 '{button_text}' (行索引={row_index})")
+            from .wait_helpers import wait_for_loading_complete
+            await wait_for_loading_complete(self.page)
+            return True
 
         LOG.warning(f"未找到按钮 '{button_text}' (行索引={row_index})")
         return False
@@ -1264,41 +1249,6 @@ async def click_button(page: Page, text: str, max_retries: int = 3, ui_framework
     return False
 
 
-async def expand_dropdown(page: Page, trigger_text: str, ui_framework: str = "element-ui") -> List[str]:
-    """展开下拉菜单并获取选项列表。
-
-    Args:
-        page: Playwright 页面对象
-        trigger_text: 下拉触发器文本
-        ui_framework: UI 框架名称
-
-    Returns:
-        选项文本列表
-    """
-    selectors = const.get_ui_selectors(ui_framework)
-    dropdown_menu_item = selectors["dropdown"]["menu_item"]
-    select_dropdown_item = selectors["select"]["dropdown_item"]
-
-    try:
-        # 点击触发器
-        await click_button(page, trigger_text, ui_framework=ui_framework)
-        await page.wait_for_timeout(800)
-
-        # 获取下拉选项
-        options = await page.evaluate(f"""
-            () => {{
-                const items = document.querySelectorAll('{dropdown_menu_item}:visible, {select_dropdown_item}:visible');
-                return Array.from(items).map(item => item.textContent.trim()).filter(text => text);
-            }}
-        """)
-
-        return options
-
-    except Exception as e:
-        LOG.warning(f"展开下拉菜单失败: {e}")
-        return []
-
-
 async def click_dropdown_option(page: Page, option_text: str, ui_framework: str = "element-ui") -> dict:
     """点击下拉菜单选项。
 
@@ -1653,25 +1603,4 @@ async def close_dialog(page: Page) -> bool:
 
     except Exception as e:
         LOG.debug(f"关闭弹窗: {e}")
-        return False
-
-
-async def wait_for_table_load(page: Page, timeout: int = 10000) -> bool:
-    """等待表格加载完成。
-
-    Args:
-        page: Playwright 页面对象
-        timeout: 超时时间（毫秒）
-
-    Returns:
-        是否加载成功
-    """
-    try:
-        # 等待加载动画消失
-        await page.wait_for_selector('.el-loading-mask', state='hidden', timeout=timeout)
-        await page.wait_for_timeout(500)
-        return True
-    except Exception as e:
-        # 没有加载动画或超时
-        LOG.debug(f"等待表格加载: {e}")
         return False

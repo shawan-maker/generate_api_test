@@ -133,6 +133,7 @@ def analyze(core_api_map, all_endpoints, response_samples, ui_result,
 
     create_body_sample = None
     create_response_sample = None
+    extra_create_response_samples = []
     if id_producer and id_producer in core_apis:
         create_ep = core_apis[id_producer][0]
         create_body_sample = _parse_body(create_ep)
@@ -151,12 +152,26 @@ def analyze(core_api_map, all_endpoints, response_samples, ui_result,
                 create_response_sample = json.loads(body_text) if isinstance(body_text, str) else body_text
             except Exception:
                 pass
+        # ★ 多 Tab：同 create 端点的其余响应样本（其他 Tab 的 新增）也入值索引，
+        # 使各 Tab action body 的数组 ID 字段（如 blackWhiteListIds）都能
+        # 精确匹配到本 Tab create 响应的 create.id（Pass 2.5 假设闭环）
+        primary_key = json.dumps(create_response_sample, sort_keys=True) if create_response_sample else ""
+        for s in create_resp_samples:
+            try:
+                bt = s.get("body", "{}")
+                b = json.loads(bt) if isinstance(bt, str) else bt
+            except Exception:
+                continue
+            if not isinstance(b, dict) or json.dumps(b, sort_keys=True) == primary_key:
+                continue
+            extra_create_response_samples.append(b)
 
     value_index = build_value_index(
         pre_api_candidates=pre_api_candidates,
         create_body_sample=create_body_sample,
         create_response_sample=create_response_sample,
         context_fields=context_fields,
+        extra_create_response_samples=extra_create_response_samples,
     )
 
     # Step 7: 前置 API 依赖链追踪（Phase B，使用共享 value_index）

@@ -335,7 +335,7 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str,
         ui_result = await discover_all(page)
 
     # Phase B: 质量门控验证（required_elements）
-    is_valid, issues, missing = validate_stage1(ui_result, required_flows=None)
+    is_valid, issues, missing = validate_stage1(ui_result)
 
     # ★ 初始化 stage1_critical_fail（is_valid=True 时不进入 else 分支，但 line 309 需要读取）
     stage1_critical_fail = False
@@ -348,17 +348,17 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str,
         # Phase C: hints 定向重探
         if missing:
             ui_result = await _hints_rescan(page, ui_result, missing)
-            is_valid, issues, missing = validate_stage1(ui_result, required_flows=None)
+            is_valid, issues, missing = validate_stage1(ui_result)
 
         # Phase D: 前置操作检查 + 重试
         if not is_valid and missing:
             ui_result = await _precondition_retry(page, ui_result, missing)
-            is_valid, issues, missing = validate_stage1(ui_result, required_flows=None)
+            is_valid, issues, missing = validate_stage1(ui_result)
 
         # Phase E: Vision 截图分析兜底
         if not is_valid and missing:
             ui_result = await _vision_rescue(page, ui_result, missing)
-            is_valid, issues, missing = validate_stage1(ui_result, required_flows=None)
+            is_valid, issues, missing = validate_stage1(ui_result)
 
         # Phase F: 终止判定
         if not is_valid:
@@ -1614,13 +1614,18 @@ async def main():
         LOG.info(f"已从文件加载 manifest: {manifest_path}")
         # 从 modules.yaml 读取 group 信息
         from core.discovery.io_helpers import load_modules_yaml as _load_mod_yaml
-        from core.discovery.io_helpers import get_module_group_index
+        from core.discovery.io_helpers import get_or_assign_module_index
         _s5_group = None
         for m in _load_mod_yaml(project_dir):
             if m.get("name") == args.module:
                 _s5_group = m.get("group")
                 break
-        _s5_group_index = get_module_group_index(project_dir, args.module)
+        # ★ A-2: 旧 get_module_group_index 已删，直调 get_or_assign_module_index
+        # group 缺失时保持旧函数语义（返回 "01"）
+        _s5_group_index = (
+            get_or_assign_module_index(project_dir, version, _s5_group, args.module)
+            if _s5_group else "01"
+        )
         run_stage5(manifest, project_dir, args.module, version=version,
                    group=_s5_group, group_index=_s5_group_index)
         return

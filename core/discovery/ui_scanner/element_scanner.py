@@ -925,16 +925,10 @@ async def _discover_switches(page) -> list:
                     }
                 }
 
-                if (!selector) {
-                    // 使用 nth-of-type
-                    const allSwitches = Array.from(document.querySelectorAll('.el-switch'));
-                    const visibleSwitches = allSwitches.filter(s => {
-                        const r = s.getBoundingClientRect();
-                        return r.width > 0 && r.height > 0;
-                    });
-                    const visibleIdx = visibleSwitches.indexOf(sw);
-                    selector = `.el-switch:nth-of-type(${visibleIdx + 1})`;
-                }
+                // ★ 无 paneId 的 form/toolbar switch 不落盘 locator：
+                // 禁全局序号定位（nth-of-type 是父内序号、多匹配、点错风险）。
+                // 执行侧 switch_ops 按 label 文本运行时锚定（文本 + 相对路径）。
+
 
                 results.push({
                     text: labelText,
@@ -1927,9 +1921,9 @@ async def _snapshot_page_structure(page) -> dict:
                         || t.getAttribute('aria-selected') === 'true',
                     index: i,
                     id: t.id || '',
-                    locator: t.id
-                        ? '#' + t.id
-                        : '[role="tab"]:nth-child(' + (i + 1) + ')',
+                    // 无 id 不落盘 locator（禁 nth-child 编号定位）：
+                    // 执行/回放侧统一按 tab_name 文本定位（tab_helpers / _step_click_tab）
+                    locator: t.id ? '#' + t.id : '',
                 }));
             }
 

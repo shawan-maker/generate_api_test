@@ -160,6 +160,80 @@ async def select_row_checkbox(
         return {"success": False, "already_checked": False}
 
 
+# 行内按钮统一查找+点击过滤规则（与 button_driver.click_row_button_v2 方法3 对齐）：
+# 可见性（offsetWidth/offsetHeight）→ disabled/is-disabled → 隐藏祖先。
+# 防止点到 Element UI 固定列隐藏占位、互斥操作对中 offsetWidth=0 的隐藏项或禁用项。
+_ROW_BUTTON_FILTER_JS = """
+    if ((btn.textContent || '').trim().includes(btnText)) {
+        if (btn.offsetWidth === 0 || btn.offsetHeight === 0) continue;
+        if (btn.disabled || btn.classList.contains('is-disabled')) continue;
+        if (btn.closest('.is-hidden') || btn.closest('[style*="display: none"]')) continue;
+        btn.click();
+        return true;
+    }
+"""
+
+
+async def js_click_row_button(
+    page: Page,
+    row,
+    btn_text: str,
+    marker: str = "",
+) -> bool:
+    """行内按钮 JS click 兜底（Stage 1/2 单源实现，消除 C-6 双实现漂移）。
+
+    合并自两处原有 JS btn.click() 兜底：
+    - 本模块 click_row_button 的 JS 降级（原 marker 分支 + else 分支——
+      else 分支 arguments[0].querySelectorAll 对字符串调用必抛 TypeError，随合并修复）
+    - button_driver.click_row_button_v2 方法 3（行作用域 + 可见性/disabled 过滤）
+
+    两种形态（按 marker 有无互斥选择）：
+    - marker 形态：在可见 tab 作用域内按 marker 文本找行，再在行内找按钮
+      （表格重渲染致 row 句柄失效时的稳健路径）
+    - row 形态：直接在给定行元素（ElementHandle/Locator）内找按钮
+
+    Args:
+        page: Playwright Page 对象
+        row: 行元素（ElementHandle/Locator）；marker 形态下可为 None
+        btn_text: 按钮文本
+        marker: 可选，行标识文本（提供时优先 marker 形态）
+
+    Returns:
+        bool: 是否成功点击（JS 执行异常按失败返回，不抛出）
+    """
+    if not btn_text:
+        return False
+
+    try:
+        if marker:
+            clicked = await page.evaluate(f"""(args) => {{
+                const [btnText, markerText] = args;
+                {_TAB_SCOPE_JS}
+                const rows = _scope.querySelectorAll('.el-table__body tr');
+                for (const row of rows) {{
+                    if ((row.textContent || '').includes(markerText)) {{
+                        const buttons = row.querySelectorAll('button, .el-button, a, span');
+                        for (const btn of buttons) {{{_ROW_BUTTON_FILTER_JS}
+                        }}
+                    }}
+                }}
+                return false;
+            }}""", [btn_text, marker])
+        else:
+            if row is None:
+                return False
+            clicked = await row.evaluate(f"""(rowEl, btnText) => {{
+                const buttons = rowEl.querySelectorAll('button, .el-button, a, span');
+                for (const btn of buttons) {{{_ROW_BUTTON_FILTER_JS}
+                }}
+                return false;
+            }}""", btn_text)
+        return bool(clicked)
+    except Exception as e:
+        LOG.debug(f"js_click_row_button 异常: {e}")
+        return False
+
+
 async def click_row_button(
     page: Page,
     row: ElementHandle,
@@ -194,36 +268,8 @@ async def click_row_button(
     except Exception as e:
         LOG.warning(f"click_row_button_v2 异常，尝试 JS 降级: {e}")
 
-    # 降级：JS click（兼容 Element UI 固定列）
-    if marker:
-        clicked = await page.evaluate(f"""(args) => {{
-            const [text, markerText] = args;
-            {_TAB_SCOPE_JS}
-            const rows = _scope.querySelectorAll('.el-table__body tr');
-            for (const row of rows) {{
-                if ((row.textContent || '').includes(markerText)) {{
-                    const buttons = row.querySelectorAll('button');
-                    for (const btn of buttons) {{
-                        if ((btn.textContent || '').trim().includes(text)) {{
-                            btn.click();
-                            return true;
-                        }}
-                    }}
-                }}
-            }}
-            return false;
-        }}""", [btn_text, marker])
-    else:
-        clicked = await page.evaluate("""(text) => {
-            const buttons = arguments[0].querySelectorAll('button');
-            for (const btn of buttons) {
-                if ((btn.textContent || '').trim().includes(text)) {
-                    btn.click();
-                    return true;
-                }
-            }
-            return false;
-        }""", btn_text)
+    # 降级：JS click（兼容 Element UI 固定列）——单源实现 js_click_row_button
+    clicked = await js_click_row_button(page, row, btn_text, marker=marker)
 
     if clicked:
         LOG.debug(f"    [click_row_button] JS fallback 成功: {btn_text}")

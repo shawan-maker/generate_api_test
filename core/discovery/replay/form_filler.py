@@ -82,19 +82,6 @@ def _log_scan_debug(raw_result: dict):
                      f"maxLength={sub.get('maxLength')}")
 
 
-async def probe_transfer_box_state(page: Page, container) -> dict:
-    """探测锚点容器内 transfer-box 组件的当前渲染状态（R2: 级联打开语义记录）。
-
-    ★ 锚点模型: 探测限定在输入项锚点容器内（container 为必传 ElementHandle），
-    禁止全局第一命中。判据为 anchor_helpers.read_transfer_box_state 的共享
-    R1 组合判据（Stage 1 / Stage 2 同一权威实现）。
-
-    Returns:
-        dict: {"exists": bool, "left_rows": [...], "right": {ok, why, text}}
-    """
-    return await read_transfer_box_state(page, container)
-
-
 class FormFiller:
     """表单填充封装类，供 capture_apis 调用"""
 
@@ -1735,16 +1722,37 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                         }}
 
                         // 构建每个 input 的 selector
+                        // ★ P0-3（审计 L-1）: 与 _buildSelector 相同的两条终止规则——
+                        // ①深度 ≥4 层停；②遇语义容器以其为根截断（禁 #app 绝对路径）
+                        const SEMANTIC_CONTAINERS_IP = ['el-form-item', 'el-tab-pane', 'el-dialog', 'el-drawer', 'el-table__row'];
                         const subSelectors = allInputs.map((inp, idx) => {{
                             const path = [];
                             let current = inp;
-                            while (current && current.nodeType === Node.ELEMENT_NODE) {{
+                            let depth = 0;
+                            while (current && current.nodeType === Node.ELEMENT_NODE && depth < 4) {{
                                 let selector = current.nodeName.toLowerCase();
                                 if (current.id) {{
                                     selector = `#${{current.id}}`;
                                     path.unshift(selector);
                                     break;
                                 }} else {{
+                                    // ★ 语义容器截断
+                                    const containerCls = SEMANTIC_CONTAINERS_IP.find(sc => current.classList.contains(sc));
+                                    if (containerCls) {{
+                                        selector = '.' + containerCls;
+                                        let sibling = current;
+                                        let nth = 1;
+                                        while (sibling.previousElementSibling) {{
+                                            sibling = sibling.previousElementSibling;
+                                            if (sibling.nodeName === current.nodeName) nth++;
+                                        }}
+                                        if (nth > 1 || current.nextElementSibling) {{
+                                            selector += `:nth-of-type(${{nth}})`;
+                                        }}
+                                        path.unshift(selector);
+                                        current = null;
+                                        break;
+                                    }}
                                     let sibling = current;
                                     let nth = 1;
                                     while (sibling.previousElementSibling) {{
@@ -1757,6 +1765,7 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                                 }}
                                 path.unshift(selector);
                                 current = current.parentElement;
+                                depth++;
                             }}
                             return path.join(' > ');
                         }});
@@ -1996,15 +2005,37 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
             if (element.name) return {{ selector: `[name="${{element.name}}"]`, playwright_locator: `[name="${{element.name}}"]` }};
 
             // 优先级 3a: DOM path（标准 CSS，evaluate 安全）
+            // ★ P0-3（审计 L-1）: 两条终止规则——①深度 ≥4 层停；②遇语义容器
+            // (el-form-item/el-tab-pane/el-dialog/el-drawer/el-table__row) 以其为根截断。
+            // 产物从 `#app > ... 9 层` 绝对路径变为 `.el-form-item ... ≤4 层` 相对路径。
+            const SEMANTIC_CONTAINERS = ['el-form-item', 'el-tab-pane', 'el-dialog', 'el-drawer', 'el-table__row'];
             const path = [];
             let current = element;
-            while (current && current.nodeType === Node.ELEMENT_NODE) {{
+            let depth = 0;
+            while (current && current.nodeType === Node.ELEMENT_NODE && depth < 4) {{
                 let selector = current.nodeName.toLowerCase();
                 if (current.id) {{
                     selector = `#${{current.id}}`;
                     path.unshift(selector);
                     break;
                 }} else {{
+                    // ★ 语义容器截断：容器以 class 定位（比裸标签稳定）后停止上爬
+                    const containerCls = SEMANTIC_CONTAINERS.find(sc => current.classList.contains(sc));
+                    if (containerCls) {{
+                        selector = '.' + containerCls;
+                        let sibling = current;
+                        let nth = 1;
+                        while (sibling.previousElementSibling) {{
+                            sibling = sibling.previousElementSibling;
+                            if (sibling.nodeName === current.nodeName) nth++;
+                        }}
+                        if (nth > 1 || current.nextElementSibling) {{
+                            selector += `:nth-of-type(${{nth}})`;
+                        }}
+                        path.unshift(selector);
+                        current = null;
+                        break;
+                    }}
                     let sibling = current;
                     let nth = 1;
                     while (sibling.previousElementSibling) {{
@@ -2017,6 +2048,7 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                 }}
                 path.unshift(selector);
                 current = current.parentElement;
+                depth++;
             }}
             const domPath = path.join(' > ');
 
@@ -2123,47 +2155,10 @@ async def fill_form(page: Page, fields: List[Dict], data: Dict[str, str]) -> Tup
     return filled, total
 
 
-async def select_dropdown_option(page: Page, selector: str, value: str) -> bool:
-    """选择下拉框选项。
-
-    Args:
-        page: Playwright 页面对象
-        selector: 下拉框选择器
-        value: 要选择的值（部分匹配）
-
-    Returns:
-        是否成功选择
-    """
-    try:
-        from .locator_helpers import safe_css
-        enhanced = safe_css(selector)
-        # 点击下拉框
-        await page.click(enhanced)
-        await page.wait_for_timeout(500)
-
-        # 查找并选择选项（带隐藏过滤）
-        hidden_css = const.HIDDEN_FILTERS_CSS.get('element-ui', const.HIDDEN_FILTERS_CSS['_universal'])
-        options = await page.query_selector_all(f'.el-select-dropdown__item:visible{hidden_css}')
-        for opt in options:
-            text = await opt.inner_text()
-            if value in text:
-                await opt.click()
-                await page.wait_for_timeout(300)
-                return True
-
-        # 未找到匹配选项，点击空白关闭
-        await page.keyboard.press('Escape')
-        return False
-
-    except Exception as e:
-        print(f"  ⚠️ 选择下拉框失败: {e}")
-        return False
-
-
 async def read_form_errors(page: Page) -> List[Dict]:
     """获取表单验证错误信息（结构化，含字段定位）。
 
-    与旧版 get_form_errors() 的区别：
+    结构化版本（区别于已删除的早期纯文本列表版本 get_form_errors）：
     - 返回 dict 列表，含 field_label + error_text + severity
     - 尝试将错误信息关联到具体的表单字段
     - 支持 Element UI 和 Ant Design
@@ -2232,16 +2227,6 @@ async def read_form_errors(page: Page) -> List[Dict]:
     except Exception as e:
         LOG.debug(f"读取表单错误失败: {e}")
         return []
-
-
-async def get_form_errors(page: Page) -> List[str]:
-    """获取表单验证错误信息（纯文本列表，向后兼容）。
-
-    Returns:
-        错误信息列表
-    """
-    errors = await read_form_errors(page)
-    return [e["error_text"] for e in errors if e.get("error_text")]
 
 
 class MultiStepExecutor:

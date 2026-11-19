@@ -816,6 +816,10 @@ async def _execute_interaction_steps(page, steps: list, label: str) -> bool:
 async def _fill_ip_input(page, sub_selectors: list, option_text: str, label: str) -> bool:
     """填充 IP 地址输入框（支持 IPv4 和 IPv6）
 
+    ★ P0-7（C-3 修复）：段解析委托 FormFiller._parse_ip_segments/_expand_ipv6 完整版，
+    与 Stage 1 探测路径单源。旧内联弱化版的 IPv6 "::" 展开逻辑是错的（在位置 1 插 0
+    且不做十六进制补零），且不支持 IPv4 区间 8 段格式，已删除。
+
     Args:
         page: Playwright Page 对象
         sub_selectors: IP 输入框的子选择器列表（通常是 4 个或 8 个 input）
@@ -825,55 +829,36 @@ async def _fill_ip_input(page, sub_selectors: list, option_text: str, label: str
     Returns:
         bool: 是否填充成功
     """
-    import re
-
     if not sub_selectors or not option_text:
         return False
 
-    # 判断输入框数量：4 个是 IPv4，8 个是 IPv6
     input_count = len(sub_selectors)
+    # 版本判定：含 ":" → IPv6，否则 IPv4
+    ip_version = "v6" if ":" in option_text else "v4"
 
-    # 解析 IP 值
-    # 支持格式：
-    # - "10.0.0.1" (单 IP)
-    # - "10.0.0.1/24" (带掩码)
-    # - "10.0.0.1-10.0.0.10" (范围)
-    # - "fe80::1" (IPv6)
+    filler = FormFiller(page)
+    parts = filler._parse_ip_segments(option_text, input_count, ip_version)
 
-    parts = []
-
-    # IPv6 检测：包含 ":"
-    if ":" in option_text:
-        # IPv6 处理：按 ":" 分割，填充到 8 个输入框
-        # 处理 "::" 缩写（展开为完整的 8 段）
-        ipv6_parts = option_text.replace("::", ":").split(":")
-        ipv6_parts = [p if p else "0" for p in ipv6_parts]
-        # 补齐到 8 段
-        while len(ipv6_parts) < 8:
-            ipv6_parts.insert(1, "0")  # 在 :: 位置插入 0
-        parts = ipv6_parts[:8]
-    else:
-        # IPv4 处理
-        if "-" in option_text:
-            # 范围格式：10.0.0.1-10.0.0.10 → 只取第一部分
-            option_text = option_text.split("-")[0]
-        elif "/" in option_text:
-            # 掩码格式：10.0.0.1/24 → 只取 IP 部分
-            option_text = option_text.split("/")[0]
-
-        # 分割 IP 段
-        parts = option_text.split(".")
-        # 补齐到 4 段
-        while len(parts) < 4:
-            parts.append("0")
-        parts = parts[:4]
+    # _parse_ip_segments 严格模式：段数与输入框数不匹配时返回 []。
+    # 此时保持旧兜底行为的语义（可截取部分 + "0" 补齐），避免产物部分丢失时回归
+    if not parts:
+        LOG.warning(f"    [ip-input] {label}: IP 值 '{option_text}' 与 {input_count} 段输入框"
+                    f"({ip_version}) 不匹配，回退补零填充")
+        if ip_version == "v6":
+            expanded = filler._expand_ipv6(option_text)
+            parts = expanded.split(":") if expanded else []
+        else:
+            base = option_text.split("-")[0].split("/")[0].split(".")
+            parts = base[:input_count]
+    if not parts:
+        parts = ["0"] * input_count
+    while len(parts) < input_count:
+        parts.append("0")
+    parts = parts[:input_count]
 
     # 填充每个输入框
-    for i, selector in enumerate(sub_selectors[:input_count]):
-        if i < len(parts):
-            value = parts[i]
-        else:
-            value = "0"
+    for i, selector in enumerate(sub_selectors):
+        value = parts[i]
 
         try:
             await page.fill(selector, value)
@@ -888,7 +873,10 @@ async def _fill_ip_input(page, sub_selectors: list, option_text: str, label: str
 async def _fill_composite_input(page, sub_components: list, fill_rule: dict, label: str) -> bool:
     """回退填充复合输入字段（无 interaction_steps 时使用）
 
-    按子组件类型分别处理：select → 展开选第一项，input → fill_rule 生成值填充
+    ★ P0-7（C-3 修复）：委托 FormFiller._execute_composite_input_with_details 完整版，
+    与 Stage 1 探测路径单源（select/cascader/input 子组件处理、Escape 关闭残留
+    下拉、input 事件触发 Vue 响应式更新、interaction_steps 记录）。
+    旧内联弱化版无 Escape 关闭、无 input 事件触发，已删除。
 
     Args:
         page: Playwright Page 对象
@@ -899,68 +887,13 @@ async def _fill_composite_input(page, sub_components: list, fill_rule: dict, lab
     Returns:
         bool: 是否至少成功填充一个子组件
     """
-    filled = 0
-    for comp in sub_components:
-        comp_type = comp.get("type", "")
-        selector = comp.get("selector", "")
-        if not selector:
-            continue
-
-        if comp_type == "select":
-            try:
-                await page.click(selector, timeout=3000)
-                await page.wait_for_timeout(500)
-                options = await page.query_selector_all(
-                    ".el-select-dropdown:not([style*='display: none']) .el-select-dropdown__item:not(.is-disabled)"
-                )
-                if options:
-                    await options[0].click()
-                    filled += 1
-            except Exception:
-                pass
-            await page.wait_for_timeout(300)
-
-        elif comp_type == "cascader":
-            try:
-                await page.click(selector, timeout=3000)
-                await page.wait_for_timeout(500)
-                for _ in range(3):
-                    items = await page.query_selector_all(
-                        ".el-cascader-panel .el-cascader-menu:first-child .el-cascader-node:not(.is-disabled)"
-                    )
-                    if items:
-                        await items[0].click()
-                        filled += 1
-                        await page.wait_for_timeout(300)
-                    else:
-                        break
-            except Exception:
-                pass
-            try:
-                await page.keyboard.press("Escape")
-                await page.wait_for_timeout(200)
-            except Exception:
-                pass
-
-        elif comp_type == "input":
-            value = ""
-            if fill_rule:
-                value = apply_fill_rule(fill_rule)
-            if not value:
-                if "手机" in label or "phone" in label.lower():
-                    import random
-                    value = f"138{random.randint(10000000, 99999999)}"
-                else:
-                    import random
-                    value = f"test_{random.randint(100000, 999999)}"
-            if value:
-                try:
-                    await page.fill(selector, str(value), timeout=3000)
-                    filled += 1
-                except Exception:
-                    pass
-
-    return filled > 0
+    filler = FormFiller(page)
+    ok, detail = await filler._execute_composite_input_with_details(
+        label, {"sub_components": sub_components or [], "fill_rule": fill_rule or {}}
+    )
+    if ok and detail.get("interaction_steps"):
+        LOG.info(f"    [composite-input] {label}: 已记录 {len(detail['interaction_steps'])} 个操作步骤")
+    return ok
 
 
 async def _is_radio_option_checked(page, option_text: str) -> bool:
@@ -1232,17 +1165,10 @@ async def _step_fill_form(page, step: dict, button_driver: ButtonDriver, role: s
             # ★ P0: 多候选选择器依次尝试（placeholder → label → original）
             # 构造候选列表：primary locator + fallback_locators
             fallback_list = field.get("fallback_locators", [])
-            if isinstance(fallback_list, list):
-                candidate_selectors = [locator] + [
-                    fb.get("selector") if isinstance(fb, dict) else fb
-                    for fb in fallback_list
-                ]
-            else:
-                # 兼容旧 playbook：fallback_locator 是字符串
-                old_fallback = field.get("fallback_locator", "")
-                candidate_selectors = [locator]
-                if old_fallback and old_fallback != locator:
-                    candidate_selectors.append(old_fallback)
+            candidate_selectors = [locator] + [
+                fb.get("selector") if isinstance(fb, dict) else fb
+                for fb in fallback_list
+            ]
 
             # 去重（保持顺序）
             seen = set()
@@ -1536,11 +1462,7 @@ async def _step_click_row_more(page, step: dict, button_driver: ButtonDriver, ma
         raise Exception(f"未找到数据行: {marker}")
 
     click_result = await button_driver.click_row_more_item(row, item_text)
-    # 兼容新返回类型（dict）和旧返回类型（bool）
-    if isinstance(click_result, dict):
-        if not click_result.get("clicked", False):
-            raise Exception(f"未找到菜单项: {item_text}")
-    elif not click_result:
+    if not click_result.get("clicked", False):
         raise Exception(f"未找到菜单项: {item_text}")
 
     # 等待菜单项触发的 API 请求完成
@@ -1663,8 +1585,9 @@ async def _step_click_row_button(page, step: dict, button_driver: ButtonDriver, 
     if not row:
         raise Exception(f"未找到数据行: {marker}")
 
-    # ★ 使用共享实现
-    clicked = await click_row_button(page, row, button_text)
+    # ★ 使用共享实现（传 marker：v2 方法3 已做过 row 作用域重试，
+    # JS 兜底走 marker 作用域重找行，覆盖表格重渲染致 row 句柄失效的场景）
+    clicked = await click_row_button(page, row, button_text, marker=marker)
     if not clicked:
         raise Exception(f"未找到行内按钮: {button_text}")
 

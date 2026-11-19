@@ -366,23 +366,3 @@ def get_ui_selectors(framework: str = "element-ui") -> dict:
 
     _ui_selectors_cache[framework] = selectors
     return selectors
-
-
-def get_button_selectors_str(framework: str = "element-ui") -> str:
-    """
-    获取按钮选择器字符串（用于 Playwright page.locator）。
-
-    Args:
-        framework: UI 框架名称
-
-    Returns:
-        逗号分隔的选择器字符串
-    """
-    selectors = get_ui_selectors(framework)
-    generic = selectors.get("button", {}).get("generic_selectors", [])
-    base = selectors.get("button", {}).get("base", "")
-    text = selectors.get("button", {}).get("text", "")
-
-    all_selectors = [base, text] + generic
-    return ", ".join(s for s in all_selectors if s)
-
