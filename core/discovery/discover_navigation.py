@@ -243,6 +243,15 @@ def _generate_modules_yaml(discovered: list, project_dir: Path, base_url: str):
 
     仅在 modules.yaml 不存在或为空时生成，不覆盖用户手动编辑的内容。
 
+    输出三级格式（产品-模块-页面）：
+        products:
+        - name: <产品/一级组名>
+          modules:
+          - name: <模块名>
+            url: <页面入口相对路径>
+    模块的 url 即页面入口；group 由 load_modules_yaml 摊平时从产品层注入。
+    嵌套子分组（如 "容器 > 工作负载"）保留在模块级 tags 中。
+
     Args:
         discovered: 导航发现结果 [{"label": ..., "url": ..., "group": ...}, ...]
         project_dir: 项目目录
@@ -258,7 +267,7 @@ def _generate_modules_yaml(discovered: list, project_dir: Path, base_url: str):
             if existing_content:
                 # 文件存在且有内容，不覆盖
                 existing_data = yaml.safe_load(existing_content) or {}
-                if existing_data.get('modules'):
+                if existing_data.get('modules') or existing_data.get('products'):
                     return
         except Exception:
             pass
@@ -270,8 +279,10 @@ def _generate_modules_yaml(discovered: list, project_dir: Path, base_url: str):
         LOG.warning("PyYAML 未安装，无法生成 modules.yaml")
         return
 
-    modules = []
     base = base_url.rstrip("/")
+    # 按产品（一级组）聚合
+    products_map = {}   # 产品名 → [module, ...]
+    product_order = []  # 保持发现顺序
 
     for item in discovered:
         full_url = item.get("url", "")
@@ -283,30 +294,40 @@ def _generate_modules_yaml(discovered: list, project_dir: Path, base_url: str):
             from urllib.parse import urlparse
             parsed = urlparse(full_url)
             relative_url = parsed.path
+            # hash 路由（如 /page/vcloud/#/resourcepool）保留完整形态
+            if parsed.fragment:
+                relative_url = f"{parsed.path}#{parsed.fragment}"
         else:
             relative_url = full_url
 
-        # 提取一级菜单作为 group
+        # 提取一级菜单/产品名作为产品层
         raw_group = item.get("group", "")
-        top_group = sanitize_group_name(_extract_top_group(raw_group))
+        product_name = sanitize_group_name(_extract_top_group(raw_group))
 
-        # group 原始值转为 tags（保留完整面包屑）
-        tags = [raw_group] if raw_group else []
+        # group 原始值转为 tags（保留完整面包屑，如 "容器 > 工作负载"）
+        tags = [raw_group] if raw_group and raw_group != product_name else []
 
-        modules.append({
+        module_entry = {
             "name": item["label"],
             "url": relative_url,
             "enabled": True,
-            "group": top_group,
-            "tags": tags,
-        })
+        }
+        if tags:
+            module_entry["tags"] = tags
 
-    data = {"modules": modules}
+        if product_name not in products_map:
+            products_map[product_name] = []
+            product_order.append(product_name)
+        products_map[product_name].append(module_entry)
+
+    products = [{"name": p, "modules": products_map[p]} for p in product_order]
+    data = {"products": products}
     modules_yaml_path.write_text(
         yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False),
         encoding="utf-8"
     )
-    LOG.info(f"  已生成 modules.yaml: {modules_yaml_path}（{len(modules)} 个模块）")
+    LOG.info(f"  已生成 modules.yaml: {modules_yaml_path}"
+             f"（{len(products)} 个产品，{len(discovered)} 个模块，三级产品-模块结构）")
 
 
 def export_modules_from_cache(project_dir: Path, workspace_dir: Path, base_url: str) -> bool:

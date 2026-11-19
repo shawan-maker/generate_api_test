@@ -96,7 +96,13 @@ def save_json(data: dict, path: Path):
 def load_modules_yaml(project_dir: Path) -> list:
     """加载 modules.yaml 模块清单。返回模块列表，按 priority 排序。
 
-    要求 modules.yaml 中每个模块自带 group 字段（旧格式 tags 补全回退已删除）。
+    支持两种格式：
+    1. 三级格式（产品门户型站点，如 EIS）: products → modules（产品-模块-页面，
+       模块的 url 即页面入口）；摊平时注入 group=产品名
+    2. 平铺格式（单层站点）: modules 列表，要求每个模块自带 group 字段
+
+    摊平后对重名模块做全局消歧（见 _dedupe_module_names）：
+    kb 产物（{name}_ui.json 等）以 name 平铺键控，跨产品同名会互相覆盖。
     """
     modules_file = project_dir / "modules.yaml"
     if not modules_file.exists():
@@ -105,6 +111,92 @@ def load_modules_yaml(project_dir: Path) -> list:
         LOG.info("  python -m core.discovery.run --project <项目名> --discover-only --home-url <URL> --headless")
         LOG.info("  python -m core.discovery.run --project <项目名> --export-modules")
         return []
+
+    try:
+        import yaml
+        data = yaml.safe_load(modules_file.read_text(encoding="utf-8")) or {}
+
+        if data.get("products"):
+            # 三级格式: products → modules，摊平注入 group=产品名
+            modules = []
+            for prod in data["products"]:
+                prod_name = prod.get("name", "未分类")
+                for m in prod.get("modules", []):
+                    entry = dict(m)
+                    entry["group"] = prod_name
+                    tags = list(m.get("tags", []))
+                    if prod_name not in tags:
+                        tags.append(prod_name)
+                    entry["tags"] = tags
+                    modules.append(entry)
+        else:
+            modules = data.get("modules", [])
+
+        # 过滤 enabled=false 的模块
+        modules = [m for m in modules if m.get("enabled", True)]
+
+        # 全局消歧（重名 name → 产品-模块复合，同产品内再撞加 URL slug）
+        modules = _dedupe_module_names(modules)
+
+        # 按 priority 排序（默认 100）
+        modules.sort(key=lambda m: m.get("priority", 100))
+
+        LOG.info(f"已加载 {len(modules)} 个模块（来自 {modules_file}）")
+        return modules
+    except Exception as e:
+        LOG.error(f"加载 modules.yaml 失败: {e}")
+        return []
+
+
+def _dedupe_module_names(modules: list) -> list:
+    """重名模块全局消歧（产品-模块复合名）。
+
+    kb 产物（{name}_ui/_playbook/_capture/_analysis/_manifest.json）、
+    脚本名、增量检查均以 name 平铺键控，跨产品同名模块（如多个产品的
+    "概览"）会互相覆盖。消歧规则：
+    1. 全局唯一 → 保持原名
+    2. 重名 → "{产品}-{模块}"（产品名取 group 字段）
+    3. 复合后仍重名（同产品内同名，如裸金属 baremetal/BMServer）
+       → "{产品}-{模块}-{URL末段}"
+    """
+    from collections import Counter
+
+    names = [m["name"] for m in modules]
+    dups = {n for n, c in Counter(names).items() if c > 1}
+    if not dups:
+        return modules
+
+    result = []
+    renamed = []  # (原名, 产品, 新名)
+    for m in modules:
+        if m["name"] in dups:
+            group = m.get("group", "未分类")
+            new_name = f"{group}-{m['name']}"
+            renamed.append((m["name"], group, new_name))
+            m = {**m, "name": new_name}
+        result.append(m)
+
+    # 二次消歧：复合后仍重名（同产品内同名）→ 追加 URL 末段 slug
+    names2 = [m["name"] for m in result]
+    dups2 = {n for n, c in Counter(names2).items() if c > 1}
+    if dups2:
+        result2 = []
+        for m in result:
+            if m["name"] in dups2:
+                slug = m["url"].rstrip("/").split("/")[-1]
+                if "#" in slug:  # hash 路由（如 /page/vcloud/#/resourcepool）
+                    slug = slug.split("#")[-1]
+                slug = slug or "page"
+                new_name = f"{m['name']}-{slug}"
+                renamed.append((m["name"], m.get("group", "未分类"), new_name))
+                m = {**m, "name": new_name}
+            result2.append(m)
+        result = result2
+
+    if renamed:
+        LOG.info("重名模块已消歧（产品-模块复合名）: "
+                 + ", ".join(f"{o}({g})→{n}" for o, g, n in renamed))
+    return result
 
     try:
         import yaml

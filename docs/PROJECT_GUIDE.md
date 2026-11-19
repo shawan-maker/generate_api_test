@@ -531,6 +531,10 @@ Stage 3 产物字段以单一权威名为准，旧格式数据显式拒绝（不
 - **产品页可直接 URL 访问**：portal 发现产出的 modules.yaml URL 可直接用于 Stage 1-5，无需重走门户
 - **原路径不动**：页面有菜单（含 `--home-url` 直指产品页）时走原有 `crawl_menu_tree`，estack 等既有项目不受影响
 
+**modules.yaml 三级格式（产品-模块-页面）**：多产品站点生成 `products → modules` 嵌套结构（模块的 url 即页面入口，嵌套子分组保留在模块 tags），单层站点保持平铺 `modules` 格式，`load_modules_yaml` 双格式兼容——三级格式摊平时注入 `group`=产品名，平铺格式要求自带 group 字段。
+
+**重名模块全局消歧**：kb 产物（`{name}_ui.json` 等）以 name 平铺键控，跨产品同名（如多个产品的"概览"）会互相覆盖。`load_modules_yaml` 摊平后自动消歧：重名 → `产品-模块`复合名；同产品内仍重名 → 追加 URL 末段 slug（如 `裸金属服务器-裸金属-baremetal`）。全局唯一名保持原样；单模块模式 `--module` 传消歧后的复合名。
+
 ---
 
 ## 5. 输出规范
@@ -590,20 +594,47 @@ credentials:
 
 ### 6.2 modules.yaml
 
+**平铺格式**（单层站点，每个模块自带 group）：
+
 ```yaml
 modules:
   - name: "用户管理"
     url: "/estack/web/estack/user-center/user-manage/user"
     enabled: true
+    group: "用户中心"
     priority: 1
     tags: ["用户中心", "基础"]
 
   - name: "角色管理"
     url: "/estack/web/estack/user-center/role-manage/role"
     enabled: true
+    group: "用户中心"
     priority: 2
     tags: ["用户中心", "权限"]
 ```
+
+**三级格式**（多产品站点，产品门户型如 EIS；模块的 url 即页面入口）：
+
+```yaml
+products:
+  - name: "云主机"
+    modules:
+      - name: "概览"
+        url: "/page/eis/vmOverview"
+        enabled: true
+      - name: "云主机"
+        url: "/page/eis/virtualManage"
+        enabled: true
+
+  - name: "容器"
+    modules:
+      - name: "无状态"
+        url: "/page/eis/Deployment"
+        enabled: true
+        tags: ["容器 > 工作负载"]   # 嵌套子分组保留在 tags
+```
+
+`load_modules_yaml` 双格式兼容：三级格式摊平时注入 `group`=产品名；平铺格式要求自带 group。重名模块自动全局消歧（见 4.13）。
 
 ### 6.3 credentials.yaml
 
