@@ -28,7 +28,7 @@ API_AI_test/
 │       ├── endpoint_classifier.py   端点分类去重 + 时间戳优先分类
 │       ├── stage_validators.py      质量门禁（含 manifest 架构检查）
 │       ├── discover_navigation.py   导航发现编排
-│       ├── nav_discovery.py         导航菜单爬取
+│       ├── nav_discovery.py         导航菜单爬取（含产品门户层发现）
 │       ├── kb_loader.py             知识库加载器
 │       ├── ai_debug_assistant.py    AI 辅助调试（LLM 分析失败原因）
 │       ├── feedback_loop.py         UI 结果修补（Stage 1 补救链 patch_ui_result）
@@ -77,11 +77,12 @@ API_AI_test/
 │   │   ├── session.py               LoginSession 主控制器
 │   │   ├── strategy_base.py         策略基类与注册表
 │   │   ├── cookie_store.py          CookieStore 持久化存储
-│   │   ├── strategies/              4 个登录策略实现
+│   │   ├── strategies/              5 个登录策略实现
 │   │   │   ├── ecscloud.py            EcsCloud 滑块验证码
 │   │   │   ├── bcov.py                BCov 拼图验证码
 │   │   │   ├── ecso.py                ECSO 算术验证码
-│   │   │   └── tianshu.py             Tianshu 字符验证码
+│   │   │   ├── tianshu.py             Tianshu 字符验证码
+│   │   │   └── eis.py                 EIS 图片字符验证码（前端自动 RSA 加密）
 │   │   ├── captcha/                 验证码识别引擎
 │   │   │   ├── slider.py              滑块缺口检测（OpenCV）
 │   │   │   ├── puzzle.py              拼图槽位检测（泛洪填充）
@@ -321,11 +322,12 @@ python projects/ecm-compute/v1.0.0/ui/用户管理.py --operation "创建用户"
 
 **框架内部登录**：采用策略模式统一不同项目的登录流程
 - `LoginSession` 主控制器：Cookie 优先 → 新鲜度检查 → 服务端探测 → 按需登录
-- 4 种登录策略：
+- 5 种登录策略：
   - `ecscloud`: 滑块验证码（OpenCV 缺口检测 + 人类化拖拽）
   - `bcov`: 拼图验证码（泛洪填充槽位检测）
   - `ecso`: 算术验证码（ddddocr OCR 识别）
   - `tianshu`: 字符验证码（ddddocr OCR 识别）
+  - `eis`: 图片字符验证码（ddddocr OCR 识别；密码加密由前端 JS 自动完成，策略无需实现）
 - `CookieStore`: 统一 Cookie 持久化（cookies.json + meta.json + localStorage）
 - `credentials.yaml`: 按 base_url 组织，支持多项目凭据管理
 
@@ -519,6 +521,15 @@ Stage 3 产物字段以单一权威名为准，旧格式数据显式拒绝（不
 - **value_index 必传**：`analyze()` Step 6 构建 value_index 后必传给 `build_manifest` / `trace_pre_api_dependencies` 并落盘；缺失时两个消费方都显式抛 `ValueError`（旧格式 Stage 34 产物要求重跑生成），不再内部降级构建
 - **assert_mode 守卫**：playbook 缺 `assert_mode` 字段时回放引擎显式报错（旧 playbook 不兼容）
 - **值追溯三原则**：值匹配 → **时间最早（首次产生者）** → 多级递归（`value_chain._trace_value`，ts 升序取首个 + `ValueIndex.lookup` 同分平局按 timestamp 最早打破）
+
+### 4.13 产品门户层发现（EIS 型多产品站点）
+
+部分站点（如 EIS）着陆页是**产品选择门户**而非业务控制台：无侧边栏菜单，产品以卡片呈现，点击卡片 `window.open` 新标签页进入该产品控制台（有独立侧边栏）。`discover_modules` 自动检测并分流，单层站点零行为变化：
+
+- **检测判据**：页面无 `.el-menu/.el-submenu/.el-menu-item` 且有产品卡片（默认 `.product-card`，经 profile `product_portal.selector` 可配）
+- **门户模式**：`crawl_portal_products` 逐卡片点击 → `context.once("page")` 捕获新标签页 → 新页复用 `crawl_menu_tree`（行为与单层站点一致）→ `group` 加产品名前缀（如 `容器 > 工作负载`）→ URL 去重 → 关新页
+- **产品页可直接 URL 访问**：portal 发现产出的 modules.yaml URL 可直接用于 Stage 1-5，无需重走门户
+- **原路径不动**：页面有菜单（含 `--home-url` 直指产品页）时走原有 `crawl_menu_tree`，estack 等既有项目不受影响
 
 ---
 

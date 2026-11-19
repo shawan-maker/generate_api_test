@@ -30,7 +30,11 @@ class OcrSolver:
     def _get_ocr(self):
         if self._ocr is None:
             _ensure_deps()
-            self._ocr = ddddocr.DdddOcr(show_ad=False)
+            # ddddocr 版本兼容：>=1.5 为 DdddOcr，旧版为 DdddO
+            try:
+                self._ocr = ddddocr.DdddOcr(show_ad=False)
+            except AttributeError:
+                self._ocr = ddddocr.DdddO(show_ad=False)
         return self._ocr
 
     def solve(self, img_data) -> Optional[str]:

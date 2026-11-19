@@ -45,6 +45,13 @@ async def discover_modules(page, context, base_url, login_url, profile, project_
     from core.discovery.path_mapper import get_workspace_dir
     workspace_dir = get_workspace_dir(project_dir)
 
+    from core.discovery.nav_discovery import (
+        crawl_menu_tree,
+        count_menu_items,
+        count_portal_cards,
+        crawl_portal_products,
+    )
+
     # 检查缓存
     if not force:
         cached = load_discovery_result(workspace_dir, max_age_days=7)
@@ -54,9 +61,24 @@ async def discover_modules(page, context, base_url, login_url, profile, project_
             _generate_modules_yaml(cached, project_dir, base_url)
             return cached
 
-    # 实际爬取
-    LOG.info("  展开侧边栏菜单...")
-    discovered = await crawl_menu_tree(page, wait_ms=1500)
+    # 产品门户层检测：着陆页无侧边栏菜单但有产品卡片（EIS 型产品选择页）
+    # → 逐个进入产品控制台爬菜单；否则走原有单层菜单爬取（零行为变化）。
+    portal_cfg = profile.get("product_portal") or {}
+    portal_selector = portal_cfg.get("selector", ".product-card")
+    menu_count = await count_menu_items(page)
+    card_count = 0
+    if menu_count == 0:
+        card_count = await count_portal_cards(page, portal_selector)
+
+    if menu_count == 0 and card_count > 0:
+        LOG.info(f"  检测到产品门户页（无菜单，{card_count} 个产品卡片）→ 产品层发现模式")
+        discovered = await crawl_portal_products(
+            page, context, portal_selector=portal_selector,
+        )
+    else:
+        # 实际爬取
+        LOG.info("  展开侧边栏菜单...")
+        discovered = await crawl_menu_tree(page, wait_ms=1500)
 
     # 不再过滤非列表页，返回所有发现的菜单项（管线会自行判断是否有有效内容）
     LOG.info(f"  发现 {len(discovered)} 个菜单项")

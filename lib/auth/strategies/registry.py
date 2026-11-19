@@ -81,6 +81,12 @@ def _auto_register():
     except ImportError as e:
         LOG.debug(f"Tianshu 策略未加载: {e}")
 
+    try:
+        from . import eis
+        register(eis.EisStrategy)
+    except ImportError as e:
+        LOG.debug(f"EIS 策略未加载: {e}")
+
 
 # 模块加载时自动注册
 _auto_register()
