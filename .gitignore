@@ -40,6 +40,8 @@ __pycache__/
 *.bak
 *.swp
 *~
+tmp/
+tmp_*.txt
 
 # .probed.yaml（运行时探测产物）
 *.probed.yaml
