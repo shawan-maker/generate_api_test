@@ -1722,14 +1722,14 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                         }}
 
                         // 构建每个 input 的 selector
-                        // ★ P0-3（审计 L-1）: 与 _buildSelector 相同的两条终止规则——
-                        // ①深度 ≥4 层停；②遇语义容器以其为根截断（禁 #app 绝对路径）
+                        // ★ P0-3（审计 L-1）+ 回归修复: 语义容器优先必达——遇 el-form-item 等
+                        // 语义容器以其为根截断；深度上限 12 仅作保险丝。原 depth<4 会在到达
                         const SEMANTIC_CONTAINERS_IP = ['el-form-item', 'el-tab-pane', 'el-dialog', 'el-drawer', 'el-table__row'];
                         const subSelectors = allInputs.map((inp, idx) => {{
                             const path = [];
                             let current = inp;
                             let depth = 0;
-                            while (current && current.nodeType === Node.ELEMENT_NODE && depth < 4) {{
+                            while (current && current.nodeType === Node.ELEMENT_NODE && depth < 12) {{
                                 let selector = current.nodeName.toLowerCase();
                                 if (current.id) {{
                                     selector = `#${{current.id}}`;
@@ -1970,8 +1970,13 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                 if (selR.width <= 0 || selR.height <= 0) return;
 
                 // 检查该 el-select 是否已被 fields 覆盖（通过 label + type 匹配）
+                // ★ 合成后缀剥离: 主分支产出的是「label(N)」「label(掩码)」等带合成
+                // 后缀的 label，精确匹配会让单数 label 永远"未覆盖"而重复补收
+                // （多 select form-item 产多匹配 selector 的重复字段）——以后缀
+                // 剥离后的基名比较。
+                const _baseLabel = (s) => (s || '').replace(/\\((掩码|下拉|\\d+)\\)\\s*$/, '');
                 const alreadyCovered = fields.some(f =>
-                    f.label === label && f.type === 'select' && f.kb_category === 'el-select'
+                    _baseLabel(f.label) === label && f.type === 'select' && f.kb_category === 'el-select'
                 );
                 if (!alreadyCovered) {{
                     const selectIdx = fields.length;
@@ -2005,48 +2010,69 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
             if (element.name) return {{ selector: `[name="${{element.name}}"]`, playwright_locator: `[name="${{element.name}}"]` }};
 
             // 优先级 3a: DOM path（标准 CSS，evaluate 安全）
-            // ★ P0-3（审计 L-1）: 两条终止规则——①深度 ≥4 层停；②遇语义容器
-            // (el-form-item/el-tab-pane/el-dialog/el-drawer/el-table__row) 以其为根截断。
-            // 产物从 `#app > ... 9 层` 绝对路径变为 `.el-form-item ... ≤4 层` 相对路径。
+            // ★ P0-3（审计 L-1）+ 回归修复: 语义容器优先必达——遇 el-form-item 等语义容器
+            // 以其为根截断；深度上限 12 仅作保险丝（防无限上溯）。原 depth<4 在到达语义锚
+            // 前耗尽会产出无锚短路径（全局多匹配→填充失败），语义锚必须优先于深度上限。
             const SEMANTIC_CONTAINERS = ['el-form-item', 'el-tab-pane', 'el-dialog', 'el-drawer', 'el-table__row'];
             const path = [];
             let current = element;
             let depth = 0;
-            while (current && current.nodeType === Node.ELEMENT_NODE && depth < 4) {{
-                let selector = current.nodeName.toLowerCase();
+            let anchorMode = false;
+            while (current && current.nodeType === Node.ELEMENT_NODE && depth < 12) {{
                 if (current.id) {{
-                    selector = `#${{current.id}}`;
-                    path.unshift(selector);
+                    path.unshift(`#${{current.id}}`);
                     break;
-                }} else {{
-                    // ★ 语义容器截断：容器以 class 定位（比裸标签稳定）后停止上爬
-                    const containerCls = SEMANTIC_CONTAINERS.find(sc => current.classList.contains(sc));
-                    if (containerCls) {{
-                        selector = '.' + containerCls;
-                        let sibling = current;
-                        let nth = 1;
-                        while (sibling.previousElementSibling) {{
-                            sibling = sibling.previousElementSibling;
-                            if (sibling.nodeName === current.nodeName) nth++;
-                        }}
-                        if (nth > 1 || current.nextElementSibling) {{
-                            selector += `:nth-of-type(${{nth}})`;
-                        }}
-                        path.unshift(selector);
-                        current = null;
+                }}
+                let sibling = current;
+                let nth = 1;
+                while (sibling.previousElementSibling) {{
+                    sibling = sibling.previousElementSibling;
+                    if (sibling.nodeName === current.nodeName) nth++;
+                }}
+                const suffix = path.length ? ' > ' + path.join(' > ') : '';
+                // ★ 语义容器锚（P0-3 第二案）: 语义容器 class 全局复用，
+                // "nth=1 且无后兄弟省略序号"的优化仅对 #id 成立，对 class 必产
+                // 全局多匹配——必须无条件带位置锚；锚+下段路径经文档内唯一性
+                // 验证通过才截断，不唯一则进入上爬模式逐层补锚。
+                const containerCls = SEMANTIC_CONTAINERS.find(sc => current.classList.contains(sc));
+                if (containerCls) {{
+                    anchorMode = true;
+                    const anchor = `.${{containerCls}}:nth-of-type(${{nth}})`;
+                    path.unshift(anchor);
+                    if (document.querySelectorAll(anchor + suffix).length === 1) {{
                         break;
                     }}
-                    let sibling = current;
-                    let nth = 1;
-                    while (sibling.previousElementSibling) {{
-                        sibling = sibling.previousElementSibling;
-                        if (sibling.nodeName === current.nodeName) nth++;
-                    }}
-                    if (nth > 1 || current.nextElementSibling) {{
-                        selector += `:nth-of-type(${{nth}})`;
-                    }}
+                    current = current.parentElement;
+                    depth++;
+                    continue;
                 }}
-                path.unshift(selector);
+                // 下段层（首个语义容器之前）: 原省略优化构建，不做唯一性
+                // 验证——语义锚优先，下段不允许局部唯一提前截断。
+                if (!anchorMode) {{
+                    let plain = current.nodeName.toLowerCase();
+                    if (nth > 1 || current.nextElementSibling) {{
+                        plain += `:nth-of-type(${{nth}})`;
+                    }}
+                    path.unshift(plain);
+                    current = current.parentElement;
+                    depth++;
+                    continue;
+                }}
+                // 上爬层（语义锚不唯一后）: 累计路径唯一即截断；省略版不唯一
+                // 时强制带 nth-of-type 重试，仍不唯一才继续上爬。
+                let selector = current.nodeName.toLowerCase();
+                if (nth > 1 || current.nextElementSibling) {{
+                    selector += `:nth-of-type(${{nth}})`;
+                }}
+                if (document.querySelectorAll(selector + suffix).length === 1) {{
+                    path.unshift(selector);
+                    break;
+                }}
+                const forced = current.nodeName.toLowerCase() + `:nth-of-type(${{nth}})`;
+                path.unshift(forced);
+                if (document.querySelectorAll(forced + suffix).length === 1) {{
+                    break;
+                }}
                 current = current.parentElement;
                 depth++;
             }}
