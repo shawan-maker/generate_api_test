@@ -663,7 +663,7 @@ async def _execute_interaction_steps(page, steps: list, label: str) -> bool:
                     LOG.info(f"    [regenerate] {label}: 邮箱重新生成 → {value}")
                 elif is_account:
                     ts = str(int(_time.time()))[-6:]
-                    value = f"AT_test_{ts}"
+                    value = f"test{ts}"
                     LOG.info(f"    [regenerate] {label}: 账号重新生成 → {value}")
 
                 # 等待输入框可见

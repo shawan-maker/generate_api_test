@@ -190,7 +190,7 @@ async def _prewarm_table_data(page, form_fields: list, toolbar_buttons: list,
 
         # Step 3: 生成填充数据
         fill_rules = generate_fill_rules(form_fields)
-        fill_data = generate_fill_data(form_fields, username="AT_prewarm")
+        fill_data = generate_fill_data(form_fields, username="prewarm")
         LOG.info(f"    预热: 生成 {len(fill_data)} 个字段填充数据")
         # 记录未生成填充数据的字段及原因
         for f in form_fields:
@@ -209,7 +209,7 @@ async def _prewarm_table_data(page, form_fields: list, toolbar_buttons: list,
 
         # Step 4: 填充表单（普通字段）
         filler = FormFiller(page)
-        fill_result = await filler.fill_create_form(form_fields, "AT_prewarm", fill_data)
+        fill_result = await filler.fill_create_form(form_fields, "prewarm", fill_data)
         # fill_result 现在是 dict: {"filled": int, "cascade_actions": list}
         filled_count = fill_result["filled"] if isinstance(fill_result, dict) else fill_result
         LOG.info(f"    预热: 表单填充结果: {filled_count}/{len(form_fields)} 个字段")
@@ -302,7 +302,7 @@ async def _prewarm_table_data(page, form_fields: list, toolbar_buttons: list,
                 if any(kw in label.lower() for kw in _marker_keywords):
                     _prewarm_marker = value
                     break
-            result["created_marker"] = _prewarm_marker or "AT_prewarm"
+            result["created_marker"] = _prewarm_marker or "prewarm"
             LOG.info(f"    预热成功: 发现 {len(new_row_actions)} 个行操作按钮")
 
             # 重新扫描下拉菜单（行操作中可能有"更多"按钮）

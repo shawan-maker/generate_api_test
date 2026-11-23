@@ -30,7 +30,7 @@ _POSTMAN_HELPERS_JS = [
     "}",
     "",
     "function gen_test_name() {",
-    "    return 'AT_' + _ts6();",
+    "    return 'test' + _ts6();",
     "}",
     "",
     "function gen_mutable_value() {",
@@ -708,9 +708,9 @@ def gen_test_name(field_name: str = "") -> str:
         field_name: 字段名（仅用于可读性，不影响生成值）
 
     Returns:
-        例如 'AT_a3f2c1'
+        例如 'testa3f2c1'
     """
-    return f"AT_{{_ts6()}}"
+    return f"test{{_ts6()}}"
 
 
 def gen_mutable_value() -> str:

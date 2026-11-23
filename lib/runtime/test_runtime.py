@@ -278,7 +278,7 @@ class StepExecutor:
         self.log_file = log_file
         self.config = config or {
             "test_data": {
-                "name_prefix": "AT_",
+                "name_prefix": "test",
                 "mutable_prefix": "Updated_",
             }
         }
@@ -1131,7 +1131,7 @@ class TestRunner:
         # 测试配置（名称前缀、可变前缀等）
         self.config = manifest.get("config", {
             "test_data": {
-                "name_prefix": "AT_",
+                "name_prefix": "test",
                 "mutable_prefix": "Updated_",
             }
         })

@@ -100,9 +100,11 @@ def generate_fill_value(field_type: str, input_type: str,
             "rule": "description_pattern", "params": {"prefix": "auto"}
         }
 
-    # 默认文本
-    return f"AT_{username}_{ts}", {
-        "rule": "name_pattern", "params": {"prefix": f"AT_{username}"}
+    # 默认文本（名称类标识符保守字符集：小写字母+数字，云平台名称规则
+    # 普遍为「小写字母/数字/中划线、小写字母开头」，大写 AT_ 前缀与下划线
+    # 被实证拒绝（EIS create 表单校验））
+    return f"{username.lower()}{ts}", {
+        "rule": "name_pattern", "params": {"prefix": username.lower()}
     }
 
 
@@ -321,8 +323,11 @@ def apply_fill_rule(rule: dict, timestamp: str = None) -> str:
         return f"{prefix}_desc_{timestamp}"
 
     if rule_type == "name_pattern":
+        # 名称类标识符保守字符集：小写字母+数字（k8s 风格安全子集）。
+        # 云平台名称规则普遍为「小写字母/数字/中划线、小写字母开头」，
+        # 禁用大写前缀 AT_ 与下划线分隔符（EIS create 表单校验实证拒绝）。
         prefix = params.get("prefix", "test")
-        return f"AT_{prefix}_{timestamp}"
+        return f"{prefix}{timestamp}"
 
     if rule_type == "number_pattern":
         min_val = params.get("min", 1)

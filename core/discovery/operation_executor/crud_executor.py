@@ -2095,8 +2095,18 @@ async def _do_create(page, context: dict) -> dict:
         # 检查是否填充成功（is_editable 或 interaction_steps 非空，且没有 skipped_reason）
         is_success = (detail.get("is_editable", False) or detail.get("interaction_steps")) \
                      and not detail.get("skipped_reason")
-        if is_required and not is_success:
+        # ★ F4: 「无选项」（no_options）的必填字段不再预先阻断提交。
+        # 依据：is-required 是 form-item 级信号，复合 form-item 内的非主
+        # select 会被过宽继承 required；且「标了 required 但环境无选项」时，
+        # 应让真实表单校验做最终裁决——非必填则提交成功创建记录（marker 出现，
+        # create 成功）；真必填则表单校验拦截、marker 自然缺失，create 如实
+        # 判失败（三阶段一致性：探测记录的是真实行为而非预判）。其他失败原因
+        # （expand_failed/verify_failed 等真实交互故障）保持阻断，避免提交
+        # 注定失败的表单。
+        if is_required and not is_success and detail.get("skipped_reason") != "no_options":
             required_failed.append(label)
+        elif is_required and detail.get("skipped_reason") == "no_options":
+            LOG.info(f"    必填多步字段 {label} 无选项，放行提交由表单校验终裁")
 
     # 也检查未被 fill_multi_step_fields 处理的必填字段
     handled_labels = {d.get("label") for d in ms_details}
@@ -4891,14 +4901,17 @@ def _apply_fix(error_result: dict, context: dict) -> dict:
                 overrides[error_field] = ""
             elif "已存在" in error_text or "重复" in error_text or "duplicate" in error_text.lower():
                 # 唯一性冲突：加时间戳后缀
+                # ★ F5: 补救值用最保守字符集（纯小写字母+数字）——云平台类系统
+                # 的标识符校验普遍遵循 k8s 规范（小写字母/数字/中划线），下划线
+                # 几乎总被拒（如 EIS 名称「由小写字母、数字以及中划线组成」）。
                 ts = str(int(time.time()))[-6:]
-                overrides[error_field] = f"AT_{ts}"
+                overrides[error_field] = f"at{ts}"
             elif "格式" in error_text or "format" in error_text.lower():
                 # 格式错误：尝试常见格式
                 overrides[error_field] = _guess_format(error_field, error_text)
             elif "不能为空" in error_text or "必填" in error_text or "required" in error_text.lower():
-                # 必填字段：填入默认值
-                overrides[error_field] = f"auto_{str(int(time.time()))[-4:]}"
+                # 必填字段：填入默认值（★ F5 同上：保守字符集）
+                overrides[error_field] = f"auto{str(int(time.time()))[-4:]}"
             else:
                 # 其他校验错误：按字段类型生成合理值
                 ts_val = str(int(time.time()))[-6:]
@@ -4907,11 +4920,13 @@ def _apply_fix(error_result: dict, context: dict) -> dict:
                     import random as _rand
                     overrides[error_field] = f"138{_rand.randint(10000000, 99999999)}"
                 elif any(kw in field_lower for kw in ("邮箱", "email")):
-                    overrides[error_field] = f"at_{ts_val}@test.com"
+                    overrides[error_field] = f"at{ts_val}@test.com"
                 elif any(kw in field_lower for kw in ("密码", "password")):
                     overrides[error_field] = "Test@123456"
                 else:
-                    overrides[error_field] = f"fix_{ts_val}"
+                    # ★ F5: fix{ts}——纯小写字母+数字，对任何标识符/名称类
+                    # 校验都安全（fix_404317 的下划线曾被 EIS 校验拒绝）
+                    overrides[error_field] = f"fix{ts_val}"
 
     elif error_type == "api_error":
         # 接口错误：分析错误文本
@@ -4920,7 +4935,8 @@ def _apply_fix(error_result: dict, context: dict) -> dict:
             overrides = context.setdefault("fill_overrides", {})
             # 尝试从错误文本中提取字段名
             for label in _extract_field_names(error_text):
-                overrides[label] = f"auto_{str(int(time.time()))[-4:]}"
+                # ★ F5: 补救值保守字符集（纯小写字母+数字，见 form_validation 分支注记）
+                overrides[label] = f"auto{str(int(time.time()))[-4:]}"
 
     elif error_type == "click_failed":
         # 点击失败：已在 click_page_button 中尝试过所有策略
@@ -5005,7 +5021,8 @@ def _guess_format(field_label: str, error_text: str) -> str:
     if any(kw in label_lower for kw in ("编码", "code")):
         return f"code_{ts}"
 
-    return f"AT_{ts}"
+    # 名称类标识符保守字符集（与 F5 补救值一致：小写字母+数字）
+    return f"at{ts}"
 
 
 def _extract_field_names(error_text: str) -> list:

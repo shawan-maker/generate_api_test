@@ -1501,6 +1501,11 @@ async def _scan_create_dialog(page, kb: ProbeKB = None, framework: str = "elemen
             // ★ P0-3 对齐：selects 全数组口径（与 form_filler.scan_form_fields 同源）——
             // 独立 input 的归属判定须排除【所有】select 内部 input，而非仅第一个。
             const selects = Array.from(fi.querySelectorAll('.el-select, .ant-select'));
+            // ★ F1: select 级可见性过滤——form-item 可见不代表其内部 select 可见
+            //（预渲染隐藏槽位模板：如「增加一块普通网卡」的隐藏网卡行内 select）。
+            // 隐藏 select 不入册（不推字段、不继承 required）；independentInputs
+            // 的归属判定仍用全量 selects（隐藏 select 内的 input 同样不算独立 input）。
+            const visibleSelects = selects.filter(s => s.offsetWidth > 0 && s.offsetHeight > 0);
             const selectEl = selects[0] || null;  // 兼容旧单 select 引用（下方 debug 信息）
             const allInputs = fi.querySelectorAll('input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"])');
             const independentInputs = Array.from(allInputs)
@@ -1537,8 +1542,8 @@ async def _scan_create_dialog(page, kb: ProbeKB = None, framework: str = "elemen
                 // 后缀），统一走 _buildSelector 产「语义锚+唯一性验证」的 selector；
                 // 合成后缀字段不生成 label locator（DOM label 无后缀文本，:has-text
                 // 不命中，P1-A 豁免）。
-                selects.forEach((sel, idx) => {
-                    const labelSuffix = selects.length > 1 ? '(' + (idx + 1) + ')' : '(下拉)';
+                visibleSelects.forEach((sel, idx) => {
+                    const labelSuffix = visibleSelects.length > 1 ? '(' + (idx + 1) + ')' : '(下拉)';
                     fields.push(Object.assign({ label: label + labelSuffix, type: 'select', kb_category: 'el-select',
                                  required }, _buildSelector(sel, label + labelSuffix)));
                 });
@@ -1553,12 +1558,13 @@ async def _scan_create_dialog(page, kb: ProbeKB = None, framework: str = "elemen
             } else if (fi.querySelector('.el-date-editor, .ant-picker')) {
                 fields.push(Object.assign({ label, type: 'date-picker', kb_category: 'date-picker',
                              required }, _buildComponentSelector(fi, '.el-date-editor, .ant-picker', fields.length, label)));
-            } else if (selects.length > 0) {
+            } else if (visibleSelects.length > 0) {
                 // ★ P0-3 对齐：form-item 内多个 select（如授权主体：类型选择 + 实体选择）
                 // 逐个输出（单 select 不加后缀、多 select 加 (N) 后缀），统一走 _buildSelector
                 // 产「语义锚+唯一性验证」的 selector——多卡片布局下位置锚必然撞车。
-                selects.forEach((sel, idx) => {
-                    const labelSuffix = selects.length > 1 ? '(' + (idx + 1) + ')' : '';
+                // ★ F1: 只推可见 select（隐藏槽位模板不入册；selects 全量仅作归属判定）。
+                visibleSelects.forEach((sel, idx) => {
+                    const labelSuffix = visibleSelects.length > 1 ? '(' + (idx + 1) + ')' : '';
                     fields.push(Object.assign({ label: label + labelSuffix, type: 'select', kb_category: 'el-select',
                                  required }, _buildSelector(sel, label + labelSuffix)));
                 });

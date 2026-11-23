@@ -910,7 +910,7 @@ class TestStepExecutorConfig:
         )
         assert executor.config is not None
         assert "test_data" in executor.config
-        assert executor.config["test_data"]["name_prefix"] == "AT_"
+        assert executor.config["test_data"]["name_prefix"] == "test"
         assert executor.config["test_data"]["mutable_prefix"] == "Updated_"
 
     def test_config_custom(self):
@@ -938,4 +938,4 @@ class TestStepExecutorConfig:
             session=None, parser=parser, state={}, ts="123456",
             base_url="http://test", config=None
         )
-        assert executor.config["test_data"]["name_prefix"] == "AT_"
+        assert executor.config["test_data"]["name_prefix"] == "test"

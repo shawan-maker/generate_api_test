@@ -191,11 +191,11 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
             form_field_details = await form_filler.scan_form_fields_v2()
 
             # 生成填充数据并填写表单（使用标准 API）
-            fill_data = generate_fill_data(form_field_details, username="AT_test_auto")
+            fill_data = generate_fill_data(form_field_details, username="testauto")
             nav_info["fill_data"] = fill_data
 
             # 填写表单（普通字段 + 多步组件）
-            fill_result = await form_filler.fill_create_form(form_field_details, "AT_test_auto", fill_data)
+            fill_result = await form_filler.fill_create_form(form_field_details, "testauto", fill_data)
             filled_count = fill_result["filled"] if isinstance(fill_result, dict) else fill_result
             cascade_actions = fill_result.get("cascade_actions", []) if isinstance(fill_result, dict) else []
 
@@ -726,11 +726,11 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
         LOG.info(f"    扫描到 {len(form_field_details)} 个表单字段")
 
         # 6. 生成填充数据并填写表单
-        fill_data = generate_fill_data(form_field_details, username="AT_test_auto")
+        fill_data = generate_fill_data(form_field_details, username="testauto")
         nav_info["fill_data"] = fill_data
 
         # 填写表单（普通字段 + 多步组件）
-        fill_result = await form_filler.fill_create_form(form_field_details, "AT_test_auto", fill_data)
+        fill_result = await form_filler.fill_create_form(form_field_details, "testauto", fill_data)
         filled_count = fill_result["filled"] if isinstance(fill_result, dict) else fill_result
         cascade_actions = fill_result.get("cascade_actions", []) if isinstance(fill_result, dict) else []
 

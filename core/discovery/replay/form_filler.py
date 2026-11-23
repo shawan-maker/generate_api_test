@@ -882,8 +882,19 @@ class FormFiller:
                     if round_num == 1:
                         LOG.info(f"    ⏭️ multi_step R{round_num} 跳过(无选项): {label} ({kb_cat})")
                     # 非首轮仍 no_options 时不输出日志（减少噪音，最终汇总）
+                elif kb_cat == "el-select":
+                    # ★ F3c: el-select 填充失败（expand_failed/verify_failed/级联未就绪）
+                    # 归入 N 轮重试——级联依赖的下游字段（如依赖镜像/网络类型选择的
+                    # 磁盘类型）在上级填充后，值/选项可能异步到达，下一轮即可成功。
+                    # 防死循环双保险：「无进展检测」（连续两轮 pending 数不变即停）
+                    # + max_rounds 上限；真实 reason 挂临时键随 field 入队，最终
+                    # 落盘保留真实失败原因（不误标 no_options）。
+                    field["_retry_reason"] = detail.get("skipped_reason", "unknown")
+                    still_pending.append(field)
+                    LOG.info(f"    [multi-step] R{round_num}: {label} ({kb_cat}) 填充失败"
+                             f"（{field['_retry_reason']}），入下一轮重试")
                 else:
-                    # 其他失败（非 no_options）：记录但不再重试
+                    # 其他失败（非 no_options、非 el-select）：记录但不再重试
                     details.append({
                         "label": label,
                         "kb_category": kb_cat,
@@ -907,7 +918,7 @@ class FormFiller:
                 LOG.info(f"    [multi-step] 等待 1s 后重试 {len(pending)} 个字段...")
                 await self.page.wait_for_timeout(1000)
 
-        # 最终：将始终 no_options 的字段记录到 details
+        # 最终：将重试后仍未成功的字段记录到 details（保留真实失败原因）
         for field in pending:
             label = field.get("label", "")
             kb_cat = field.get("kb_category", "")
@@ -918,7 +929,7 @@ class FormFiller:
                 "selector": selector,
                 "is_editable": False,
                 "interaction_steps": [],
-                "skipped_reason": "no_options",
+                "skipped_reason": field.pop("_retry_reason", "no_options"),
             })
         if pending:
             LOG.warning(f"    [multi-step] {len(pending)} 个字段在 {max_rounds} 轮后仍无选项: "
@@ -1151,8 +1162,8 @@ class FormFiller:
             return f"Test@{_rand.randint(100000, 999999)}"
         if input_type == "url":
             return f"https://test-{ts}.example.com"
-        # 默认文本
-        return f"AT_{username}_{ts}"
+        # 默认文本（名称类标识符保守字符集：小写字母+数字，禁 AT_ 前缀与下划线）
+        return f"{username.lower()}{ts}"
 
     async def select_dropdowns(self) -> int:
         """选择所有下拉框（包括 el-select 和 el-tree）的第一个选项，返回成功选择的数量"""
@@ -2509,10 +2520,51 @@ class MultiStepExecutor:
                     # execution_path 标记为 has_default_value
                     # 后续代码会正常记录 click + click_first 步骤
 
+        # ★ F3a: 级联锁定字段守卫——已有默认值且组件 disabled 时，字段值由上游
+        # 选择自动填充并被业务锁定（不可再编辑），展开必失败（disabled select
+        # 点击后 popper 永不开）。正确行为是认定「值已满足」：仅保留
+        # check_default_value 步骤即返回成功，不展开不重选。
+        # 三阶段一致性（宪法原则 1）：Stage 2 回放该字段只验证值在（值已在
+        # DOM），不产生展开/选择动作——锁定字段的回放语义本就不应改动其值。
+        if option_text and await self._is_select_disabled(selector):
+            LOG.info(f"    el-select {label}: 已有默认值 '{option_text}' 且组件 disabled，"
+                     f"级联锁定字段视为已满足")
+            return True, {
+                "is_editable": False,
+                "option_text": option_text,
+                "select_sub_type": select_sub_type,
+                "selection_strategy": selection_strategy,
+                "has_default_value": True,
+                "default_values": [option_text],
+                "interaction_steps": interaction_steps,
+                "execution_path": "locked_with_default",
+            }
+
         expanded = await self._expand_by_selector(selector, label, playwright_locator)
         if not expanded:
             LOG.debug(f"    el-select {label}: expand failed")
-            return False, {"selection_strategy": selection_strategy}
+            # ★ F3d: 展开失败时值满足优先——部分字段的默认值由业务自动填充/锁定
+            #（级联下游、系统默认等），popper 永不开（不可重选），但其值已满足
+            # 表单提交条件。verify（多信号值检测）是「值已满足」的权威信号：有值
+            # 则视为成功（值满足优先于动作结果，与 F3b 同构），无值保持失败
+            #（真实交互故障不掩盖）。
+            verify_fallback = await self._verify_select_filled(label, selector)
+            if verify_fallback.get("filled"):
+                filled_val = verify_fallback.get("displayed_value", "")
+                LOG.info(f"    el-select {label}: 展开失败但字段已有值 '{filled_val}'，"
+                         f"值满足优先视为成功")
+                return True, {
+                    "is_editable": False,
+                    "option_text": filled_val,
+                    "select_sub_type": select_sub_type,
+                    "selection_strategy": selection_strategy,
+                    "has_default_value": True,
+                    "default_values": [filled_val],
+                    "interaction_steps": interaction_steps,
+                    "execution_path": "value_already_filled_without_expand",
+                }
+            # ★ F3c 配套：标明失败原因（expand_failed），供 N 轮重试与产物失败可观测
+            return False, {"selection_strategy": selection_strategy, "skipped_reason": "expand_failed"}
         await self.page.wait_for_timeout(500)
 
         # ★ 记录步骤：展开下拉框
@@ -2632,6 +2684,15 @@ class MultiStepExecutor:
             )
             if has_visible_dropdown and not has_any_visible_items:
                 LOG.info(f"    el-select {label}: 下拉框已展开但无选项，跳过（非必填或暂无可选项）")
+                # ★ F2b: 跳过前关闭已展开的下拉框（对齐选择成功路径的清理行为）。
+                # 残留 popper 会污染下一轮重试的展开差值验证：click 触发的是
+                # toggle 关闭而非展开，被误判 expand_failed，掩盖真实的
+                # no_options 失败原因。
+                try:
+                    await self.page.keyboard.press("Escape")
+                    await self.page.wait_for_timeout(200)
+                except Exception:
+                    pass
                 detail["skipped_reason"] = "no_options"
                 detail["selection_strategy"] = selection_strategy
                 detail["execution_path"] = "no_options_available"
@@ -2735,7 +2796,12 @@ class MultiStepExecutor:
             LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
 
             LOG.info(f"    [el-select] {label}: 已记录 {len(interaction_steps)} 个操作步骤")
-            return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text), "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "interaction_steps": interaction_steps, "execution_path": "editable_search_select"}
+            # ★ F3b: verify 确认字段有值时即认定成功——值满足优先于点击动作结果。
+            # click_first 失败但字段已有值的场景：级联场景下选项被异步自动填充、
+            # 锁定字段保留既有值等。verify（多信号值检测）是「值已满足」的权威
+            # 信号，不能让点击动作的偶发失败否决已满足的必填字段。
+            success = selected or verify.get("filled", False)
+            return success, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text), "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "interaction_steps": interaction_steps, "execution_path": "editable_search_select" if selected else "editable_value_already_filled"}
         else:
             # 不可编辑：等待选项加载，再选择第一个选项
             await self._wait_for_options_loaded()
@@ -2782,7 +2848,10 @@ class MultiStepExecutor:
             LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
 
             LOG.info(f"    [el-select] {label}: 已记录 {len(interaction_steps)} 个操作步骤")
-            return selected, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text), "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "interaction_steps": interaction_steps, "execution_path": "readonly_first_option"}
+            # ★ F3b: verify 确认字段有值时即认定成功——值满足优先于点击动作结果
+            #（与 editable 路径同构：click_first 偶发失败不否决已满足的字段）。
+            success = selected or verify.get("filled", False)
+            return success, {"is_editable": is_editable, "option_text": verify.get("displayed_value", option_text), "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "interaction_steps": interaction_steps, "execution_path": "readonly_first_option" if selected else "readonly_value_already_filled"}
 
     async def _fill_remote_select(self, selector: str, label: str, playwright_locator: str = None) -> tuple:
         """远程搜索 el-select：展开后等待远程加载完成，选第一个
@@ -3339,6 +3408,69 @@ class MultiStepExecutor:
             # select-single/multi/searchable/group：走现有通用逻辑
             return await self._execute_select_with_details(selector, label)
 
+    async def _count_visible_dropdowns(self) -> int:
+        """统计当前页面可见的 .el-select-dropdown 数量（offsetWidth/Height 双判定）。"""
+        try:
+            return await self.page.evaluate("""() => {
+                let n = 0;
+                for (const dd of document.querySelectorAll('.el-select-dropdown')) {
+                    if (dd.offsetWidth > 0 && dd.offsetHeight > 0) n++;
+                }
+                return n;
+            }""")
+        except Exception:
+            return -1  # 评估失败时返回 -1，调用方据此跳过验证（保持旧行为）
+
+    async def _verify_popper_opened(self, baseline: int, max_polls: int = 5,
+                                     interval_ms: int = 200) -> bool:
+        """★ F2: 点击后轮询验证 popper 真实展开。
+
+        以「新增可见 .el-select-dropdown」为展开成功的客观信号——click 不抛错
+        ≠ popper 展开（disabled/级联锁定字段的 select 点击后 popper 永不开，
+        旧实现「click 成功即返回 True」是假阳性，掩盖真实失败原因）。
+        轮询容忍 popper 异步挂载（点击后延迟出现的渲染竞态）。
+
+        Args:
+            baseline: 点击前的可见 dropdown 数量（差值判定，避免把「本就开着
+                的其他 dropdown」误认为本次展开成功）
+            max_polls: 最大轮询次数
+            interval_ms: 轮询间隔
+
+        Returns:
+            bool: 是否出现新增可见 dropdown。baseline < 0（评估失败）时直接
+            返回 True 放行（防御：不因验证基础设施故障而阻断既有路径）。
+        """
+        if baseline < 0:
+            return True
+        for _ in range(max_polls):
+            visible = await self._count_visible_dropdowns()
+            if visible > baseline:
+                return True
+            await self.page.wait_for_timeout(interval_ms)
+        return False
+
+    async def _is_select_disabled(self, selector: str) -> bool:
+        """判断 el-select 是否处于 disabled 态（三重信号，Vue prop 为权威）。
+
+        Element UI 中 disabled select 不一定带 is-disabled 根 class（如被
+        el-tooltip 包装的形态）；DOM 权威信号是内部 input[disabled]，Vue
+        实例的 disabled prop 是组件级权威真值。无任何信号时返回 False 放行
+        （保持旧行为，不因判定基础设施缺失而误拦）。
+        """
+        try:
+            return await self.page.evaluate("""(selector) => {
+                const sel = document.querySelector(selector);
+                if (!sel) return false;
+                const input = sel.querySelector('input');
+                if (input && input.disabled) return true;   // DOM 权威：disabled → input[disabled]
+                const vue = sel.__vue__;
+                if (vue && vue.disabled === true) return true;  // Vue prop 权威
+                if (sel.classList.contains('is-disabled')) return true;
+                return false;
+            }""", selector)
+        except Exception:
+            return False
+
     async def _expand_by_selector(self, selector: str, label: str, playwright_locator: str = None) -> bool:
         """用 CSS selector 点击展开 el-select 下拉框。
 
@@ -3365,17 +3497,28 @@ class MultiStepExecutor:
                         el_fb = self.page.locator(selector).first
                         fb_count = await el_fb.count()
                         if fb_count > 0:
+                            fb_baseline = await self._count_visible_dropdowns()
                             await el_fb.click(timeout=3000)
-                            LOG.info(f"    el-select {label}: 回退 selector 展开成功 ({selector[:80]})")
-                            return True
+                            # ★ F2: 验证 popper 真实展开（click 不抛错 ≠ 展开）
+                            if await self._verify_popper_opened(fb_baseline):
+                                LOG.info(f"    el-select {label}: 回退 selector 展开成功 ({selector[:80]})")
+                                return True
+                            LOG.info(f"    el-select {label}: 回退 selector 点击后 popper 未展开 ({selector[:80]})")
+                            return False
                         LOG.info(f"    el-select {label}: 回退 selector 也未匹配 ({selector[:80]})")
                     except Exception as e:
                         LOG.info(f"    el-select {label}: 回退 selector 展开失败: {e}")
                 return False
 
+            baseline = await self._count_visible_dropdowns()
             await el.click(timeout=3000)
-            LOG.info(f"    el-select {label}: locator 展开成功 ({primary})")
-            return True
+            # ★ F2: 验证 popper 真实展开（差值判定：可见 dropdown 数 > 点击前基线）
+            if await self._verify_popper_opened(baseline):
+                LOG.info(f"    el-select {label}: locator 展开成功 ({primary})")
+                return True
+            LOG.info(f"    el-select {label}: 点击后 popper 未展开（baseline={baseline}），"
+                     f"判定展开失败 ({primary})")
+            return False
         except Exception as e:
             LOG.info(f"    el-select {label}: locator 展开失败: {e}")
             return False
