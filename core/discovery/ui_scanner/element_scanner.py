@@ -1498,10 +1498,14 @@ async def _scan_create_dialog(page, kb: ProbeKB = None, framework: str = "elemen
                              fi.querySelector('[class*="required"]') !== null;
 
             // 复合组件检测：el-select + 独立 input（如手机号带国家编码）
-            const selectEl = fi.querySelector('.el-select, .ant-select');
+            // ★ P0-3 对齐：selects 全数组口径（与 form_filler.scan_form_fields 同源）——
+            // 独立 input 的归属判定须排除【所有】select 内部 input，而非仅第一个。
+            const selects = Array.from(fi.querySelectorAll('.el-select, .ant-select'));
+            const selectEl = selects[0] || null;  // 兼容旧单 select 引用（下方 debug 信息）
             const allInputs = fi.querySelectorAll('input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"])');
             const independentInputs = Array.from(allInputs)
-                .filter(inp => !inp.readOnly && !selectEl?.contains(inp) && inp.offsetWidth > 0);
+                .filter(inp => !inp.readOnly && inp.offsetWidth > 0
+                    && !selects.some(s => s.contains(inp)));
 
             // 调试：手机号字段
             if (label.includes('手机') || label.includes('电话') || label.includes('phone')) {
@@ -1528,31 +1532,45 @@ async def _scan_create_dialog(page, kb: ProbeKB = None, framework: str = "elemen
             }
 
             if (selectEl && independentInputs.length > 0) {
-                // 复合组件：el-select + 独立 input
-                fields.push({ label: label + '(下拉)', type: 'select', kb_category: 'el-select',
-                             selector: _buildComponentSelector(fi, '.el-select'), required });
+                // 复合组件：el-select(s) + 独立 input
+                // ★ P0-3 对齐：select 逐个推（单 select 加 (下拉) 后缀、多 select 加 (N)
+                // 后缀），统一走 _buildSelector 产「语义锚+唯一性验证」的 selector；
+                // 合成后缀字段不生成 label locator（DOM label 无后缀文本，:has-text
+                // 不命中，P1-A 豁免）。
+                selects.forEach((sel, idx) => {
+                    const labelSuffix = selects.length > 1 ? '(' + (idx + 1) + ')' : '(下拉)';
+                    fields.push(Object.assign({ label: label + labelSuffix, type: 'select', kb_category: 'el-select',
+                                 required }, _buildSelector(sel, label + labelSuffix)));
+                });
                 independentInputs.forEach(inp => {
-                    fields.push({ label, type: 'input', kb_category: 'input-generic',
-                                 selector: _buildSelector(inp), inputType: inp.type || 'text', required });
+                    fields.push(Object.assign({ label, type: 'input', kb_category: 'input-generic',
+                                 inputType: inp.type || 'text', required }, _buildSelector(inp, label)));
                 });
             }
             else if (fi.querySelector('.el-cascader')) {
-                fields.push({ label, type: 'cascader', kb_category: 'el-cascader',
-                             selector: _buildComponentSelector(fi, '.el-cascader'), required });
+                fields.push(Object.assign({ label, type: 'cascader', kb_category: 'el-cascader',
+                             required }, _buildComponentSelector(fi, '.el-cascader', fields.length, label)));
             } else if (fi.querySelector('.el-date-editor, .ant-picker')) {
-                fields.push({ label, type: 'date-picker', kb_category: 'date-picker',
-                             selector: _buildComponentSelector(fi, '.el-date-editor, .ant-picker'), required });
-            } else if (selectEl) {
-                fields.push({ label, type: 'select', kb_category: 'el-select',
-                             selector: _buildComponentSelector(fi, '.el-select'), required });
+                fields.push(Object.assign({ label, type: 'date-picker', kb_category: 'date-picker',
+                             required }, _buildComponentSelector(fi, '.el-date-editor, .ant-picker', fields.length, label)));
+            } else if (selects.length > 0) {
+                // ★ P0-3 对齐：form-item 内多个 select（如授权主体：类型选择 + 实体选择）
+                // 逐个输出（单 select 不加后缀、多 select 加 (N) 后缀），统一走 _buildSelector
+                // 产「语义锚+唯一性验证」的 selector——多卡片布局下位置锚必然撞车。
+                selects.forEach((sel, idx) => {
+                    const labelSuffix = selects.length > 1 ? '(' + (idx + 1) + ')' : '';
+                    fields.push(Object.assign({ label: label + labelSuffix, type: 'select', kb_category: 'el-select',
+                                 required }, _buildSelector(sel, label + labelSuffix)));
+                });
             } else if (fi.querySelector('.el-radio-group')) {
                 const firstRadio = fi.querySelector('.el-radio-button__inner, .el-radio__label');
-                fields.push({ label, type: 'radio', kb_category: 'radio',
-                             selector: _buildComponentSelector(fi, '.el-radio-group'), required,
-                             firstOptionText: firstRadio ? firstRadio.textContent.trim() : '' });
+                fields.push(Object.assign({ label, type: 'radio', kb_category: 'radio',
+                             required,
+                             firstOptionText: firstRadio ? firstRadio.textContent.trim() : '' },
+                             _buildComponentSelector(fi, '.el-radio-group', fields.length, label)));
             } else if (fi.querySelector('.el-checkbox') && !fi.closest('.el-table')) {
-                fields.push({ label, type: 'checkbox', kb_category: 'form-checkbox',
-                             selector: _buildComponentSelector(fi, '.el-checkbox'), required });
+                fields.push(Object.assign({ label, type: 'checkbox', kb_category: 'form-checkbox',
+                             required }, _buildComponentSelector(fi, '.el-checkbox', fields.length, label)));
             } else {
                 // 通用 input / textarea
                 const ta = fi.querySelector('textarea');
@@ -1568,73 +1586,146 @@ async def _scan_create_dialog(page, kb: ProbeKB = None, framework: str = "elemen
                         inp.placeholder && (inp.placeholder.includes('请输入') || inp.placeholder.includes('Enter'))
                     ) || allInputs.reduce((max, inp) => inp.offsetWidth > max.offsetWidth ? inp : max, allInputs[0]);
 
-                    fields.push({ label, type: 'input', kb_category: 'input-generic',
-                                 selector: _buildSelector(mainInput), inputType: mainInput.type || 'text', required });
+                    fields.push(Object.assign({ label, type: 'input', kb_category: 'input-generic',
+                                 inputType: mainInput.type || 'text', required }, _buildSelector(mainInput, label)));
                 } else if (allInputs.length === 1) {
                     // 单个 input
                     const inp = allInputs[0];
-                    fields.push({ label, type: 'input', kb_category: 'input-generic',
-                                 selector: _buildSelector(inp), inputType: inp.type || 'text', required });
+                    fields.push(Object.assign({ label, type: 'input', kb_category: 'input-generic',
+                                 inputType: inp.type || 'text', required }, _buildSelector(inp, label)));
                 } else if (ta) {
-                    fields.push({ label, type: 'textarea', kb_category: 'textarea-generic',
-                                 selector: _buildSelector(ta), required });
+                    fields.push(Object.assign({ label, type: 'textarea', kb_category: 'textarea-generic',
+                                 required }, _buildSelector(ta, label)));
                 }
             }
         });
 
-        // 辅助函数：为 input/textarea 生成 selector（基于 DOM 路径）
-        function _buildSelector(el) {
-            if (!el) return null;
-            // 优先使用 id
-            if (el.id) return `#${el.id}`;
-            // 优先使用 name
-            if (el.getAttribute('name')) return `[name="${el.getAttribute('name')}"]`;
-            // 回退：使用 DOM 路径
-            return _buildCssPath(el);
-        }
+        // 辅助函数：生成双定位器（P0-3 对齐版，与 form_filler.scan_form_fields 同源）
+        // selector = 「语义容器锚+文档内唯一性验证+上爬补锚」的 CSS DOM path；
+        // playwright_locator = label 锚（按元素类型分支，合成后缀豁免）。
+        function _buildSelector(element, labelText) {
+            if (!element) return { selector: null, playwright_locator: null };
+            // 优先级 1: #id（最稳定）
+            if (element.id) return { selector: `#${element.id}`, playwright_locator: `#${element.id}` };
+            // 优先级 2: [name] 属性
+            if (element.name) return { selector: `[name="${element.name}"]`, playwright_locator: `[name="${element.name}"]` };
 
-        // 辅助函数：为复杂组件生成 selector（基于 label + 同级定位）
-        function _buildComponentSelector(formItem, selector) {
-            // 使用 formItem 在直接父元素中的位置定位（children 只返回直接子元素）
-            // 注意：不能用 document.querySelectorAll 全局计数，因为 nth-of-type 是相对于直接父元素的
-            const parent = formItem.parentElement;
-            if (parent) {
-                const directChildren = Array.from(parent.children);
-                const idx = directChildren.indexOf(formItem);
-                if (idx >= 0) {
-                    // 使用 nth-child 而非 nth-of-type，因为我们计算的是所有直接子元素的位置
-                    return `.el-form-item:nth-child(${idx + 1}) ${selector}`;
-                }
-            }
-            // 最后回退：用组件自身属性
-            const comp = formItem.querySelector(selector);
-            if (comp) return _buildCssPath(comp);
-            return null;
-        }
-
-        // 辅助函数：基于 DOM 路径生成 CSS selector
-        function _buildCssPath(el) {
-            const parts = [];
-            let current = el;
-            while (current && current.nodeType === 1) {
-                let tag = current.tagName.toLowerCase();
+            // 优先级 3a: DOM path——语义容器优先必达（P0-3 第二案）：
+            // 遇 el-form-item 等语义容器以其为根，无条件带位置锚；锚+下段路径经
+            // 文档内唯一性验证通过才截断，不唯一则上爬逐层补锚（深度上限 12 仅作
+            // 保险丝）。多卡片布局（el-card 逐卡重置 nth-child）下位置锚必然撞车，
+            // 唯一性验证是唯一可靠截断依据。
+            const SEMANTIC_CONTAINERS = ['el-form-item', 'el-tab-pane', 'el-dialog', 'el-drawer', 'el-table__row'];
+            const path = [];
+            let current = element;
+            let depth = 0;
+            let anchorMode = false;
+            while (current && current.nodeType === 1 && depth < 12) {
                 if (current.id) {
-                    parts.unshift(`#${current.id}`);
+                    path.unshift(`#${current.id}`);
                     break;
                 }
-                const parent = current.parentElement;
-                if (parent) {
-                    const siblings = Array.from(parent.children).filter(c => c.tagName === current.tagName);
-                    if (siblings.length > 1) {
-                        const idx = siblings.indexOf(current) + 1;
-                        tag += `:nth-of-type(${idx})`;
-                    }
+                let sibling = current;
+                let nth = 1;
+                while (sibling.previousElementSibling) {
+                    sibling = sibling.previousElementSibling;
+                    if (sibling.nodeName === current.nodeName) nth++;
                 }
-                parts.unshift(tag);
-                if (parts.length >= 5) break;  // 限制深度
+                const suffix = path.length ? ' > ' + path.join(' > ') : '';
+                const containerCls = SEMANTIC_CONTAINERS.find(sc => current.classList.contains(sc));
+                if (containerCls) {
+                    anchorMode = true;
+                    const anchor = `.${containerCls}:nth-of-type(${nth})`;
+                    path.unshift(anchor);
+                    if (document.querySelectorAll(anchor + suffix).length === 1) {
+                        break;
+                    }
+                    current = current.parentElement;
+                    depth++;
+                    continue;
+                }
+                // 下段层（首个语义容器之前）: 原省略优化构建，不做唯一性验证
+                if (!anchorMode) {
+                    let plain = current.nodeName.toLowerCase();
+                    if (nth > 1 || current.nextElementSibling) {
+                        plain += `:nth-of-type(${nth})`;
+                    }
+                    path.unshift(plain);
+                    current = current.parentElement;
+                    depth++;
+                    continue;
+                }
+                // 上爬层（语义锚不唯一后）: 累计路径唯一即截断；省略版不唯一时
+                // 强制带 nth-of-type 重试，仍不唯一才继续上爬。
+                let selectorSeg = current.nodeName.toLowerCase();
+                if (nth > 1 || current.nextElementSibling) {
+                    selectorSeg += `:nth-of-type(${nth})`;
+                }
+                if (document.querySelectorAll(selectorSeg + suffix).length === 1) {
+                    path.unshift(selectorSeg);
+                    break;
+                }
+                const forced = current.nodeName.toLowerCase() + `:nth-of-type(${nth})`;
+                path.unshift(forced);
+                if (document.querySelectorAll(forced + suffix).length === 1) {
+                    break;
+                }
                 current = current.parentElement;
+                depth++;
             }
-            return parts.join(' > ');
+            const domPath = path.join(' > ');
+
+            // 优先级 3b: Label-based（Playwright 语法，跨会话稳定）
+            // 合成后缀（"(N)"/"(下拉)"/"(掩码)"）是扫描器加的标记，DOM label 无
+            // 此文本，:has-text 永不命中——豁免不生成，强制走 selector（P1-A）。
+            // 按元素类型分支（诊断实证）：
+            // - select 组件 → 组件级 .el-select（label 锚唯一性最好，避免 select 内
+            //   readonly input 多命中）；
+            // - textarea → textarea；
+            // - 普通 input → input:not([readonly])（复合 form-item 内排除 select 的
+            //   readonly input，防 strict violation 多命中）。
+            let playwrightLocator = null;
+            if (labelText && labelText.length > 0
+                    && !/\((掩码|下拉|\d+)\)$/.test(labelText.trim())) {
+                const escaped = labelText.replace(/"/g, '\\"');
+                if (element.classList && (element.classList.contains('el-select') || element.classList.contains('ant-select'))) {
+                    playwrightLocator = `.el-form-item:has(.el-form-item__label:has-text("${escaped}")) .el-select`;
+                } else if (element.tagName === 'TEXTAREA') {
+                    playwrightLocator = `.el-form-item:has(.el-form-item__label:has-text("${escaped}")) textarea`;
+                } else {
+                    playwrightLocator = `.el-form-item:has(.el-form-item__label:has-text("${escaped}")) input:not([readonly])`;
+                }
+            }
+
+            return { selector: domPath, playwright_locator: playwrightLocator };
+        }
+
+        // 辅助函数：为复杂组件生成双定位器（cascader/date-picker/radio/checkbox）
+        function _buildComponentSelector(formItem, componentSelector, fieldIndex, labelText) {
+            const component = formItem.querySelector(componentSelector);
+            if (!component) return { selector: null, playwright_locator: null };
+
+            // selector: formItem 在直接父元素中的位置定位（标准 CSS，evaluate 安全）
+            // 注意：children 只返回直接子元素；多卡片表单下位置锚可能不唯一——
+            // 此时由 playwright_locator（label 锚）优先兜底（消费侧约定）。
+            const directChildren = formItem.parentElement.children;
+            let nth = 1;
+            for (let i = 0; i < directChildren.length; i++) {
+                if (directChildren[i] === formItem) {
+                    nth = i + 1;
+                    break;
+                }
+            }
+            const domPath = '.el-form-item:nth-child(' + nth + ') ' + componentSelector;
+
+            // playwright_locator: label 锚
+            let playwrightLocator = null;
+            if (labelText && labelText.length > 0) {
+                const escaped = labelText.replace(/"/g, '\\"');
+                playwrightLocator = `.el-form-item:has(.el-form-item__label:has-text("${escaped}")) ${componentSelector}`;
+            }
+
+            return { selector: domPath, playwright_locator: playwrightLocator };
         }
 
         return {fields, debugInfo};

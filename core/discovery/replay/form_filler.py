@@ -2082,11 +2082,22 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
             // ★ P1-A: 合成后缀（"(N)"/"(掩码)"/"(下拉)"）是扫描器为区分同 form-item
             // 内多个组件加的标记，DOM label 无此文本，:has-text 永不命中——
             // 此类字段不生成 label locator，强制走 selector（真实 DOM path）定位。
+            // ★ 按元素类型分支（EIS 弹窗诊断实证，与 element_scanner._SCAN_FIELDS_JS
+            // 同源）：select 组件 → 组件级 .el-select（避免 select 内 readonly input
+            // 与独立 input 混命中）；textarea → textarea；普通 input →
+            // input:not([readonly])（复合 form-item 排除 select 内 readonly input，
+            // 防 strict violation 多命中）。
             let playwrightLocator = null;
             if (labelText && labelText.length > 0
                     && !/\((掩码|下拉|\d+)\)$/.test(labelText.trim())) {{
                 const escaped = labelText.replace(/"/g, '\\"');
-                playwrightLocator = `.el-form-item:has(.el-form-item__label:has-text("${{escaped}}")) input`;
+                if (element.classList && (element.classList.contains('el-select') || element.classList.contains('ant-select'))) {{
+                    playwrightLocator = `.el-form-item:has(.el-form-item__label:has-text("${{escaped}}")) .el-select`;
+                }} else if (element.tagName === 'TEXTAREA') {{
+                    playwrightLocator = `.el-form-item:has(.el-form-item__label:has-text("${{escaped}}")) textarea`;
+                }} else {{
+                    playwrightLocator = `.el-form-item:has(.el-form-item__label:has-text("${{escaped}}")) input:not([readonly])`;
+                }}
             }}
 
             return {{ selector: domPath, playwright_locator: playwrightLocator }};

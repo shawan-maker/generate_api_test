@@ -364,3 +364,89 @@ async def click_more_menu(
             "strategy": "kb_xpath",
             "text": item_text,
         }
+
+
+# ============================================================
+# 行级名称链接类按钮：全局文本唯一定位（Stage 1/2 同构）
+# ============================================================
+
+# 破坏性操作关键词——与 button_detector._find_create_delete_actions 单源同步
+# （ui_scanner.button_detector 从此处 import，勿在别处再复制一份）
+DESTROY_KEYWORDS = ["删除", "移除", "delete", "remove", "清空", "clear"]
+
+
+def is_destroy_text(text: str) -> bool:
+    """判定按钮/操作文本是否为破坏性操作（删除类）。
+
+    用于行级定位降级的安全门控：破坏性操作禁止 first_row 兜底或全局
+    唯一直接点击——对不可识别行执行删除类操作，等于对随机行执行破坏。
+    """
+    t = (text or "").lower()
+    return any(kw in t for kw in DESTROY_KEYWORDS)
+
+
+async def count_visible_button_candidates(page: Page, btn_text: str) -> int:
+    """统计全局可见、可用、文本匹配的按钮候选数（去嵌套后视觉按钮计数）。
+
+    判定口径与 click_page_button Step 1 完全一致：
+    - 可见（offsetWidth/offsetHeight > 0）+ 非隐藏 + 非禁用
+    - 文本去空白后包含目标文本（btn_text 同样去空白）
+
+    去嵌套：button>span 同时匹配时只算一次视觉按钮（子元素被包含关系剔除）。
+
+    返回 1 表示该文本全局唯一——行级名称链接类按钮（如表格名称列的
+    实例名链接）可直接按文本点击，无需依赖 marker 行快照。
+    """
+    if not btn_text:
+        return 0
+    try:
+        return await page.evaluate("""(btnText) => {
+            const target = btnText.replace(/\\s+/g, '');
+            const els = Array.from(document.querySelectorAll('button, span, a'));
+            const cands = [];
+            for (const el of els) {
+                if (el.offsetWidth === 0 || el.offsetHeight === 0) continue;
+                if (el.closest('.is-hidden') || el.closest('[style*="display: none"]')) continue;
+                if (el.disabled || el.classList.contains('is-disabled')) continue;
+                const t = el.textContent.trim().replace(/\\s+/g, '');
+                if (t.includes(target)) cands.push(el);
+            }
+            // 去嵌套：子元素与祖先同时命中只算一次视觉按钮
+            const uniq = cands.filter(
+                el => !cands.some(o => o !== el && o.contains(el))
+            );
+            return uniq.length;
+        }""", btn_text)
+    except Exception as e:
+        LOG.debug(f"  [count_visible_button_candidates] 评估失败: {e}")
+        return 0
+
+
+async def try_click_unique_global_button(page: Page, btn_text: str) -> dict:
+    """全局唯一名称链接类按钮的直接点击（Stage 1 探测 / Stage 2 回放同构）。
+
+    背景：行级 row_action 按钮若其文本全局唯一（如表格名称列的实例名链接
+    wmk1/vm001——按钮文本本身即行归属），则按文本直接点击就是正确语义，
+    与 builder fallback locator（button/a/span:has-text）和 Stage 2
+    click_button 的全局文本定位同构，不再依赖 marker 行快照（共享环境
+    中行被他人删除时，marker 行内定位必然失败）。
+
+    门控（全部满足才点击，否则返回 {"clicked": False}）：
+    1. 非破坏性文本（is_destroy_text 单源门控）
+    2. 全局可见候选恰好 1 个（count==1；每行同名按钮如 编辑/删除
+       count>1 自然跳过，走调用方的 marker 行内原路径——estack 零变化）
+
+    Returns:
+        click_page_button 结果 dict（clicked=True 时含已验证 locator），
+        未命中门控返回 {"clicked": False}，调用方应回落原路径。
+    """
+    if is_destroy_text(btn_text):
+        return {"clicked": False}
+    count = await count_visible_button_candidates(page, btn_text)
+    if count != 1:
+        LOG.debug(f"  [try_click_unique_global_button] '{btn_text}' 全局候选 {count} 个，跳过直接点击")
+        return {"clicked": False}
+    result = await click_page_button(page, btn_text)
+    if result.get("clicked"):
+        LOG.info(f"  [try_click_unique_global_button] 文本全局唯一直接点击成功: '{btn_text}'")
+    return result

@@ -810,7 +810,9 @@ def _find_create_delete_actions(buttons_by_action: dict) -> tuple:
                 break
 
     # delete: 基于文本关键词识别破坏性操作（泛化：不写死具体操作名）
-    _destroy_keywords = ["删除", "移除", "delete", "remove", "清空", "clear"]
+    # ★ 单源：关键词从 shared/button_clicker.DESTROY_KEYWORDS 引入（与 Stage 1/2
+    # 行级定位降级的安全门控共用一份，勿在此另写关键词列表）
+    from core.discovery.shared.button_clicker import DESTROY_KEYWORDS as _destroy_keywords
     for action in buttons_by_action:
         action_lower = action.lower()
         if any(kw in action_lower for kw in _destroy_keywords):

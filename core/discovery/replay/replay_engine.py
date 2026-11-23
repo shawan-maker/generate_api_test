@@ -294,8 +294,11 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
 
             elif action == "find_row":
                 resolved = await _step_find_row(page, step, button_driver, marker)
-                if resolved and not marker:
-                    # first_row 模式（含 fallback）：使用提取的 marker 供后续步骤使用
+                if resolved and resolved != (marker or ""):
+                    # first_row 降级解析出新的 marker（含 by_marker 快照过期降级）——
+                    # 同步更新供后续 click_row_button / click_row_more 步骤使用。
+                    # 原条件 `not marker` 会漏掉「marker 为过期快照（字符串非空但
+                    # 行已不存在）」场景，导致后续行级步骤仍用过期 marker 必败
                     marker = resolved
                     result["marker"] = marker
 
@@ -1565,7 +1568,22 @@ async def _step_find_row(page, step: dict, button_driver: ButtonDriver, marker: 
             return resolved
         row = await button_driver.find_data_row(marker)
         if not row:
-            raise Exception(f"未找到数据行: {marker}")
+            # ★ marker 快照过期降级：共享环境行被删等导致快照行不存在 →
+            # 降级 first_row 并解析新 marker（与 Stage 1 探测 first_row 兜底
+            # 同构，宪法三阶段一致性）；原行为直接 raise，Stage 1 能过而
+            # Stage 2 必败的定位断裂
+            LOG.warning(f"    ⚠️ find_row mode=by_marker 未找到行 '{marker}'，降级为 first_row")
+            row = await button_driver.find_first_data_row()
+            if not row:
+                raise Exception(f"未找到数据行: {marker}（first_row 降级也无数据行）")
+            resolved = await extract_marker_from_row(button_driver.page)
+            if not resolved:
+                text = await row.inner_text()
+                resolved = text.strip()[:50]
+                LOG.warning(f"    ⚠️ extract_marker_from_row 失败，使用 fallback: {resolved}")
+            else:
+                LOG.info(f"    find_row (stale→first_row): 提取 marker = {resolved}")
+            return resolved
         return None
 
 
@@ -1578,6 +1596,17 @@ async def _step_click_row_button(page, step: dict, button_driver: ButtonDriver, 
     button_text = step.get("button_text")
     if not button_text:
         raise Exception("click_row_button 步骤缺少 button_text（Stage 1 未提供）")
+
+    # ★ [EIS-Navi] 全局唯一名称链接类按钮：与 Stage 1 探测同构（try_click_unique_global_button
+    # 单源门控：非破坏性 + 全局可见候选==1）直接按文本点击，不依赖 marker 行——
+    # 按钮文本本身即行归属（如表格名称列实例名链接），三阶段定位一致。
+    # 每行同名按钮（estack 编辑/删除 count>1）自然跳过走下方 marker 行内原路径，零变化。
+    from core.discovery.shared.button_clicker import try_click_unique_global_button
+    _direct = await try_click_unique_global_button(page, button_text)
+    if _direct.get("clicked"):
+        LOG.info(f"    [click_row_button] 文本全局唯一直接点击: {button_text}")
+        return
+
     if not marker:
         raise Exception("click_row_button 步骤需要 marker 但无可用 marker")
 

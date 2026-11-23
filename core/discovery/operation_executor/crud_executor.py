@@ -1786,6 +1786,11 @@ def _build_create_error_result(
     """
     from .result_factory import make_error
 
+    # ★ NoneType 防御：跳过提交路径（必填多步字段填充失败）传 submit_result=None——
+    # 此前直接 .get() 抛 AttributeError，exception 掩盖真实错误类型
+    # （multi_step_required_failed），Stage 2 无法针对性复现填充失败场景
+    submit_result = submit_result or {}
+
     # 归一化文本
     trigger_text = " ".join(btn_text.split())
     submit_text = submit_result.get("text", "")
@@ -3616,13 +3621,37 @@ async def _do_generic_operation(page, context: dict) -> dict:
     # 找到行并点击
     row_selector = None
     btn_click_result = {}  # 默认初始化，row_action/dropdown 分支不设置此变量
+    dropdown_click_result = None  # 防御：row_action 分支 clicked=False 时 L3701 引用会 NameError
     if btn_location == "row_action" and marker:
         from core.discovery.replay.button_driver import ButtonDriver
+        from core.discovery.shared.button_clicker import (
+            try_click_unique_global_button, is_destroy_text,
+        )
         driver = ButtonDriver(page)
-        row = await driver.find_data_row(marker)
-        if not row:
-            return _fail("row_not_found", f"未找到数据行: {marker}")
-        clicked = await driver.click_row_button_v2(row, btn_text)
+        clicked = False
+        # ★ [EIS-Navi] 行级名称链接类按钮（文本全局唯一，如表格名称列实例名链接）：
+        # 按钮文本本身即行归属，直接按文本全局点击——与 Stage 2 回放 click_button
+        # 全局文本定位、builder fallback locator（button/a/span:has-text）同构，
+        # 不再依赖 marker 行快照（共享环境行被他人删除时行内定位必然连锁失败）。
+        # 门控在 try_click_unique_global_button 单源内：非破坏性 + 全局可见候选==1；
+        # 每行同名按钮（estack 编辑/删除 count>1）自然跳过走下方 marker 原路径，零变化。
+        _direct = await try_click_unique_global_button(page, btn_text)
+        if _direct.get("clicked"):
+            clicked = True
+            btn_click_result = _direct  # 已验证 locator 供 trigger_locator_verified 落盘
+        if not clicked:
+            row = await driver.find_data_row(marker)
+            if not row and not is_destroy_text(btn_text):
+                # ★ 对齐 Stage 2 _step_find_row 降级语义：marker 快照行不可用
+                # （共享环境行被删等）→ first_row 兜底，行级操作语义对任意行仍成立；
+                # 破坏性文本不降级——对随机行执行删除类操作不可接受，保留 row_not_found
+                row = await driver.find_first_data_row()
+                if row:
+                    LOG.warning(
+                        f"    marker 行 '{marker}' 不可用，row_action 降级 first_row: '{btn_text}'")
+            if not row:
+                return _fail("row_not_found", f"未找到数据行: {marker}")
+            clicked = await driver.click_row_button_v2(row, btn_text)
         row_selector = btn_text
     elif btn_location == "dropdown":
         # 两步点击：先找到行 → 展开"更多" → 点击子项
@@ -3638,10 +3667,20 @@ async def _do_generic_operation(page, context: dict) -> dict:
             return result
 
         from core.discovery.replay.button_driver import ButtonDriver
+        from core.discovery.shared.button_clicker import is_destroy_text
         driver = ButtonDriver(page)
         row = await driver.find_data_row(marker)
         if not row:
-            return _fail("row_not_found", f"未找到数据行: {marker}")
+            if not is_destroy_text(btn_text):
+                # ★ 对齐 Stage 2 _step_find_row 降级语义：marker 快照行不可用 →
+                # first_row 兜底（非破坏性下拉项，如 开机/关机/重启 状态类操作）；
+                # 破坏性下拉项（删除/移除）保留 row_not_found 安全失败
+                row = await driver.find_first_data_row()
+                if row:
+                    LOG.warning(
+                        f"    marker 行 '{marker}' 不可用，dropdown 降级 first_row: '{btn_text}'")
+            if not row:
+                return _fail("row_not_found", f"未找到数据行: {marker}")
         dropdown_click_result = await driver.click_row_more_item(row, btn_text)
         clicked = dropdown_click_result.get("clicked", False)
         LOG.info(f"    [DEBUG-dropdown] click_row_more_item 返回: {dropdown_click_result}")
