@@ -264,6 +264,30 @@ def parse_args():
     return ap.parse_args()
 
 
+def _load_state_seed(project_dir: Path, module_name: str):
+    """读旧 ui.json 的状态矩阵/转移边种子（批一 1.3 跨轮累积）。
+
+    Stage 1 启动时装载上一轮落盘的 state_button_matrix /
+    state_transitions，本轮 settle 点观测与其合并后随新产物写回
+    （_init_state_ctx 去重保序）——第 7 轮带着第 6 轮的矩阵跑，
+    reconcile（1.4）恢复转移消费的转移边即由此累积。
+    无旧产物/字段缺失/解析异常 → None（冷启动），不影响主流程。
+    """
+    try:
+        old = _load_ui_result(project_dir, module_name)
+        if not old:
+            return None
+        seed = {}
+        if isinstance(old.get("state_button_matrix"), dict):
+            seed["state_button_matrix"] = old["state_button_matrix"]
+        if isinstance(old.get("state_transitions"), list):
+            seed["state_transitions"] = old["state_transitions"]
+        return seed or None
+    except Exception as e:
+        LOG.warning(f"  状态种子加载失败（按冷启动处理）: {e}")
+        return None
+
+
 async def run_stage1(page, project_dir: Path, module_name: str, target_url: str,
                      context=None, profile=None, base_url: str = "", login_url: str = ""):
     """Stage 1: 前端按钮探测 + 业务闭环验证。
@@ -325,7 +349,13 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str,
         LOG.info("  🔑 RSA 公钥已提取")
 
     # Phase A+B: 探测 + 业务闭环验证（一体化）
-    ui_result = await discover_and_validate(page)
+    # ★ 批一 1.3：跨轮累积种子——读旧 ui.json 的状态矩阵/转移边，本轮观测
+    # 合并后随新产物落盘（逐轮补全），reconcile 恢复转移消费跨轮转移边
+    state_seed = _load_state_seed(project_dir, module_name)
+    if state_seed:
+        LOG.info(f"  [STATE-SEED] 载入上轮状态种子: 转移边 {len(state_seed.get('state_transitions', []))} 条"
+                 f" / 矩阵状态 {len(state_seed.get('state_button_matrix', {}))} 个")
+    ui_result = await discover_and_validate(page, state_seed=state_seed)
 
     if ui_result is None:
         # 关键操作验证失败 — 尝试 Phase C/D/E 补救
@@ -411,6 +441,14 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str,
         "token_storage": profile_auth.get("token_storage", "localStorage"),
         "cookie_token_key": profile_auth.get("cookie_token_key", ""),
     }
+
+    # ★ 批一 1.3 兜底：验证中途异常退出（Phase C/D/E 补救路径）时
+    # ui_result 可能缺状态字段——旧轮种子原样保留，防止跨轮累积断代
+    if state_seed:
+        if "state_button_matrix" not in ui_result:
+            ui_result["state_button_matrix"] = state_seed.get("state_button_matrix", {})
+        if "state_transitions" not in ui_result:
+            ui_result["state_transitions"] = state_seed.get("state_transitions", [])
 
     # 保存（所有注入字段已就绪）
     ws_dir = get_workspace_dir(project_dir)

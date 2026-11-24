@@ -18,6 +18,22 @@ shared/constants.py — Stage 1/2 共享运行时常量
 # 下拉菜单触发文本
 DROPDOWN_TRIGGER_TEXTS = {"更多", "操作", "Actions", "More", "批量操作"}
 
+
+def is_dropdown_trigger_text(text) -> bool:
+    """下拉触发器文本包含式判定：文本包含任一触发词即视为触发器。
+
+    背景（EIS 实证）：精确匹配（text in DROPDOWN_TRIGGER_TEXTS）无法命中
+    组合文本——「更多操作」含「更多」但整词不在清单内，trigger 误入业务
+    操作清单被当作独立操作执行。包含式匹配下：
+      - 「更多操作」含「更多」→ 命中（EIS）
+      - 「更多」/「操作」等既有精确文本 → 行为不变（estack 兼容；
+        其用户管理 14 op 无「更多X」类业务按钮，已核对）
+    """
+    if not text:
+        return False
+    t = str(text).strip()
+    return any(trigger in t for trigger in DROPDOWN_TRIGGER_TEXTS)
+
 # 非业务按钮
 NON_BUSINESS_BUTTONS = {"GO", "Go", "go", "跳转", "跳转至"}
 

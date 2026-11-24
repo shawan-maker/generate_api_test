@@ -1010,7 +1010,10 @@ class FormFiller:
             成功填充的字段数
         """
         from .. import const
-        from core.discovery.shared.fill_helpers import generate_fill_value
+        from core.discovery.shared.fill_helpers import (
+            _pair_confirmation_field_values,
+            generate_fill_value,
+        )
 
         # 标识字段：只跳过账号/用户名等定位字段，避免 marker 失效
         def _is_identifier(label: str, field: dict) -> bool:
@@ -1025,49 +1028,63 @@ class FormFiller:
         ts = str(int(time.time()))[-6:]
         filled = 0
 
+        # ★ 共用可填充口径（计划阶段与填充阶段同源，防两阶段判定漂移）
+        def _plannable(f: dict, lbl: str) -> bool:
+            if _is_identifier(lbl, f):
+                return False
+            kb_cat = f.get("kb_category", "")
+            # 复杂组件跳过（select/radio/checkbox/list 等不直接编辑）
+            if kb_cat in const.MULTI_STEP_TYPES or kb_cat in ("radio", "form-checkbox", "list-selector"):
+                return False
+            # 多输入组件跳过（如手机号：国家码+号码，编辑时无法正确处理复合输入）
+            if f.get("inputCount", 1) >= 2:
+                return False
+            # 只处理 input 和 textarea（扫描器已过滤 readonly/disabled）
+            if f.get("type", "input") not in ("input", "textarea"):
+                return False
+            return True
+
+        # ── 阶段 1: 规划全部字段值（配对需先有全局值表，无法逐字段即兴生成）──
+        planned: Dict[str, str] = {}
+        planned_rules: Dict[str, dict] = {}
         for field in fields:
             label = field.get("label", "")
-            field_type = field.get("type", "input")
-            kb_category = field.get("kb_category", "")
-            # ★ 优先使用 playwright_locator（更稳定），回退到 selector
-            selector = field.get("playwright_locator") or field.get("selector")
-
-            # 标识字段跳过
-            if _is_identifier(label, field):
+            if not label or not _plannable(field, label):
                 continue
-
-            # 复杂组件跳过（select/radio/checkbox/list 等不直接编辑）
-            if kb_category in const.MULTI_STEP_TYPES or kb_category in ("radio", "form-checkbox", "list-selector"):
-                continue
-
-            # 多输入组件跳过（如手机号：国家码+号码，编辑时无法正确处理复合输入）
-            if field.get("inputCount", 1) >= 2:
-                continue
-
-            # 只处理 input 和 textarea（扫描器已过滤 readonly/disabled）
-            if field_type not in ("input", "textarea"):
-                continue
-
-            # 确定填充值
-            value = None
-            _fill_rule = None  # ★ D3: 记录 fill_rule，供 playbook 传递给 Stage 2
             if modifications and label in modifications:
-                value = modifications[label]
+                planned[label] = modifications[label]
             elif not modifications:
                 # generate_fill_value 返回 (value, fill_rule) tuple
                 # Stage 1 直接用生成的值，apply_fill_rule 是 Stage 2 回放用的
-                value, _fill_rule = generate_fill_value(
-                    field_type, field.get("inputType", "text"),
+                value, _rule = generate_fill_value(
+                    field.get("type", "input"), field.get("inputType", "text"),
                     username="test", label=label
                 )
                 if not value:
                     value = f"auto_edited_{ts}"
-                    _fill_rule = {"rule": "name_pattern", "params": {"prefix": "auto_edited"}}
+                    _rule = {"rule": "name_pattern", "params": {"prefix": "auto_edited"}}
+                planned[label] = value
+                planned_rules[label] = _rule
 
-            if not value:
+        # ★ 批三 3.3 补挂（编辑逐字段路径此前漏挂）：「确认 X」字段复制「X」的值
+        #   （两次输入不一致校验实证根因；generate_fill_data 路径已挂载）
+        planned.update(_pair_confirmation_field_values(fields, planned))
+
+        # ── 阶段 2: 逐字段填充 ──
+        for field in fields:
+            label = field.get("label", "")
+            field_type = field.get("type", "input")
+            # ★ 优先使用 playwright_locator（更稳定），回退到 selector
+            selector = field.get("playwright_locator") or field.get("selector")
+
+            if not _plannable(field, label):
                 continue
 
-            # ★ D3: 将 fill_rule 写回 field dict，供调用方（crud_executor）收集
+            value = planned.get(label)
+            if not value:
+                continue
+            # ★ D3: 记录 fill_rule（规划阶段产物），供 playbook 传递给 Stage 2
+            _fill_rule = planned_rules.get(label)
             if _fill_rule:
                 field["_fill_rule"] = _fill_rule
 
@@ -1314,6 +1331,10 @@ class FormFiller:
         """
         from core.discovery.shared.button_clicker import click_page_button
 
+        def _clicked_negative(btn_result: dict) -> bool:
+            """★ 4.2 后验: 实际命中文本为否定前缀按钮（如「放弃更新」）→ 视为未提交。"""
+            return const.starts_with_negative_prefix(btn_result.get("text", ""))
+
         # 先探测哪个提交按钮文本存在（JS 快速检查，不点击）
         detected_text = await self._detect_submit_button_text(scope_selector)
         if detected_text:
@@ -1322,14 +1343,18 @@ class FormFiller:
                 scope_selector=scope_selector,
             )
             if result.get("clicked"):
-                LOG.info(f"    [submit_form_v2] 成功: '{detected_text}' (strategy={result.get('strategy')})")
-                return {
-                    "text": result.get("text", detected_text),
-                    "locator": result.get("locator", ""),
-                    "click_strategy": result.get("strategy", ""),
-                    "xpath_index": result.get("xpath_index", -1),
-                    "clean_text": result.get("clean_text", ""),
-                }
+                if _clicked_negative(result):
+                    LOG.warning(f"    [submit_form_v2] 探测命中 '{detected_text}' 但实际点击了"
+                                f"否定前缀按钮 '{result.get('text')}'，视为未提交，继续尝试")
+                else:
+                    LOG.info(f"    [submit_form_v2] 成功: '{detected_text}' (strategy={result.get('strategy')})")
+                    return {
+                        "text": result.get("text", detected_text),
+                        "locator": result.get("locator", ""),
+                        "click_strategy": result.get("strategy", ""),
+                        "xpath_index": result.get("xpath_index", -1),
+                        "clean_text": result.get("clean_text", ""),
+                    }
 
         # 逐个尝试 SUBMIT_TEXTS
         for text in const.SUBMIT_TEXTS:
@@ -1338,6 +1363,10 @@ class FormFiller:
                 scope_selector=scope_selector,
             )
             if result.get("clicked"):
+                if _clicked_negative(result):
+                    LOG.warning(f"    [submit_form_v2] 提交文本 '{text}' 实际点击了"
+                                f"否定前缀按钮 '{result.get('text')}'，视为未提交，继续尝试")
+                    continue
                 LOG.info(f"    [submit_form_v2] 成功: '{text}' (strategy={result.get('strategy')})")
                 return {
                     "text": result.get("text", text),
@@ -1361,17 +1390,20 @@ class FormFiller:
                     }
                     return "primary";
                 }""")
-                await primary.click()
-                from .wait_helpers import wait_for_loading_complete
-                await wait_for_loading_complete(self.page)
-                LOG.info(f"    [submit_form_v2] Primary 回退成功: '{actual_text}'")
-                return {
-                    "text": actual_text,
-                    "locator": "button.el-button--primary",
-                    "click_strategy": "playwright",
-                    "xpath_index": -1,
-                    "clean_text": "",
-                }
+                if const.starts_with_negative_prefix(actual_text):
+                    LOG.warning(f"    [submit_form_v2] primary 回退命中否定前缀按钮 '{actual_text}'，跳过")
+                else:
+                    await primary.click()
+                    from .wait_helpers import wait_for_loading_complete
+                    await wait_for_loading_complete(self.page)
+                    LOG.info(f"    [submit_form_v2] Primary 回退成功: '{actual_text}'")
+                    return {
+                        "text": actual_text,
+                        "locator": "button.el-button--primary",
+                        "click_strategy": "playwright",
+                        "xpath_index": -1,
+                        "clean_text": "",
+                    }
         except Exception as e:
             LOG.debug(f"尝试 primary 按钮失败: {e}")
 
@@ -1379,7 +1411,14 @@ class FormFiller:
         return {"text": "", "locator": "", "xpath_index": -1, "clean_text": ""}
 
     async def _detect_submit_button_text(self, scope_selector: str = "") -> str:
-        """快速探测页面中是否存在 SUBMIT_TEXTS 中的按钮文本，返回第一个匹配的文本。"""
+        """快速探测页面中是否存在 SUBMIT_TEXTS 中的按钮文本，返回命中的按钮文本。
+
+        两层匹配（均先排除否定前缀按钮）：
+        - 层 1（既有行为）: 去空格全等命中 SUBMIT_TEXTS（长度 < 10）；
+        - 层 2（4.2 修复）: 前缀命中——按钮文本以某 SUBMIT_TEXT 开头（如
+          「更新并重启云主机」startsWith「更新」，长度 < 16）→ 返回完整按钮
+          文本，下游 KB XPath 按全文本匹配天然排除「放弃更新」等否定按钮。
+        """
         try:
             if scope_selector:
                 scope_js = f"Array.from(document.querySelectorAll('{scope_selector}'))"
@@ -1388,9 +1427,14 @@ class FormFiller:
                 scope_js = "null"
                 gather_js = "Array.from(document.querySelectorAll('button, span, a'))"
 
+            submit_json = json.dumps(const.SUBMIT_TEXTS, ensure_ascii=False)
+            negative_json = json.dumps(const.NEGATIVE_BUTTON_PREFIXES, ensure_ascii=False)
+
             detected = await self.page.evaluate(f"""(() => {{
                 const scopes = {scope_js};
                 const allButtons = {gather_js};
+                const SUBMITS = {submit_json};
+                const NEG = {negative_json};
                 const visible = allButtons.filter(b => {{
                     if (b.offsetWidth <= 0 || b.offsetHeight <= 0) return false;
                     if (b.disabled || b.classList.contains('is-disabled')) return false;
@@ -1402,9 +1446,22 @@ class FormFiller:
                     const priority = {{ BUTTON: 1, A: 2, SPAN: 3 }};
                     return (priority[a.tagName] || 99) - (priority[b.tagName] || 99);
                 }});
+                // 层 1: 去空格全等命中 SUBMIT_TEXTS（否定前缀按钮不参与提交解析）
                 for (const btn of visible) {{
                     const originalText = btn.textContent.trim();
-                    if (originalText.replace(/\\s+/g, '').length < 10 && {const.js_normalize_in(const.SUBMIT_TEXTS, 'originalText')}) {{
+                    const norm = originalText.replace(/\\s+/g, '');
+                    if (NEG.some(w => norm.startsWith(w))) continue;
+                    if (norm.length < 10 && SUBMITS.includes(norm)) {{
+                        return originalText;
+                    }}
+                }}
+                // 层 2: 前缀命中，返回完整按钮文本
+                for (const btn of visible) {{
+                    const originalText = btn.textContent.trim();
+                    const norm = originalText.replace(/\\s+/g, '');
+                    if (NEG.some(w => norm.startsWith(w))) continue;
+                    if (norm.length < 16
+                            && SUBMITS.some(t => norm.startsWith(t) && norm.length > t.length)) {{
                         return originalText;
                     }}
                 }}
@@ -2015,8 +2072,38 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
         }};
 
         function _buildSelector(element, labelText) {{
-            // 优先级 1: #id（最稳定，两个上下文都支持）
-            if (element.id) return {{ selector: `#${{element.id}}`, playwright_locator: `#${{element.id}}` }};
+            // 优先级 1: #id（最稳定，两个上下文都支持）——仅文档内唯一时直用。
+            // id 冲突实证: EIS 创建云主机是 el-drawer（关闭后 DOM 残留挂载），
+            // 与克隆 el-dialog 共用 password-module 组件同 id（#password-module-*）
+            // → page.fill 首个匹配=隐藏残留实例 → 3s 超时假失败（第 6 轮 6s 空窗）。
+            // 冲突时限定到弹窗容器重试唯一性（含 :not(display:none) 过滤同容器
+            // 二次冲突，如关闭后残留的同类 dialog）。
+            if (element.id) {{
+                const bareId = `#${{element.id}}`;
+                if (document.querySelectorAll(bareId).length === 1) {{
+                    return {{ selector: bareId, playwright_locator: bareId }};
+                }}
+                const DIALOG_CONTAINERS = ['el-dialog__wrapper', 'el-drawer__wrapper', 'el-drawer', 'el-dialog'];
+                let scopeNode = element.parentElement;
+                while (scopeNode && scopeNode.nodeType === Node.ELEMENT_NODE) {{
+                    const cls = scopeNode.classList;
+                    if (cls) {{
+                        const hit = DIALOG_CONTAINERS.find(c => cls.contains(c));
+                        if (hit) {{
+                            const plain = `.${{hit}} ${{bareId}}`;
+                            if (document.querySelectorAll(plain).length === 1) {{
+                                return {{ selector: plain, playwright_locator: plain }};
+                            }}
+                            const filtered = `.${{hit}}:not([style*="display: none"]) ${{bareId}}`;
+                            if (document.querySelectorAll(filtered).length === 1) {{
+                                return {{ selector: filtered, playwright_locator: filtered }};
+                            }}
+                        }}
+                    }}
+                    scopeNode = scopeNode.parentElement;
+                }}
+                // id 冲突且容器限定仍不唯一 → 继续走优先级 2/3
+            }}
             // 优先级 2: [name] 属性（两个上下文都支持）
             if (element.name) return {{ selector: `[name="${{element.name}}"]`, playwright_locator: `[name="${{element.name}}"]` }};
 

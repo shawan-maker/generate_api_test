@@ -1355,6 +1355,98 @@ async def click_dropdown_option(page: Page, option_text: str, ui_framework: str 
         return {"clicked": False, "actual_text": ""}
 
 
+async def _preprocess_confirm_form(page: Page) -> dict:
+    """确认弹窗表单预处理（方案批三 3.3）：填确认词 + 保守勾选首项。
+
+    危险操作确认弹窗常带两类表单元素，纯点击确认会因表单校验失败：
+      1. 「输入确认词」输入项：placeholder 含引号包裹关键词（GitHub 式
+         「请输入 "DELETE" 确认删除」）→ 正则提取后填入（触发 input/change
+         事件供 Vue v-model 响应）。不硬编码 DELETE，任意系统同构适用。
+      2. 未选中的 radio-group / checkbox：点首个 enabled 项（EIS 删除弹窗
+         「关联资源」选项）。保守条件：仅当弹窗内无其他可见文本输入框
+         （确认词输入项除外）才处理，防复杂表单弹窗误伤。
+
+    estack 纯文本 message-box（删除确认）无表单元素 → 扫描零命中 →
+    行为逐字节不变。confirm_dialog 是所有确认流的唯一收口点，
+    Stage 1/2 同源执行此预处理，三阶段行为一致。
+
+    Returns:
+        {"filled": [...], "radio_groups": int, "checkboxes": int,
+         "other_text_inputs": int}（无弹窗/零命中时各计数字段为 0）
+    """
+    return await page.evaluate("""() => {
+        const containers = document.querySelectorAll(
+            '.el-message-box__wrapper:not([style*="display: none"]), ' +
+            '.el-dialog__wrapper:not([style*="display: none"]), ' +
+            '.ant-modal-wrap:not([style*="display: none"])'
+        );
+        let container = null;
+        for (const c of containers) {
+            if (c.offsetWidth > 0 && c.offsetHeight > 0) { container = c; break; }
+        }
+        const actions = { filled: [], radio_groups: 0, checkboxes: 0, other_text_inputs: 0 };
+        if (!container) return actions;
+
+        const isVisible = (el) => el.offsetWidth > 0 && el.offsetHeight > 0;
+
+        // 1. 确认词输入项：placeholder 引号包裹词提取填入
+        const inputs = container.querySelectorAll('input');
+        for (const input of inputs) {
+            const type = (input.getAttribute('type') || 'text').toLowerCase();
+            if (type === 'hidden' || type === 'file' || type === 'checkbox' || type === 'radio') continue;
+            if (!isVisible(input) || input.disabled) continue;
+            const ph = input.getAttribute('placeholder') || '';
+            const m = ph.match(/["“”'‘’「『]([^"“”'‘’」』]{1,40})["“”'‘’」』]/);
+            if (m && m[1]) {
+                if (!input.value) {
+                    input.value = m[1];
+                    input.dispatchEvent(new Event('input', {bubbles: true}));
+                    input.dispatchEvent(new Event('change', {bubbles: true}));
+                    actions.filled.push({ placeholder: ph, word: m[1] });
+                }
+                // 确认词输入项不计入「其他文本输入框」（无论本轮是否已填）
+                continue;
+            }
+            if (type === 'text' || type === '' || type === 'search' || type === 'password') {
+                actions.other_text_inputs++;
+            }
+        }
+
+        // 2. radio-group / checkbox-group：无选中态时点首个 enabled 项。
+        //    保守条件：弹窗内存在其他可见文本输入框时不处理（复杂表单防误伤）
+        if (actions.other_text_inputs === 0) {
+            for (const group of container.querySelectorAll(
+                '.el-radio-group, .el-checkbox-group, .ant-radio-group, .ant-checkbox-group'
+            )) {
+                if (!isVisible(group)) continue;
+                if (group.querySelector('.is-checked, .is-active, input:checked')) continue;
+                const items = group.querySelectorAll(
+                    '.el-radio, .el-radio-button, .el-checkbox, .el-checkbox-button, ' +
+                    '.ant-radio-wrapper, .ant-checkbox-wrapper, label'
+                );
+                for (const item of items) {
+                    if (!isVisible(item)) continue;
+                    if (item.classList.contains('is-disabled')) continue;
+                    const innerInput = item.querySelector('input');
+                    if (innerInput && innerInput.disabled) continue;
+                    try { item.click(); actions.radio_groups++; } catch (e) {}
+                    break;
+                }
+            }
+            // 独立 checkbox（不在 group 内）：未勾选且非禁用则勾选
+            for (const cb of container.querySelectorAll('.el-checkbox, .ant-checkbox-wrapper')) {
+                if (cb.closest('.el-checkbox-group, .ant-checkbox-group')) continue;
+                if (!isVisible(cb)) continue;
+                if (cb.classList.contains('is-checked')) continue;
+                const innerInput = cb.querySelector('input');
+                if (innerInput && (innerInput.disabled || innerInput.checked)) continue;
+                try { cb.click(); actions.checkboxes++; } catch (e) {}
+            }
+        }
+        return actions;
+    }""")
+
+
 async def confirm_dialog(page: Page, confirm: bool = True, ui_framework: str = "element-ui",
                          screenshot_holder: dict = None) -> str:
     """处理确认弹窗（Element UI MessageBox / Popconfirm / 通用模态框）。
@@ -1429,6 +1521,20 @@ async def confirm_dialog(page: Page, confirm: bool = True, ui_framework: str = "
             return ""
 
         LOG.debug(f"检测到确认框类型: {has_confirm}")
+
+        # ★ 确认弹窗表单预处理（方案批三 3.3）：填确认词输入项 + 保守勾选
+        # 首个 radio/checkbox 选项。仅 confirm=True 时处理（取消路径无需填表）；
+        # 预处理失败不阻断确认点击（保持既有流程兜底）。
+        if confirm:
+            try:
+                preprocess_actions = await _preprocess_confirm_form(page)
+                if (preprocess_actions.get("filled")
+                        or preprocess_actions.get("radio_groups")
+                        or preprocess_actions.get("checkboxes")):
+                    LOG.info(f"确认弹窗表单预处理: {preprocess_actions}")
+                    await page.wait_for_timeout(300)
+            except Exception as _pre_e:
+                LOG.debug(f"确认弹窗表单预处理失败（忽略，继续点击确认）: {_pre_e}")
 
         # 按容器类型定位按钮（统一使用 XPath 去空格归一化）
         button = None

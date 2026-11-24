@@ -718,14 +718,16 @@ def build_playbook(ui_result: dict) -> dict:
     fallback_count = 0
 
     # --- fallback 去重常量（与 crud_executor._validate_business_flow 对齐）---
-    _DROPDOWN_TRIGGER_TEXTS = {"更多", "操作", "Actions", "More", "批量操作"}
+    # ★ 触发器判定改用 shared 单源包含式 helper（原本地硬编码副本已消除）：
+    #   精确匹配漏判「更多操作」组合文本（EIS 实证），包含式下「更多」行为不变
+    from core.discovery.shared.constants import is_dropdown_trigger_text
     _BATCH_PREFIXES = ["批量", "batch", "bulk"]
     _NON_BUSINESS_BUTTONS = {"GO", "Go", "go", "跳转", "跳转至"}
     # 收集行级操作文本，用于"批量XX"↔"XX"去重
     # 包括：1) row_actions 中的直接操作 2) 已验证的操作（可能来自"更多"下拉菜单）
     _fb_row_action_texts = {
         btn.get("text", "") for btn in ui_result.get("row_actions", [])
-        if btn.get("text") not in _DROPDOWN_TRIGGER_TEXTS
+        if not is_dropdown_trigger_text(btn.get("text"))
     }
     # 添加已验证的操作文本（这些操作已从"更多"下拉菜单或其他来源验证）
     _fb_row_action_texts.update(operations.keys())
@@ -745,8 +747,8 @@ def build_playbook(ui_result: dict) -> dict:
             if btn_list_key == "toolbar_buttons" and btn_tag and btn_tag not in ("BUTTON", "A"):
                 LOG.debug(f"  跳过非按钮 toolbar 元素: '{btn_text}' (tag={btn_tag})")
                 continue
-            # ★ 跳过下拉菜单触发器（"更多"/"操作"），子操作已有独立脚本
-            if btn_text in _DROPDOWN_TRIGGER_TEXTS and btn.get("tag") != "DROPDOWN_ITEM":
+            # ★ 跳过下拉菜单触发器（"更多"/"操作"等，包含式判定），子操作已有独立脚本
+            if is_dropdown_trigger_text(btn_text) and btn.get("tag") != "DROPDOWN_ITEM":
                 LOG.debug(f"  跳过下拉触发器 fallback: '{btn_text}'")
                 continue
             # ★ 跳过分页跳转等非业务按钮

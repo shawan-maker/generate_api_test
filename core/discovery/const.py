@@ -56,6 +56,24 @@ CONFIRM_TEXTS = ['确定', '确认', '是', 'OK', 'Yes']
 # 取消对话框按钮文本
 CANCEL_TEXTS = ['取消', 'Cancel', '否']
 
+# 否定前缀按钮文本（提交按钮解析时排除）
+# 实证: EIS 更新密钥对弹窗「放弃更新」enabled 且 DOM 序在前、「更新并重启云主机」
+# disabled 在后——SUBMIT_TEXTS 逐文本回退走 KB chars-contains XPath，「更新」按字
+# 命中「放弃更新」→ 弹窗静默关闭零 API 调用 → no_signal 假失败。提交解析须排除
+# 否定前缀候选；显式取消点击（click_page_button(『取消』)）不受影响。
+NEGATIVE_BUTTON_PREFIXES = ['放弃', '取消', '关闭', '返回', '重置', '上一步',
+                            '退出', '暂不', '不保存', '清空']
+
+
+def starts_with_negative_prefix(text: str) -> bool:
+    """Python 侧：去空格归一化后是否以任一否定前缀开头。
+
+    用于提交按钮点击后的后验（click_page_button 返回实际命中文本，
+    若为否定前缀按钮则视为未提交，继续尝试其他提交文本）。
+    """
+    normalized = _re.sub(r'\s+', '', str(text or ''))
+    return any(normalized.startswith(w) for w in NEGATIVE_BUTTON_PREFIXES)
+
 # 预构建 set（供 Python 侧 in 操作，避免重复构建）
 SUBMIT_TEXTS_SET = set(SUBMIT_TEXTS)
 CONFIRM_TEXTS_SET = set(CONFIRM_TEXTS)

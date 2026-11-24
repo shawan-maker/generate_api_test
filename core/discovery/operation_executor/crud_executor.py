@@ -11,7 +11,8 @@ import logging
 import time
 from core.discovery import const
 from core.discovery.shared.constants import (
-    DROPDOWN_TRIGGER_TEXTS, NON_BUSINESS_BUTTONS, BATCH_PREFIXES, DESTROY_KEYWORDS,
+    NON_BUSINESS_BUTTONS, BATCH_PREFIXES, DESTROY_KEYWORDS,
+    is_dropdown_trigger_text,
 )
 from core.discovery.replay.wait_helpers import (
     wait_for_loading_complete, wait_for_table_ready,
@@ -370,7 +371,8 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
         return {'new_buttons': [], 'disappeared_buttons': [], 'all_current_texts': set()}
 
 
-async def discover_and_validate(page, username: str = "test") -> dict:
+async def discover_and_validate(page, username: str = "test",
+                                state_seed: dict = None) -> dict:
     """Stage 1 入口：探测 + 业务闭环验证。
 
     流程：
@@ -381,6 +383,8 @@ async def discover_and_validate(page, username: str = "test") -> dict:
     Args:
         page: Playwright Page 对象
         username: 用于生成测试数据的用户名
+        state_seed: 旧 ui.json 的状态矩阵/转移边种子（批一 1.3 跨轮累积；
+            None=冷启动）
 
     Returns:
         dict: 增强后的 ui_result，含 validated_operations 字段。
@@ -391,7 +395,8 @@ async def discover_and_validate(page, username: str = "test") -> dict:
     ui_result = await discover_all(page)
 
     # Phase B: 业务闭环验证
-    validated, execution_order = await _validate_business_flow(page, ui_result, username)
+    validated, execution_order = await _validate_business_flow(
+        page, ui_result, username, state_seed=state_seed)
     if validated is None:
         # 关键操作验证失败
         return None
@@ -407,19 +412,56 @@ async def discover_and_validate(page, username: str = "test") -> dict:
     return ui_result
 
 
-async def _scan_all_button_states(page, created_marker: str) -> dict:
-    """扫描当前行所有按钮的 enabled/disabled 状态（含 dropdown 内的按钮）。
+def _merge_validated_result(validated: dict, key: str, result) -> object:
+    """validated 写入收口：已有 success 结果的条目拒绝被失败结果覆盖。
+
+    背景（EIS 第 6 轮实证）：级联（STATE-CHANGE）先行成功的操作写入
+    validated 后，主循环按收集序到达同一操作时重新执行，撞上状态翻转
+    后的禁用态，失败结果把先前的成功结果覆盖——终态 5/36 中 6 个本应
+    success 的操作被抹成 skipped，产物损失。
+
+    语义：
+    - 已有 success=True 且新结果非 success → 拒绝写入（保留成功），打日志
+    - 其余情况（首次写入 / 成功覆盖失败 / 失败覆盖失败）→ 正常写入
+
+    Args:
+        validated: 操作结果字典
+        key: 操作名
+        result: 待写入结果
+
+    Returns:
+        实际生效的结果（被拒绝时返回已存的成功结果）
+    """
+    existing = validated.get(key)
+    if (isinstance(existing, dict) and existing.get("success")
+            and isinstance(result, dict) and not result.get("success")):
+        LOG.info(f"    [MERGE-GUARD] '{key}' 已有成功结果，拒绝失败结果覆盖 "
+                 f"({result.get('error_type', '?')}: {(result.get('error_text') or '')[:60]})")
+        return existing
+    validated[key] = result
+    return result
+
+
+async def _scan_row_state_snapshot(page, created_marker: str) -> dict:
+    """扫描当前行按钮状态 + 读行权威状态（批一 1.1/1.3 基座）。
+
+    状态读取路径：展开目标行 dropdown 菜单 → 从菜单项 Vue 实例读
+    command.row.status（同时顺带 qgaReady）。不依赖状态列位置（不硬编码
+    列索引），走的是 Element UI dropdown command 模式的通用数据通道；
+    estack 行数据同构（第 4 轮 estack 启用操作日志同样有 command.row），
+    读不到时 status=None 静默降级，不破坏任何现有环境。
 
     Args:
         page: Playwright Page
         created_marker: 行标识
 
     Returns:
-        dict: {button_text: is_enabled}
+        dict: {"states": {button_text: is_enabled},
+               "status": str|None, "qga_ready": bool|None}
     """
     row_selector = await get_row_selector_by_marker(page, created_marker)
     if not row_selector:
-        return {}
+        return {"states": {}, "status": None, "qga_ready": None}
 
     try:
         result = await page.evaluate(f"""() => {{
@@ -442,7 +484,7 @@ async def _scan_all_button_states(page, created_marker: str) -> dict:
             return states;
         }}""")
 
-        # 2. 展开 dropdown 并扫描内部按钮
+        # 2. 展开 dropdown 并扫描内部按钮（顺带读行权威状态，批一 1.1）
         dropdown_expand = await page.evaluate(f"""() => {{
             const row = document.querySelector('{row_selector}');
             if (!row) return {{ error: 'no_row' }};
@@ -506,6 +548,8 @@ async def _scan_all_button_states(page, created_marker: str) -> dict:
                     }}
                 }}
 
+                let rowStatus = null;
+                let qgaReady = null;
                 if (targetMenu) {{
                     targetMenu.querySelectorAll('.el-dropdown-menu__item').forEach(item => {{
                         const text = item.textContent.trim();
@@ -515,19 +559,187 @@ async def _scan_all_button_states(page, created_marker: str) -> dict:
                                 || (item.__vue__ && item.__vue__.disabled === true);
                             states[text] = !disabled;
                         }}
+
+                        // ★ 批一 1.1：菜单项 Vue command.row → 行权威状态
+                        //   command 形态兼容：{{row: {{...}}}} / 直接行对象 / vm.row
+                        const vm = item.__vue__;
+                        if (!vm) return;
+                        let row = null;
+                        const cmd = vm.command;
+                        if (cmd && typeof cmd === 'object') {{
+                            if (cmd.row && typeof cmd.row === 'object') row = cmd.row;
+                            else if (cmd.status !== undefined || cmd.qgaReady !== undefined) row = cmd;
+                        }}
+                        if (!row && vm.row && typeof vm.row === 'object') row = vm.row;
+                        if (!row) return;
+                        if (rowStatus === null && row.status !== undefined && row.status !== null) {{
+                            rowStatus = String(row.status);
+                        }}
+                        if (qgaReady === null && row.qgaReady !== undefined) {{
+                            qgaReady = (row.qgaReady === true);
+                        }}
                     }});
                 }}
 
-                return states;
+                return {{states, rowStatus, qgaReady}};
             }}""", {"menuId": menu_id, "dropdownIndex": dropdown_index})
 
-            result.update(dropdown_states)
+            result.update(dropdown_states.get("states") or {})
+            return {
+                "states": result,
+                "status": dropdown_states.get("rowStatus"),
+                "qga_ready": dropdown_states.get("qgaReady"),
+            }
 
-        return result
+        return {"states": result, "status": None, "qga_ready": None}
 
     except Exception as e:
         LOG.warning(f"  [scan_button_states] 扫描失败: {e}")
-        return {}
+        return {"states": {}, "status": None, "qga_ready": None}
+
+
+async def _scan_all_button_states(page, created_marker: str) -> dict:
+    """扫描当前行所有按钮的 enabled/disabled 状态（含 dropdown 内的按钮）。
+
+    （批一 1.1 重构后为 _scan_row_state_snapshot 的 states 投影，保持既有
+    签名与返回形态，STATE-INIT / 级联等既有消费点零改动复用。）
+
+    Returns:
+        dict: {button_text: is_enabled}
+    """
+    snapshot = await _scan_row_state_snapshot(page, created_marker)
+    return snapshot.get("states") or {}
+
+
+async def _read_row_status(page, created_marker: str) -> dict:
+    """行状态权威读取 helper（批一 1.1）。
+
+    展开目标行 dropdown 菜单 → 从菜单项 Vue 实例读 command.row.status，
+    同时顺带读 qgaReady。读不到（非 dropdown command 环境 / 行不可达）
+    → status=None 静默降级，不硬失败。
+
+    Returns:
+        dict: {"status": str|None, "qga_ready": bool|None}
+    """
+    snapshot = await _scan_row_state_snapshot(page, created_marker)
+    return {
+        "status": snapshot.get("status"),
+        "qga_ready": snapshot.get("qga_ready"),
+    }
+
+
+async def _wait_qga_ready(page, created_marker: str,
+                          timeout_ms: int = 60000,
+                          poll_interval_ms: int = 5000) -> bool:
+    """轮询行级 qgaReady 直到就绪（批一 1.5）。
+
+    上限 timeout_ms；qga_ready 不可读（None）时立即放弃——不做全局硬等
+    （无 QGA 的镜像会挂死整轮）。
+
+    Returns:
+        bool: True=已就绪；False=超时或不可读
+    """
+    waited = 0
+    while waited <= timeout_ms:
+        snapshot = await _scan_row_state_snapshot(page, created_marker)
+        qga = snapshot.get("qga_ready")
+        if qga is True:
+            return True
+        if qga is None:
+            return False
+        await page.wait_for_timeout(poll_interval_ms)
+        waited += poll_interval_ms
+    return False
+
+
+# ============================================================
+# 状态机采集（批一 1.3）：状态×按钮矩阵 + 转移边（跨轮累积落盘 ui.json）
+# ============================================================
+
+def _init_state_ctx(state_seed: dict = None) -> dict:
+    """初始化状态采集上下文（批一 1.3）：合并旧 ui.json 种子（跨轮累积）。
+
+    转移边同三元组 (action, from, to) 去重保序；矩阵逐状态逐按钮并入。
+    种子缺字段/畸形条目过滤，保证冷启动（无旧产物）零异常。
+    """
+    seed = state_seed or {}
+    matrix = {}
+    for status, btns in (seed.get("state_button_matrix") or {}).items():
+        if isinstance(btns, dict):
+            matrix[status] = dict(btns)
+    transitions = []
+    seen = set()
+    for edge in (seed.get("state_transitions") or []):
+        if not isinstance(edge, dict):
+            continue
+        key = (edge.get("action"), edge.get("from"), edge.get("to"))
+        if key in seen or not all(key):
+            continue
+        seen.add(key)
+        transitions.append({"action": key[0], "from": key[1], "to": key[2]})
+    return {"state_button_matrix": matrix, "state_transitions": transitions}
+
+
+def _record_state_matrix(state_ctx: dict, status, states: dict) -> None:
+    """状态×按钮矩阵采集：settle 点观测 (status, {按钮: enabled}) 并入。
+
+    同状态重复观测按按钮覆盖（最新为准），新按钮并入（union 语义）。
+    status 不可读（None）或 states 为空时不采集——矩阵以稳态点为权威。
+    """
+    if not state_ctx or not status or not isinstance(states, dict) or not states:
+        return
+    matrix = state_ctx.setdefault("state_button_matrix", {})
+    row = matrix.setdefault(status, {})
+    row.update(states)
+
+
+def _record_state_transition(state_ctx: dict, action, from_status, to_status) -> None:
+    """转移边采集：{action, from, to} 同三元组去重保序。
+
+    任一端不可读（None）或两端相同（非状态翻转）时不记录。
+    """
+    if (not state_ctx or not action or not from_status or not to_status
+            or from_status == to_status):
+        return
+    edges = state_ctx.setdefault("state_transitions", [])
+    key = (action, from_status, to_status)
+    for e in edges:
+        if (e.get("action"), e.get("from"), e.get("to")) == key:
+            return
+    edges.append({"action": action, "from": from_status, "to": to_status})
+
+
+def _collect_state_pending(validated: dict, buttons_by_action: dict,
+                           action_roles: dict, executed_actions: set) -> list:
+    """回收状态受阻 pending（批一 1.4 reconcile 候选）。
+
+    条件：已尝试未成功 + generic 角色 + 行级位置 + 未以业务身份成功过
+    （executed_actions）+ 失败签名属状态受阻（禁用跳过 / 过渡窗口
+    click_failed）。与既有 _retry_state_blocked_ops 候选口径一致。
+    """
+    pending = []
+    for action, res in validated.items():
+        if not isinstance(res, dict) or res.get("success"):
+            continue
+        if action in executed_actions:
+            continue
+        if action not in buttons_by_action:
+            continue
+        if action_roles.get(action, "generic") != "generic":
+            continue
+        btn = buttons_by_action.get(action) or {}
+        if btn.get("location") not in ("row_action", "dropdown"):
+            continue
+        error_type = res.get("error_type") or ""
+        error_text = res.get("error_text") or ""
+        state_blocked = (
+            (error_type == "skipped" and "按钮被禁用" in error_text)
+            or error_type == "click_failed"
+        )
+        if not state_blocked:
+            continue
+        pending.append(action)
+    return pending
 
 
 async def _check_and_execute_newly_enabled(
@@ -643,6 +855,298 @@ async def _check_and_execute_newly_enabled(
     return results
 
 
+async def _wait_row_states_stable(page, created_marker: str,
+                                  max_wait_ms: int = 180000,
+                                  poll_interval_ms: int = 5000,
+                                  state_ctx: dict = None) -> dict:
+    """等待行状态稳定（批一 1.2 重写：双条件 + 权威 status）。
+
+    判定（不预设「过渡态特征」——「含 ing/中」特征枚举必错（Running 含
+    ing、运行中含「中」），改用「值不再变化」本身作为翻转完成的证明）：
+      - status 连续两次读值相同（间隔 poll_interval_ms）且
+      - 菜单 enabled 集合连续两次一致
+      双条件同时满足 = 稳态。status 不可读时退回「菜单集合两次一致」
+      单条件判定（现状行为，estack 等非 command 环境不降级）。
+    上限 180s（分钟级翻转覆盖：EIS 开机实测 ~18s，重装类更长留余量）。
+    超时不硬失败：记录 state_wait_timeout 返回最后一次观测（重试链兜底）。
+    稳态时顺带采集状态×按钮矩阵（批一 1.3，state_ctx 提供时）。
+
+    Args:
+        page: Playwright Page
+        created_marker: 行标识
+        max_wait_ms: 最长等待上限（毫秒），超时返回最后一次观测
+        poll_interval_ms: 轮询间隔（毫秒）
+        state_ctx: 状态采集上下文（批一 1.3；None 时仅判定不采集）
+
+    Returns:
+        dict: {"states": {button_text: is_enabled},
+               "status": str|None, "qga_ready": bool|None, "timed_out": bool}
+    """
+    prev = await _scan_row_state_snapshot(page, created_marker)
+    if not prev.get("states"):
+        # 首扫为空：行可能在重渲染中，短暂等待后复扫一次确认
+        await page.wait_for_timeout(poll_interval_ms)
+        prev = await _scan_row_state_snapshot(page, created_marker)
+        if not prev.get("states"):
+            return {"states": {}, "status": None, "qga_ready": None, "timed_out": False}
+
+    waited = 0
+    while waited < max_wait_ms:
+        await page.wait_for_timeout(poll_interval_ms)
+        cur = await _scan_row_state_snapshot(page, created_marker)
+        waited += poll_interval_ms
+        states_equal = bool(cur.get("states")) and cur.get("states") == prev.get("states")
+        prev_status = prev.get("status")
+        cur_status = cur.get("status")
+        # status 可读时双条件；不可读时退回菜单集合单条件（现状行为）
+        if prev_status is not None and cur_status is not None:
+            stable = states_equal and cur_status == prev_status
+        else:
+            stable = states_equal
+        if stable:
+            _record_state_matrix(state_ctx,
+                                 cur_status if cur_status is not None else prev_status,
+                                 cur.get("states") or {})
+            return {**cur, "timed_out": False}
+        prev = cur
+
+    LOG.warning(f"  [STATE-WAIT] 行状态 {max_wait_ms // 1000}s 未收敛"
+                f"（state_wait_timeout），继续（重试链兜底）")
+    return {**prev, "timed_out": True}
+
+
+async def _state_aware_reconcile(
+    page,
+    created_marker: str,
+    validated: dict,
+    buttons_by_action: dict,
+    action_roles: dict,
+    executed_actions: set,
+    form_filler,
+    tab_name: str,
+    tab_locator: str,
+    tab_prefix: str,
+    trigger_action: str = "",
+    state_ctx: dict = None,
+    max_rounds: int = 12,
+) -> dict:
+    """状态感知调度器（批一 1.4，循环式替代既有递归重试）。
+
+    背景：行级操作依赖目标行生命周期状态（运行/关机/冻结等），主循环按
+    收集序执行时受阻（禁用 skipped / 过渡窗口 click_failed）。既有
+    _retry_state_blocked_ops 只回收「当前已启用」的操作——无状态语义，
+    Stopped 态 10 个禁用操作永久挂空（EIS 第 6 轮实证）。
+
+    本调度器消费批一 1.1/1.3 产出的三类权威数据：
+      - status：行权威状态（Vue command.row.status，settle 时读取）
+      - state_button_matrix：状态×按钮可用矩阵（settle 点采集）
+      - state_transitions：已知转移边 {action, from, to}（跨轮累积）
+
+    每轮 reconcile（循环，无递归）：
+      1. settle（1.2 等待稳态）→ 读 status + 扫菜单 → 采集进 matrix
+      2. R1 直接执行：pending 中「当前已启用」的 → 逐个以业务身份执行；
+         执行后再 settle（该操作可能翻转状态）→ 回到 1
+      3. R1 恢复转移：无 ready 时，找「blocked pending 的需求状态」
+         （matrix 显示该 pending 在状态 S 可用、当前状态不可用）+
+         「已知转移边 from=当前状态 to=S」→ 以恢复身份执行转移操作
+         （intent=state_restore, triggered_by=首个需求操作，
+         build_playbook Cascade-Order 已消费该语义）→ 到达后逐个
+         尝试解锁的 pending：至少一个成功 → 边保持可用；全部失败 →
+         R2 该边标记耗尽（本轮不再走）
+      4. 无 ready、无可用恢复边 → 结束
+
+    R1-R4 规则（已与项目所有者对齐）：
+      R1 驱动性：任何转移必须有驱动力（业务身份=待验证；恢复身份=有
+        pending 需要）——乒乓根治点：既已验证又无 pending 需求的转移
+        直接拒绝。
+      R2 边耗尽：恢复转移到达后解锁 pending 全部失败 → 边本轮封禁，
+        防矩阵误判反复横跳；转移操作自身失败同样封禁该边。
+      R3 业务唯一：每操作业务身份每次 reconcile 调用至多一次。
+      R4 恢复不限次：恢复身份跨调用不限（关机/硬关机各把状态打到
+        Stopped，开机两次恢复均合法，各有新 pending 驱动）；已验证过的
+        操作可作为恢复手段再次执行。
+
+    终止性：正常推演下每轮至少消费一个 pending（业务执行）或一条边
+    （耗尽/已走），单调递减自然终止；max_rounds 仅作挂死保险（防状态
+    翻转卡死导致 status 轮询 180s×N 无限挂），非业务覆盖上限。
+
+    status 不可读（非 dropdown command 环境）→ 自动降级为仅 R1 直接
+    执行（与既有 _retry_state_blocked_ops 行为等价，estack 零降级）。
+
+    Returns:
+        dict: {action: result}，result 附内部字段 _reconcile_meta
+        （triggered_by/intent，调用方记录执行顺序后移除）；
+        row_state_before/after 已随 result 携带（批一 1.3 落 validated）。
+    """
+    if not created_marker:
+        return {}
+
+    pending = set(_collect_state_pending(
+        validated, buttons_by_action, action_roles, executed_actions))
+    if not pending:
+        return {}
+
+    results = {}
+    exhausted_edges = set()   # R2：本轮封禁边 (action, from, to)
+    business_executed = set()  # R3：业务身份已执行（本次 reconcile 调用内）
+    recovery_done = set()      # 本次调用已走过的边（含转移失败）
+    watched_edges = {}         # R2 判定：edge_key -> 解锁 pending 成败追踪
+
+    LOG.info(f"{tab_prefix}[STATE-RECONCILE] 启动: pending={sorted(pending)}"
+             f"（触发: {trigger_action or '主循环收尾'}）")
+
+    for round_num in range(1, max_rounds + 1):
+        # 1. settle：等待稳态（1.2）+ 采集矩阵（1.3）
+        settle = await _wait_row_states_stable(page, created_marker, state_ctx=state_ctx)
+        states = settle.get("states") or {}
+        status = settle.get("status")
+        if not states:
+            break
+
+        # 2. R1 直接执行：pending 中当前已启用且业务身份未消费的
+        ready = [a for a in pending if states.get(a) and a not in business_executed]
+        if ready:
+            for action in ready:
+                btn = buttons_by_action.get(action)
+                if not btn:
+                    pending.discard(action)
+                    continue
+                LOG.info(f"{tab_prefix}[STATE-RECONCILE] R1 业务执行: {action}"
+                         f"（当前状态: {status}）")
+                # ★ P0-A: 每次执行同样重装捕获器，隔离前序操作消息残留
+                await _install_message_capture(page)
+                result = await _error_driven_retry(
+                    page, _do_generic_operation, {
+                        "btn": btn, "action": action, "marker": created_marker,
+                        "form_filler": form_filler,
+                        "tab_name": tab_name, "tab_locator": tab_locator,
+                    }
+                )
+                result = result or {}
+                business_executed.add(action)  # R3：业务身份已消费
+                pending.discard(action)
+
+                success = bool(result and result.get("success"))
+                if status is not None:
+                    result["row_state_before"] = status
+                if success:
+                    executed_actions.add(action)
+                    LOG.info(f"{tab_prefix}[STATE-RECONCILE] ✓ {action} 业务成功")
+                    # 执行可能再次翻转行状态 → settle 后记转移边（1.3）
+                    post = await _wait_row_states_stable(
+                        page, created_marker, state_ctx=state_ctx)
+                    if post.get("status") is not None:
+                        result["row_state_after"] = post.get("status")
+                    _record_state_transition(state_ctx, action, status, post.get("status"))
+                else:
+                    err = result.get("error_text", "") or "未知错误"
+                    LOG.info(f"{tab_prefix}[STATE-RECONCILE] ✗ {action} 业务失败: {err}")
+                # 成败均入 results（对齐旧 STATE-RETRY 契约：调用方 merge
+                # 更新 validated 最新结果——失败结果保留最新错误证据）
+                results[action] = {**result, "_reconcile_meta": {
+                    "triggered_by": trigger_action,
+                    "intent": "business_validate",
+                }}
+
+                # R2 判定：watched 边的解锁 pending 成败追踪
+                for key in list(watched_edges):
+                    watch = watched_edges[key]
+                    if action not in watch["unlocked"]:
+                        continue
+                    watch["attempted"].add(action)
+                    if success:
+                        watch["succeeded"] = True
+                    if watch["succeeded"] or watch["attempted"] >= watch["unlocked"]:
+                        if not watch["succeeded"] and watch["attempted"] >= watch["unlocked"]:
+                            exhausted_edges.add(key)
+                            LOG.info(f"{tab_prefix}[STATE-RECONCILE] R2 边耗尽: {key}")
+                        del watched_edges[key]
+            # 执行后再 settle（可能翻转状态）→ 回到 1
+            continue
+
+        # 3. R1 恢复转移（status 可读 + 有矩阵数据才走；不可读 → 降级结束）
+        if status is None or not state_ctx:
+            LOG.info(f"{tab_prefix}[STATE-RECONCILE] 无 ready 且状态不可读，结束（降级）")
+            break
+
+        matrix = state_ctx.get("state_button_matrix") or {}
+        cur_enabled = matrix.get(status) or {}
+        # blocked pending 的需求状态（matrix 显示可用、当前不可用）
+        needed = {}
+        for action in pending:
+            if cur_enabled.get(action):
+                continue
+            need_states = [s for s, btns in matrix.items()
+                           if s != status and btns.get(action)]
+            if need_states:
+                needed[action] = need_states
+        if not needed:
+            LOG.info(f"{tab_prefix}[STATE-RECONCILE] 无 ready 且无可恢复 pending，结束")
+            break
+
+        # 找可用转移边：from=当前状态、to∈需求状态、未封禁未走过、操作当前可点
+        candidate = None
+        for edge in (state_ctx.get("state_transitions") or []):
+            key = (edge.get("action"), edge.get("from"), edge.get("to"))
+            if (key in exhausted_edges
+                    or key in recovery_done
+                    or edge.get("from") != status
+                    or edge.get("action") not in buttons_by_action
+                    or not states.get(edge.get("action"))):
+                continue
+            if any(edge.get("to") in ns for ns in needed.values()):
+                candidate = (edge, key)
+                break
+        if not candidate:
+            LOG.info(f"{tab_prefix}[STATE-RECONCILE] 无可用恢复边，结束")
+            break
+
+        edge, key = candidate
+        first_needing = next(a for a, ns in needed.items() if edge["to"] in ns)
+        restore_action = edge["action"]
+        btn = buttons_by_action.get(restore_action)
+        LOG.info(f"{tab_prefix}[STATE-RECONCILE] R1 恢复转移: {restore_action}"
+                 f"（{edge['from']} → {edge['to']}，驱动: {first_needing}）")
+        await _install_message_capture(page)
+        result = await _error_driven_retry(
+            page, _do_generic_operation, {
+                "btn": btn, "action": restore_action, "marker": created_marker,
+                "form_filler": form_filler,
+                "tab_name": tab_name, "tab_locator": tab_locator,
+            }
+        )
+        result = result or {}
+        recovery_done.add(key)
+        if status is not None:
+            result["row_state_before"] = status
+        if result.get("success"):
+            executed_actions.add(restore_action)
+            post = await _wait_row_states_stable(
+                page, created_marker, state_ctx=state_ctx)
+            if post.get("status") is not None:
+                result["row_state_after"] = post.get("status")
+            _record_state_transition(state_ctx, restore_action, status, post.get("status"))
+            LOG.info(f"{tab_prefix}[STATE-RECONCILE] ✓ 恢复转移成功:"
+                     f" {status} → {post.get('status')}")
+            # R2 追踪：到达后解锁的 pending 全部失败 → 该边耗尽
+            unlocked = {a for a, ns in needed.items() if edge["to"] in ns}
+            watched_edges[key] = {"unlocked": unlocked, "attempted": set(), "succeeded": False}
+        else:
+            # 转移操作自身失败 → R2 边封禁（防同边反复撞）
+            exhausted_edges.add(key)
+            err = result.get("error_text", "") or "未知错误"
+            LOG.info(f"{tab_prefix}[STATE-RECONCILE] ✗ 恢复转移失败: {err}（边封禁）")
+        # 成败均入 results（调用方 merge 更新 validated 最新结果）
+        results[restore_action] = {**result, "_reconcile_meta": {
+            "triggered_by": first_needing, "intent": "state_restore",
+        }}
+        # 回到 1：settle 后重扫 ready
+
+    LOG.info(f"{tab_prefix}[STATE-RECONCILE] 结束: 本轮成功 {sum(1 for r in results.values() if r.get('success'))}"
+             f" 个操作，剩余 pending {len(pending)} 个")
+    return results
+
+
 async def _validate_single_tab_crud(
     page,
     tab_buttons: dict,
@@ -650,6 +1154,7 @@ async def _validate_single_tab_crud(
     username: str,
     tab_name: str = "",
     tab_locator: str = "",
+    state_ctx: dict = None,
 ) -> tuple:
     """在单个 Tab 上下文中执行完整 CRUD 验证。
 
@@ -659,6 +1164,8 @@ async def _validate_single_tab_crud(
         ui_result: discover_all() 返回的探测结果
         username: 用户名
         tab_name: Tab 名称（用于日志）
+        state_ctx: 状态采集上下文（批一 1.3；跨 Tab 共享同一引用，
+            settle 点观测逐轮累积，最终随 ui_result 落盘 ui.json）
 
     Returns:
         dict: {action: {"success": bool, "fill_data": dict, "selectors": dict, ...}}
@@ -670,16 +1177,16 @@ async def _validate_single_tab_crud(
 
     # ★ 使用 shared/constants 统一常量（消除重复定义）
     from core.discovery.shared.constants import (
-        DROPDOWN_TRIGGER_TEXTS, NON_BUSINESS_BUTTONS, BATCH_PREFIXES, DESTROY_KEYWORDS
+        NON_BUSINESS_BUTTONS, BATCH_PREFIXES, DESTROY_KEYWORDS
     )
-    _DROPDOWN_TRIGGER_TEXTS = DROPDOWN_TRIGGER_TEXTS
     _NON_BUSINESS_BUTTONS = NON_BUSINESS_BUTTONS
 
     # 收集行级操作文本，用于去重批量操作
+    # ★ 触发器判定用包含式 helper（「更多操作」组合文本命中，精确匹配漏判实证）
     _row_action_texts = {
         btn.get("text", "") for btn in buttons_by_action.values()
         if btn.get("location") in ("row_action", "dropdown")
-        and btn.get("text") not in _DROPDOWN_TRIGGER_TEXTS
+        and not is_dropdown_trigger_text(btn.get("text"))
     }
     _BATCH_PREFIXES = BATCH_PREFIXES
     _DESTROY_KEYWORDS = DESTROY_KEYWORDS
@@ -853,6 +1360,16 @@ async def _validate_single_tab_crud(
             LOG.debug(f"{tab_prefix}跳过 {action}: 未找到对应按钮")
             continue
 
+        # ★ 已成功过的操作不重复执行：级联（STATE-CHANGE）先行成功的
+        # 已入册操作，主循环到达时跳过——重复执行既浪费探测时间又可能
+        # 再次翻转行状态（级联双执行实证：热迁移/创建快照/创建镜像等
+        # 在 create 后级联已成功，主循环再次执行属无谓重复业务动作）。
+        # 对主循环自身成功的操作无影响（成功结果在自身迭代内才写入）。
+        _prior_result = validated.get(action)
+        if isinstance(_prior_result, dict) and _prior_result.get("success"):
+            LOG.info(f"{tab_prefix}跳过 {action}: 已在级联/状态重试中成功，不重复执行")
+            continue
+
         # ★ 批量操作动态跳过（fix7）：清单已有单操作「XX」时跳过「批量XX」。
         #   用户规则：有启用则不需要批量启用；删除/批量删除、暂停/批量暂停同理。
         #   既有静态规则（_validate_business_flow，扫描时刻判定）在行级互斥项
@@ -875,6 +1392,18 @@ async def _validate_single_tab_crud(
         btn_location = btn.get("location", "toolbar")
         role = action_roles.get(action, "generic")
         LOG.info(f"{tab_prefix}验证操作: {action} (按钮: {btn_text}, 角色: {role})")
+
+        # ★ 批一 1.3：行级操作执行前读行权威状态（row_state_before）。
+        # 执行成功后 settle 读 row_state_after，两端可读且不同 → 记转移边
+        # {action, from, to}（跨轮累积落盘 ui.json）。status 不可读时为 None，
+        # 后续记录全部静默跳过（estack 等非 command 环境零影响）。
+        _row_state_before = None
+        if (created_marker
+                and btn_location in ("row_action", "dropdown")
+                and role in ("generic", "update", "delete")
+                and not btn.get("_is_switch")):
+            _pre_snapshot = await _scan_row_state_snapshot(page, created_marker)
+            _row_state_before = _pre_snapshot.get("status")
 
         # ★ P0-A: 每个操作开始时重装消息捕获器（清空 captured 数组 + 重打 __op_baseline 基线）。
         # 此前只在 Tab 切换时装一次（_validate_business_flow），同 Tab 内前序操作的通知
@@ -940,7 +1469,7 @@ async def _validate_single_tab_crud(
             else:
                 error_text = result.get("error_text", "") if result else "未知错误"
                 LOG.warning(f"{tab_prefix}{action} 操作失败: {error_text}")
-                validated[action] = {**(result or make_error("switch_failed", error_text)), "_is_switch": True, "locator": btn.get("locator"), "text": btn.get("text"), "is_checked": btn.get("is_checked")}
+                _merge_validated_result(validated, action, {**(result or make_error("switch_failed", error_text)), "_is_switch": True, "locator": btn.get("locator"), "text": btn.get("text"), "is_checked": btn.get("is_checked")})
             # switch 状态变化后，等待页面稳定
             await page.wait_for_timeout(500)
             continue
@@ -977,9 +1506,9 @@ async def _validate_single_tab_crud(
                     LOG.info(f"{tab_prefix}create 失败，使用 fallback marker: {fallback}")
                 # ★ Fix 5: 即使 result 为 None/空也要记录
                 if result:
-                    validated[action] = result
+                    _merge_validated_result(validated, action, result)
                 else:
-                    validated[action] = {
+                    _merge_validated_result(validated, action, {
                         "success": False,
                         "error_type": "create_failed",
                         "error_text": "Create operation returned no result",
@@ -988,7 +1517,7 @@ async def _validate_single_tab_crud(
                         "fill_data": {},
                         "fill_rules": {},
                         "form_fields": form_fields,
-                    }
+                    })
 
         elif role == "query":
             LOG.info(f"{tab_prefix}[QUERY-DEBUG] 开始验证 query 操作: btn_text='{btn.get('text')}', is_search_input={btn.get('is_search_input')}, marker={created_marker}")
@@ -1048,7 +1577,7 @@ async def _validate_single_tab_crud(
                         # ★ 记录执行顺序
                         _record_execution(action, "main", "update")
                     elif result:
-                        validated[action] = result
+                        _merge_validated_result(validated, action, result)
             else:
                 result = await _error_driven_retry(
                     page, _do_generic_operation, {
@@ -1062,7 +1591,7 @@ async def _validate_single_tab_crud(
                     # ★ 记录执行顺序
                     _record_execution(action, "main", "update")
                 elif result:
-                    validated[action] = result
+                    _merge_validated_result(validated, action, result)
 
         elif role == "delete":
             if btn_location == "row_action":
@@ -1086,7 +1615,7 @@ async def _validate_single_tab_crud(
                         # ★ 记录执行顺序
                         _record_execution(action, "main", "delete")
                     elif result:
-                        validated[action] = result
+                        _merge_validated_result(validated, action, result)
             else:
                 if btn_location == "toolbar" and created_marker:
                     selected = await _ensure_row_selected(page, created_marker)
@@ -1106,7 +1635,24 @@ async def _validate_single_tab_crud(
                     # ★ 记录执行顺序
                     _record_execution(action, "main", "delete")
                 elif result:
-                    validated[action] = result
+                    _merge_validated_result(validated, action, result)
+
+        elif role == "navigation":
+            # ★ 方案批三 3.1：navigation 角色专用截流——验证目标是「跳转发生」
+            # （URL 变化或新标签页），不再落入 generic 的表单探索路径（第 6 轮
+            # 实证：9 个名称链接操作在目标详情页伪表单上空转 38 分钟）。
+            # 秒过即回列表；navigation 不改变行状态，无级联/增量语义。
+            result = await _do_navigation_operation(page, {
+                "btn": btn, "action": action, "marker": created_marker,
+                "tab_name": tab_name, "tab_locator": tab_locator,
+            })
+            if result and result.get("success"):
+                validated[action] = result
+                # ★ 记录执行顺序
+                _record_execution(action, "main", "navigation")
+            elif result:
+                _merge_validated_result(validated, action, result)
+            continue
 
         else:
             # generic 角色
@@ -1131,18 +1677,29 @@ async def _validate_single_tab_crud(
                 # ★ 部分成功的操作（如授权）：有 nav_info 但 success=False
                 # 记录到 validated 但标记为 partial_success
                 result["partial_success"] = True
-                validated[action] = result
+                _merge_validated_result(validated, action, result)
                 executed_actions.add(action)
                 _record_execution(action, "main", "generic", partial_success=True)
             elif result:
                 # ★ 失败结果也写入 validated，与 create/update/delete 角色统一
                 # Stage 1 记录实际操作，成功/失败不影响操作记录
-                validated[action] = result
+                _merge_validated_result(validated, action, result)
 
         # ★ 通用状态变化检测与级联执行
-        # 操作成功后，扫描按钮状态变化，自动执行新启用的按钮
+        # 操作成功后：等待行状态稳定（批一 1.2 双条件 settle，顺带采集矩阵）
+        # → 级联执行新启用按钮 → 状态感知调度（批一 1.4 reconcile：
+        # 直接执行 ready pending + 有驱动力的恢复转移，替代旧 STATE-RETRY）
         if result and result.get("success") and created_marker:
-            await page.wait_for_timeout(1000)  # 等待 Vue 渲染
+            settle = await _wait_row_states_stable(page, created_marker, state_ctx=state_ctx)
+
+            # ★ 批一 1.3：row_state_before/after 落 validated + 转移边采集
+            # （result 与 validated[action] 同引用，字段直接随产物落盘；
+            #   任一端不可读或两端相同 → _record_state_transition 静默跳过）
+            if _row_state_before is not None:
+                result["row_state_before"] = _row_state_before
+            if settle.get("status") is not None:
+                result["row_state_after"] = settle["status"]
+            _record_state_transition(state_ctx, action, _row_state_before, settle.get("status"))
 
             cascade_results = await _check_and_execute_newly_enabled(
                 page, created_marker, button_states, buttons_by_action,
@@ -1152,9 +1709,27 @@ async def _validate_single_tab_crud(
             # 将级联执行的结果写入 validated，并记录执行顺序
             for cascade_action, cascade_result in cascade_results.items():
                 if cascade_result:
-                    validated[cascade_action] = cascade_result
+                    _merge_validated_result(validated, cascade_action, cascade_result)
                     # ★ 记录级联操作的执行顺序
                     _record_execution(cascade_action, "cascade", action_roles.get(cascade_action, "generic"), triggered_by=action)
+
+            # ★ 批一 1.4：状态感知调度（替代 _retry_state_blocked_ops）——
+            # 直接执行 pending 中当前已启用的 + 有 pending 驱动的恢复转移
+            # （R1 驱动性根治乒乓；settle/矩阵/转移边由 reconcile 内部自理）
+            reconcile_results = await _state_aware_reconcile(
+                page, created_marker, validated, buttons_by_action, action_roles,
+                executed_actions, form_filler, tab_name, tab_locator, tab_prefix,
+                trigger_action=action, state_ctx=state_ctx,
+            )
+            for rc_action, rc_result in reconcile_results.items():
+                if not rc_result:
+                    continue
+                rc_meta = rc_result.pop("_reconcile_meta", None) or {}
+                _merge_validated_result(validated, rc_action, rc_result)
+                if rc_result.get("success"):
+                    _record_execution(rc_action, "cascade",
+                                      action_roles.get(rc_action, "generic"),
+                                      triggered_by=rc_meta.get("triggered_by") or action)
 
         # ★ 增量发现：操作成功后，扫描当前行发现新出现的按钮
         # 适用场景：暂停→启用、禁用→启用 等状态依赖的操作对
@@ -1276,6 +1851,27 @@ async def _validate_single_tab_crud(
                 LOG.error(f"{tab_prefix}浏览器已关闭，停止后续操作验证")
                 break
 
+    # ★ 主循环收尾：行状态可能在最后一批操作后再次翻转，最后跑一轮
+    # 状态感知调度（EIS 实证：关机后 Stopped 态解锁的行级操作在主循环
+    # 内全部撞禁用/过渡窗口，无后续成功操作触发时在此兜底回收；
+    # 批一 1.4 后 reconcile 还可走有驱动力的恢复转移解锁 Stopped 态
+    # 依赖的操作——关机→开机边由本轮转移边采集产出）
+    if created_marker:
+        final_reconcile = await _state_aware_reconcile(
+            page, created_marker, validated, buttons_by_action, action_roles,
+            executed_actions, form_filler, tab_name, tab_locator, tab_prefix,
+            trigger_action="", state_ctx=state_ctx,
+        )
+        for rc_action, rc_result in final_reconcile.items():
+            if not rc_result:
+                continue
+            rc_meta = rc_result.pop("_reconcile_meta", None) or {}
+            _merge_validated_result(validated, rc_action, rc_result)
+            if rc_result.get("success"):
+                _record_execution(rc_action, "cascade",
+                                  action_roles.get(rc_action, "generic"),
+                                  triggered_by=rc_meta.get("triggered_by") or "")
+
     # ★ 记录未验证的 toolbar 按钮
     validated_actions = set(validated.keys())
     toolbar_buttons = ui_result.get("toolbar_buttons", [])
@@ -1294,7 +1890,8 @@ async def _validate_single_tab_crud(
     return validated, execution_order
 
 
-async def _validate_business_flow(page, ui_result: dict, username: str) -> tuple:
+async def _validate_business_flow(page, ui_result: dict, username: str,
+                                  state_seed: dict = None) -> tuple:
     """按动态顺序逐一验证按钮的业务闭环。
 
     支持多 Tab 页面：检测到多个 tab 时，逐一切换 tab 并独立验证每个 tab 的 CRUD 操作。
@@ -1306,11 +1903,22 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> tuple
         page: Playwright Page 对象
         ui_result: discover_all() 返回的探测结果
         username: 用户名
+        state_seed: 旧 ui.json 的状态矩阵/转移边种子（批一 1.3 跨轮累积）
 
     Returns:
         dict: {action: {"success": bool, "fill_data": dict, "selectors": dict, ...}}
               如果关键操作全部失败，返回 None。
     """
+    # ★ 批一 1.3：状态采集上下文（跨轮累积——合并旧 ui.json 种子，本轮
+    # settle 点观测逐轮补全；引用挂 ui_result 顶层随产物落盘 ui.json，
+    # 供 reconcile（1.4）恢复转移消费 + Stage 2 后续扩展）
+    state_ctx = _init_state_ctx(state_seed)
+    ui_result["state_button_matrix"] = state_ctx["state_button_matrix"]
+    ui_result["state_transitions"] = state_ctx["state_transitions"]
+    if state_ctx["state_transitions"]:
+        LOG.info(f"  [STATE-CTX] 载入跨轮转移边 {len(state_ctx['state_transitions'])} 条"
+                 f" / 矩阵状态 {len(state_ctx['state_button_matrix'])} 个")
+
     # [TAB-STATE-DIAG] 诊断：记录当前 Tab 状态
     try:
         page_structure = ui_result.get("page_structure", {})
@@ -1385,20 +1993,20 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> tuple
 
     # ★ 使用 shared/constants 统一常量（消除重复定义）
     from core.discovery.shared.constants import (
-        DROPDOWN_TRIGGER_TEXTS, NON_BUSINESS_BUTTONS, BATCH_PREFIXES,
+        NON_BUSINESS_BUTTONS, BATCH_PREFIXES,
         DESTROY_KEYWORDS, NAVIGATION_CLASS_KEYWORDS
     )
-    _DROPDOWN_TRIGGER_TEXTS = DROPDOWN_TRIGGER_TEXTS
     _NON_BUSINESS_BUTTONS = NON_BUSINESS_BUTTONS
     _DESTROY_KEYWORDS = DESTROY_KEYWORDS
     _NAVIGATION_CLASS_KEYWORDS = NAVIGATION_CLASS_KEYWORDS
     _BATCH_PREFIXES = BATCH_PREFIXES
 
     # 收集行级操作文本，用于去重批量操作
+    # ★ 触发器判定用包含式 helper（「更多操作」组合文本命中，精确匹配漏判实证）
     _row_action_texts = {
         btn.get("text", "") for btn in all_buttons
         if btn.get("location") in ("row_action", "dropdown")
-        and btn.get("text") not in _DROPDOWN_TRIGGER_TEXTS
+        and not is_dropdown_trigger_text(btn.get("text"))
     }
     has_row_destroy = any(
         any(kw in ra_text.lower() for kw in _DESTROY_KEYWORDS)
@@ -1409,8 +2017,8 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> tuple
     buttons_by_tab = {}  # {tab_name: {action: btn}}
 
     for btn in all_buttons:
-        # 跳过下拉菜单触发器
-        if btn.get("text") in _DROPDOWN_TRIGGER_TEXTS and btn.get("tag") != "DROPDOWN_ITEM":
+        # 跳过下拉菜单触发器（包含式判定：「更多操作」等组合文本同样命中）
+        if is_dropdown_trigger_text(btn.get("text")) and btn.get("tag") != "DROPDOWN_ITEM":
             continue
 
         # 跳过分页跳转等非业务按钮
@@ -1533,6 +2141,7 @@ async def _validate_business_flow(page, ui_result: dict, username: str) -> tuple
         tab_validated, tab_exec_order = await _validate_single_tab_crud(
             page, tab_buttons, ui_result, username, tab_name,
             tab_locator=tab_info.get("locator", "") if tab_name and tab_info else "",
+            state_ctx=state_ctx,
         )
 
         # 聚合 execution_order
@@ -1628,6 +2237,7 @@ async def _error_driven_retry(page, operation_fn, context: dict) -> dict:
     """
     last_error_key = None
     vision_used_for_state = set()  # 已截图的页面状态 key
+    qga_wait_done = False  # ★ 批一 1.5：QGA 就绪等待每次调用只做一次
     max_rounds = 10  # 安全上限
     first_ms_details = None  # ★ 保存第一次 attempt 的 multi_step_field_details（从空状态记录，最完整）
     first_round_result = None  # ★ 保存第 1 轮完整失败结果（信息丰度回退用）
@@ -1677,6 +2287,24 @@ async def _error_driven_retry(page, operation_fn, context: dict) -> dict:
 
         LOG.info(f"    第 {round_num + 1} 轮失败: [{error_type}] field={error_field} text={error_text[:120]}"
                  f" is_terminal={error_type in TERMINAL_ERRORS}")
+
+        # ★ 批一 1.5：QGA 就绪等待——失败签名含 QGA（如「QGA 未就绪」）→
+        # 轮询行级 qgaReady（Vue command.row，_read_row_status 顺带读取）
+        # 上限 60s，就绪后进入下一轮重试（即「重试一次」，qga_wait_done
+        # 保证每次调用只等一次）。不做全局硬等（无 QGA 镜像会挂死整轮）；
+        # qga 不可读时立即放弃。置于 TERMINAL 检查之前：QGA 类业务错误
+        # 可能被归为 api_error 终态，先等后判不破坏终态防死循环语义
+        # （等待一次性有界，若再次失败仍按终态正常返回）。
+        if (not qga_wait_done
+                and context.get("marker")
+                and "qga" in (error_text or "").lower()):
+            qga_wait_done = True
+            qga_ok = await _wait_qga_ready(page, context.get("marker"), timeout_ms=60000)
+            if qga_ok:
+                LOG.info("    [QGA-WAIT] QGA 已就绪，重试操作")
+                last_error_key = None
+                continue
+            LOG.warning("    [QGA-WAIT] QGA 等待超时或不可读，按常规错误处理")
 
         # P2: 不可重试错误 → 立即返回
         if error_type in TERMINAL_ERRORS:
@@ -3404,6 +4032,194 @@ async def _do_delete(page, context: dict) -> dict:
     return result
 
 
+async def _do_navigation_operation(page, context: dict) -> dict:
+    """navigation 角色专用验证：点击 → URL 变化或新标签页 = 成功。
+
+    语义依据（方案批三 3.1）：navigation 类操作（名称链接等非 BUTTON/
+    DROPDOWN_ITEM 元素，_infer_action_role 纯结构性判定）的业务语义就是
+    「跳转」，验证目标是导航本身发生，而非目标页面的表单流程。此前该角色
+    落入 generic 分支 → _explore_and_operate_in_new_page 把目标页伪表单
+    字段当业务表单填写提交（第 6 轮实证：9 个名称链接操作空转 38 分钟）。
+
+    流程：点击（复用行级/toolbar 点击降级链）→ _observe_post_click →
+    scenario 为 new_tab/page_nav 即成功并恢复现场（新标签页关闭/同 tab
+    跳转回列表）；其余场景按实际反馈记录失败。不进入错误驱动重试、
+    不等待弹窗、不探索目标页面表单。
+    """
+    from core.discovery.replay.button_driver import ButtonDriver
+    from core.discovery.shared.button_clicker import (
+        try_click_unique_global_button, is_destroy_text,
+    )
+    from core.discovery.operation_executor.navigation_executor import (
+        _navigate_back_to_list,
+    )
+    from core.discovery.ui_scanner.button_detector import _close_dialog
+
+    btn = context["btn"]
+    action = context["action"]
+    marker = context.get("marker")
+    tab_name = context.get("tab_name", "")
+    tab_locator = context.get("tab_locator", "")
+    btn_text = btn.get("text", "")
+    btn_location = btn.get("location", "toolbar")
+    trigger_text = " ".join(btn_text.split())
+
+    url_before = page.url
+    LOG.info(f"  [NAVIGATION] 验证跳转操作: '{btn_text}' (location={btn_location})")
+
+    # 注册新标签页监听（与 generic 同构：URL 变化 / 新 tab 双通道检测）
+    new_tab_event, new_tab_ref, cleanup_tab_listener = _setup_new_tab_listener(page)
+
+    # ── 点击（复用 generic 的行级/toolbar 点击降级链） ──
+    btn_click_result = {}
+    clicked = False
+    if btn_location == "row_action":
+        # 名称链接类：文本全局唯一直接点击 → marker 行内定位 → first_row 兜底
+        # （非破坏性降级语义与 generic/Stage 2 _step_find_row 对齐）
+        _direct = await try_click_unique_global_button(page, btn_text)
+        if _direct.get("clicked"):
+            clicked = True
+            btn_click_result = _direct
+        else:
+            driver = ButtonDriver(page)
+            row = await driver.find_data_row(marker) if marker else None
+            if not row and not is_destroy_text(btn_text):
+                row = await driver.find_first_data_row()
+            if not row:
+                cleanup_tab_listener()
+                return {
+                    "success": False,
+                    "error_type": "row_not_found",
+                    "error_text": f"未找到数据行: {marker}",
+                    "trigger_text": trigger_text,
+                    "btn_location": btn_location,
+                }
+            clicked = await driver.click_row_button_v2(row, btn_text)
+    else:
+        # toolbar/其他位置链接：全局文本点击（click_page_button 含 a/span:has-text）
+        btn_click_result = await click_page_button(page, btn_text)
+        clicked = bool(btn_click_result.get("clicked"))
+
+    if not clicked:
+        cleanup_tab_listener()
+        return {
+            "success": False,
+            "error_type": "click_failed",
+            "error_text": f"无法点击 navigation 按钮: {btn_text}",
+            "trigger_text": trigger_text,
+            "btn_location": btn_location,
+        }
+
+    # 已验证 locator（与 generic 路径同构，供 playbook 序列化）
+    trigger_locator_verified = btn_click_result.get("locator")
+    if not trigger_locator_verified:
+        _trigger_tag = btn_click_result.get("tag", "a")
+        _actual_text = btn_click_result.get("actual_text", trigger_text)
+        trigger_locator_verified = f"{_trigger_tag}:has-text('{_actual_text}')"
+
+    # ── 后点击观察（含 ~2s 场景等待 + loading 收敛） ──
+    obs = await _observe_post_click(
+        page, url_before, timeout_ms=3000,
+        new_page_event=new_tab_event, new_page_ref=new_tab_ref
+    )
+    cleanup_tab_listener()
+    scenario = obs.get("scenario", "none")
+
+    if scenario in ("new_tab", "page_nav"):
+        nav_info = {"scenario": scenario, "navigated_url": "", "page_title": ""}
+        if scenario == "new_tab":
+            new_page = obs.get("new_page")
+            try:
+                await new_page.wait_for_load_state("domcontentloaded", timeout=5000)
+            except Exception:
+                pass
+            nav_info["navigated_url"] = new_page.url
+            try:
+                nav_info["page_title"] = await new_page.title()
+            except Exception:
+                pass
+            # 导航已验证，关闭新标签页保持会话干净（与 generic new_tab 路径一致）
+            try:
+                await new_page.close()
+            except Exception:
+                pass
+        else:
+            nav_info["navigated_url"] = page.url
+            try:
+                nav_info["page_title"] = await page.title()
+            except Exception:
+                pass
+            # 同 tab 跳转：回列表页继续后续操作（统一收口 navigation_executor）
+            await _navigate_back_to_list(page, url_before, tab_name=tab_name, tab_locator=tab_locator)
+
+        LOG.info(f"  [NAVIGATION] ✓ 跳转验证成功: '{btn_text}' → {nav_info['navigated_url'][:60]}")
+        return {
+            "success": True,
+            "action": action,
+            "trigger_text": trigger_text,
+            "trigger_locator_verified": trigger_locator_verified,
+            "btn_location": btn_location,
+            "interaction_mode": "navigation",
+            "nav_info": nav_info,
+        }
+
+    # ── 未发生导航：按实际反馈记录失败（不重试、不等弹窗） ──
+    # dialog 场景属意外反馈（导航类不应弹窗），关闭弹窗恢复现场防污染后续操作
+    if scenario == "dialog":
+        try:
+            await _close_dialog(page)
+        except Exception as _cd_e:
+            LOG.debug(f"  [NAVIGATION] 关闭意外弹窗失败: {_cd_e}")
+    detail = f"scenario={scenario}"
+    if obs.get("toast_text"):
+        detail += f", toast='{obs.get('toast_text')}'"
+    LOG.info(f"  [NAVIGATION] ✗ 未检测到跳转: '{btn_text}' ({detail})")
+    return {
+        "success": False,
+        "error_type": "no_navigation_signal",
+        "error_text": f"点击后未发生页面跳转（{detail}）",
+        "trigger_text": trigger_text,
+        "trigger_locator_verified": trigger_locator_verified,
+        "btn_location": btn_location,
+        "nav_info": {"scenario": scenario},
+    }
+
+
+async def _required_selects_still_empty(page, scope_q: str) -> list:
+    """★ 4.2 提交前守卫探测：scope 容器内仍为空的必填 select 的 label 列表。
+
+    判据（探针 4B 原型 tmp/eis_probe_batch4b.json _JS_REQUIRED_EMPTY 实证）：
+    - 空判据与 pre_fill_diag 同源（无 tag / 无 input 值 / 无已选文本）
+    - is-required 收紧：仅 el-form-item 带 is-required 的计入——非必填空
+      select 不阻断提交（与既有 pre-fill 兜底口径一致，防误伤）
+    - disabled select 跳过（级联自动填充态/禁用态不可填，不构成中止证据）
+
+    Returns:
+        [label, ...] 仍为空的必填 select label 列表（容器不可见/无命中返回 []）
+    """
+    return await page.evaluate(f"""(() => {{
+        const container = document.querySelector('{scope_q}');
+        if (!container || container.offsetWidth === 0) return [];
+        const out = [];
+        container.querySelectorAll('.el-select').forEach(sel => {{
+            const innerInput = sel.querySelector('.el-input__inner');
+            if (innerInput && innerInput.disabled) return;
+            const tags = sel.querySelectorAll('.el-tag');
+            const hasTags = tags && tags.length > 0;
+            const hasValue = innerInput && innerInput.value;
+            const selectedLabel = sel.querySelector('.el-select__selected-item, .el-select__tags-text');
+            const hasSelectedText = selectedLabel && selectedLabel.textContent.trim().length > 0;
+            if (!hasTags && !hasValue && !hasSelectedText) {{
+                const fi = sel.closest('.el-form-item');
+                if (!fi || !(fi.className || '').includes('is-required')) return;
+                const label = fi.querySelector('.el-form-item__label');
+                if (label) out.push(label.textContent.trim());
+            }}
+        }});
+        return out;
+    }})()""")
+
+
 async def _do_generic_operation(page, context: dict) -> dict:
     """执行通用操作（lock/unlock/reset/authorize 等）。"""
     # Lazy imports to avoid circular dependencies
@@ -4177,6 +4993,25 @@ async def _do_generic_operation(page, context: dict) -> dict:
 
             if filled == 0:
                 LOG.info(f"    无可填字段，尝试直接提交")
+
+            # ★ 4.2 必填空 select 提交前中止: pre-fill 尝试后仍有 is-required 且为空的
+            # select（实证: 更新密钥对「密钥对」无可选项恒空 → 提交按钮 disabled →
+            # 无提交路径）→ 提交必被表单校验拒绝，点击只会产生静默失败（no_signal
+            # 假象）或否定前缀按钮误点风险。落 required_field_empty 终态（与既有
+            # 提交后兜底 L5473 同型），不空转重试。
+            try:
+                _req_empty = await _required_selects_still_empty(page, _sel_q)
+            except Exception as _guard_e:
+                LOG.debug(f"    [4.2-guard] 守卫探测异常（放行提交）: {_guard_e}")
+                _req_empty = []
+            if _req_empty:
+                LOG.warning(f"    [4.2-guard] 提交中止: 必填下拉字段仍为空: {_req_empty}")
+                await _close_dialog(page)
+                return _fail(
+                    "required_field_empty",
+                    f"{action} 弹窗中必填下拉字段仍为空且无法自动填充: {', '.join(_req_empty)}",
+                    error_field=_req_empty[0],
+                )
 
             submit_result = await form_filler.submit_form_v2(scope_selector=_sel_q)
             LOG.debug(f"    submit_form_v2 返回: {submit_result}")

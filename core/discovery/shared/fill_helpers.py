@@ -108,6 +108,91 @@ def generate_fill_value(field_type: str, input_type: str,
     }
 
 
+# 确认字段的语义标记词（label/placeholder 命中即视为「X 的确认字段」）
+_CONFIRM_FIELD_MARKERS = (
+    "确认", "再次", "重复", "校验", "重输",
+    "confirm", "re-enter", "reenter", "retype", "repeat", "verify",
+)
+# 确认字段剥离标记词后需一并剥离的客套填充词
+_CONFIRM_FILLER_WORDS = ("请", "输入", "键入", "please", "enter", "type")
+
+
+def _strip_confirm_markers(text: str) -> str:
+    """剥离确认语义标记词/客套填充词/空白与标点，返回剩余部分（原字段名候选）。
+
+    归一化为小写无分隔符形态：「确认登录密码」→「登录密码」；
+    「请再次输入密码」→「密码」；"Confirm Password"→"password"。
+    """
+    t = str(text or "").lower()
+    for marker in _CONFIRM_FIELD_MARKERS:
+        t = t.replace(marker, " ")
+    for filler in _CONFIRM_FILLER_WORDS:
+        t = t.replace(filler, " ")
+    return "".join(ch for ch in t if not ch.isspace() and ch not in ":：,，/、-").strip()
+
+
+def _pair_confirmation_field_values(fields: list, fill_data: dict) -> dict:
+    """识别「确认 X」字段并复制「X」字段的值（方案批三 3.3）。
+
+    背景（EIS 实证）：重置密码/重装/克隆弹窗的「密码」与「确认密码」
+    各生成各的随机值 → 表单校验「两次输入密码不一致」拒绝。生成阶段
+    持有全字段清单，全局配对可靠；Stage 2 replay 侧同语义已由
+    replay_engine 的 password_cache（同规则复用同值）覆盖。
+
+    配对规则：
+    - 探测文本优先 label，label 无标记词时看 placeholder（「请再次输入密码」类）
+    - 剩余文本与某非确认字段 label 的归一化形态完全相等，或互为包含
+      （「确认登录密码」剩余「登录密码」可配对 label「登录密码」或「密码」）
+    - 配对源自身不得也是确认字段（防止两个确认字段互相配对）
+
+    Returns:
+        {确认字段label: 源字段label的值} 覆盖表（无配对返回空 dict）
+    """
+    # 非确认字段归一化 label 索引（精确配对）+ 全量列表（包含配对）
+    source_by_norm = {}
+    source_list = []
+    for field in fields:
+        raw_label = field.get("label", "")
+        if not raw_label:
+            continue
+        if any(m in raw_label.lower() for m in _CONFIRM_FIELD_MARKERS):
+            continue
+        norm = _strip_confirm_markers(raw_label)
+        if norm:
+            source_by_norm.setdefault(norm, raw_label)
+            source_list.append((norm, raw_label))
+
+    overrides = {}
+    for field in fields:
+        raw_label = field.get("label", "")
+        if not raw_label or raw_label not in fill_data:
+            continue
+        # 探测文本：label 优先，label 无标记词时 placeholder 兜底
+        probe = ""
+        if any(m in raw_label.lower() for m in _CONFIRM_FIELD_MARKERS):
+            probe = raw_label
+        else:
+            placeholder = field.get("placeholder", "")
+            if placeholder and any(m in placeholder.lower() for m in _CONFIRM_FIELD_MARKERS):
+                probe = placeholder
+        if not probe:
+            continue
+        remainder = _strip_confirm_markers(probe)
+        if not remainder:
+            continue
+        # 优先精确归一化相等；其次包含关系（双向）
+        target_label = source_by_norm.get(remainder)
+        if not target_label:
+            for norm_src, raw_src in source_list:
+                if norm_src in remainder or remainder in norm_src:
+                    target_label = raw_src
+                    break
+        if target_label and target_label != raw_label and target_label in fill_data:
+            overrides[raw_label] = fill_data[target_label]
+            LOG.info(f"确认字段联动: '{raw_label}' 复用 '{target_label}' 的值")
+    return overrides
+
+
 def generate_fill_data(fields: list, username: str = "test") -> dict:
     """根据表单字段列表生成填充数据。
 
@@ -145,6 +230,10 @@ def generate_fill_data(fields: list, username: str = "test") -> dict:
 
         value, _rule = generate_fill_value(field_type, input_type, username, label)
         fill_data[label] = value
+
+    # ★ 确认字段联动（方案批三 3.3）：「确认 X / 再次 X / Confirm X」字段的值
+    # 直接复制「X」字段的值（两次输入不一致校验实证根因）
+    fill_data.update(_pair_confirmation_field_values(fields, fill_data))
 
     return fill_data
 

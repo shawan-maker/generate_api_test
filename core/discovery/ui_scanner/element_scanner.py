@@ -1224,11 +1224,14 @@ async def _discover_dropdowns(page, parent_buttons: list, kb: ProbeKB = None, fr
     dropdown_items = []
 
     # 收集所有可能的下拉触发器
+    # ★ 触发器判定改用 shared 单源包含式 helper（原硬编码精确匹配清单消除）：
+    #   「更多操作」组合文本含「更多」即命中（EIS），既有精确文本行为不变（estack）
+    from core.discovery.shared.constants import is_dropdown_trigger_text
     triggers = set()
     for btn in parent_buttons:
         text = btn["text"]
         # 硬编码触发器（兜底）
-        if text in ("更多", "操作", "Actions", "More", "批量操作"):
+        if is_dropdown_trigger_text(text):
             triggers.add(text)
 
     # 动态发现：检查 .el-dropdown 元素（限定到表格/工具栏区域，排除导航菜单）
@@ -1611,8 +1614,35 @@ async def _scan_create_dialog(page, kb: ProbeKB = None, framework: str = "elemen
         // playwright_locator = label 锚（按元素类型分支，合成后缀豁免）。
         function _buildSelector(element, labelText) {
             if (!element) return { selector: null, playwright_locator: null };
-            // 优先级 1: #id（最稳定）
-            if (element.id) return { selector: `#${element.id}`, playwright_locator: `#${element.id}` };
+            // 优先级 1: #id（最稳定）——仅文档内唯一时直用；id 冲突（实证: 关闭后
+            // 残留挂载的 dialog/drawer 与当前表单共用组件 id）→ 限定到弹窗容器
+            // 重试唯一性（与 form_filler._buildSelector 同源同款）。
+            if (element.id) {
+                const bareId = `#${element.id}`;
+                if (document.querySelectorAll(bareId).length === 1) {
+                    return { selector: bareId, playwright_locator: bareId };
+                }
+                const DIALOG_CONTAINERS = ['el-dialog__wrapper', 'el-drawer__wrapper', 'el-drawer', 'el-dialog'];
+                let scopeNode = element.parentElement;
+                while (scopeNode && scopeNode.nodeType === Node.ELEMENT_NODE) {
+                    const cls = scopeNode.classList;
+                    if (cls) {
+                        const hit = DIALOG_CONTAINERS.find(c => cls.contains(c));
+                        if (hit) {
+                            const plain = `.${hit} ${bareId}`;
+                            if (document.querySelectorAll(plain).length === 1) {
+                                return { selector: plain, playwright_locator: plain };
+                            }
+                            const filtered = `.${hit}:not([style*="display: none"]) ${bareId}`;
+                            if (document.querySelectorAll(filtered).length === 1) {
+                                return { selector: filtered, playwright_locator: filtered };
+                            }
+                        }
+                    }
+                    scopeNode = scopeNode.parentElement;
+                }
+                // id 冲突且容器限定仍不唯一 → 继续走优先级 2/3
+            }
             // 优先级 2: [name] 属性
             if (element.name) return { selector: `[name="${element.name}"]`, playwright_locator: `[name="${element.name}"]` };
 
