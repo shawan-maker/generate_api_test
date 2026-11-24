@@ -64,6 +64,27 @@ CANCEL_TEXTS = ['取消', 'Cancel', '否']
 NEGATIVE_BUTTON_PREFIXES = ['放弃', '取消', '关闭', '返回', '重置', '上一步',
                             '退出', '暂不', '不保存', '清空']
 
+# ★ 批五 F3：placeholder 确认词单源正则——「请输入 "DELETE" 确认删除」类
+# 危险操作确认输入框，从 placeholder 提取引号包裹词（1-40 字符）作为填充值。
+# 与 button_driver._preprocess_confirm_form 的 JS 正则同构（中西引号全支持）；
+# 单源化目的：值生成层（generate_fill_value）与确认弹窗预处理层共用同判据，
+# 消灭「删除确认」字段被 name_pattern 填随机值的实证根因（r7b test500861）。
+PLACEHOLDER_CONFIRM_PATTERN = _re.compile(
+    r'["“”\'‘’「『]([^"“”\'‘’」』]{1,40})["“”\'‘’」』]'
+)
+
+
+def extract_placeholder_confirm_word(placeholder: str) -> str:
+    """从 placeholder 提取引号包裹的确认词，未命中返回空串（批五 F3 单源）。
+
+    判据即「placeholder 含引号包裹词」，不依赖 label 含「确认」启发式：
+    GitHub 式「请输入 "DELETE" 确认删除」→ "DELETE"；无引号词 → ''。
+    """
+    if not placeholder:
+        return ""
+    m = PLACEHOLDER_CONFIRM_PATTERN.search(str(placeholder))
+    return m.group(1) if m else ""
+
 
 def starts_with_negative_prefix(text: str) -> bool:
     """Python 侧：去空格归一化后是否以任一否定前缀开头。
@@ -298,9 +319,14 @@ EXTRACT_EXCLUDE_KEYS = frozenset({
 # ============================================================
 
 # 成功关键词
+# ★ 批五 F8 词表扩充：完成态措辞（已+动词）——EIS 实证「已进入运维模式」
+#   （DOM 类 el-message--success，文本无「成功」）被漏判 neutral。
 NOTIFICATION_SUCCESS_KEYWORDS = frozenset({
     "成功", "完成", "已保存", "已添加", "已删除", "已更新",
     "操作成功", "success", "done", "completed",
+    # 批五 F8 新增：完成态措辞（探针 v4 实证：已进入/已退出运维模式）
+    "已进入", "已退出", "已开启", "已关闭", "已停止", "已启动",
+    "已切换", "已挂载", "已卸载", "已绑定", "已解绑", "已下发",
 })
 
 # 失败关键词
@@ -317,15 +343,28 @@ NOTIFICATION_PROCESSING_KEYWORDS = frozenset({
     "处理中", "请稍后", "正在", "processing", "loading",
 })
 
+# ★ 批五 F8 规则 3b：中性消息复查等待窗（毫秒）。
+#   等待后重读捕获——异步完成的成败信号（如提交申请后的延迟 toast）在此窗内出现。
+NEUTRAL_RECHECK_WAIT_MS = 2000
 
-def classify_notification(text: str) -> str:
+
+def classify_notification(text: str, className: str = "") -> str:
     """对通知文本做语义分类。
 
     用于 assert_success (Stage 2 replay) 和 _verify_operation_success (Stage 1 detect)
     统一判断通知消息的含义。
 
+    判定序（批五 F8 四规则——文本词表主判定，className 补充标记）：
+      规则 1/2  文本命中失败/成功词表（失败优先+零失败排除，既有口径）→ 直接判定，
+                className 不参与（前端样式类可能误用，明确业务语言权威性更高）。
+      规则 3a   文本中性但 className 带语义（el-message--success / --error / danger、
+                el-icon-success / el-icon-error）→ 按样式类判定（探针 v4 实证：
+                「已进入运维模式」DOM 类 el-message--success）。
+      规则 3b   双中性 → neutral（由调用方等待复查后默认成功）。
+
     Args:
         text: 通知文本内容
+        className: 通知节点的 className（可选；Element UI 样式类携带消息类型语义）
 
     Returns:
         'success'    — 明确的成功信号
@@ -333,9 +372,9 @@ def classify_notification(text: str) -> str:
         'processing' — 操作进行中（非最终结果）
         'neutral'    — 无法判断（信息提示等）
     """
-    if not text:
+    if not text and not className:
         return "neutral"
-    t = text.lower()
+    t = (text or "").lower()
 
     # ★ 先检查"零失败"模式（如"2个成功，0个失败"应该判定为成功）
     zero_failure_pattern = _re.compile(r'0个失败|0个错误|失败[：:]\s*0|失败数为0|无失败')
@@ -346,6 +385,15 @@ def classify_notification(text: str) -> str:
         return "failure"
     if any(kw.lower() in t for kw in NOTIFICATION_SUCCESS_KEYWORDS):
         return "success"
+
+    # ★ 规则 3a（批五 F8）：文本中性 → className 补充标记。
+    #   仅识别明确语义类；info/warning/纯 el-message 保持 neutral。
+    cls = (str(className) if className else "").lower()
+    if "success" in cls:
+        return "success"
+    if "error" in cls or "danger" in cls:
+        return "failure"
+
     if any(kw.lower() in t for kw in NOTIFICATION_PROCESSING_KEYWORDS):
         return "processing"
     return "neutral"

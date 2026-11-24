@@ -6,16 +6,18 @@ shared/success_verifier.py — 操作成功验证（Stage 1/2 统一实现）
 2. 验证标准完全一致，避免 "Stage 1 通过但 Stage 2 失败" 的不一致
 
 统一六层策略链（mode="message" 写操作语义）：
-  0.   快速检查可见通知 — 语义分类
+  0.   快速检查可见通知 — 语义分类（文本词表主判定 + className 补充标记）
   0.5. 失败文本优先检测 — 通知组件内搜索"失败"
   1.   成功文本匹配 — 通知组件内搜索"成功"
   2.   CSS 选择器 + 文本语义验证
-  2.5. MutationObserver 捕获 — 语义分类
-  F.   主动失败检测 — dialog / error message / form validation
-  兜底: 仅 PROCESSING → 成功；无信号 → 失败
+  2.5. MutationObserver 捕获 — 语义分类（dialog 正文排除在外，F9）
+  3.   成功 toast 可见性轮询（异步完成的慢 toast）
+  F.   主动失败检测 — error toast / form validation（结构化通道）
+  兜底: 仅 PROCESSING → 成功；中性消息 → 等待复查 → 默认成功（F8 规则 3b）；
+        完全无消息 → URL 变化成功（F6）/ no_signal 失败（规则 4 非查询侧）
 
 mode="read_complete"（只读查看/查询类语义）:
-  策略 3 与 F 的弹窗全文扫描跳过（只读内容防误报）；
+  跳过成功 toast 轮询与弹窗正文判定（只读内容防误报）；
   保留通知组件错误检测与表单校验（不吞错）；
   无失败信号 → 成功 (read_complete:no_failure)
 
@@ -47,6 +49,7 @@ async def verify_operation_success(
     captured_messages: list = None,
     error_type: str = "",
     error_text: str = "",
+    url_before: str = "",
 ) -> tuple:
     """验证操作是否成功（统一六层策略链）。
 
@@ -54,7 +57,8 @@ async def verify_operation_success(
         page: Playwright Page 对象
         operation_type: 操作类型 (create/update/delete/lock/unlock/...)
         mode: 断言模式（KB assert_mode 契约，三处 UI 环节统一语义）
-            - "message": 写操作语义——需要正向成功信号；无信号判失败（现状行为）
+            - "message": 写操作语义——判定梯见最终判定注释（批五 F8 四规则）；
+              无消息信号时按 URL 变化（F6）→ 无信号失败
             - "read_complete": 只读查看/查询类语义——交互序列完成即成功；
               跳过弹窗全文扫描（防只读内容误报），保留结构化错误通道（不吞错）；
               无失败信号判成功
@@ -72,6 +76,8 @@ async def verify_operation_success(
         captured_messages: 由 get_captured_messages() 返回的捕获消息列表
         error_type: Stage 1 记录的预期失败类型（expected_failure 模式必需）
         error_text: Stage 1 记录的预期失败文本（expected_failure 模式可选，用于复现匹配展示）
+        url_before: 操作点击前的页面 URL（可选）——完全无消息信号时用于
+            URL 跳转成功判定（批五 F6，navigation/详情跳转类操作）
 
     Returns:
         (success: bool, detail: dict)
@@ -85,8 +91,10 @@ async def verify_operation_success(
     failure_reason = None
     failure_type = None
     has_processing = False
+    # ★ 批五 F8 规则 3b：中性消息（无成败词）——等待复查信号源
+    neutral_texts = []
 
-    # ── 策略 0: 快速检查可见通知（语义分类） ──
+    # ── 策略 0: 快速检查可见通知（语义分类 + className 补充标记） ──
     try:
         quick_result = await page.evaluate("""() => {
             const selectors = [
@@ -101,24 +109,33 @@ async def verify_operation_success(
                     if (el.__op_baseline) continue;
                     if (el.offsetParent !== null) {
                         const text = (el.textContent || '').trim();
-                        if (text) return text.substring(0, 100);
+                        if (text) return {
+                            text: text.substring(0, 100),
+                            className: String(el.className || '')
+                        };
                     }
                 }
             }
             return null;
         }""")
         if quick_result:
-            semantic = const.classify_notification(quick_result)
+            _quick_text = quick_result.get("text", "")
+            semantic = const.classify_notification(
+                _quick_text, quick_result.get("className", ""))
             if semantic == "success":
-                matched_method = f"quick_visible:success:{quick_result[:30]}"
+                matched_method = f"quick_visible:success:{_quick_text[:30]}"
                 LOG.info(f"    ✓ 操作成功验证通过: {matched_method}")
             elif semantic == "failure":
-                failure_reason = quick_result
+                failure_reason = _quick_text
                 failure_type = "notification"
-                LOG.info(f"    ✗ 检测到失败信号: {quick_result[:60]}")
+                LOG.info(f"    ✗ 检测到失败信号: {_quick_text[:60]}")
             elif semantic == "processing":
                 has_processing = True
-                LOG.debug(f"    [verify_success] 检测到处理中消息: {quick_result[:60]}")
+                LOG.debug(f"    [verify_success] 检测到处理中消息: {_quick_text[:60]}")
+            else:
+                # 中性消息（规则 3b 信号源）：记录文本，等待复查兜底处理
+                neutral_texts.append(_quick_text)
+                LOG.debug(f"    [verify_success] 检测到中性消息: {_quick_text[:60]}")
     except Exception:
         pass
 
@@ -211,7 +228,10 @@ async def verify_operation_success(
                             if (el.__op_baseline) continue;
                             if (el.offsetParent !== null) {
                                 const text = (el.textContent || '').trim();
-                                if (text) return text.substring(0, 200);
+                                if (text) return {
+                                    text: text.substring(0, 200),
+                                    className: String(el.className || '')
+                                };
                             }
                         }
                         return null;
@@ -220,121 +240,96 @@ async def verify_operation_success(
                         break
                     await page.wait_for_timeout(300)
                 if text_found:
-                    semantic = const.classify_notification(text_found)
+                    _t = text_found.get("text", "")
+                    semantic = const.classify_notification(
+                        _t, text_found.get("className", ""))
                     if semantic == "success":
-                        matched_method = f"css:{selector}:{text_found[:30]}"
+                        matched_method = f"css:{selector}:{_t[:30]}"
                         LOG.info(f"    ✓ 操作成功验证通过: {matched_method}")
                         break
                     elif semantic == "failure":
-                        failure_reason = text_found
+                        failure_reason = _t
                         failure_type = f"css:{selector}"
-                        LOG.info(f"    ✗ CSS选择器检测到失败: {text_found[:60]}")
+                        LOG.info(f"    ✗ CSS选择器检测到失败: {_t[:60]}")
                         break
                     elif semantic == "processing":
                         has_processing = True
+                    elif semantic == "neutral":
+                        neutral_texts.append(_t)
             except Exception:
                 continue
 
-    # ── 策略 2.5: MutationObserver 捕获（语义分类） ──
+    # ── 策略 2.5: MutationObserver 捕获（语义分类 + className 补充标记） ──
     if matched_method is None and failure_reason is None:
         # 优先使用传入的 captured_messages
         if captured_messages:
-            # ★ 修复：过滤掉 dialog 来源的消息，只检查通知类消息
-            # 确认框文本（如"确定开启黑名单功能，开启后将禁止..."）不应被当作失败信号
-            _notification_msgs = [m for m in captured_messages if m.get('source') != 'dialog']
-            _all_texts = [m.get('text', '') for m in _notification_msgs]
+            # ★ F9: 过滤 dialog 来源消息（type=dialog_context / source=dialog）
+            # 弹窗正文是交互内容而非操作反馈，不参与成败判定
+            _notification_msgs = [m for m in captured_messages
+                                   if m.get('source') != 'dialog'
+                                   and m.get('type') != 'dialog_context']
             # 失败优先
-            for t in _all_texts:
-                semantic = const.classify_notification(t)
+            for m in _notification_msgs:
+                semantic = const.classify_notification(
+                    m.get('text', ''), m.get('className', ''))
                 if semantic == "failure":
-                    failure_reason = t
+                    failure_reason = m.get('text', '')
                     failure_type = "captured"
-                    LOG.info(f"    ✗ 捕获消息中检测到失败: {t[:60]}")
+                    LOG.info(f"    ✗ 捕获消息中检测到失败: {m.get('text', '')[:60]}")
                     break
                 elif semantic == "processing":
                     has_processing = True
             # 成功（失败已优先处理）
             if failure_reason is None:
-                for t in _all_texts:
-                    semantic = const.classify_notification(t)
+                for m in _notification_msgs:
+                    semantic = const.classify_notification(
+                        m.get('text', ''), m.get('className', ''))
                     if semantic == "success":
-                        matched_method = f"captured:success:{t[:40]}"
+                        matched_method = f"captured:success:{m.get('text', '')[:40]}"
                         LOG.info(f"    ✓ 操作成功验证通过（捕获瞬态消息）: {matched_method}")
                         break
+                    elif semantic == "neutral":
+                        neutral_texts.append(m.get('text', ''))
         else:
             # 从 JS 上下文读取
             try:
-                captured_texts = await page.evaluate("""() => {
+                captured_pairs = await page.evaluate("""() => {
                     if (!window.__captured_messages) return [];
                     const now = Date.now();
-                    // ★ 修复：过滤掉 dialog 来源的消息
+                    // ★ F9: 过滤 dialog 来源消息，不参与成败判定
                     return window.__captured_messages
-                        .filter(m => now - m.timestamp < 30000 && m.source !== 'dialog')
-                        .map(m => m.text);
+                        .filter(m => now - m.timestamp < 30000
+                                  && m.source !== 'dialog'
+                                  && m.type !== 'dialog_context')
+                        .map(m => ({text: m.text, className: m.className || ''}));
                 }""")
-                if captured_texts:
-                    for text in captured_texts:
-                        semantic = const.classify_notification(text)
+                if captured_pairs:
+                    for m in captured_pairs:
+                        semantic = const.classify_notification(
+                            m.get('text', ''), m.get('className', ''))
                         if semantic == "failure":
-                            failure_reason = text
+                            failure_reason = m.get('text', '')
                             failure_type = "captured"
-                            LOG.info(f"    ✗ 捕获消息中检测到失败: {text[:60]}")
+                            LOG.info(f"    ✗ 捕获消息中检测到失败: {m.get('text', '')[:60]}")
                             break
                         elif semantic == "success" and matched_method is None:
-                            matched_method = f"captured:success:{text[:40]}"
+                            matched_method = f"captured:success:{m.get('text', '')[:40]}"
                             LOG.info(f"    ✓ 操作成功验证通过（捕获瞬态消息）: {matched_method}")
                         elif semantic == "processing":
                             has_processing = True
+                        elif semantic == "neutral":
+                            neutral_texts.append(m.get('text', ''))
             except Exception:
                 pass
 
-    # ── 策略 3: 轮询等待 dialog/message-box 中的成功/错误消息 ──
-    # ★ read_complete 跳过：弹窗全文扫描是"提交反馈弹窗"语义，
-    #   只读弹窗内容（历史记录/业务详情）天然可能含失败关键词，不跳过必误报
+    # ── 策略 3: 轮询等待成功 toast ──
+    # ★ 批五 F9：dialog/message-box 正文关键词扫描移出判定通道——弹窗正文是
+    #   交互内容而非操作反馈（删除弹窗警示文「不可恢复」曾被当失败信号，
+    #   判定碰巧对但错误文本误导诊断；滞留弹窗由 F3 dialog_still_open 提供
+    #   正面失败证据）。保留成功 toast 可见性轮询（异步完成的慢 toast）。
+    # ★ read_complete 跳过：只读语义无需等待写操作反馈
     if matched_method is None and failure_reason is None and mode != "read_complete":
         for _poll in range(5):
-            # ★ P0-2: 词表由 const.NOTIFICATION_*_KEYWORDS 注入（同策略 0 词表）
-            dialog_result = await page.evaluate(r"""([successKw, errKw]) => {
-                const containers = [
-                    ...document.querySelectorAll('.el-message-box__wrapper:not([style*="display: none"])'),
-                    ...document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"])')
-                ];
-
-                for (const container of containers) {
-                    if (container.offsetWidth === 0) continue;
-                    const content = container.querySelector(
-                        '.el-message-box__message, .el-message-box__content, .el-dialog'
-                    );
-                    if (!content) continue;
-                    const text = content.textContent.trim();
-                    if (!text) continue;
-                    const lower = text.toLowerCase();
-
-                    const zeroFailurePattern = /0个失败|0个错误|失败[：:]\s*0|失败数为0|无失败/;
-                    const hasZeroFailure = zeroFailurePattern.test(text);
-
-                    const hasSuccess = successKw.some(kw => lower.includes(kw));
-                    const hasError = errKw.some(kw => lower.includes(kw));
-                    if (hasError && !hasZeroFailure) {
-                        return { type: 'error', text: text.substring(0, 200) };
-                    }
-                    if (hasSuccess) {
-                        return { type: 'success', text: text.substring(0, 200) };
-                    }
-                }
-                return null;
-            }""", [_JS_SUCCESS_KEYWORDS, _JS_FAIL_KEYWORDS])
-            if dialog_result:
-                if dialog_result.get('type') == 'success':
-                    matched_method = f"dialog:success:{dialog_result['text'][:30]}"
-                    LOG.info(f"    ✓ 弹窗中检测到成功: {dialog_result['text'][:80]}")
-                    break
-                else:
-                    failure_reason = dialog_result.get('text', '')
-                    failure_type = "dialog"
-                    LOG.info(f"    ✗ 弹窗中检测到错误: {dialog_result['text'][:80]}")
-                    break
-
             # 成功 toast 出现 → 立即跳出
             has_success_toast = await page.evaluate("""() => {
                 // ★ B2: 遍历全部节点，跳过 __op_baseline（上一操作残留）
@@ -351,46 +346,14 @@ async def verify_operation_success(
             await page.wait_for_timeout(1000)
 
     # ── 策略 F: 主动失败检测 ──
-    # ★ read_complete 模式：跳过 dialog/message-box 全文扫描（只读内容防误报），
-    #   保留 error toast / 表单校验两类结构化错误通道（不吞真实错误）
+    # ★ 批五 F9：dialog/message-box 正文关键词扫描移出判定通道（弹窗正文是
+    #   交互内容而非操作反馈）；保留 error toast 与表单校验两类结构化错误通道。
     if matched_method is None and failure_reason is None:
         try:
-            # ★ P0-2: failKw 由 const.NOTIFICATION_FAILURE_KEYWORDS 注入（同策略 0 词表），
-            #   dialog/message-box 关键词扫描补零失败排除（与策略 3 同口径）
-            failure_signals = await page.evaluate("""([skipDialogScan, failKw]) => {
+            failure_signals = await page.evaluate("""() => {
                 const results = [];
 
-                // 1. el-dialog 中的失败文本（read_complete 跳过——只读弹窗内容非错误反馈）
-                if (!skipDialogScan) {
-                    document.querySelectorAll('.el-dialog__wrapper:not([style*="display: none"])')
-                        .forEach(d => {
-                            if (d.offsetWidth === 0) return;
-                            const text = (d.textContent || '').trim();
-                            if (!text) return;
-                            if (/0个失败|0个错误|失败[：:]\s*0|失败数为0|无失败/.test(text)) return;
-                            const lower = text.toLowerCase();
-                            if (failKw.some(kw => lower.includes(kw))) {
-                                results.push({source: 'dialog', text: text.substring(0, 200)});
-                            }
-                        });
-                }
-
-                // 2. el-message-box 中的失败文本（read_complete 跳过，同上）
-                if (!skipDialogScan) {
-                    document.querySelectorAll('.el-message-box__wrapper:not([style*="display: none"])')
-                        .forEach(d => {
-                            if (d.offsetWidth === 0) return;
-                            const text = (d.textContent || '').trim();
-                            if (!text) return;
-                            if (/0个失败|0个错误|失败[：:]\s*0|失败数为0|无失败/.test(text)) return;
-                            const lower = text.toLowerCase();
-                            if (failKw.some(kw => lower.includes(kw))) {
-                                results.push({source: 'message_box', text: text.substring(0, 200)});
-                            }
-                        });
-                }
-
-                // 3. el-message--error / el-message--warning（★ B2: 跳过 __op_baseline 残留）
+                // 1. el-message--error / el-message--warning（★ B2: 跳过 __op_baseline 残留）
                 const errEls = document.querySelectorAll('.el-message--error, .el-message--warning');
                 for (const el of errEls) {
                     if (el.__op_baseline) continue;
@@ -400,7 +363,7 @@ async def verify_operation_success(
                     }
                 }
 
-                // 4. 表单校验错误
+                // 2. 表单校验错误
                 const formErrors = document.querySelectorAll('.el-form-item__error');
                 const errorTexts = [];
                 formErrors.forEach(e => {
@@ -413,7 +376,7 @@ async def verify_operation_success(
                 }
 
                 return results.length > 0 ? results : null;
-            }""", [mode == "read_complete", _JS_FAIL_KEYWORDS])
+            }""")
             if failure_signals:
                 failure_reason = failure_signals[0]["text"]
                 failure_type = failure_signals[0]["source"]
@@ -506,7 +469,113 @@ async def verify_operation_success(
             "has_processing": False,
         }
 
-    # 完全无信号（message 模式）
+    # ★ 批五 F8 规则 3b：有中性消息（无成败词）→ 等待复查 → 仍无 → 默认成功。
+    #   中性消息本身是操作产生了反馈的证据（如「已提交申请」类 info toast），
+    #   异步完成的成败信号（延迟 toast）在复查窗内出现则改判。
+    if neutral_texts:
+        _wait_ms = const.NEUTRAL_RECHECK_WAIT_MS
+        LOG.info(f"    ⏳ [neutral-wait] 仅中性消息（{neutral_texts[0][:50]}），"
+                 f"等待 {_wait_ms}ms 后复查（批五规则 3）")
+        await page.wait_for_timeout(_wait_ms)
+        # 复查 1：捕获消息重读（等待窗内新增的成败信号；失败优先）
+        try:
+            _recheck_msgs = await page.evaluate("""() => {
+                if (!window.__captured_messages) return [];
+                const now = Date.now();
+                return window.__captured_messages
+                    .filter(m => now - m.timestamp < 30000
+                              && m.source !== 'dialog'
+                              && m.type !== 'dialog_context')
+                    .map(m => ({text: m.text, className: m.className || ''}));
+            }""")
+            for m in _recheck_msgs:
+                semantic = const.classify_notification(
+                    m.get('text', ''), m.get('className', ''))
+                if semantic == "failure":
+                    LOG.info(f"    ✗ [neutral-wait] 复查捕获到失败信号: {m.get('text', '')[:60]}")
+                    return False, {
+                        "matched_method": f"neutral_wait:failure:{m.get('text', '')[:30]}",
+                        "failure_reason": m.get('text', ''),
+                        "failure_type": "neutral_wait",
+                        "has_processing": has_processing,
+                    }
+            for m in _recheck_msgs:
+                semantic = const.classify_notification(
+                    m.get('text', ''), m.get('className', ''))
+                if semantic == "success":
+                    LOG.info(f"    ✓ [neutral-wait] 复查捕获到成功信号: {m.get('text', '')[:60]}")
+                    return True, {
+                        "matched_method": f"neutral_wait:success:{m.get('text', '')[:30]}",
+                        "failure_reason": None,
+                        "failure_type": None,
+                        "has_processing": has_processing,
+                    }
+        except Exception:
+            pass
+        # 复查 2：可见 toast 复扫（与策略 0 同口径，含 className 补充标记）
+        try:
+            _recheck_visible = await page.evaluate("""() => {
+                const selectors = [
+                    '.el-message', '.el-message--success', '.el-message--error',
+                    '.el-notification', '.el-alert', '[role="alert"]'
+                ];
+                for (const sel of selectors) {
+                    const els = document.querySelectorAll(sel);
+                    for (const el of els) {
+                        if (el.__op_baseline) continue;
+                        if (el.offsetParent !== null) {
+                            const text = (el.textContent || '').trim();
+                            if (text) return {text: text.substring(0, 100),
+                                               className: String(el.className || '')};
+                        }
+                    }
+                }
+                return null;
+            }""")
+            if _recheck_visible:
+                semantic = const.classify_notification(
+                    _recheck_visible.get("text", ""),
+                    _recheck_visible.get("className", ""))
+                if semantic == "failure":
+                    LOG.info(f"    ✗ [neutral-wait] 复查可见失败: {_recheck_visible.get('text', '')[:60]}")
+                    return False, {
+                        "matched_method": f"neutral_wait:visible_failure:{_recheck_visible.get('text', '')[:30]}",
+                        "failure_reason": _recheck_visible.get("text", ""),
+                        "failure_type": "neutral_wait",
+                        "has_processing": has_processing,
+                    }
+                if semantic == "success":
+                    LOG.info(f"    ✓ [neutral-wait] 复查可见成功: {_recheck_visible.get('text', '')[:60]}")
+                    return True, {
+                        "matched_method": f"neutral_wait:visible_success:{_recheck_visible.get('text', '')[:30]}",
+                        "failure_reason": None,
+                        "failure_type": None,
+                        "has_processing": has_processing,
+                    }
+        except Exception:
+            pass
+        # 仍中性/无新信号 → 默认成功（规则 3）
+        LOG.info("    ✓ [neutral-wait] 复查仍无成败信号，按规则 3 默认成功")
+        return True, {
+            "matched_method": "neutral_wait_default_success",
+            "failure_reason": None,
+            "failure_type": None,
+            "has_processing": has_processing,
+        }
+
+    # ★ 批五 F6：完全无消息信号 + URL 跳转 → navigation 类成功。
+    #   详情页跳转/名称链接类操作（探针 v2 实证网络配置跳 vmDetail）无 toast
+    #   无弹窗——URL 变化即业务反馈。仅无消息时参考（有消息永远优先）。
+    if url_before and page.url != url_before:
+        LOG.info(f"    ✓ [F6] 无消息信号但 URL 已跳转: {url_before[:50]} → {page.url[:50]}")
+        return True, {
+            "matched_method": "navigation_url_change",
+            "failure_reason": None,
+            "failure_type": None,
+            "has_processing": has_processing,
+        }
+
+    # 完全无信号（message 模式）——规则 4 非查询失败侧（防填非法值假成功）
     LOG.warning("    ⚠️ 未检测到明确的成功/失败信号，标记为失败")
     return False, {
         "matched_method": "none",

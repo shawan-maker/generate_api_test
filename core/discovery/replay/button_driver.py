@@ -20,6 +20,122 @@ LOG = logging.getLogger("button_driver")
 
 # KB 加载通过 kb_loader.ProbeKB 统一管理
 
+# ★ 批五 F2-3：搜索框 placeholder 识别关键词（v3 探针定案口径）。
+#   EIS 实证 placeholder='先选择属性项，再选择属性值或输入关键字搜索' 同时
+#   含三关键词；estack 无匹配关键词时搜索先行自动 no-op → 原扫描路径零回归。
+_SEARCH_PLACEHOLDER_KEYWORDS = ("搜索", "关键字", "属性值")
+
+
+async def _find_search_input(page) -> Optional[object]:
+    """★ 批五 F2-3：按 placeholder 关键词定位页面级搜索框（排除弹窗内输入）。
+
+    Returns:
+        ElementHandle | None：可见且不在弹窗/抽屉内的第一个匹配输入框。
+    """
+    try:
+        handle = await page.evaluate_handle("""(kws) => {
+            const inputs = document.querySelectorAll('input[placeholder]');
+            for (const inp of inputs) {
+                if (inp.offsetWidth <= 0 || inp.offsetHeight <= 0) continue;
+                // 排除弹窗/抽屉/消息框内输入（防误把 dialog 表单字段当搜索框）
+                if (inp.closest('.el-dialog__wrapper, .el-drawer, .el-message-box__wrapper, .ant-modal-wrap')) continue;
+                const ph = inp.getAttribute('placeholder') || '';
+                if (kws.some(k => ph.includes(k))) return inp;
+            }
+            return null;
+        }""", list(_SEARCH_PLACEHOLDER_KEYWORDS))
+        return handle.as_element()
+    except Exception as e:
+        LOG.debug(f"  [SEARCH-FIRST] 搜索框定位失败: {e}")
+        return None
+
+
+async def search_filter_table(page, keyword: str) -> bool:
+    """★ 批五 F2-3：搜索先行过滤表格（v3 探针定案链路，Stage 1/2 单源共享）。
+
+    多用户环境列表行序漂移（r7 实证第一行是谁的 VM 完全随机），行定位必须
+    先搜索过滤再查找，不能依赖行扫描巧合命中 marker 行。
+
+    链路（v3 成功实证；v5 失败教训：JS setter 无焦点 + keyboard Enter 落
+    body 无效）：
+      placeholder 关键词定位搜索框 → Playwright click 真实聚焦 →
+      （复合框场景）属性下拉选「名称」类选项 → fill(keyword) →
+      在 input 上 press("Enter") → 等表格刷新。
+
+    幂等短路：搜索框已含同 keyword 时跳过重放（find_data_row 每操作多次
+    调用，省 2.5s/次）。
+
+    Returns:
+        True=搜索已生效（或已处于同 keyword 过滤态）；
+        False=无搜索框/未生效（调用方回落原扫描路径）。
+    """
+    el = await _find_search_input(page)
+    if el is None:
+        return False
+    try:
+        # 幂等短路：输入框已是同 keyword → 表格已处于过滤态，无需重放
+        try:
+            cur = await el.input_value()
+        except Exception:
+            cur = None
+        if cur == keyword and keyword:
+            return True
+        await el.click()  # 真实点击聚焦（v5 教训：JS 设值无焦点无效）
+        await page.wait_for_timeout(800)
+        # 复合框属性下拉（EIS 实证形态）：点击后展开 el-select-dropdown，
+        # 可见选项含「名称」→ 选之（无下拉/无匹配项 → 直接输关键字）
+        chosen = await page.evaluate("""() => {
+            const dd = Array.from(document.querySelectorAll('.el-select-dropdown'))
+                .filter(d => d.offsetWidth > 0);
+            if (!dd.length) return null;
+            const last = dd[dd.length - 1];
+            const items = Array.from(last.querySelectorAll('.el-select-dropdown__item'))
+                .filter(i => i.offsetWidth > 0);
+            const hit = items.find(i => ((i.textContent || '').trim()).includes('名称')) || null;
+            if (hit) { hit.click(); return (hit.textContent || '').trim(); }
+            return null;
+        }""")
+        if chosen:
+            LOG.info(f"  [SEARCH-FIRST] 属性下拉已选: '{chosen}'")
+            await page.wait_for_timeout(800)
+        await el.fill(keyword)
+        await page.wait_for_timeout(500)
+        await el.press("Enter")  # 在 input 上按 Enter（v5 教训：keyboard.press 落 body 无效）
+        await page.wait_for_timeout(2500)
+        LOG.info(f"  [SEARCH-FIRST] 已按 '{keyword}' 过滤表格")
+        return True
+    except Exception as e:
+        LOG.debug(f"  [SEARCH-FIRST] 搜索未生效（回落原扫描路径）: {e}")
+        return False
+
+
+async def clear_table_search(page) -> bool:
+    """★ 批五 F2 自清洁：清空页面搜索框并回车恢复列表（幂等 no-op 安全重跑）。
+
+    模块收尾调用（crud_executor Tab 末尾）——搜索先行留下的过滤态在轮次
+    结束后必须恢复，防污染下轮探测与共享环境。
+    """
+    el = await _find_search_input(page)
+    if el is None:
+        return False
+    try:
+        try:
+            cur = await el.input_value()
+        except Exception:
+            cur = None
+        if not cur:
+            return False  # 已是空 → 幂等 no-op
+        await el.click()
+        await el.fill("")
+        await page.wait_for_timeout(300)
+        await el.press("Enter")
+        await page.wait_for_timeout(1500)
+        LOG.info("  [SEARCH-FIRST] 已清空搜索，恢复列表")
+        return True
+    except Exception as e:
+        LOG.debug(f"  [SEARCH-FIRST] 清空搜索失败: {e}")
+        return False
+
 
 class ButtonDriver:
     """按钮驱动封装类，供 capture_apis 调用"""
@@ -49,8 +165,26 @@ class ButtonDriver:
         Element UI 固定列表格会把同一行复制到多个 wrapper 中，
         但只有主体 wrapper 包含完整的列（含操作按钮列）。
         策略：先在当前页查找，找不到则尝试翻页（最多3页）。
+
+        ★ 批五 F2-3：搜索先行——多用户环境行序漂移，先按 marker 搜索过滤
+        表格再定位（v3 定案链路 search_filter_table）。搜索未生效/无搜索框
+        → 走原扫描+翻页路径（完整保留，条件化主路径而非兜底补丁）。
+        删除验证（_do_delete 行消失检查）复用本路径自动获得
+        「搜索 marker → 0 行 = 删除成功」口径（F2-4）。
         """
-        # 先在当前页查找
+        # ★ 搜索先行（主路径）：过滤到 marker 行再定位。
+        # 搜索已生效时本路径为终局——过滤态下 5 次重试未命中即判定行不存在
+        # （删除验证 0 行口径依赖此快速返回，不再重复全扫+翻页）。
+        if marker:
+            searched = await search_filter_table(self.page, marker)
+            if searched:
+                row = await self._find_row_on_current_page(marker)
+                if row:
+                    return row
+                LOG.debug(f"搜索过滤态下未找到 '{marker}'，判定行不存在")
+                return None
+
+        # 原路径：当前页查找 → 翻页查找
         row = await self._find_row_on_current_page(marker)
         if row:
             return row
@@ -1007,6 +1141,76 @@ class ButtonDriver:
             result["expand_strategy"] = expand_strategy
             result["actual_item_text"] = click_result.get("actual_text", item_text) if isinstance(click_result, dict) else item_text
         return result
+
+    async def click_row_name_link(self, row, link_class: str = "") -> bool:
+        """★ 批五 F4：点击行内名称单元格链接（row_link 语义操作，Stage 1/2 同源）。
+
+        归并后的「查看详情（名称链接）」操作文本是语义名（页面上不存在），
+        不能按文本定位——优先按探测期归并采集的 link_class（如
+        table-span-btn）定位行内名称链接；无 link_class/未命中时用通用
+        结构性判据兜底：行内第一个 cursor:pointer 的 A/SPAN（排除
+        .el-dropdown 内部元素，防误点「更多」触发器）。
+
+        点击手法与 click_row_more_item 菜单项同款（JS dispatchEvent click
+        + bubbles，Vue @click 事件可靠触发，实测路径）。
+
+        Args:
+            row: 行 Locator 或 ElementHandle（与 click_row_more_item 兼容同款）
+            link_class: 探测期多数派 className（可含复合 class 空格分隔）
+
+        Returns:
+            bool: 是否成功点击
+        """
+        from .wait_helpers import wait_for_loading_complete
+
+        # 兼容 ElementHandle / Locator 入参（与 click_row_more_item 同款处理）
+        row_handle = row
+        if hasattr(row, "element_handle"):
+            try:
+                row_handle = await row.element_handle()
+            except Exception:
+                row_handle = row
+
+        tokens = [t for t in (link_class or "").split() if t]
+        try:
+            clicked = await self.page.evaluate("""(args) => {
+                const rowEl = args.rowEl;
+                const tokens = args.tokens || [];
+                if (!rowEl) return false;
+                let target = null;
+                if (tokens.length) {
+                    try {
+                        target = rowEl.querySelector('.' + tokens.join('.'));
+                    } catch (e) { target = null; }
+                }
+                if (!target) {
+                    const candidates = rowEl.querySelectorAll('a, span');
+                    for (const el of candidates) {
+                        if (el.closest('.el-dropdown')) continue;
+                        if (el.classList.contains('el-dropdown-link')) continue;
+                        if (el.offsetWidth === 0 || el.offsetHeight === 0) continue;
+                        const style = window.getComputedStyle(el);
+                        if (style.pointerEvents === 'none' || style.cursor !== 'pointer') continue;
+                        target = el;
+                        break;
+                    }
+                }
+                if (!target) return false;
+                target.scrollIntoView({block: 'center'});
+                target.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}));
+                return true;
+            }""", {"rowEl": row_handle, "tokens": tokens})
+        except Exception as e:
+            LOG.debug(f"    row_name_link 点击异常: {e}")
+            clicked = False
+
+        if clicked:
+            LOG.info(f"    ✓ 点击行内名称链接 (class='{link_class or 'pointer 兜底'}')")
+            await wait_for_loading_complete(self.page)
+            return True
+
+        LOG.warning("    未找到行内名称链接 (row_name_link)")
+        return False
 
     async def confirm_message_box(self) -> str:
         """确认 Element UI MessageBox，返回点击的按钮文本"""

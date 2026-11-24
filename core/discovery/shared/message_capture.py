@@ -14,7 +14,14 @@ shared/message_capture.py — MutationObserver 消息捕获（Stage 1/2 统一�
 import logging
 from playwright.async_api import Page
 
+from .. import const
+
 LOG = logging.getLogger(__name__)
+
+# ★ 批五 F8 词表单源：JS 分类词表由 const.NOTIFICATION_*_KEYWORDS 注入（同
+#   success_verifier P0-2 手法），消灭 JS 硬编码影子词表。
+_JS_SUCCESS_KEYWORDS = sorted(kw.lower() for kw in const.NOTIFICATION_SUCCESS_KEYWORDS)
+_JS_ERROR_KEYWORDS = sorted(kw.lower() for kw in const.NOTIFICATION_FAILURE_KEYWORDS)
 
 
 async def install_message_capture(page: Page, pin: bool = False) -> None:
@@ -39,7 +46,8 @@ async def install_message_capture(page: Page, pin: bool = False) -> None:
     """
     try:
         LOG.info(f"    [DIAG-install-capture] 安装消息捕获器 pin={pin}")
-        await page.evaluate("""(shouldPin) => {
+        await page.evaluate("""(args) => {
+            const [shouldPin, successKw, errorKw] = args;
             // ★ 每次安装都重置捕获数组（方案 A：操作开始时清空，保证操作间隔离）
             // 上一个操作结束时可能还有残留 toast 文本，但 DOM 已消失不会重新捕获
             const oldCount = (window.__captured_messages || []).length;
@@ -78,15 +86,31 @@ async def install_message_capture(page: Page, pin: bool = False) -> None:
             }
             console.log('[MSG-CAPTURE] 安装新的 MutationObserver');
 
-            const SUCCESS_KEYWORDS = ['成功', 'success', 'Success', '完成', 'done'];
-            const ERROR_KEYWORDS = ['失败', 'error', 'Error', '异常', '错误'];
+            const SUCCESS_KEYWORDS = successKw;
+            const ERROR_KEYWORDS = errorKw;
 
             // 辅助函数：分类并存储捕获的消息
+            // ★ 批五 F8：文本词表主判定（失败优先，与 const.classify_notification
+            //   同序），文本中性时 className 补充标记（el-message--success 等
+            //   样式类携带消息类型语义——探针 v4 实证「已进入运维模式」）。
             function _pushCaptured(text, className) {
                 if (!text) return;
-                const isSuccess = SUCCESS_KEYWORDS.some(kw => text.includes(kw));
-                const isError = ERROR_KEYWORDS.some(kw => text.includes(kw));
-                const msgType = isSuccess ? 'success' : (isError ? 'error' : 'info');
+                const lower = text.toLowerCase();
+                const isError = ERROR_KEYWORDS.some(kw => lower.includes(kw));
+                const isSuccess = SUCCESS_KEYWORDS.some(kw => lower.includes(kw));
+                const clsLower = String(className || '').toLowerCase();
+                let msgType;
+                if (isError) {
+                    msgType = 'error';
+                } else if (isSuccess) {
+                    msgType = 'success';
+                } else if (clsLower.includes('success')) {
+                    msgType = 'success';
+                } else if (clsLower.includes('error') || clsLower.includes('danger')) {
+                    msgType = 'error';
+                } else {
+                    msgType = 'info';
+                }
                 const msg = {
                     text: text.substring(0, 200),
                     type: msgType,
@@ -138,14 +162,16 @@ async def install_message_capture(page: Page, pin: bool = False) -> None:
                         const isDialog = _isDialogNode(node);
                         const isNotification = _isNotificationNode(node);
 
-                        // Dialog 节点：只捕获文本
+                        // Dialog 节点：只捕获文本（★ 批五 F9：type 改标
+                        // dialog_context，与 toast 分类分离——弹窗正文是
+                        // 交互内容而非操作反馈，不参与成败判定）
                         if (isDialog && !isNotification) {
                             const text = (node.textContent || '').trim();
                             console.log(`[MSG-CAPTURE] 检测到 Dialog 节点: text="${text.substring(0, 60)}"`);
                             if (text) {
                                 window.__captured_messages.push({
                                     text: text.substring(0, 200),
-                                    type: 'info',
+                                    type: 'dialog_context',
                                     time: Date.now(),
                                     timestamp: Date.now(),
                                     className: node.className,
@@ -160,7 +186,12 @@ async def install_message_capture(page: Page, pin: bool = False) -> None:
 
                         console.log(`[MSG-CAPTURE] 检测到 Notification 节点: className="${node.className}"`);
                         const text = (node.textContent || '').trim();
-                        const cls = node.className || '';
+                        // ★ 批五 F8：合并 icon 子元素 class——el-notification 的消息类型
+                        //   语义在 icon class（el-icon-success / el-icon-error）上，
+                        //   节点自身 className 不携带；el-message 两者都有。
+                        const _iconEl = node.querySelector('.el-message__icon, .el-notification__icon, .anticon');
+                        const cls = String(node.className || '') + ' ' +
+                                    String(_iconEl ? _iconEl.className : '');
 
                         if (text) {
                             console.log(`[MSG-CAPTURE] Notification 同步文本: "${text.substring(0, 60)}"`);
@@ -271,7 +302,7 @@ async def install_message_capture(page: Page, pin: bool = False) -> None:
                 }
                 window.__pinned_notifications = [];
             };
-        }""", pin)
+        }""", [pin, _JS_SUCCESS_KEYWORDS, _JS_ERROR_KEYWORDS])
         LOG.debug(f"    ✓ MutationObserver 消息捕获已注入 (pin={pin})")
     except Exception as e:
         LOG.debug(f"    ⚠️ 消息捕获注入失败（不影响执行）: {e}")
@@ -285,7 +316,8 @@ async def get_captured_messages(page: Page, msg_type: str = None, clear: bool = 
 
     Args:
         page: Playwright 页面对象
-        msg_type: 过滤类型 ('success' / 'error' / 'info' / None=全部)
+        msg_type: 过滤类型 ('success' / 'error' / 'info' / 'dialog_context' / None=全部；
+            dialog 来源消息自批五 F9 起为 'dialog_context'）
         clear: 是否清除已读取的消息（默认 False，操作间隔离由 _install_message_capture 保证）
 
     Returns:

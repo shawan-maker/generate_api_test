@@ -176,16 +176,27 @@ class TestCollectStatePending:
         }
         assert ce._collect_state_pending(validated, buttons, {}, set()) == []
 
-    def test_excludes_success_executed_nonrow_nongeneric(self, monkeypatch):
+    def test_excludes_success_executed_toolbar(self, monkeypatch):
         buttons = self._setup(monkeypatch)
         validated = {
             "重启": self._validated(success=True),                       # 已成功
-            "编辑": self._validated(error_type="click_failed"),          # update 角色
+            "编辑": self._validated(error_type="click_failed"),          # 已以业务身份成功过
             "新增": self._validated(error_type="click_failed"),          # toolbar 位置
         }
-        roles = {"编辑": "update"}
-        executed = {"跳过我": True}
-        assert ce._collect_state_pending(validated, buttons, roles, executed) == []
+        executed = {"编辑": True}
+        assert ce._collect_state_pending(validated, buttons, {}, executed) == []
+
+    def test_collects_update_role_row_pending(self, monkeypatch):
+        """批五 F5-2：update 角色行级操作（click_failed）也进 pending。
+
+        r7 实证 修改Hostname（update 角色 dropdown 位置）skipped 后未进
+        pending、reconcile 永无恢复机会——角色条件放宽到 {generic, update}，
+        位置约束（toolbar 不回收）不变。
+        """
+        buttons = self._setup(monkeypatch)
+        validated = {"编辑": self._validated(error_type="click_failed")}
+        assert ce._collect_state_pending(
+            validated, buttons, {"编辑": "update"}, set()) == ["编辑"]
 
 
 # ============================================================

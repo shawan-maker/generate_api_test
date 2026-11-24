@@ -266,8 +266,11 @@ async def _prewarm_table_data(page, form_fields: list, toolbar_buttons: list,
 
         # Step 5: 提交表单
         submit_result = await filler.submit_form_v2()
-        if not submit_result:
-            LOG.warning("    预热: 表单提交失败")
+        # ★ 批五 F3：守卫终态（按钮 disabled / 弹窗滞留）视同提交失败
+        _blocked = bool(submit_result) and bool(submit_result.get("submit_blocked"))
+        if not submit_result or _blocked:
+            _blocked_msg = f" (守卫: {submit_result.get('submit_blocked')})" if _blocked else ""
+            LOG.warning(f"    预热: 表单提交失败{_blocked_msg}")
             await _navigate_back_if_needed()
             return result
         LOG.info(f"    预热: 表单已提交 (策略: {submit_result.get('click_strategy', '')})")
@@ -308,8 +311,12 @@ async def _prewarm_table_data(page, form_fields: list, toolbar_buttons: list,
             # 重新扫描下拉菜单（行操作中可能有"更多"按钮）
             if new_row_actions:
                 kb = _get_kb()
+                # ★ 批五 F2-1：marker 锁行收集——预热刚创建的行才是本模块
+                # 操作目标行，全页收集展开第一行 dd 会取到错误行的菜单项
+                # （v5 定案）。锁行失败由 _discover_dropdowns 内部回落旧行为。
                 new_dropdowns = await _discover_dropdowns(
-                    page, toolbar_buttons + new_row_actions, kb, framework
+                    page, toolbar_buttons + new_row_actions, kb, framework,
+                    marker=result.get("created_marker") or ""
                 )
                 result["dropdowns"] = new_dropdowns
                 if new_dropdowns:

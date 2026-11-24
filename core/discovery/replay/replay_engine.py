@@ -314,6 +314,12 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
                 ctx["url_before_click"] = page.url
                 await _step_click_row_more(page, step, button_driver, marker)
 
+            elif action == "click_row_name_link":
+                # ★ 批五 F4-5：row_link 名称链接步骤（与 click_row_more 同构：
+                # 记录点击前 URL 供跳转类断言/收尾使用）
+                ctx["url_before_click"] = page.url
+                await _step_click_row_name_link(page, step, button_driver, marker)
+
             elif action == "confirm_dialog":
                 # 在确认对话框前等待网络静默并标记提交时刻
                 if interceptor:
@@ -1621,6 +1627,29 @@ async def _step_click_row_button(page, step: dict, button_driver: ButtonDriver, 
         raise Exception(f"未找到行内按钮: {button_text}")
 
     LOG.info(f"    [click_row_button] 成功: {button_text}")
+
+
+async def _step_click_row_name_link(page, step: dict, button_driver: ButtonDriver, marker: str):
+    """★ 批五 F4-5：点击行内名称链接（row_link 操作回放步骤）
+
+    Stage 1 探测同构（_do_navigation_operation row_link 分支）：按
+    link_class 点 marker 行名称单元格链接（语义操作名页面上不存在，
+    不能按文本定位）。点击后 URL 跳转即成功（page_nav_steps 的
+    wait_for_url / navigate_back 步骤负责收尾与现场恢复）。
+    """
+    link_class = step.get("link_class", "")
+    if not marker:
+        raise Exception("click_row_name_link 步骤需要 marker 但无可用 marker")
+
+    row = await button_driver.find_data_row(marker)
+    if not row:
+        raise Exception(f"未找到数据行: {marker}")
+
+    clicked = await button_driver.click_row_name_link(row, link_class)
+    if not clicked:
+        raise Exception(f"行内未找到名称链接 (class='{link_class}')")
+
+    LOG.info(f"    [click_row_name_link] 成功 (class='{link_class or 'pointer 兜底'}')")
 
 
 async def _step_confirm_dialog(page, step: dict, result: dict = None):

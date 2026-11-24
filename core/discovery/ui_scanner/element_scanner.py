@@ -1216,10 +1216,18 @@ async def _discover_search_inputs(page, kb: ProbeKB = None, framework: str = "el
     return results[:2]
 
 
-async def _discover_dropdowns(page, parent_buttons: list, kb: ProbeKB = None, framework: str = "element-ui") -> list:
+async def _discover_dropdowns(page, parent_buttons: list, kb: ProbeKB = None,
+                             framework: str = "element-ui", marker: str = "") -> list:
     """对有下拉菜单的按钮展开扫描。
 
     增强：不仅检查硬编码文本，还检查 .el-dropdown 类的元素。
+
+    ★ 批五 F2-1（marker 锁行收集）：marker 非空时优先锁定含 marker 的表格行，
+    在**该行 DOM 内**定位 .el-dropdown 并以 hover 手势展开收集（v4 探针实证
+    hover 下 22 项全量渲染，含 disabled 项）。修复 Gap B 复合机制第 ①③ 环：
+    旧全页手势永远展开第一个可见 dd（v5 实证展开的是第一行他人 VM 的菜单），
+    且 DOM click 不触发 hover 菜单、vue_show 兜底渲染不完整（6/22 项）。
+    锁行失败（marker 行不在当前页/行内无 dd）→ 回落旧行为（完整保留）。
     """
     dropdown_items = []
 
@@ -1266,6 +1274,30 @@ async def _discover_dropdowns(page, parent_buttons: list, kb: ProbeKB = None, fr
     }""", parent_texts)
     triggers.update(dropdown_triggers)
 
+    # ★ 批五 F2-1：marker 锁行收集优先路径
+    if marker and triggers:
+        _marker_items = await _collect_marker_row_dropdown(page, marker, triggers)
+        if _marker_items is not None:
+            LOG.info(f"  [dropdown] marker 锁行收集: {len(_marker_items)} 项 "
+                     f"（marker='{marker}'）")
+            if _marker_items:
+                _parent_text = _marker_items["parent"]
+                for item in _marker_items["items"]:
+                    if not any(d["text"] == item and d["parent"] == _parent_text
+                               for d in dropdown_items):
+                        dropdown_items.append({
+                            "text": item,
+                            "parent": _parent_text,
+                            "tag": "DROPDOWN_ITEM",
+                            "location": "dropdown",
+                            "action": item,
+                        })
+            # 收起菜单（与旧路径同收尾）
+            await _collapse_dropdowns(page)
+            return dropdown_items
+        LOG.info(f"  [dropdown] marker 锁行失败（行不在当前页/行内无 dd/触发器"
+                 f"不匹配），回落全页收集路径")
+
     # 展开每个触发器（优化：去重 + 快速失败）
     for text in triggers:
         # --- 手势 1：DOM click（既有行为，兼容 click 触发的下拉，如工具栏批量操作）---
@@ -1296,36 +1328,14 @@ async def _discover_dropdowns(page, parent_buttons: list, kb: ProbeKB = None, fr
             return false;
         }}""", text)
 
-        # --- 收集可见菜单项（已有逻辑：可见 + 非 disabled + 非导航区）---
-        _collect_js = """() => {
-            const items = document.querySelectorAll('.el-dropdown-menu__item, .ant-dropdown-menu-item, [role="menuitem"]');
-            return Array.from(items)
-                .filter(el => {
-                    if (el.offsetWidth <= 0) return false;
-                    // ★ 过滤 disabled 项：有 Vue 实例时以 disabled prop 为准。
-                    //   实证（黑白名单探针）：可操作的互斥项（行级'暂停'，offsetWidth=46 可见
-                    //   且 fix5 真实点击成功）也带 cmss-disabled 样式类——按 class 过滤会把
-                    //   唯一可用操作误杀，收集恒为 0；互斥不可用项由可见性（offW=0）表达。
-                    //   无 Vue 实例（非 Vue 页面）保留 class 兜底，不丢旧行为。
-                    if (el.__vue__) {
-                        if (el.__vue__.disabled === true) return false;
-                    } else if (el.classList.contains('cmss-disabled') || el.classList.contains('is-disabled')) {
-                        return false;
-                    }
-                    const navParent = el.closest('.el-menu, .ant-menu, .sidebar-menu, nav');
-                    return !navParent;
-                })
-                .map(el => el.textContent.trim())
-                .filter(t => t);
-        }"""
-
+        # --- 收集可见菜单项（批五 F2-2：可见 + 非导航区；disabled 全量入册）---
         items = []
         if clicked:
             try:
                 await wait_for_dropdown(page, timeout=1500)
             except Exception:
                 pass  # 菜单未出现 → items 为空，走 vue 兜底手势
-            items = await page.evaluate(_collect_js)
+            items = await page.evaluate(_DROPDOWN_COLLECT_JS)
 
         # --- 手势 2：Vue show() 兜底（hover 触发的行级下拉，如黑白名单「更多」）---
         # DOM click 对 hover 触发的 el-dropdown 不展开菜单（菜单项全部不可见 → 0 收集）。
@@ -1336,7 +1346,7 @@ async def _discover_dropdowns(page, parent_buttons: list, kb: ProbeKB = None, fr
         #   时（黑白名单行级 dd textContent='更多 启用 暂停'，fix6 探针实证），=== 匹配
         #   不到任何 dd；前缀遍可识别此类触发器。
         # ★ 只收 visible 子项：互斥操作对（启用/暂停）DOM 同时渲染但仅当前行状态
-        # 可用的一项可见，收 visible 保证第一个 generic op 点的是可用的那个。
+        #   可用的一项可见，收 visible 保证第一个 generic op 点的是可用的那个。
         if not items:
             expand_result = await page.evaluate("""(triggerText) => {
                 const candidates = Array.from(document.querySelectorAll('.el-dropdown'));
@@ -1375,7 +1385,7 @@ async def _discover_dropdowns(page, parent_buttons: list, kb: ProbeKB = None, fr
                 LOG.info(f"  [dropdown] '{text}' DOM click 未展开菜单，Vue 兜底展开"
                          f" (method={expand_result.get('method')})")
                 await page.wait_for_timeout(1200)  # 等 Vue 响应式更新 + 菜单动画
-                items = await page.evaluate(_collect_js)
+                items = await page.evaluate(_DROPDOWN_COLLECT_JS)
             else:
                 LOG.debug(f"  [dropdown] '{text}' 无可见触发器，跳过")
                 await page.keyboard.press("Escape")
@@ -1392,35 +1402,131 @@ async def _discover_dropdowns(page, parent_buttons: list, kb: ProbeKB = None, fr
                     "action": item,  # 使用下拉菜单项文本作为 action
                 })
         # 收起：优先 Vue hide()（vue_show 展开的菜单 ESC 可能不关），再 Escape
-        await page.evaluate("""() => {
-            document.querySelectorAll('.el-dropdown').forEach(dd => {
-                if (dd.__vue__ && typeof dd.__vue__.hide === 'function') {
-                    try { dd.__vue__.hide(); } catch (e) {}
-                }
-            });
-        }""")
-        await page.keyboard.press("Escape")
-        # 等待下拉菜单消失（快速超时，失败也不阻塞）
+        await _collapse_dropdowns(page)
+    return dropdown_items
+
+
+# ★ 批五 F2-2：收集 JS 单源化（marker 锁行路径与全页路径共用同一收集口径）。
+#   disabled 过滤已删除——收集层只回答「页面上有什么」，不回答「现在能不能点」：
+#   可用性判定归执行层（点击前 disabled 检测 skip + 状态矩阵 + reconcile/cascade
+#   状态翻转恢复）。v4 探针实证 disabled 项 offW=127 可见可收（EIS 22 项全量）；
+#   hover 系统的互斥不可用项由可见性（offW=0）表达，不受本改动影响。
+_DROPDOWN_COLLECT_JS = """() => {
+    const items = document.querySelectorAll('.el-dropdown-menu__item, .ant-dropdown-menu-item, [role="menuitem"]');
+    return Array.from(items)
+        .filter(el => {
+            if (el.offsetWidth <= 0) return false;
+            const navParent = el.closest('.el-menu, .ant-menu, .sidebar-menu, nav');
+            return !navParent;
+        })
+        .map(el => el.textContent.trim())
+        .filter(t => t);
+}"""
+
+
+async def _collect_marker_row_dropdown(page, marker: str, triggers: set) -> dict:
+    """★ 批五 F2-1：marker 锁行收集——行内 dd hover 手势展开（v4 探针同源）。
+
+    链路：定位含 marker 的可见行（tab-pane 可见性过滤）→ 行内 .el-dropdown →
+    Playwright hover（真实鼠标事件触发 hover 菜单，v4 实证 22 项全量渲染）→
+    统一收集 JS（_DROPDOWN_COLLECT_JS，disabled 全量入册）。
+
+    Returns:
+        None=锁行失败（回落旧全页收集路径）；
+        {"parent": 触发器文本, "items": [菜单项文本]}=收集结果（items 可为空列表）。
+    """
+    try:
+        # ★ 批五 F2-3：搜索先行锁定 marker 行（多用户环境行序漂移，marker 行
+        # 可能不在首页/当前页）。无搜索框/未生效 → 行文本扫描兜底（锁行失败
+        # 再回落全页收集）。lazy import 防循环导入（replay ← ui_scanner 无环）。
         try:
-            await wait_for_dialog_dismissed(page, timeout=1000)
+            from core.discovery.replay.button_driver import search_filter_table
+            _searched = await search_filter_table(page, marker)
+            if not _searched:
+                LOG.debug("  [dropdown] 无搜索框或搜索未生效，按行文本扫描锁行")
+        except Exception as _se:
+            LOG.debug(f"  [dropdown] 搜索先行异常（按行文本扫描锁行）: {_se}")
+        row_handle = await page.evaluate_handle("""(marker) => {
+            const rows = document.querySelectorAll(
+                '.el-table__body-wrapper tbody tr, table tbody tr');
+            for (const r of rows) {
+                if (r.offsetWidth <= 0 || r.offsetHeight <= 0) continue;
+                const pane = r.closest('.el-tab-pane');
+                if (pane) {
+                    const st = window.getComputedStyle(pane);
+                    if (st.display === 'none' || st.visibility === 'hidden') continue;
+                }
+                if ((r.textContent || '').includes(marker)) return r;
+            }
+            return null;
+        }""", marker)
+        row_el = row_handle.as_element()
+        if row_el is None:
+            LOG.debug(f"  [dropdown] marker 行未在当前页找到: '{marker}'")
+            return None
+        dd_el = await row_el.query_selector('.el-dropdown')
+        if dd_el is None:
+            LOG.debug(f"  [dropdown] marker 行内无 .el-dropdown: '{marker}'")
+            return None
+        # 触发器文本匹配（精确 === 优先，前缀 startsWith 兜底——与全页手势同口径）
+        dd_text = ((await dd_el.text_content()) or "").strip()
+        parent_text = next(
+            (t for t in triggers if dd_text == t or dd_text.startswith(t)), "")
+        if not parent_text:
+            LOG.debug(f"  [dropdown] 行内 dd 文本 '{dd_text[:20]}' 与触发器集合不匹配")
+            return None
+        # hover 展开（v4 实证：真实鼠标 hover 手势下菜单 22 项全量渲染，
+        # DOM click 不触发、vue_show 渲染不完整 6/22）
+        await dd_el.hover()
+        await page.wait_for_timeout(800)
+        try:
+            await wait_for_dropdown(page, timeout=1500)
         except Exception:
             pass
-        # ★ 兜底收起（fix6 探针实证）：teleport 到 body 的菜单 popper 可见性与
-        # dd vm.visible 解耦——假目标 dd.show() 可经共享 popper 复活行级菜单，
-        # vm.hide()/Escape 均关不掉，dispatch mouseleave/mouseout 可可靠关闭；
-        # 无残留时为 no-op，不影响旧行为。
-        leaked = await page.evaluate("""() => Array.from(
-            document.querySelectorAll('.el-dropdown-menu'))
-            .filter(m => m.offsetWidth > 0 && m.offsetHeight > 0).length""")
-        if leaked:
-            await page.evaluate("""() => {
-                document.querySelectorAll('.el-dropdown').forEach(dd => {
-                    dd.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }));
-                    dd.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
-                });
-            }""")
-            await page.wait_for_timeout(400)
-    return dropdown_items
+        items = await page.evaluate(_DROPDOWN_COLLECT_JS)
+        LOG.info(f"  [dropdown] marker 行 '{marker}' dd='{dd_text[:20]}' hover 展开: "
+                 f"{len(items)} 项")
+        return {"parent": parent_text, "items": items}
+    except Exception as e:
+        LOG.debug(f"  [dropdown] marker 锁行收集异常（回落全页路径）: {e}")
+        return None
+
+
+async def _collapse_dropdowns(page) -> None:
+    """收起所有下拉菜单（vue hide + Escape + mouseleave 兜底）。
+
+    ★ 批五 F2：从 _discover_dropdowns 提取为独立函数（marker 锁行路径与
+    全页路径共用收尾）；fix6 探针实证 mouseleave/mouseout 兜底可关闭经共享
+    popper 复活的行级菜单，无残留时为 no-op。
+    """
+    await page.evaluate("""() => {
+        document.querySelectorAll('.el-dropdown').forEach(dd => {
+            if (dd.__vue__ && typeof dd.__vue__.hide === 'function') {
+                try { dd.__vue__.hide(); } catch (e) {}
+            }
+        });
+    }""")
+    await page.keyboard.press("Escape")
+    # 等待下拉菜单消失（快速超时，失败也不阻塞）
+    try:
+        await wait_for_dialog_dismissed(page, timeout=1000)
+    except Exception:
+        pass
+    # ★ 兜底收起（fix6 探针实证）：teleport 到 body 的菜单 popper 可见性与
+    # dd vm.visible 解耦——假目标 dd.show() 可经共享 popper 复活行级菜单，
+    # vm.hide()/Escape 均关不掉，dispatch mouseleave/mouseout 可可靠关闭；
+    # 无残留时为 no-op，不影响旧行为。
+    leaked = await page.evaluate("""() => Array.from(
+        document.querySelectorAll('.el-dropdown-menu'))
+        .filter(m => m.offsetWidth > 0 && m.offsetHeight > 0).length""")
+    if leaked:
+        await page.evaluate("""() => {
+            document.querySelectorAll('.el-dropdown').forEach(dd => {
+                dd.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }));
+                dd.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+            });
+        }""")
+        await page.wait_for_timeout(400)
 
 
 async def _scan_create_dialog(page, kb: ProbeKB = None, framework: str = "element-ui") -> dict:

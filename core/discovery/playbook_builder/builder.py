@@ -747,6 +747,12 @@ def build_playbook(ui_result: dict) -> dict:
             if btn_list_key == "toolbar_buttons" and btn_tag and btn_tag not in ("BUTTON", "A"):
                 LOG.debug(f"  跳过非按钮 toolbar 元素: '{btn_text}' (tag={btn_tag})")
                 continue
+            # ★ 批五 F4-4：row_link 合成条目不进 fallback——按文本生成的
+            #   click_button 步骤（语义操作名页面上不存在）必然失败；
+            #   未验证即不生成脚本（其执行/回放走 click_row_name_link 专属步骤）。
+            if btn.get("row_link"):
+                LOG.debug(f"  跳过 row_link 合成条目 fallback: '{btn_text}'")
+                continue
             # ★ 跳过下拉菜单触发器（"更多"/"操作"等，包含式判定），子操作已有独立脚本
             if is_dropdown_trigger_text(btn_text) and btn.get("tag") != "DROPDOWN_ITEM":
                 LOG.debug(f"  跳过下拉触发器 fallback: '{btn_text}'")
@@ -1846,7 +1852,16 @@ def _build_page_nav_steps(op_data: dict) -> list:
     dropdown_item_text = op_data.get("dropdown_item_text_verified")
     row_selector = selectors.get("row_selector")
 
-    if trigger_locator:
+    # ★ 批五 F4-4：row_link 名称链接操作——按 row_link_class 点 marker 行
+    #   名称单元格（find_row 已由 Step 1 生成），不按文本/全局 locator
+    #   定位（语义操作名页面上不存在）。优先于 trigger_locator 分支短路。
+    if op_data.get("row_link"):
+        steps.append({
+            "action": "click_row_name_link",
+            "link_class": op_data.get("row_link_class", ""),
+            "description": "点击行内名称链接（跳转详情）"
+        })
+    elif trigger_locator:
         steps.append({
             "action": "click_button",
             "text": trigger,

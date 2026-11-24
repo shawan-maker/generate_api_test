@@ -1056,9 +1056,13 @@ class FormFiller:
             elif not modifications:
                 # generate_fill_value 返回 (value, fill_rule) tuple
                 # Stage 1 直接用生成的值，apply_fill_rule 是 Stage 2 回放用的
+                # ★ 批五 F3：透传 placeholder——弹窗内「请输入 "DELETE" 确认删除」
+                # 类确认输入框按 placeholder 引号词生成（实证根因：EIS 删除弹窗
+                # 「删除确认」落 name_pattern 被填随机值 test500861）
                 value, _rule = generate_fill_value(
                     field.get("type", "input"), field.get("inputType", "text"),
-                    username="test", label=label
+                    username="test", label=label,
+                    placeholder=field.get("placeholder", "")
                 )
                 if not value:
                     value = f"auto_edited_{ts}"
@@ -1318,22 +1322,137 @@ class FormFiller:
 
         return checked
 
+    async def _submit_button_disabled_guard(self, scope_selector: str = "") -> dict:
+        """★ 批五 F3 守卫 A：提交按钮 Vue disabled 预检（点击前）。
+
+        背景（r7b 实证）：EIS 删除弹窗「确定」按钮 Vue disabled prop=true
+        （确认词未填时），DOM 属性/class 可能不携带——click_page_button 的
+        JS 降级点击照样执行、函数返回成功，但 Vue handler 忽略 → 弹窗滞留
+        「静默成功」假象。本守卫在点击前用 Vue prop 权威口径拦截。
+
+        判定口径（与批四 P1 el-select 定案一致——Vue 实例 disabled prop 权威，
+        读不到 prop 时回落 DOM disabled 属性/is-disabled class）：
+        - scope 内找与 SUBMIT_TEXTS 匹配的可见按钮（排除否定前缀）；
+        - 候选非空且**全部** disabled → 拦截（返回拦截信息）；
+        - 无候选或存在 enabled 候选 → 放行（返回 None，走既有点击链）。
+
+        Returns:
+            None=放行；{"text": str, "reason": str}=拦截信息
+        """
+        try:
+            scope_js = (f"Array.from(document.querySelectorAll('{scope_selector}'))"
+                        if scope_selector else "null")
+            gather_js = (
+                "Array.from(new Set(scopes.flatMap(s => Array.from(s.querySelectorAll('button')))))"
+                if scope_selector else "Array.from(document.querySelectorAll('button'))"
+            )
+            submit_json = json.dumps(const.SUBMIT_TEXTS, ensure_ascii=False)
+            negative_json = json.dumps(const.NEGATIVE_BUTTON_PREFIXES, ensure_ascii=False)
+
+            guard = await self.page.evaluate(f"""(() => {{
+                const scopes = {scope_js};
+                const all = {gather_js};
+                const SUBMITS = {submit_json};
+                const NEG = {negative_json};
+                const cands = [];
+                for (const el of all) {{
+                    if (el.offsetWidth === 0 || el.offsetHeight === 0) continue;
+                    const clean = (el.textContent || '').trim().replace(/\\s+/g, '');
+                    if (!clean) continue;
+                    if (NEG.some(n => clean.startsWith(n))) continue;
+                    if (!SUBMITS.some(s => clean === s || clean.startsWith(s))) continue;
+                    // Vue disabled prop 权威（读不到 prop 回落 DOM/class）
+                    let vueDisabled = null;
+                    try {{
+                        if (el.__vue__ && typeof el.__vue__.disabled === 'boolean') {{
+                            vueDisabled = el.__vue__.disabled;
+                        }}
+                    }} catch (e) {{}}
+                    const domDisabled = el.disabled || el.classList.contains('is-disabled');
+                    const disabled = (vueDisabled !== null) ? vueDisabled : domDisabled;
+                    cands.push({{text: clean.substring(0, 30), disabled: disabled}});
+                }}
+                if (cands.length === 0) return null;
+                const enabled = cands.filter(c => !c.disabled);
+                if (enabled.length > 0) return null;
+                return {{
+                    text: cands[0].text,
+                    reason: cands.length + ' 个提交按钮候选全部 disabled'
+                            + '（Vue prop 权威口径；确认词未填或表单校验未过）'
+                }};
+            }})()""")
+            return guard
+        except Exception as e:
+            LOG.debug(f"    [F3-guard-A] 提交按钮 disabled 预检异常（放行）: {e}")
+            return None
+
+    async def _active_dialog_fingerprint(self) -> str:
+        """★ 批五 F3 守卫 B 辅助：活跃弹窗/抽屉指纹（wrapper 类型+标题文本）。
+
+        无弹窗返回空串。指纹用于点击前后对比——同指纹弹窗仍在 = 提交未生效
+        的正面证据（比从弹窗正文文本猜失败可靠，F9 判定通道已收紧）。
+        """
+        try:
+            return await self.page.evaluate("""() => {
+                const containers = document.querySelectorAll(
+                    '.el-dialog__wrapper, .el-drawer, .el-message-box__wrapper, .ant-modal-wrap'
+                );
+                for (const c of containers) {
+                    if (c.offsetWidth <= 0 || c.offsetHeight <= 0) continue;
+                    if (c.style.display === 'none') continue;
+                    const title = (c.querySelector(
+                        '.el-dialog__title, .el-drawer__header, .el-message-box__title, .ant-modal-title'
+                    ) || {}).textContent || '';
+                    return 'dialog|' + title.trim().substring(0, 60);
+                }
+                return '';
+            }""")
+        except Exception:
+            return ""
+
     async def submit_form_v2(self, scope_selector: str = "") -> dict:
         """提交表单（v2 版本），委托 click_page_button 统一实现。
 
         从 SUBMIT_TEXTS 列表中探测按钮文本，找到后委托 click_page_button 点击。
 
+        ★ 批五 F3 提交守卫（防「js 点 disabled 静默成功」假象，r7b 实证）：
+        - 守卫 A（点击前）：提交按钮 Vue disabled 预检——候选全部 disabled
+          则不点击，返回 {"submit_blocked": "confirm_word_missing", ...}；
+        - 守卫 B（点击后）：点击成功后 500ms 复查同指纹弹窗是否关闭——
+          仍开启则 {"submit_blocked": "dialog_still_open", ...}。
+        消费方须优先检查 submit_blocked 键（非 None 时为终态失败，
+        不回退 confirm_dialog、不进入正常结果验证）。
+
         Args:
             scope_selector: 可选，限定搜索范围的 CSS 选择器
 
         Returns:
-            dict: {"text": str, "locator": str, "click_strategy": str}
+            dict: {"text": str, "locator": str, "click_strategy": str,
+                   "submit_blocked": str|None, "blocked_reason": str}
         """
         from core.discovery.shared.button_clicker import click_page_button
 
         def _clicked_negative(btn_result: dict) -> bool:
             """★ 4.2 后验: 实际命中文本为否定前缀按钮（如「放弃更新」）→ 视为未提交。"""
             return const.starts_with_negative_prefix(btn_result.get("text", ""))
+
+        # ── ★ 批五 F3 守卫 A：提交按钮 disabled 预检（点击前）──
+        guard = await self._submit_button_disabled_guard(scope_selector)
+        if guard:
+            LOG.warning(f"    [submit_form_v2] 守卫 A 拦截: 提交按钮 disabled "
+                        f"（{guard.get('reason', '')}），不点击")
+            return {
+                "text": guard.get("text", ""),
+                "locator": "",
+                "submit_blocked": "confirm_word_missing",
+                "blocked_reason": guard.get("reason", ""),
+                "click_strategy": "",
+                "xpath_index": -1,
+                "clean_text": "",
+            }
+
+        # ── 守卫 B 前置采集：点击前活跃弹窗指纹（空=无弹窗，守卫 B 不生效）──
+        _fp_before = await self._active_dialog_fingerprint()
 
         # 先探测哪个提交按钮文本存在（JS 快速检查，不点击）
         detected_text = await self._detect_submit_button_text(scope_selector)
@@ -1348,13 +1467,14 @@ class FormFiller:
                                 f"否定前缀按钮 '{result.get('text')}'，视为未提交，继续尝试")
                 else:
                     LOG.info(f"    [submit_form_v2] 成功: '{detected_text}' (strategy={result.get('strategy')})")
-                    return {
+                    ret = {
                         "text": result.get("text", detected_text),
                         "locator": result.get("locator", ""),
                         "click_strategy": result.get("strategy", ""),
                         "xpath_index": result.get("xpath_index", -1),
                         "clean_text": result.get("clean_text", ""),
                     }
+                    return await self._dialog_still_open_check(ret, _fp_before)
 
         # 逐个尝试 SUBMIT_TEXTS
         for text in const.SUBMIT_TEXTS:
@@ -1368,13 +1488,14 @@ class FormFiller:
                                 f"否定前缀按钮 '{result.get('text')}'，视为未提交，继续尝试")
                     continue
                 LOG.info(f"    [submit_form_v2] 成功: '{text}' (strategy={result.get('strategy')})")
-                return {
+                ret = {
                     "text": result.get("text", text),
                     "locator": result.get("locator", ""),
                     "click_strategy": result.get("strategy", ""),
                     "xpath_index": result.get("xpath_index", -1),
                     "clean_text": result.get("clean_text", ""),
                 }
+                return await self._dialog_still_open_check(ret, _fp_before)
 
         # 最终回退: primary 按钮
         try:
@@ -1397,18 +1518,51 @@ class FormFiller:
                     from .wait_helpers import wait_for_loading_complete
                     await wait_for_loading_complete(self.page)
                     LOG.info(f"    [submit_form_v2] Primary 回退成功: '{actual_text}'")
-                    return {
+                    ret = {
                         "text": actual_text,
                         "locator": "button.el-button--primary",
                         "click_strategy": "playwright",
                         "xpath_index": -1,
                         "clean_text": "",
                     }
+                    return await self._dialog_still_open_check(ret, _fp_before)
         except Exception as e:
             LOG.debug(f"尝试 primary 按钮失败: {e}")
 
         LOG.warning(f"    [submit_form_v2] 所有策略均失败，未找到提交按钮")
-        return {"text": "", "locator": "", "xpath_index": -1, "clean_text": ""}
+        return {"text": "", "locator": "", "xpath_index": -1, "clean_text": "",
+                "submit_blocked": None, "blocked_reason": ""}
+
+    async def _dialog_still_open_check(self, ret: dict, fp_before: str) -> dict:
+        """★ 批五 F3 守卫 B：点击成功后 500ms 复查同指纹弹窗是否关闭。
+
+        点击前无弹窗（fp_before 空）→ 不检查（toolbar 即时提交类）；
+        点击前有弹窗 → 500ms（+loading 完成）后同指纹弹窗仍在 = 提交未生效
+        的正面失败证据（F9 已把弹窗正文移出判定通道，滞留证据由本守卫提供）。
+        """
+        if not fp_before:
+            ret.setdefault("submit_blocked", None)
+            ret.setdefault("blocked_reason", "")
+            return ret
+        try:
+            await self.page.wait_for_timeout(500)
+            from .wait_helpers import wait_for_loading_complete
+            await wait_for_loading_complete(self.page)
+            fp_after = await self._active_dialog_fingerprint()
+            if fp_after == fp_before:
+                LOG.warning(f"    [submit_form_v2] 守卫 B: 提交点击完成但同指纹弹窗"
+                            f" 500ms 后仍开启，判 dialog_still_open")
+                ret["submit_blocked"] = "dialog_still_open"
+                ret["blocked_reason"] = (f"提交点击已执行但弹窗未关闭"
+                                         f"（指纹: {fp_before[:60]}）——提交未生效")
+            else:
+                ret.setdefault("submit_blocked", None)
+                ret.setdefault("blocked_reason", "")
+        except Exception as e:
+            LOG.debug(f"    [F3-guard-B] 弹窗复查异常（放行）: {e}")
+            ret.setdefault("submit_blocked", None)
+            ret.setdefault("blocked_reason", "")
+        return ret
 
     async def _detect_submit_button_text(self, scope_selector: str = "") -> str:
         """快速探测页面中是否存在 SUBMIT_TEXTS 中的按钮文本，返回命中的按钮文本。

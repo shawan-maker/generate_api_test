@@ -20,7 +20,8 @@ LOG = logging.getLogger(__name__)
 
 
 def generate_fill_value(field_type: str, input_type: str,
-                        username: str = "test", label: str = "") -> tuple:
+                        username: str = "test", label: str = "",
+                        placeholder: str = "") -> tuple:
     """生成测试数据值和对应的 fill_rule 元数据。
 
     Stage 1 探测时使用此函数生成测试数据，同时返回 fill_rule 元数据
@@ -31,12 +32,31 @@ def generate_fill_value(field_type: str, input_type: str,
         input_type: HTML input type ("text", "number", "email", "tel", "password", "url")
         username: 用户名（用于名称字段前缀）
         label: 字段标签（用于关键词推断）
+        placeholder: 输入框 placeholder（批五 F3：引号包裹确认词提取，
+            如「请输入 "DELETE" 确认删除」→ 填 DELETE——危险操作确认输入框
+            的值生成判据，优先级最高）
 
     Returns:
         tuple: (value, fill_rule)
             - value: 生成的具体值
             - fill_rule: {"rule": str, "params": dict} 格式的规则元数据
     """
+    # ★ 批五 F3：placeholder 确认词提取（优先级最高——先于 input_type 分支）。
+    #   判据即「placeholder 含引号包裹词」（const 单源正则），不依赖 label
+    #   含「确认」的启发式。实证根因：EIS 删除弹窗「删除确认」输入框落
+    #   name_pattern 被填随机值（r7b test500861），placeholder 明明写着
+    #   「请输入 "DELETE" 确认删除」。fill_rule 落 placeholder_hint，
+    #   Stage 2 回放经 apply_fill_rule 的 placeholder_confirm 分支从同弹窗
+    #   placeholder 重建同一词（三阶段一致）。
+    if placeholder:
+        from .. import const as _const
+        word = _const.extract_placeholder_confirm_word(placeholder)
+        if word:
+            return word, {
+                "rule": "placeholder_confirm",
+                "params": {"placeholder_hint": placeholder[:200]},
+            }
+
     ts = str(int(time.time()))[-6:]
     label_lower = label.lower() if label else ""
 
@@ -148,6 +168,9 @@ def _pair_confirmation_field_values(fields: list, fill_data: dict) -> dict:
     Returns:
         {确认字段label: 源字段label的值} 覆盖表（无配对返回空 dict）
     """
+    # ★ 批五 F3：placeholder 确认词判据单源（const.extract_placeholder_confirm_word）
+    from .. import const as _const
+
     # 非确认字段归一化 label 索引（精确配对）+ 全量列表（包含配对）
     source_by_norm = {}
     source_list = []
@@ -166,6 +189,11 @@ def _pair_confirmation_field_values(fields: list, fill_data: dict) -> dict:
     for field in fields:
         raw_label = field.get("label", "")
         if not raw_label or raw_label not in fill_data:
+            continue
+        # ★ 批五 F3：placeholder 命中引号包裹确认词的字段跳过配对复制——
+        # 「请输入 "DELETE" 确认删除」语义是「输入指定确认词」（placeholder_confirm
+        # 已生成 DELETE），不是「重复 X 字段的值」；防配对复制把确认词覆盖掉。
+        if _const.extract_placeholder_confirm_word(field.get("placeholder", "")):
             continue
         # 探测文本：label 优先，label 无标记词时 placeholder 兜底
         probe = ""
@@ -228,7 +256,9 @@ def generate_fill_data(fields: list, username: str = "test") -> dict:
         if kb_category in MULTI_STEP_SKIP:
             continue
 
-        value, _rule = generate_fill_value(field_type, input_type, username, label)
+        value, _rule = generate_fill_value(
+            field_type, input_type, username, label,
+            placeholder=field.get("placeholder", ""))
         fill_data[label] = value
 
     # ★ 确认字段联动（方案批三 3.3）：「确认 X / 再次 X / Confirm X」字段的值
@@ -263,6 +293,9 @@ def generate_fill_rules(fields: list) -> dict:
     Returns:
         {label: {"rule": str, "params": dict}} 字典
     """
+    # ★ 批五 F3：placeholder 确认词规则判据与 generate_fill_value 同源
+    from .. import const as _const
+
     rules = {}
 
     for field in fields:
@@ -312,6 +345,16 @@ def generate_fill_rules(fields: list) -> dict:
                         "start": 1 + len(rules),
                         "end": 10 + len(rules)
                     }}
+            continue
+
+        # ★ 批五 F3：placeholder 确认词规则（与 generate_fill_value 同判据，
+        #   保证 Stage 1 落盘的 fill_rule 与实际值生成方式一致）
+        _ph_word = _const.extract_placeholder_confirm_word(field.get("placeholder", ""))
+        if _ph_word:
+            rules[label] = {
+                "rule": "placeholder_confirm",
+                "params": {"placeholder_hint": field.get("placeholder", "")[:200]},
+            }
             continue
 
         # 根据字段标签和类型推断规则
@@ -383,6 +426,19 @@ def apply_fill_rule(rule: dict, timestamp: str = None) -> str:
 
     rule_type = rule.get("rule", "name_pattern")
     params = rule.get("params", {})
+
+    # ★ 批五 F3：placeholder 确认词回放重建——从同弹窗 placeholder 重新提取
+    #   （弹窗同源必得同一词，三阶段一致）；hint 丢失时回退静默空串由
+    #   调用方的空值兜底处理（不再落到 name_pattern 随机值）。
+    if rule_type == "placeholder_confirm":
+        from .. import const as _const
+        hint = params.get("placeholder_hint", "")
+        word = _const.extract_placeholder_confirm_word(hint)
+        if word:
+            return word
+        LOG.warning(f"    [apply_fill_rule] placeholder_confirm 规则未能从 hint "
+                    f"重建确认词（hint={hint[:60]}），返回空串由调用方兜底")
+        return ""
 
     if rule_type == "username_pattern":
         prefix = params.get("prefix", "autotest")

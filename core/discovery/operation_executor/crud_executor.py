@@ -709,13 +709,99 @@ def _record_state_transition(state_ctx: dict, action, from_status, to_status) ->
     edges.append({"action": action, "from": from_status, "to": to_status})
 
 
+_ROW_LINK_ACTION = "查看详情（名称链接）"
+
+
+def _merge_row_link_actions(buttons_by_tab: dict, ui_result: dict) -> int:
+    """★ 批五 F4-1：逐行名称链接归并为单条语义操作（r7 实证 10 条 → 1 条）。
+
+    现状根因（证据 E）：存量 VM 名称单元格链接被逐行收成 N 个操作（每条
+    label=各 VM 名，location=row_action，tag=SPAN）；执行时按「文本全局
+    唯一直点」或「marker 行内找该文本」都指向别人的 VM 行——多用户环境
+    必然 not_found/click_failed 秒败，且操作数随存量 VM 数膨胀。
+
+    归并判据（纯结构性，与 _infer_action_role 判 navigation 同一特征）：
+    - location=row_action 且 tag 非 BUTTON/DROPDOWN_ITEM
+    - 非下拉触发器（is_dropdown_trigger_text 排除「更多」）
+    - 同 tab 内 ≥2 条且文本互不相同（逐行形态；同文本链接按钮按 action
+      去重天然只收 1 条，不触发归并）
+
+    归并动作：逐行条目从 buttons_by_tab[tab] 与 ui_result["row_actions"]
+    双侧移除，注册单条语义操作「查看详情（名称链接）」（row_link=True，
+    row_link_class=多数派 className 供执行/回放 class 定位，row_link_samples
+    落产物供可观测）。builder fallback 通道按 row_link 标记跳过（防逐行
+    条目从 row_actions 回流 playbook）。
+
+    Returns:
+        int: 被归并的逐行条目总数（0=无名称链接形态，零变化幂等）
+    """
+    merged_total = 0
+    merged_texts = set()
+    merged_btn_template = None
+    for tab_name, tab_buttons in buttons_by_tab.items():
+        link_entries = [
+            (action, b) for action, b in tab_buttons.items()
+            if b.get("location") == "row_action"
+            and b.get("tag") not in ("BUTTON", "DROPDOWN_ITEM")
+            and not is_dropdown_trigger_text(b.get("text"))
+        ]
+        if len(link_entries) < 2:
+            continue
+        texts = [b.get("text", "") for _, b in link_entries]
+        if len(set(texts)) != len(texts):
+            continue  # 同文本多行（非名称链接形态），保守不归并
+        # 多数派 className（探测期采集，执行/回放按 class 定位名称单元格）
+        cls_counter = {}
+        for _, b in link_entries:
+            cls = (b.get("className") or "").strip()
+            cls_counter[cls] = cls_counter.get(cls, 0) + 1
+        link_class = max(cls_counter, key=lambda k: cls_counter[k]) if cls_counter else ""
+        for action, _b in link_entries:
+            del tab_buttons[action]
+            merged_texts.add(action)
+        merged_btn = {
+            "text": _ROW_LINK_ACTION,
+            "tag": link_entries[0][1].get("tag", "SPAN"),
+            "className": link_class,
+            "location": "row_action",
+            "action": _ROW_LINK_ACTION,
+            "tab": tab_name,
+            "source": "row_link_merge",
+            "row_link": True,
+            "row_link_class": link_class,
+            "row_link_samples": texts,
+        }
+        tab_buttons[_ROW_LINK_ACTION] = merged_btn
+        merged_btn_template = merged_btn_template or dict(merged_btn)
+        merged_total += len(link_entries)
+        LOG.info(f"  [F4-ROW-LINK] tab '{tab_name}': 归并 {len(link_entries)} 条逐行名称链接"
+                 f" → 单条 '{_ROW_LINK_ACTION}' (class='{link_class}')")
+    if not merged_total:
+        return 0
+    # ui_result["row_actions"] 同步：移除被归并条目 + 插入合成单条（幂等防重）
+    if isinstance(ui_result.get("row_actions"), list):
+        kept = []
+        for b in ui_result["row_actions"]:
+            _bt = b.get("text", "")
+            if (b.get("location") == "row_action"
+                    and b.get("tag") not in ("BUTTON", "DROPDOWN_ITEM")
+                    and not is_dropdown_trigger_text(_bt)
+                    and _bt in merged_texts):
+                continue
+            kept.append(b)
+        if not any(b.get("row_link") for b in kept) and merged_btn_template:
+            kept.append(merged_btn_template)
+        ui_result["row_actions"] = kept
+    return merged_total
+
+
 def _collect_state_pending(validated: dict, buttons_by_action: dict,
                            action_roles: dict, executed_actions: set) -> list:
     """回收状态受阻 pending（批一 1.4 reconcile 候选）。
 
-    条件：已尝试未成功 + generic 角色 + 行级位置 + 未以业务身份成功过
-    （executed_actions）+ 失败签名属状态受阻（禁用跳过 / 过渡窗口
-    click_failed）。与既有 _retry_state_blocked_ops 候选口径一致。
+    条件：已尝试未成功 + generic/update 角色（批五 F5-2 放宽）+ 行级位置 +
+    未以业务身份成功过（executed_actions）+ 失败签名属状态受阻（禁用跳过 /
+    过渡窗口 click_failed）。与既有 _retry_state_blocked_ops 候选口径一致。
     """
     pending = []
     for action, res in validated.items():
@@ -725,7 +811,12 @@ def _collect_state_pending(validated: dict, buttons_by_action: dict,
             continue
         if action not in buttons_by_action:
             continue
-        if action_roles.get(action, "generic") != "generic":
+        # ★ 批五 F5-2：角色放宽到 {generic, update}——update 角色操作（如
+        #   EIS 修改Hostname）同样受行状态门控（disabled/过渡窗），此前仅放
+        #   generic 致 update 角色永无 reconcile 恢复机会（r7 实证 修改Hostname
+        #   skipped 后未进 pending）。位置约束（下一行）不变：仅行级位置可回收，
+        #   toolbar 角色 update 仍不回收（既有语义保留）。
+        if action_roles.get(action, "generic") not in ("generic", "update"):
             continue
         btn = buttons_by_action.get(action) or {}
         if btn.get("location") not in ("row_action", "dropdown"):
@@ -802,6 +893,28 @@ async def _check_and_execute_newly_enabled(
 
     LOG.info(f"{tab_prefix}[STATE-CHANGE] 发现 {len(newly_enabled)} 个新启用按钮: {newly_enabled}")
 
+    # ★ 批五 F7：级联批量执行前稳态等待——主循环状态翻转后行处过渡窗
+    # （关机✓→Stopping），过渡窗内对 newly_enabled 连续执行必连败（r7b
+    # 证据 I：10 项级联连败）。等双条件稳态（status 连续两次相同 + 菜单
+    # enabled 集两次一致）再批量执行；timed_out 不硬失败——本轮放弃级联
+    # 执行（defer：不执行任何项，button_states 不更新保持翻转前基线，
+    # 后续成功操作的级联扫描可重新检测到这批翻转，交 reconcile 的 settle
+    # 逻辑兜底）。
+    if created_marker:
+        try:
+            stable = await _wait_row_states_stable(page, created_marker)
+        except Exception as _we:
+            # 级联是增益层：等待异常不应炸主循环（page 关闭类异常除外——
+            # 后续操作自会暴露），降级为不等待直接执行（行为回退现状）
+            LOG.warning(f"{tab_prefix}[STATE-CHANGE] 稳态等待异常（照常执行级联）: {_we}")
+            stable = {"timed_out": False}
+        if stable.get("timed_out"):
+            LOG.warning(f"{tab_prefix}[STATE-CHANGE] 行状态等待稳态超时，"
+                        f"本轮放弃级联执行（defer reconcile）: {newly_enabled}")
+            return results
+        LOG.info(f"{tab_prefix}[STATE-CHANGE] 行已稳态"
+                 f"（status={stable.get('status')}），开始批量执行")
+
     # 逐一执行
     for text in newly_enabled:
         # ★ 防止递归中已执行的按钮被重复执行
@@ -832,7 +945,14 @@ async def _check_and_execute_newly_enabled(
         )
 
         results[text] = result
-        executed_actions.add(text)
+        # ★ 批五 F1：仅业务成功占用「业务身份」入册——_collect_state_pending
+        # 把 executed_actions 视作已业务成功排除（L724），失败也入册会把
+        # 级联失败的操作永久排除在 reconcile 恢复之外（r7b 时间线+创建镜像
+        # 反证定案：级联失败但主循环槽位在后的操作最终成功，证明缺口专杀
+        # 「槽位已过+reconcile 被排除」的操作）。失败项由 validated 中的
+        # state_blocked 失败签名经 pending 回收（L735 口径不变）。
+        if result and result.get("success"):
+            executed_actions.add(text)
 
         if result and result.get("success"):
             LOG.info(f"{tab_prefix}[STATE-CHANGE] ✓ {text} 执行成功")
@@ -1145,6 +1265,80 @@ async def _state_aware_reconcile(
     LOG.info(f"{tab_prefix}[STATE-RECONCILE] 结束: 本轮成功 {sum(1 for r in results.values() if r.get('success'))}"
              f" 个操作，剩余 pending {len(pending)} 个")
     return results
+
+
+async def _rediscover_marker_dropdowns(
+    page, ui_result: dict, framework: str, created_marker: str,
+    buttons_by_action: dict, action_roles: dict, ordered_actions: list,
+    tab_name: str, delete_actions: list, current_action: str, tab_prefix: str = "",
+) -> list:
+    """★ 批五 F2-1：create 成功后 marker 锁行重收集下拉菜单项并入册主循环。
+
+    根因（v5 真实收集路径复现定案）：Phase A discover_all 在 create 之前运行，
+    全页收集展开的是第一个可见 dd——多用户环境下是他人 VM 行，marker 行
+    轮不到；第一行非 Running 态时需开机操作全 disabled 被旧过滤吞掉
+    （r7b 缺失 4 项 4/4 全缺吻合）；互斥对文本取自错误行状态。create 成功
+    后 marker 行已存在，按 marker 锁行重收集（hover 手势全量渲染，EIS 22 项）。
+
+    新增项注册进 buttons_by_action + action_roles + ordered_actions +
+    ui_result.dropdowns（供主循环尝试与 Stage 2 回放），插入位置与增量扫描
+    同口径：delete 类追加末尾，其余插到当前操作（create）之后。
+    锁行失败由 _discover_dropdowns 内部回落旧全页收集（收集到的既有项自动去重）。
+    """
+    from core.discovery.ui_scanner.element_scanner import _discover_dropdowns
+    # 触发器判定需要 parent_buttons 文本集合（row_actions 含「更多」类触发器）
+    parents = (
+        ui_result.get("row_actions", [])
+        + ui_result.get("toolbar_buttons", [])
+    )
+    try:
+        items = await _discover_dropdowns(
+            page, parents, None, framework, marker=created_marker)
+    except Exception as e:
+        LOG.warning(f"{tab_prefix}[F2-RECOLLECT] marker 锁行重收集异常: {e}")
+        return []
+
+    new_actions = []
+    for d in items:
+        text = d.get("text", "")
+        if not text or text in buttons_by_action:
+            continue  # 已在册（Phase A 收集/级联入册）自动去重
+        btn = {
+            "text": text,
+            "tag": "DROPDOWN_ITEM",
+            "location": "dropdown",
+            "parent": d.get("parent", "更多"),
+            "action": text,
+            "tab": tab_name,
+            "source": "marker_recollect",
+        }
+        buttons_by_action[text] = btn
+        role = _infer_action_role(text, btn, delete_actions=delete_actions)
+        action_roles[text] = role
+        # 位置：delete 类放最后，其余插到当前操作（create）之后（与增量扫描同口径）
+        if role == "delete":
+            ordered_actions.append(text)
+            insert_pos = len(ordered_actions) - 1
+        else:
+            try:
+                current_idx = ordered_actions.index(current_action)
+                ordered_actions.insert(current_idx + 1, text)
+                insert_pos = current_idx + 1
+            except ValueError:
+                ordered_actions.append(text)
+                insert_pos = len(ordered_actions) - 1
+        # 回写 ui_result.dropdowns 供 Stage 2 回放（三阶段一致性）
+        dd_list = ui_result.setdefault("dropdowns", [])
+        if not any(x.get("text") == text and x.get("tab") == tab_name
+                   for x in dd_list):
+            dd_list.append({**btn, "tag": "DROPDOWN_ITEM"})
+        new_actions.append(text)
+        LOG.info(f"{tab_prefix}[F2-RECOLLECT] + {text} (角色: {role}, "
+                 f"插入位置: {insert_pos})")
+    if new_actions:
+        LOG.info(f"{tab_prefix}[F2-RECOLLECT] marker 行重收集新增 "
+                 f"{len(new_actions)} 项: {new_actions}")
+    return new_actions
 
 
 async def _validate_single_tab_crud(
@@ -1499,6 +1693,15 @@ async def _validate_single_tab_crud(
                     await page.wait_for_timeout(500)  # 等待 Vue 渲染
                     button_states = await _scan_all_button_states(page, created_marker)
                     LOG.info(f"{tab_prefix}[STATE-INIT] 预扫描按钮状态: {button_states}")
+                    # ★ 批五 F2-1：marker 锁行重收集——Phase A 全页收集展开的是
+                    # 第一个可见 dd（他人 VM 行），marker 行轮不到且 disabled 项
+                    # 被旧口径吞掉（v5 定案）。create 成功后按 marker 锁行重收集
+                    # 补齐真实菜单全量项（EIS 22 项）并入册主循环。
+                    await _rediscover_marker_dropdowns(
+                        page, ui_result, framework, created_marker,
+                        buttons_by_action, action_roles, ordered_actions,
+                        tab_name, _delete_actions, action, tab_prefix,
+                    )
             else:
                 fallback = await _extract_fallback_marker(page)
                 if fallback:
@@ -1872,6 +2075,14 @@ async def _validate_single_tab_crud(
                                   action_roles.get(rc_action, "generic"),
                                   triggered_by=rc_meta.get("triggered_by") or "")
 
+        # ★ 批五 F2 自清洁：清空搜索框恢复列表——搜索先行留下的过滤态在
+        # Tab 收尾必须恢复，防污染下轮探测与共享环境（幂等，无搜索框 no-op）。
+        try:
+            from core.discovery.replay.button_driver import clear_table_search
+            await clear_table_search(page)
+        except Exception as _ce:
+            LOG.debug(f"{tab_prefix}清空搜索异常（不阻塞收尾）: {_ce}")
+
     # ★ 记录未验证的 toolbar 按钮
     validated_actions = set(validated.keys())
     toolbar_buttons = ui_result.get("toolbar_buttons", [])
@@ -2073,6 +2284,11 @@ async def _validate_business_flow(page, ui_result: dict, username: str,
         existing = buttons_by_tab[tab_name].get(action)
         if not existing or (existing.get("tag") != "BUTTON" and btn.get("tag") == "BUTTON"):
             buttons_by_tab[tab_name][action] = btn
+
+    # ★ 批五 F4-1：逐行名称链接归并（buttons_by_tab 构建后、Tab 验证前）——
+    #   逐行 SPAN 名称链接 → 单条「查看详情（名称链接）」row_link 语义操作；
+    #   无名称链接形态的模块（estack 等 BUTTON 型行操作）零变化幂等。
+    _merge_row_link_actions(buttons_by_tab, ui_result)
 
     # 按 Tab 独立验证
     validated = {}
@@ -2558,7 +2774,8 @@ async def _do_create(page, context: dict) -> dict:
         if confirmed:
             await page.wait_for_timeout(1500)
             captured_msgs = await _get_captured_messages(page)
-            success, _detail = await _verify_operation_success(page, "create", captured_messages=captured_msgs)
+            success, _detail = await _verify_operation_success(page, "create", captured_messages=captured_msgs,
+                                                              url_before=url_before)
             if success:
                 LOG.info(f"    无表单字段的确认对话框操作成功")
                 # 构建 trigger_locator_verified（与正常 _do_create 路径一致）
@@ -2765,6 +2982,23 @@ async def _do_create(page, context: dict) -> dict:
 
     # 7. 提交
     submit_result = await form_filler.submit_form_v2(scope_selector=scope_selector)
+    # ★ 批五 F3：提交守卫终态优先——confirm_word_missing（按钮 disabled 未点击）/
+    #   dialog_still_open（点击后同指纹弹窗滞留）均为「提交未生效」终态，
+    #   不进结果验证、不回退（守卫返回 locator 为空/滞留语义）。
+    if submit_result.get("submit_blocked"):
+        LOG.warning(f"    [F3] 提交守卫拦截: {submit_result['submit_blocked']}"
+                    f" —— {submit_result.get('blocked_reason', '')}")
+        from core.discovery.ui_scanner.button_detector import _close_dialog
+        await _close_dialog(page)
+        return _build_create_error_result(
+            submit_result["submit_blocked"],
+            submit_result.get("blocked_reason") or "提交被守卫拦截（未生效）",
+            btn_text, btn_click_result,
+            fill_data, fill_rules, fields, submit_result,
+            multi_step_field_details, username,
+            radio_field_details=radio_field_details,
+            cascade_actions=cascade_actions
+        )
     if not submit_result.get("locator"):
         from core.discovery.ui_scanner.button_detector import _close_dialog
         await _close_dialog(page)
@@ -2832,7 +3066,8 @@ async def _do_create(page, context: dict) -> dict:
     # 10. 验证成功（弹窗关闭 / 成功提示）
     captured_msgs = await _get_captured_messages(page)
     LOG.info(f"    [DEBUG] captured_messages: {captured_msgs}")
-    success, _detail = await _verify_operation_success(page, "create", captured_messages=captured_msgs)
+    success, _detail = await _verify_operation_success(page, "create", captured_messages=captured_msgs,
+                                                      url_before=url_before)
     LOG.info(f"    [DEBUG] _verify_operation_success: {success}, detail={_detail}")
     if not success:
         # 二次检测：提取明确的业务失败信息
@@ -3259,6 +3494,18 @@ async def _do_edit(page, context: dict) -> dict:
     # Phase 3: 注册新标签页监听器
     new_tab_event, new_tab_ref, cleanup_tab_listener = _setup_new_tab_listener(page)
 
+    # ★ 批五 F5-1：dropdown 编辑入口无 marker → 显式 skipped（对齐 generic
+    #   dropdown 路径 no_marker_for_dropdown 语义；不再落入 else 全局点击空耗）
+    if btn_location == "dropdown" and not marker:
+        cleanup_tab_listener()
+        _log.warning(f"    {btn_text} 跳过: dropdown 操作需要 marker")
+        result = skipped("dropdown 操作需要 marker",
+                        trigger_text=btn_text,
+                        trigger_locator_verified=None)
+        result["btn_location"] = "dropdown"
+        result["skip_reason"] = "no_marker_for_dropdown"
+        return result
+
     # 找到行并点击编辑（带重试）
     max_locate_retries = 2
     row_selector = None
@@ -3284,6 +3531,35 @@ async def _do_edit(page, context: dict) -> dict:
             clicked = await driver.click_row_button_v2(row, btn_text)
             _log.info(f"    [EDIT-DEBUG] click_row_button_v2 返回: clicked={clicked}")
             row_selector = btn_text
+        elif btn_location == "dropdown" and marker:
+            # ★ 批五 F5-1：dropdown 位置的编辑入口（EIS 修改Hostname）——
+            #   此前落入 else 全局 click_page_button 必败（页面无该文本按钮）。
+            #   走 marker 行「更多」菜单点击该项（click_row_more_item 内含
+            #   Vue disabled 检测）；disabled 时直接 skipped 交状态机恢复
+            #   （对齐 generic dropdown 路径 L4719 同款语义），不空耗重试。
+            from core.discovery.replay.button_driver import ButtonDriver
+            driver = ButtonDriver(page)
+            _log.info(f"    [EDIT-DEBUG] dropdown 编辑入口: marker='{marker}', item='{btn_text}'")
+            row = await driver.find_data_row(marker)
+            if not row:
+                if attempt < max_locate_retries - 1:
+                    LOG.debug(f"    行定位失败，等待后重试 ({attempt + 1}/{max_locate_retries})")
+                    await page.wait_for_timeout(1000)
+                    continue
+                cleanup_tab_listener()
+                return row_not_found(f"未找到数据行: {marker}",
+                                    trigger_text=btn_text,
+                                    trigger_locator_verified=None)
+            _edit_dd_result = await driver.click_row_more_item(row, btn_text)
+            _log.info(f"    [EDIT-DEBUG] click_row_more_item 返回: {_edit_dd_result}")
+            if _edit_dd_result.get("reason") == "button-disabled":
+                cleanup_tab_listener()
+                LOG.info(f"    跳过 {btn_text} 操作: 按钮被禁用 (cmss-disabled/is-disabled)")
+                return skipped(f"按钮被禁用: {btn_text}",
+                              trigger_text=btn_text,
+                              trigger_locator_verified=None)
+            clicked = _edit_dd_result.get("clicked", False)
+            row_selector = f"{btn.get('parent', '更多')} > {btn_text}"
         else:
             _log.info(f"    [EDIT-DEBUG] 使用 toolbar 按钮点击方式")
             btn_click_result = await click_page_button(page, btn_text)
@@ -3504,6 +3780,21 @@ async def _do_edit(page, context: dict) -> dict:
 
         # 提交
         submit_result = await form_filler.submit_form_v2()
+        # ★ 批五 F3：守卫终态优先（按钮 disabled / 弹窗滞留 = 提交未生效）
+        if submit_result.get("submit_blocked"):
+            await _close_dialog(page)
+            return {
+                "success": False,
+                "error_type": submit_result["submit_blocked"],
+                "error_text": submit_result.get("blocked_reason") or "提交被守卫拦截（未生效）",
+                "trigger_text": btn_text,
+                "trigger_locator_verified": btn_click_result.get("locator"),
+                "form_fields": fields,
+                "filled_count": filled,
+                "dialog_detected": dialog_detected,
+                "interaction_mode": "dialog",
+                "dialog_locator": ".el-dialog__wrapper",
+            }
         if not submit_result.get("locator"):
             await _close_dialog(page)
             return {
@@ -3550,7 +3841,8 @@ async def _do_edit(page, context: dict) -> dict:
                 return result
 
         captured_msgs = await _get_captured_messages(page)
-        success, _detail = await _verify_operation_success(page, "update", captured_messages=captured_msgs)
+        success, _detail = await _verify_operation_success(page, "update", captured_messages=captured_msgs,
+                                                          url_before=url_before_click)
         if not success:
             await _close_dialog(page)
             return {
@@ -3736,6 +4028,9 @@ async def _do_delete(page, context: dict) -> dict:
     marker = context.get("marker")
     btn_text = btn.get("text", "")
     btn_location = btn.get("location", "toolbar")
+
+    # ★ 批五 F6：记录点击前 URL（无消息信号时 URL 跳转判成功的接线输入）
+    url_before = page.url
 
     # toolbar 批量删除：先勾选 checkbox
     if btn_location == "toolbar":
@@ -3950,7 +4245,8 @@ async def _do_delete(page, context: dict) -> dict:
     captured_msgs = await _get_captured_messages(page)
 
     # 验证成功（成功提示或行消失）
-    success, _detail = await _verify_operation_success(page, "delete", captured_messages=captured_msgs)
+    success, _detail = await _verify_operation_success(page, "delete", captured_messages=captured_msgs,
+                                                      url_before=url_before)
 
     # 行消失是最可靠的的成功信号，覆盖 toast 检测
     if not success and row_disappeared:
@@ -4073,7 +4369,44 @@ async def _do_navigation_operation(page, context: dict) -> dict:
     # ── 点击（复用 generic 的行级/toolbar 点击降级链） ──
     btn_click_result = {}
     clicked = False
-    if btn_location == "row_action":
+    _row_link = bool(btn.get("row_link"))
+    _row_link_class = btn.get("row_link_class", "") or ""
+    if btn_location == "row_action" and _row_link:
+        # ★ 批五 F4-2：归并后的名称链接语义操作——文本是语义名（页面上不
+        #   存在），不能全局/行内按文本点击；按 row_link_class 点 marker 行
+        #   名称单元格链接（三阶段一致：marker 行 + class 定位）。名称链接
+        #   的行归属即 marker 行本身，不做 first_row 降级。
+        if not marker:
+            cleanup_tab_listener()
+            LOG.warning(f"  [NAVIGATION] row_link 操作 '{btn_text}' 跳过: 需要 marker")
+            return {
+                "success": False,
+                "error_type": "skipped",
+                "error_text": "名称链接操作需要 marker",
+                "trigger_text": trigger_text,
+                "btn_location": btn_location,
+            }
+        driver = ButtonDriver(page)
+        row = await driver.find_data_row(marker)
+        if not row:
+            cleanup_tab_listener()
+            return {
+                "success": False,
+                "error_type": "row_not_found",
+                "error_text": f"未找到数据行: {marker}",
+                "trigger_text": trigger_text,
+                "btn_location": btn_location,
+            }
+        clicked = await driver.click_row_name_link(row, _row_link_class)
+        if clicked:
+            _rl_tokens = [t for t in _row_link_class.split() if t]
+            btn_click_result = {
+                "clicked": True,
+                "tag": btn.get("tag", "span"),
+                "text": "row_name_link",
+                "locator": ("." + ".".join(_rl_tokens)) if _rl_tokens else "",
+            }
+    elif btn_location == "row_action":
         # 名称链接类：文本全局唯一直接点击 → marker 行内定位 → first_row 兜底
         # （非破坏性降级语义与 generic/Stage 2 _step_find_row 对齐）
         _direct = await try_click_unique_global_button(page, btn_text)
@@ -4153,7 +4486,7 @@ async def _do_navigation_operation(page, context: dict) -> dict:
             await _navigate_back_to_list(page, url_before, tab_name=tab_name, tab_locator=tab_locator)
 
         LOG.info(f"  [NAVIGATION] ✓ 跳转验证成功: '{btn_text}' → {nav_info['navigated_url'][:60]}")
-        return {
+        result = {
             "success": True,
             "action": action,
             "trigger_text": trigger_text,
@@ -4162,6 +4495,18 @@ async def _do_navigation_operation(page, context: dict) -> dict:
             "interaction_mode": "navigation",
             "nav_info": nav_info,
         }
+        # ★ 批五 F4-2：row_link 操作落 op_data 标记 + selectors——builder
+        #   据此生成 find_row + click_row_name_link 步骤（三阶段一致），
+        #   trigger_locator 仅作调试信息（builder row_link 分支优先短路）。
+        if _row_link:
+            result["row_link"] = True
+            result["row_link_class"] = _row_link_class
+            result["selectors"] = {
+                "trigger": trigger_text,
+                "row_selector": "row_name_link",
+                "row_link_class": _row_link_class,
+            }
+        return result
 
     # ── 未发生导航：按实际反馈记录失败（不重试、不等弹窗） ──
     # dialog 场景属意外反馈（导航类不应弹窗），关闭弹窗恢复现场防污染后续操作
@@ -5015,6 +5360,18 @@ async def _do_generic_operation(page, context: dict) -> dict:
 
             submit_result = await form_filler.submit_form_v2(scope_selector=_sel_q)
             LOG.debug(f"    submit_form_v2 返回: {submit_result}")
+            # ★ 批五 F3：守卫终态优先——按钮 disabled 未点击 / 点击后弹窗滞留，
+            #   均为提交未生效的终态，不回退 confirm_dialog（同弹窗同批按钮，
+            #   回退无意义），直接落失败。
+            if submit_result.get("submit_blocked"):
+                LOG.warning(f"    [F3] {action} 提交守卫拦截: "
+                            f"{submit_result['submit_blocked']} —— "
+                            f"{submit_result.get('blocked_reason', '')}")
+                await _close_dialog(page)
+                return _fail(
+                    submit_result["submit_blocked"],
+                    f"{action} 提交未生效: {submit_result.get('blocked_reason', '')}",
+                )
             if not submit_result.get("locator"):
                 LOG.info(f"    submit_form_v2 未找到提交按钮，回退到 confirm_dialog")
                 from core.discovery.replay.button_driver import confirm_dialog
@@ -5194,7 +5551,12 @@ async def _do_generic_operation(page, context: dict) -> dict:
                     LOG.info(f"    [chain-confirm] 填充了 {chain_filled} 个字段")
 
                     chain_submit = await form_filler.submit_form_v2(scope_selector=chain_sel_q)
-                    if not chain_submit.get("locator"):
+                    # ★ 批五 F3：守卫终态——不回退 confirm_dialog（同弹窗同批按钮）
+                    if chain_submit.get("submit_blocked"):
+                        LOG.warning(f"    [chain-confirm] 提交守卫拦截: "
+                                    f"{chain_submit['submit_blocked']} —— "
+                                    f"{chain_submit.get('blocked_reason', '')}")
+                    elif not chain_submit.get("locator"):
                         LOG.info(f"    [chain-confirm] 未找到提交按钮，回退到 confirm_dialog")
                         chain_confirmed = await confirm_dialog(page)
                         if chain_confirmed:
@@ -5574,7 +5936,10 @@ async def _do_generic_operation(page, context: dict) -> dict:
         LOG.info(f"      [{i}] text='{msg.get('text', '')[:80]}', type={msg.get('type')}, source={msg.get('source')}")
 
     # 验证操作是否真的成功（需要正向成功信号）
-    success, detail = await _verify_operation_success(page, action, captured_messages=captured_msgs)
+    # ★ 批五 F6：透传 url_before——row_link/网络配置类跳转操作无消息时
+    #   由 shared 判定梯 navigation_url_change 层判成功（有消息永远优先）
+    success, detail = await _verify_operation_success(page, action, captured_messages=captured_msgs,
+                                                     url_before=url_before)
 
     # ★ 统一判定逻辑：无论 failure_type 是什么，未检测到成功信号即标记为失败
     # query/detail 操作有独立函数（_do_query/_do_detail），不走此路径，不受影响
