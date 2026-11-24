@@ -2371,6 +2371,26 @@ class MultiStepExecutor:
     每种组件有专属的执行序列，从 KB 读取步骤模板并按序执行。
     """
 
+    # ★ el-select 单选字段优先选项（项目级配置注入）：label → 期望选项文本列表。
+    # 由 run.py 从 profile.yaml form_preferences.select_preferred_options 注入
+    # （类属性而非实例属性——FormFiller/MultiStepExecutor 有 9 个实例化点，
+    # 类属性单点注入全链生效；Stage 1 探测与 Stage 2 回放同源，三阶段一致）。
+    # 命中时优先选择期望选项（覆盖表单默认值/first-option 自动发现），
+    # 期望选项不存在于可见选项时回退默认行为。
+    # 背景：EIS 创建云主机的表单默认命名空间配额不足导致 create 失败
+    # （form_validation: 当前命名空间内存配额不足），需显式选指定命名空间。
+    _preferred_select_options: Dict[str, List[str]] = {}
+
+    @classmethod
+    def set_select_preferred_options(cls, mapping) -> None:
+        """注入项目级 el-select 优先选项配置（幂等，覆盖式）。"""
+        cleaned = {}
+        if isinstance(mapping, dict):
+            for key, values in mapping.items():
+                if isinstance(values, (list, tuple)) and values:
+                    cleaned[str(key)] = [str(v) for v in values]
+        MultiStepExecutor._preferred_select_options = cleaned
+
     def __init__(self, page: Page, kb, framework: str = "element-ui"):
         """初始化执行器。
 
@@ -2735,6 +2755,24 @@ class MultiStepExecutor:
                 await self.page.wait_for_timeout(500)
                 option_text = await self._discover_first_option(timeout=2000)
                 LOG.debug(f"    el-select {label}: retry discovery option_text={repr(option_text)}")
+
+        # ★ Step 4.5: 优先选项覆盖（form_preferences.select_preferred_options）。
+        # label 命中配置时优先选择期望选项：覆盖默认值场景（option_text=表单
+        # 默认值）与 first-option 场景（option_text=第一个可见选项）。期望值
+        # 不在可见选项中时回退默认行为。下游 fill 搜索/select/click_first
+        # 及 interaction_steps 记录自动携带覆盖后的值——Stage 1 记录真实
+        # 选择序列，Stage 2 回放同构（三阶段一致）。
+        preferred_list = MultiStepExecutor._preferred_select_options.get(label)
+        if preferred_list:
+            found_pref = await self._find_preferred_option(preferred_list)
+            if found_pref:
+                if option_text and option_text != found_pref:
+                    LOG.info(f"    el-select {label}: 优先选项命中 '{found_pref}'，"
+                             f"覆盖默认发现值 '{option_text}'")
+                option_text = found_pref
+            else:
+                LOG.info(f"    el-select {label}: 优先选项 {preferred_list} 不在"
+                         f"可见选项中，保持 '{option_text}'")
 
         detail = {
             "is_editable": is_editable,
@@ -5118,6 +5156,41 @@ class MultiStepExecutor:
         return False
 
     # ---- 选项自动发现 ----
+
+    async def _find_preferred_option(self, preferred: List[str]) -> str:
+        """在已展开的可见下拉面板中查找期望选项文本。
+
+        扫描口径与 _discover_first_option 对齐（可见面板 + 可见选项 +
+        跳过 disabled），返回期望列表中第一个精确命中的选项文本；未命中
+        返回空串。仅支持 Element UI（配置消费场景）。
+
+        Args:
+            preferred: 期望选项文本列表（按优先级排序）
+
+        Returns:
+            命中的选项文本，未命中返回 ""
+        """
+        if self.framework == "ant-design":
+            return ""
+        try:
+            js = """(preferred) => {
+                const dropdowns = document.querySelectorAll('.el-select-dropdown');
+                for (const dd of dropdowns) {
+                    if (!(dd.offsetWidth > 0 && dd.offsetHeight > 0)) continue;
+                    const items = dd.querySelectorAll('.el-select-dropdown__item');
+                    for (const it of items) {
+                        if (it.offsetWidth <= 0 || it.offsetHeight <= 0) continue;
+                        if (it.classList.contains('is-disabled')) continue;
+                        const text = (it.textContent || '').trim();
+                        if (text && preferred.includes(text)) return text;
+                    }
+                }
+                return '';
+            }"""
+            return await self.page.evaluate(js, list(preferred)) or ""
+        except Exception as e:
+            LOG.debug(f"    _find_preferred_option failed: {e}")
+            return ""
 
     async def _discover_first_option(self, timeout: int = 3000) -> str:
         """展开下拉框后，读取第一个可见选项的文本。

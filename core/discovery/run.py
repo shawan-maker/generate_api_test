@@ -50,6 +50,7 @@ from core.discovery.stage1_rescue import precondition_retry as _precondition_ret
 from core.discovery.stage1_rescue import vision_rescue as _vision_rescue
 from core.discovery.batch_runner import run_all_modules
 from core.discovery.path_mapper import get_workspace_dir
+from core.discovery.replay.form_filler import MultiStepExecutor
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1572,6 +1573,14 @@ async def main():
     if not login_url:
         LOG.error("profile.yaml 缺少 login_url 配置")
         sys.exit(1)
+
+    # ★ 注入表单填充偏好（el-select 单选优先选项，profile.yaml
+    # form_preferences.select_preferred_options）：MultiStepExecutor 类属性
+    # 单点注入，FormFiller 延迟加载同源类，Stage 1 探测与 Stage 2 回放一致。
+    _pref_opts = (profile.get("form_preferences") or {}).get("select_preferred_options")
+    MultiStepExecutor.set_select_preferred_options(_pref_opts)
+    if _pref_opts:
+        LOG.info(f"表单填充偏好已注入: el-select 优先选项 {_pref_opts}")
 
     # 自动发现模式（--discover）
     if args.discover:

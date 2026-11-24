@@ -472,3 +472,105 @@ class TestScanRowStateSnapshotFString:
                         if seg.strip() in ("row", "..."):
                             suspects.append((node.lineno, seg))
         assert not suspects, f"未转义插值回归: {suspects}"
+
+
+# ============================================================
+# 第 7 轮增量：el-select 优先选项（form_preferences.select_preferred_options）
+# ============================================================
+
+class TestSelectPreferredOptions:
+    """命名空间等 el-select 单选字段优先选项机制。
+
+    实证（第 7 轮 Stage 1）: 创建云主机表单默认命名空间 wmk2 内存配额不足 →
+    form_validation 终态失败。机制: profile.yaml form_preferences.
+    select_preferred_options 注入 MultiStepExecutor 类属性，label 命中时
+    优先选择期望选项（覆盖表单默认值/first-option），未命中回退默认行为。
+    Stage 1 记录真实选择序列，Stage 2 回放同构（三阶段一致）。
+    """
+
+    FF_PATH = r"D:\Mobile\API_AI_test\core\discovery\replay\form_filler.py"
+    RUN_PATH = r"D:\Mobile\API_AI_test\core\discovery\run.py"
+    PROFILE_PATH = r"D:\Mobile\API_AI_test\projects\eis\profile.yaml"
+
+    def test_setter_cleans_and_overrides(self):
+        """setter: 非法条目清洗 + 覆盖式幂等 + 类属性全局生效。"""
+        from core.discovery.replay.form_filler import MultiStepExecutor
+        try:
+            MultiStepExecutor.set_select_preferred_options({
+                "命名空间": ["test-smoke"],
+                "bad_list": [],              # 空列表剔除
+                "bad_value": "not-a-list",   # 非列表剔除
+                "ok_tuple": ("a", "b"),      # tuple 接受
+            })
+            got = MultiStepExecutor._preferred_select_options
+            assert got == {"命名空间": ["test-smoke"], "ok_tuple": ["a", "b"]}
+            # 覆盖式幂等: 二次注入整体替换
+            MultiStepExecutor.set_select_preferred_options({"命名空间": ["x"]})
+            assert MultiStepExecutor._preferred_select_options == {"命名空间": ["x"]}
+            # 非法类型整体忽略
+            MultiStepExecutor.set_select_preferred_options(None)
+            assert MultiStepExecutor._preferred_select_options == {}
+        finally:
+            MultiStepExecutor.set_select_preferred_options(None)
+
+    def test_override_mounted_after_option_discovery(self):
+        """Step 4.5 覆盖逻辑必须挂在 first-option 发现之后、detail 构造之前。"""
+        src = open(self.FF_PATH, encoding="utf-8").read()
+        seg_pos = src.find("Step 4.5: 优先选项覆盖")
+        assert seg_pos > 0, "优先选项覆盖段未找到"
+        disc_pos = src.find("retry discovery option_text")
+        detail_pos = src.find('"is_editable": is_editable', seg_pos)
+        assert 0 < disc_pos < seg_pos, "覆盖须在选项发现之后"
+        assert detail_pos > seg_pos, "覆盖须在 detail 构造之前"
+        seg = src[seg_pos:detail_pos]
+        # 命中时覆盖 option_text；未命中保持默认行为
+        assert "option_text = found_pref" in seg
+        assert "保持" in seg and "不在" in seg
+
+    @pytest.mark.asyncio
+    async def test_find_preferred_option_passthrough(self):
+        """helper: JS 扫描口径（可见面板+可见选项+disabled 跳过+精确匹配）+ 结果透传。"""
+        from core.discovery.replay.form_filler import MultiStepExecutor
+
+        class _Page:
+            def __init__(self, result):
+                self.result, self.scripts = result, []
+
+            async def evaluate(self, script, *args):
+                self.scripts.append((script, args))
+                return self.result
+
+        ex = MultiStepExecutor(_Page("test-smoke"), None, "element-ui")
+        assert await ex._find_preferred_option(["a", "test-smoke"]) == "test-smoke"
+        js, args = ex.page.scripts[0]
+        assert "is-disabled" in js and "offsetWidth" in js
+        assert "preferred.includes(text)" in js
+        assert args == (["a", "test-smoke"],)
+        # 未命中与异常路径
+        assert await MultiStepExecutor(_Page(""), None)._find_preferred_option(["x"]) == ""
+
+        class _Boom:
+            async def evaluate(self, script, *args):
+                raise RuntimeError("boom")
+
+        assert await MultiStepExecutor(_Boom(), None)._find_preferred_option(["x"]) == ""
+        # ant-design 不支持（配置消费场景为 Element UI）
+        assert await MultiStepExecutor(_Page("x"), None, "ant-design")._find_preferred_option(["x"]) == ""
+
+    def test_run_py_injects_profile_preferences(self):
+        """run.py main 入口: profile form_preferences 注入 MultiStepExecutor。"""
+        src = open(self.RUN_PATH, encoding="utf-8").read()
+        imp_pos = src.find("from core.discovery.replay.form_filler import MultiStepExecutor")
+        call_pos = src.find("MultiStepExecutor.set_select_preferred_options(_pref_opts)")
+        assert imp_pos > 0 and call_pos > 0
+        # 注入点向前 1500 字符内须有 profile 加载与配置键读取（注入紧随 main 的 profile 加载）
+        seg = src[max(0, call_pos - 1500):call_pos]
+        assert "profile = _load_profile(project_dir)" in seg, "注入须在 profile 加载之后"
+        assert "form_preferences" in seg and "select_preferred_options" in seg
+
+    def test_profile_yaml_has_namespace_preference(self):
+        """EIS profile.yaml: form_preferences.select_preferred_options 可解析且指向 test-smoke。"""
+        import yaml
+        cfg = yaml.safe_load(open(self.PROFILE_PATH, encoding="utf-8").read())
+        prefs = (cfg.get("form_preferences") or {}).get("select_preferred_options") or {}
+        assert prefs.get("命名空间") == ["test-smoke"]
