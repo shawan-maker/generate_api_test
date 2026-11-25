@@ -1539,6 +1539,13 @@ class FormFiller:
         点击前无弹窗（fp_before 空）→ 不检查（toolbar 即时提交类）；
         点击前有弹窗 → 500ms（+loading 完成）后同指纹弹窗仍在 = 提交未生效
         的正面失败证据（F9 已把弹窗正文移出判定通道，滞留证据由本守卫提供）。
+
+        ★ 批六修复2 豁免：同指纹弹窗仍在时，先检测提交后二次确认浮层
+        （tooltip/alertdialog/el-popper 形态，EIS doubleConfirm 实证
+        div[role="tooltip"]）——「弹窗未关」可能是业务在等二次确认，
+        主提交已生效。检测到 → 点击层内确认按钮 → 复查弹窗关闭则放行；
+        点不到确认或点后弹窗仍滞留才维持 dialog_still_open（r8 重装
+        操作系统 3 次尝试全部被此误杀，业务主提交从未完成）。
         """
         if not fp_before:
             ret.setdefault("submit_blocked", None)
@@ -1550,6 +1557,27 @@ class FormFiller:
             await wait_for_loading_complete(self.page)
             fp_after = await self._active_dialog_fingerprint()
             if fp_after == fp_before:
+                # ── 批六修复2：二次确认浮层检测（守卫 B 豁免通道）──
+                dbl = await self._detect_and_click_double_confirm()
+                if dbl.get("clicked"):
+                    LOG.info(f"    [submit_form_v2] 批六修复2: 检测到提交后二次确认层"
+                             f"（{dbl.get('layer_tag', '')}），已点击确认按钮"
+                             f" '{dbl.get('button_text', '')}'")
+                    await self.page.wait_for_timeout(600)
+                    await wait_for_loading_complete(self.page)
+                    fp_after2 = await self._active_dialog_fingerprint()
+                    ret["double_confirm_clicked"] = True
+                    ret["double_confirm_button_text"] = dbl.get("button_text", "")
+                    ret["double_confirm_layer_tag"] = dbl.get("layer_tag", "")
+                    if fp_after2 != fp_before:
+                        LOG.info(f"    [submit_form_v2] 批六修复2: 二次确认完成，"
+                                 f"弹窗已关闭——主提交生效，守卫 B 放行")
+                        ret.setdefault("submit_blocked", None)
+                        ret.setdefault("blocked_reason", "")
+                        return ret
+                    LOG.warning(f"    [submit_form_v2] 批六修复2: 二次确认已点击但"
+                                f"弹窗仍滞留——继续落 dialog_still_open")
+                # ── 豁免通道结束：无二次确认层或点后仍滞留 → 维持原判定 ──
                 LOG.warning(f"    [submit_form_v2] 守卫 B: 提交点击完成但同指纹弹窗"
                             f" 500ms 后仍开启，判 dialog_still_open")
                 ret["submit_blocked"] = "dialog_still_open"
@@ -1563,6 +1591,17 @@ class FormFiller:
             ret.setdefault("submit_blocked", None)
             ret.setdefault("blocked_reason", "")
         return ret
+
+    async def _detect_and_click_double_confirm(self) -> dict:
+        """★ 批六修复2：二次确认浮层检测薄包装——单源在 shared/dialog_helpers。
+
+        结构判据与词表全部见 shared 实现文档（零硬编码 EIS 私有 id）。
+
+        Returns:
+            {"found": bool, "clicked": bool, "layer_tag": str, "button_text": str}
+        """
+        from core.discovery.shared.dialog_helpers import detect_and_click_double_confirm
+        return await detect_and_click_double_confirm(self.page, log=LOG)
 
     async def _detect_submit_button_text(self, scope_selector: str = "") -> str:
         """快速探测页面中是否存在 SUBMIT_TEXTS 中的按钮文本，返回命中的按钮文本。
@@ -1782,7 +1821,9 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                 }});
                 independentInputs.forEach(inp => {{
                     fields.push(Object.assign({{ label, type: 'input', kb_category: 'input-generic',
-                                 inputType: inp.type || 'text', required }}, _buildSelector(inp, label)));
+                                 inputType: inp.type || 'text',
+                                 placeholder: inp.placeholder || '',
+                                 required }}, _buildSelector(inp, label)));
                 }});
             }}
             else if (fi.querySelector('{cascader_container}')) {{
@@ -2076,20 +2117,33 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
 
                     const ir = mainInput.getBoundingClientRect();
                     if (ir.width > 0 && ir.height > 0) {{
+                        // ★ 批六修复8：el-input-number 内部 input type=text，容器判据
+                        //   才是数字真值（与 fallback 分支 isNumber 同构）——此前落
+                        //   'text' 致 number 字段 name_pattern 填文本（E11 实证）
+                        const _num8 = !!mainInput.closest('.el-input-number');
                         fields.push(Object.assign({{ label, type: 'input', kb_category: 'input-generic',
-                                     inputType: mainInput.type || 'text', required,
-                                     inputCount: allInputs.length }}, _buildSelector(mainInput, label)));
+                                     inputType: _num8 ? 'number' : (mainInput.type || 'text'),
+                                     placeholder: mainInput.placeholder || '',
+                                     currentValue: mainInput.value || '',
+                                     inputCount: allInputs.length,
+                                     required }}, _buildSelector(mainInput, label)));
                     }}
                 }} else if (allInputs.length === 1) {{
                     // 单个 input
                     const inp = allInputs[0];
                     const ir = inp.getBoundingClientRect();
                     if (ir.width > 0 && ir.height > 0) {{
+                        // ★ 批六修复8：同上，el-input-number 容器判据 + 默认值采集
+                        const _num8 = !!inp.closest('.el-input-number');
                         fields.push(Object.assign({{ label, type: 'input', kb_category: 'input-generic',
-                                     inputType: inp.type || 'text', required }}, _buildSelector(inp, label)));
+                                     inputType: _num8 ? 'number' : (inp.type || 'text'),
+                                     placeholder: inp.placeholder || '',
+                                     currentValue: inp.value || '',
+                                     required }}, _buildSelector(inp, label)));
                     }}
                 }} else if (ta) {{
                     fields.push(Object.assign({{ label, type: 'textarea', kb_category: 'textarea-generic',
+                                 placeholder: ta.placeholder || '',
                                  required }}, _buildSelector(ta, label)));
                 }}
                 }}

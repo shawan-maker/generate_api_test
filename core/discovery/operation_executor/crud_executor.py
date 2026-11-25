@@ -3199,7 +3199,7 @@ async def _do_create(page, context: dict) -> dict:
                 if _src.get("hidden_fields") is not None:
                     rd_entry["hidden_fields"] = _src["hidden_fields"]
 
-    return {
+    result = {
         "success": True,
         "fill_data": fill_data,
         "fill_rules": fill_rules,
@@ -3231,6 +3231,18 @@ async def _do_create(page, context: dict) -> dict:
         "radio_field_details": radio_field_details,  # Phase 1.1
         "cascade_actions": cascade_actions,  # ★ 记录 radio 触发的级联操作（如 transfer-box）
     }
+
+    # ★ 批六修复2：守卫 B 豁免通道点了提交后二次确认层 → 落库供 builder 回放
+    if submit_result.get("double_confirm_clicked"):
+        result["double_confirm"] = {
+            "clicked": True,
+            "button_text": submit_result.get("double_confirm_button_text", ""),
+            "layer_tag": submit_result.get("double_confirm_layer_tag", ""),
+            "source": "create_submit_guard_b",
+        }
+        LOG.info(f"    [批六修复2] {btn_text} 创建提交后自动确认二次确认层"
+                 f"（按钮 '{result['double_confirm']['button_text']}'）")
+    return result
 
 
 async def _do_query_via_search_input(page, btn: dict, marker: str = None) -> dict:
@@ -3939,7 +3951,7 @@ async def _do_edit(page, context: dict) -> dict:
                 "fill_rule": field.get("fill_rule", {}),
             })
 
-    return {
+    result = {
         "success": True,
         "edit_fill_data": {"modified_fields": filled},
         "selectors": selectors,
@@ -3964,6 +3976,19 @@ async def _do_edit(page, context: dict) -> dict:
         "radio_field_details": radio_field_details,
         "cascade_actions": [],  # 编辑操作不收集 cascade（fill_edit_form 返回 int）
     }
+
+    # ★ 批六修复2：守卫 B 豁免通道点了提交后二次确认层 → 落库供 builder 回放
+    #   （宪法：Stage 1 自动识别的行为必须落 playbook steps）
+    if submit_result.get("double_confirm_clicked"):
+        result["double_confirm"] = {
+            "clicked": True,
+            "button_text": submit_result.get("double_confirm_button_text", ""),
+            "layer_tag": submit_result.get("double_confirm_layer_tag", ""),
+            "source": "edit_submit_guard_b",
+        }
+        LOG.info(f"    [批六修复2] {btn_text} 编辑提交后自动确认二次确认层"
+                 f"（按钮 '{result['double_confirm']['button_text']}'）")
+    return result
 
 
 async def _do_toggle_switch(page, context: dict) -> dict:
@@ -4595,6 +4620,8 @@ async def _do_generic_operation(page, context: dict) -> dict:
     from core.discovery.ui_scanner.button_detector import (
         _close_dialog, _check_precondition_state,
     )
+    # ★ 批六修复2：提交后二次确认浮层检测（shared 单源，Stage 1 守卫 B / chain-confirm 共用）
+    from core.discovery.shared.dialog_helpers import detect_and_click_double_confirm
 
     btn = context["btn"]
     action = context["action"]
@@ -4613,6 +4640,9 @@ async def _do_generic_operation(page, context: dict) -> dict:
     edit_field_details = []
     radio_field_details_local = []
     submit_result = {}
+    # ★ 批六修复2：提交后二次确认层信息（守卫 B 豁免通道/chain-confirm 检测写入，
+    #   落进 result["double_confirm"] 供 builder 生成 click_double_confirm 步骤）
+    double_confirm_info = None
     # 初始化上下文变量（确保在任何失败路径都能访问）
     _verified_trigger_locator = None
     _verified_dropdown_item_text = None
@@ -5436,6 +5466,17 @@ async def _do_generic_operation(page, context: dict) -> dict:
 
             submit_result = await form_filler.submit_form_v2(scope_selector=_sel_q)
             LOG.debug(f"    submit_form_v2 返回: {submit_result}")
+            # ★ 批六修复2：守卫 B 豁免通道点了二次确认层 → 记录供 playbook 回放
+            #   （宪法：Stage 1 自动识别的行为必须落 steps，Stage 2 按步骤回放）
+            if submit_result.get("double_confirm_clicked"):
+                double_confirm_info = {
+                    "clicked": True,
+                    "button_text": submit_result.get("double_confirm_button_text", ""),
+                    "layer_tag": submit_result.get("double_confirm_layer_tag", ""),
+                    "source": "submit_form_v2_guard_b",
+                }
+                LOG.info(f"    [批六修复2] {action} 主提交后自动确认二次确认层"
+                         f"（按钮 '{double_confirm_info['button_text']}'）")
             # ★ 批五 F3：守卫终态优先——按钮 disabled 未点击 / 点击后弹窗滞留，
             #   均为提交未生效的终态，不回退 confirm_dialog（同弹窗同批按钮，
             #   回退无意义），直接落失败。
@@ -5457,6 +5498,17 @@ async def _do_generic_operation(page, context: dict) -> dict:
                 if not confirmed:
                     await _close_dialog(page)
                     return _fail("no_confirm_button", f"{action} {actual_state} 中未找到提交/确认按钮")
+                # ★ 批六修复2：confirm_dialog 后可能出现浮层形态二次确认——
+                #   检测点击（幂等：无浮层零动作）
+                if not double_confirm_info:
+                    _dbl = await detect_and_click_double_confirm(page, log=LOG)
+                    if _dbl.get("clicked"):
+                        double_confirm_info = {
+                            "clicked": True,
+                            "button_text": _dbl.get("button_text", ""),
+                            "layer_tag": _dbl.get("layer_tag", ""),
+                            "source": "confirm_dialog_fallback",
+                        }
             await page.wait_for_timeout(2000)
             await wait_for_loading_complete(page)
 
@@ -5517,6 +5569,16 @@ async def _do_generic_operation(page, context: dict) -> dict:
                 LOG.warning(f"    {actual_state} 中未找到确认按钮")
                 await _close_dialog(page)
                 return _fail("no_confirm_button", f"{action} {actual_state} 中未找到确认按钮")
+            # ★ 批六修复2：message-box/popconfirm 确认后可能出浮层形态二次确认
+            if not double_confirm_info:
+                _dbl = await detect_and_click_double_confirm(page, log=LOG)
+                if _dbl.get("clicked"):
+                    double_confirm_info = {
+                        "clicked": True,
+                        "button_text": _dbl.get("button_text", ""),
+                        "layer_tag": _dbl.get("layer_tag", ""),
+                        "source": "message_box_confirm",
+                    }
             await wait_for_loading_complete(page)
             await page.wait_for_timeout(1000)
 
@@ -5627,6 +5689,14 @@ async def _do_generic_operation(page, context: dict) -> dict:
                     LOG.info(f"    [chain-confirm] 填充了 {chain_filled} 个字段")
 
                     chain_submit = await form_filler.submit_form_v2(scope_selector=chain_sel_q)
+                    # ★ 批六修复2：chain-confirm 提交的守卫 B 豁免同样可能点掉二次确认层
+                    if chain_submit.get("double_confirm_clicked") and not double_confirm_info:
+                        double_confirm_info = {
+                            "clicked": True,
+                            "button_text": chain_submit.get("double_confirm_button_text", ""),
+                            "layer_tag": chain_submit.get("double_confirm_layer_tag", ""),
+                            "source": "chain_confirm_submit",
+                        }
                     # ★ 批五 F3：守卫终态——不回退 confirm_dialog（同弹窗同批按钮）
                     if chain_submit.get("submit_blocked"):
                         LOG.warning(f"    [chain-confirm] 提交守卫拦截: "
@@ -5644,6 +5714,16 @@ async def _do_generic_operation(page, context: dict) -> dict:
                 chain_confirmed = await confirm_dialog(page)
                 if chain_confirmed:
                     LOG.info(f"    [chain-confirm] 链式确认按钮: {chain_confirmed}")
+                # ★ 批六修复2：链式确认后浮层形态二次确认兜底（幂等）
+                if not double_confirm_info:
+                    _dbl = await detect_and_click_double_confirm(page, log=LOG)
+                    if _dbl.get("clicked"):
+                        double_confirm_info = {
+                            "clicked": True,
+                            "button_text": _dbl.get("button_text", ""),
+                            "layer_tag": _dbl.get("layer_tag", ""),
+                            "source": "chain_confirm_no_form",
+                        }
                 await wait_for_loading_complete(page)
                 await page.wait_for_timeout(1000)
 
@@ -6043,6 +6123,10 @@ async def _do_generic_operation(page, context: dict) -> dict:
             "confirmed": True,
             "button_text": confirmed,
         }
+
+    # ★ 批六修复2：记录提交后二次确认层信息（供 builder 生成 click_double_confirm 步骤）
+    if double_confirm_info:
+        result["double_confirm"] = double_confirm_info
 
     # 记录弹窗中填充的 select 字段详情（供 playbook 生成 fill_form 步骤）
     if dialog_fill_details:

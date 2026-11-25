@@ -167,6 +167,35 @@ def _expected_failure_fields(op_data: dict) -> dict:
     }
 
 
+def _build_double_confirm_steps(op_data: dict) -> list:
+    """★ 批六修复2（宪法三阶段一致性）：提交后二次确认层的回放步骤生成。
+
+    Stage 1 守卫 B 豁免通道（shared/dialog_helpers.detect_and_click_double_confirm）
+    验证过「主提交 → 二次确认层 → 业务成功」的行为，按宪法必须落 playbook
+    steps 供 Stage 2 回放（而非 Stage 2 再探测一次）。locator 按候选层结构
+    生成（tooltip/alertdialog/el-popper 形态 + 实际点过的按钮文本），
+    Stage 2 的 _step_click_double_confirm 消费。
+
+    Returns:
+        list: 单步 [{"action": "click_double_confirm", ...}]；未记录则空列表。
+    """
+    dc = op_data.get("double_confirm", {})
+    if not isinstance(dc, dict) or not dc.get("clicked"):
+        return []
+    btn_text = dc.get("button_text") or "确认"
+    return [{
+        "action": "click_double_confirm",
+        "button_text": btn_text,
+        "layer_tag": dc.get("layer_tag", ""),
+        "playwright_locator": (
+            f"[role='tooltip'] button:has-text('{btn_text}'), "
+            f"[role='alertdialog'] button:has-text('{btn_text}'), "
+            f".el-popper button:has-text('{btn_text}')"
+        ),
+        "description": f"点击提交后二次确认层的确认按钮（{btn_text}）",
+    }]
+
+
 def _build_detail_steps(op_data: dict) -> list:
     """构建查看详情步骤。
 
@@ -1081,6 +1110,9 @@ def _build_create_steps(op_data: dict) -> list:
         }
         steps.append(step_entry)
 
+    # ★ 批六修复2（宪法）：Stage 1 识别的提交后二次确认层 → 回放步骤
+    steps.extend(_build_double_confirm_steps(op_data))
+
     # Step 5: 验证成功
     # ★ D 轮：Stage 1 标记失败的写操作 → expected_failure（复现实证语义），
     #   判定器将捕获失败信号作为"预期复现"实证，而非寻找成功信号
@@ -1437,6 +1469,9 @@ def _build_update_steps(op_data: dict, create_marker=None) -> list:
         }
         steps.append(click_step)
 
+    # ★ 批六修复2（宪法）：Stage 1 识别的提交后二次确认层 → 回放步骤
+    steps.extend(_build_double_confirm_steps(op_data))
+
     # Step 6: 验证成功
     # ★ D 轮：Stage 1 标记失败的更新操作 → expected_failure（复现实证语义）
     success_locator = op_data.get("success_locator", ".el-message--success")
@@ -1738,6 +1773,11 @@ def _build_generic_steps(op_data: dict, create_marker=None) -> list:
             "action": "confirm_dialog",
             "description": "点击确认对话框"
         })
+
+    # ★ 批六修复2（宪法）：Stage 1 自动识别的提交后二次确认层 → 回放步骤。
+    #   Stage 1 守卫 B 豁免通道已验证点击有效且业务成功，Stage 2 按步骤
+    #   回放（结构判据 locator 由 shared 单源消费，非二次探测业务规则）。
+    steps.extend(_build_double_confirm_steps(op_data))
 
     # 如果确认后对话框仍在，插入关闭步骤
     post_state = op_data.get("post_confirm_state", {})

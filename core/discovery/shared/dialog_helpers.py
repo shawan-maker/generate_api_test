@@ -239,3 +239,76 @@ async def wait_for_confirm_box_dismissed(page: Page, max_wait: int = 10) -> bool
             return True
         await page.wait_for_timeout(300)
     return False
+
+
+async def detect_and_click_double_confirm(page: Page, log=None) -> dict:
+    """★ 批六修复2：检测提交后二次确认浮层并点击其确认按钮（通用结构判据）。
+
+    背景（r8 定案）：两步提交的二次确认层（EIS doubleConfirm 实证
+    div[role="tooltip"] + #doubleConfirm-confirm）不在弹窗容器白名单——
+    守卫 B 把「主弹窗等二次确认」误判为 dialog_still_open，重装操作系统
+    3 次尝试全被误杀（主提交实际已生效）。
+
+    结构判据（零硬编码单点形态）：
+    - 候选层 = [role="tooltip"] / [role="alertdialog"] / .el-popper /
+      [role="dialog"] 中可见（offsetWidth/Height > 0）的层；
+    - 排除主弹窗容器内嵌层（el-dialog/message-box/drawer wrapper 内），
+      避免把主弹窗自己的确认按钮当二次确认；
+    - 排除下拉类 popper（el-dropdown-menu / el-select-dropdown /
+      el-picker-panel / el-cascader-panel / el-table）——行级 hover 菜单
+      泄漏与 select 展开态不误伤；
+    - 层内可见可点击（DOM disabled + Vue prop disabled 权威口径）按钮，
+      去空格小写文本 ∈ DOUBLE_CONFIRM_BUTTON_TEXTS（const 单源词表）。
+
+    单源声明：Stage 1 form_filler 守卫 B 豁免通道与 crud_executor
+    chain-confirm 提交后段共用本函数；勿在别处复制。
+
+    Args:
+        page: Playwright Page 对象
+        log: 可选 logger（默认模块 LOG）
+
+    Returns:
+        dict: {"found": bool, "clicked": bool, "layer_tag": str, "button_text": str}
+    """
+    lg = log or LOG
+    try:
+        from core.discovery.const import DOUBLE_CONFIRM_BUTTON_TEXTS
+        dbl = await page.evaluate("""(confirmTexts) => {
+            const candidates = document.querySelectorAll(
+                '[role="tooltip"], [role="alertdialog"], .el-popper, [role="dialog"]');
+            for (const layer of candidates) {
+                if (layer.offsetWidth <= 0 || layer.offsetHeight <= 0) continue;
+                if (layer.style.display === 'none') continue;
+                // 排除主弹窗容器本身与内嵌层
+                if (layer.closest('.el-dialog__wrapper, .el-message-box__wrapper,'
+                    + ' .el-drawer, .ant-modal-wrap')) continue;
+                if (layer.classList.contains('el-dialog')
+                    || layer.classList.contains('el-message-box')) continue;
+                // 排除下拉类 popper（行级菜单泄漏 / select 展开 / 日期面板）
+                if (layer.querySelector('.el-dropdown-menu, .el-select-dropdown,'
+                    + ' .el-picker-panel, .el-cascader-panel, .el-table')) continue;
+                const btns = layer.querySelectorAll('button, .el-button, [role="button"]');
+                for (const b of btns) {
+                    if (b.offsetWidth <= 0 || b.offsetHeight <= 0) continue;
+                    if (b.disabled) continue;
+                    const vue = b.__vue__;
+                    if (vue && vue.disabled === true) continue;  // Vue prop 权威口径
+                    const t = (b.textContent || '').replace(/\\s+/g, '').toLowerCase();
+                    if (confirmTexts.indexOf(t) !== -1) {
+                        b.click();
+                        return {found: true, clicked: true,
+                                layer_tag: layer.tagName + (layer.getAttribute('role')
+                                ? '[role=' + layer.getAttribute('role') + ']' : ''),
+                                button_text: (b.textContent || '').trim()};
+                    }
+                }
+            }
+            return {found: false, clicked: false};
+        }""", [t.lower() for t in DOUBLE_CONFIRM_BUTTON_TEXTS])
+        if dbl and dbl.get("clicked"):
+            lg.info(f"    [批六修复2] 二次确认层已点击确认: "
+                    f"{dbl.get('layer_tag', '')} / '{dbl.get('button_text', '')}'")
+        return dbl or {"found": False, "clicked": False}
+    except Exception as e:
+        lg.debug(f"    [批六修复2] 二次确认层检测异常（忽略）: {e}")
+        return {"found": False, "clicked": False}

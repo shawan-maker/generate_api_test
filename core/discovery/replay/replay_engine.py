@@ -327,6 +327,12 @@ async def replay_from_playbook(page, steps: list, button_driver: ButtonDriver,
                     interceptor.mark_submit()
                 await _step_confirm_dialog(page, step, result)
 
+            elif action == "click_double_confirm":
+                # ★ 批六修复2：回放 Stage 1 识别的提交后二次确认层
+                #   （步骤由 builder._build_double_confirm_steps 生成；
+                #   点击实现走 shared 单源，与 Stage 1 守卫 B 豁免通道同构）
+                await _step_click_double_confirm(page, step, result)
+
             elif action == "close_dialog":
                 await _step_close_dialog(page, step)
 
@@ -1691,6 +1697,43 @@ async def _step_confirm_dialog(page, step: dict, result: dict = None):
     if dialog_remains:
         LOG.warning("    [confirm_dialog] 确认后 dialog 仍存在，尝试再次关闭")
         await close_dialog(page)
+
+
+async def _step_click_double_confirm(page, step: dict, result: dict = None):
+    """★ 批六修复2：回放提交后二次确认层（纯执行，不做业务探测）。
+
+    步骤由 builder._build_double_confirm_steps 按 Stage 1 守卫 B 豁免通道
+    验证过的行为生成（宪法三阶段一致性：Stage 1 识别 → playbook steps →
+    Stage 2 回放）。点击实现复用 shared 单源
+    detect_and_click_double_confirm——与 Stage 1 完全相同的结构判据与词表。
+
+    幂等性：页面上无浮层时返回 False 不抛错（业务可能已自动关闭浮层，
+    此时主提交仍然生效，不应让回放红灯）。
+    """
+    from core.discovery.shared.dialog_helpers import detect_and_click_double_confirm
+    from .wait_helpers import wait_for_loading_complete
+
+    btn_text = step.get("button_text", "")
+    LOG.debug(f"    [click_double_confirm] 回放二次确认层点击（按钮 '{btn_text}'）")
+
+    dbl = await detect_and_click_double_confirm(page, log=LOG)
+    if dbl.get("clicked"):
+        LOG.info(f"    [click_double_confirm] 已点击二次确认按钮: "
+                 f"'{dbl.get('button_text', '')}'（层: {dbl.get('layer_tag', '')}）")
+        await page.wait_for_timeout(600)
+        await wait_for_loading_complete(page)
+        if result is not None:
+            result["double_confirm_clicked"] = True
+            result["double_confirm_button_text"] = dbl.get("button_text", "")
+        return
+
+    # 浮层不存在——可能业务前端已直接完成提交（无需二次确认分支），
+    # 或 Stage 2 时序上浮层已消失。二次确认层缺失不代表主提交失败，
+    # 由后续 assert_success 判定业务结果，此处不红灯。
+    LOG.info(f"    [click_double_confirm] 未发现二次确认浮层（按钮 '{btn_text}'），"
+             f"跳过——由 assert_success 判定业务结果")
+    if result is not None:
+        result["double_confirm_absent"] = True
 
 
 async def _step_close_dialog(page, step: dict):

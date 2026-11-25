@@ -64,6 +64,80 @@ CANCEL_TEXTS = ['取消', 'Cancel', '否']
 NEGATIVE_BUTTON_PREFIXES = ['放弃', '取消', '关闭', '返回', '重置', '上一步',
                             '退出', '暂不', '不保存', '清空']
 
+# ★ 批六修复2：提交后二次确认层（tooltip/alertdialog/el-popper 浮层形态，
+#   EIS doubleConfirm 实证 div[role="tooltip"]）内确认按钮文本——去空格归一化
+#   全等匹配（js_double_confirm_texts 注入 JS 侧）。单源：form_filler 守卫 B
+#   豁免检测与 Stage 1 通用确认层点击共用，勿在别处复制。
+DOUBLE_CONFIRM_BUTTON_TEXTS = ['确认', '确定', '继续', '是', '重试',
+                               'confirm', 'ok', 'yes', 'continue']
+
+
+def js_double_confirm_texts() -> str:
+    """二次确认按钮词表 → JS 数组字面量（注入 page.evaluate 用）。"""
+    import json as _json
+    return _json.dumps(DOUBLE_CONFIRM_BUTTON_TEXTS)
+
+
+# ★ 批六修复5：终态失败类型白名单——attempted_actions 只收「环境不可自愈」
+#   实证类（r8：重置密码/更新密钥对/克隆每轮被批/RECONCILE 当新启用完整
+#   重跑，41 分钟 vs 基线 16 分钟的主因）。click_failed/skipped/dialog_still_open/
+#   no_signal 不入册——状态机域管理，保留 reconcile 恢复能力：
+#   - click_failed/skipped(disabled)：过渡窗/状态门控，状态翻转后可自愈；
+#   - dialog_still_open：修复 2 落地后大幅减少，暂不入册防误杀；
+#   - no_signal：消息误判风险留观察。
+#   dialog_mismatch：修复 3a 新终态（残留弹窗属其他操作，本操作从未真正
+#   打开——重试只会再次撞错，不可自愈）。
+TERMINAL_ERROR_TYPES = frozenset({
+    'required_field_empty',   # 必填字段无法自动填充（环境配置缺权限/配额）
+    'form_validation',        # 表单校验拒绝（生成值不合法，重试同值必再拒）
+    'no_confirm_button',      # 弹窗无确认按钮（结构缺失）
+    'confirm_word_missing',   # 确认词字段无法取词（placeholder 无引号词）
+    'no_fields',              # 弹窗无可编辑字段（结构缺失）
+    'dialog_mismatch',        # 弹窗归属不匹配（修复 3a 终态）
+})
+
+
+# ★ 批六修复6b：状态切换按钮对互斥词表（前缀互补判定，单源——不写死
+#   具体操作名）。判定用结构信号：消失按钮文本以词表某前缀开头 → 在
+#   扫描快照候选中找互补前缀开头的新文本（如「进入运维模式」消失 →
+#   「退出运维模式」出现）。供 INCREMENTAL-SCAN 切换对兜底入册。
+TOGGLE_PAIR_KEYWORDS = [
+    ('进入', '退出'),
+    ('启用', '停用'),
+    ('开启', '关闭'),
+    ('冻结', '解冻'),
+    ('锁定', '解锁'),
+]
+
+
+def find_toggle_pair_text(old_text: str, candidates) -> str:
+    """在候选文本集合中找 old_text 的互斥配对新文本（批六修复6b 单源）。
+
+    判定：old_text 去空格归一化后以词表某前缀开头 → 互补前缀替换 →
+    候选中存在以互补前缀开头、且与 old_text 不同的文本 → 返回该候选；
+    未命中返回空串。candidates 可为 list/set/生成器。
+    """
+    if not old_text:
+        return ""
+    _ws = _re.compile(r'[\s\u3000]+')
+    norm = _ws.sub('', str(old_text))
+    if not norm:
+        return ""
+    for a, b in TOGGLE_PAIR_KEYWORDS:
+        pair_prefix = ""
+        if norm.startswith(a):
+            pair_prefix = b
+        elif norm.startswith(b):
+            pair_prefix = a
+        if not pair_prefix:
+            continue
+        for cand in (candidates or []):
+            cand_norm = _ws.sub('', str(cand))
+            if cand_norm and cand_norm.startswith(pair_prefix) and cand_norm != norm:
+                return cand
+        break
+    return ""
+
 # ★ 批五 F3：placeholder 确认词单源正则——「请输入 "DELETE" 确认删除」类
 # 危险操作确认输入框，从 placeholder 提取引号包裹词（1-40 字符）作为填充值。
 # 与 button_driver._preprocess_confirm_form 的 JS 正则同构（中西引号全支持）；
