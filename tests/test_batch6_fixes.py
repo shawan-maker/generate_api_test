@@ -36,6 +36,7 @@ from core.discovery.replay import form_filler
 from core.discovery.shared.dialog_helpers import detect_and_click_double_confirm
 from core.discovery.shared.fill_helpers import (
     _infer_fill_rule,
+    apply_fill_rule,
     generate_fill_data,
     generate_fill_rules,
     generate_fill_value,
@@ -147,6 +148,15 @@ class TestFix2DoubleConfirm:
         page = DoubleConfirmPage(raise_exc=RuntimeError("mock js error"))
         ret = await detect_and_click_double_confirm(page)
         assert ret == {"found": False, "clicked": False}
+
+    def test_button_selector_covers_bare_span(self):
+        """P-D1 v10 真机实证：EIS 二次确认按钮是裸 SPAN#doubleConfirm-confirm
+        （无 button tag / el-button class / role）——按钮选择器必须含 span，
+        词表全等过滤是唯一点击判据（「取消」/外层拼接文本不命中）。"""
+        from core.discovery.shared import dialog_helpers
+        src = _src(dialog_helpers.detect_and_click_double_confirm)
+        assert 'button, .el-button, [role="button"], span' in src, \
+            "按钮选择器缺 span（P-D1 v10 实证形态盲点）"
 
     def test_form_filler_guard_b_exemption_wired(self):
         """守卫 B 同指纹滞留分支接豁免检测（薄包装 → shared 单源，源码守卫）。"""
@@ -494,6 +504,44 @@ class TestFix8NumberRule:
         assert src.count(".el-input-number')") >= 3, \
             "el-input-number 容器判据覆盖不足"
         assert src.count("currentValue:") >= 2, "currentValue 采集点不足"
+
+    # ---------- P-D1 密码规则（v8 弹窗提示原文实证）----------
+    # EIS 前端校验「包含数字，但不能出现3个及以上连续或重复的数字」：
+    # 旧形态 Test@<6位随机数> 是 6 个位置连续数字、几乎必违规（r8
+    # Test@667196 实证被拒、无 POST）。
+
+    def test_password_no_three_consecutive_digits(self):
+        """password 分支生成值：无 3 连数字、数字互异、必含数字。"""
+        import re
+        for _ in range(50):
+            value, rule = generate_fill_value("input", "password")
+            assert rule["rule"] == "password_pattern"
+            assert not re.search(r"\d{3}", value), f"3连数字: {value}"
+            digits = re.findall(r"\d", value)
+            assert digits, f"必须含数字: {value}"
+            assert len(digits) == len(set(digits)), f"重复数字: {value}"
+
+    def test_password_label_branch_same_form(self):
+        """label 含密码关键词（inputType 缺失兜底）→ 同交错形态。"""
+        import re
+        for _ in range(20):
+            value, rule = generate_fill_value("input", "text", label="登录密码")
+            assert rule["rule"] == "password_pattern"
+            assert not re.search(r"\d{3}", value), f"3连数字: {value}"
+
+    def test_apply_fill_rule_password_rebuild(self):
+        """replay 重建（apply_fill_rule password_pattern）与探测同源形态。"""
+        import re
+        for _ in range(20):
+            value = apply_fill_rule({"rule": "password_pattern",
+                                     "params": {"prefix": "Test@"}})
+            assert not re.search(r"\d{3}", value), f"3连数字: {value}"
+
+    def test_password_fixed_default_compliant(self):
+        """password_fixed 缺省值合规（Test@123456 的「123」已换合规形态）。"""
+        import re
+        value = apply_fill_rule({"rule": "password_fixed", "params": {}})
+        assert not re.search(r"\d{3}", value), f"3连数字: {value}"
 
 
 # ============================================================

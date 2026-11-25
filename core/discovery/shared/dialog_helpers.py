@@ -248,6 +248,11 @@ async def detect_and_click_double_confirm(page: Page, log=None) -> dict:
     div[role="tooltip"] + #doubleConfirm-confirm）不在弹窗容器白名单——
     守卫 B 把「主弹窗等二次确认」误判为 dialog_still_open，重装操作系统
     3 次尝试全被误杀（主提交实际已生效）。
+    P-D1 v10 真机实证（tmp/probe_pd1_v10）：重装弹窗点确定后 ~148ms 弹出
+    DIV[role="tooltip"].el-popover.order-confirm（offW=300，Element UI 显示
+    时 teleport 到 body 下、不在主弹窗 wrapper 内），按钮是裸
+    SPAN#doubleConfirm-confirm 文本「确定」——无 button tag / el-button
+    class / role，故按钮选择器必须含 span。
 
     结构判据（零硬编码单点形态）：
     - 候选层 = [role="tooltip"] / [role="alertdialog"] / .el-popper /
@@ -257,8 +262,10 @@ async def detect_and_click_double_confirm(page: Page, log=None) -> dict:
     - 排除下拉类 popper（el-dropdown-menu / el-select-dropdown /
       el-picker-panel / el-cascader-panel / el-table）——行级 hover 菜单
       泄漏与 select 展开态不误伤；
-    - 层内可见可点击（DOM disabled + Vue prop disabled 权威口径）按钮，
-      去空格小写文本 ∈ DOUBLE_CONFIRM_BUTTON_TEXTS（const 单源词表）。
+    - 层内可见可点击元素（button/.el-button/[role=button]/span），
+      去空格小写文本 ∈ DOUBLE_CONFIRM_BUTTON_TEXTS（const 单源词表）——
+      全等匹配是唯一点击判据：span 加入后「取消」不命中、外层包裹 span
+      的拼接长文本不命中，误点风险与 button 路径同源同级。
 
     单源声明：Stage 1 form_filler 守卫 B 豁免通道与 crud_executor
     chain-confirm 提交后段共用本函数；勿在别处复制。
@@ -287,7 +294,7 @@ async def detect_and_click_double_confirm(page: Page, log=None) -> dict:
                 // 排除下拉类 popper（行级菜单泄漏 / select 展开 / 日期面板）
                 if (layer.querySelector('.el-dropdown-menu, .el-select-dropdown,'
                     + ' .el-picker-panel, .el-cascader-panel, .el-table')) continue;
-                const btns = layer.querySelectorAll('button, .el-button, [role="button"]');
+                const btns = layer.querySelectorAll('button, .el-button, [role="button"], span');
                 for (const b of btns) {
                     if (b.offsetWidth <= 0 || b.offsetHeight <= 0) continue;
                     if (b.disabled) continue;

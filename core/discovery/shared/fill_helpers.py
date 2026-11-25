@@ -49,6 +49,21 @@ def _is_number_label(label_lower: str) -> bool:
     return not any(ex in label_lower for ex in _NUMBER_LABEL_EXCLUDES)
 
 
+def _password_suffix() -> str:
+    """★ P-D1 密码规则实证（v8 dump 弹窗提示原文）：EIS 前端校验
+    「包含数字，但不能出现3个及以上连续或重复的数字」——旧形态
+    Test@<6位随机数>（random.randint(100000, 999999)）是 6 个位置连续
+    数字、几乎必违规（r8 Test@667196 实证被拒、无 POST）。生成「单数字
+    被小写字母分隔、数字互异」交错形态（如 8k2m9q）——Test@a8k2m9 同
+    形态 v9/v10 真机 validate 实证通过（err=[]）。
+    单源：generate_fill_value（Stage 1 探测）与 apply_fill_rule
+    （Stage 2 replay 重建）共用，三阶段一致。
+    """
+    digits = random.sample("0123456789", 3)      # 互异 → 无重复数字
+    letters = random.sample("abcdefghjkmnpqrstuvwxyz", 3)
+    return "".join(d + l for d, l in zip(digits, letters))
+
+
 def generate_fill_value(field_type: str, input_type: str,
                         username: str = "test", label: str = "",
                         placeholder: str = "", current_value: str = "") -> tuple:
@@ -101,8 +116,7 @@ def generate_fill_value(field_type: str, input_type: str,
             "rule": "phone_pattern", "params": {"prefix": "138"}
         }
     if input_type == "password":
-        suffix = random.randint(100000, 999999)
-        return f"Test@{suffix}", {
+        return f"Test@{_password_suffix()}", {
             "rule": "password_pattern", "params": {"prefix": "Test@"}
         }
     if input_type == "number":
@@ -136,8 +150,7 @@ def generate_fill_value(field_type: str, input_type: str,
         }
     password_keywords = ("密码", "password", "pwd")
     if any(kw in label_lower for kw in password_keywords):
-        suffix = random.randint(100000, 999999)
-        return f"Test@{suffix}", {
+        return f"Test@{_password_suffix()}", {
             "rule": "password_pattern", "params": {"prefix": "Test@"}
         }
 
@@ -525,11 +538,14 @@ def apply_fill_rule(rule: dict, timestamp: str = None) -> str:
         return f"{prefix}{random.randint(10000000, 99999999)}"
 
     if rule_type == "password_fixed":
-        return params.get("value", "Test@123456")
+        # P-D1 同源修正：缺省值不得含 3 连数字（Test@123456 的「123」
+        # 违反 EIS「不能出现3个及以上连续或重复的数字」）；当前无消费方
+        # 传缺省值，纯防御。
+        return params.get("value", "Test@a1b2c3")
 
     if rule_type == "password_pattern":
         prefix = params.get("prefix", "Test@")
-        return f"{prefix}{random.randint(100000, 999999)}"
+        return f"{prefix}{_password_suffix()}"
 
     if rule_type == "code_pattern":
         prefix = params.get("prefix", "code")
