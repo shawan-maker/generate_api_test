@@ -395,7 +395,7 @@ async def discover_and_validate(page, username: str = "test",
     ui_result = await discover_all(page)
 
     # Phase B: 业务闭环验证
-    validated, execution_order = await _validate_business_flow(
+    validated, execution_order, terminal_failed = await _validate_business_flow(
         page, ui_result, username, state_seed=state_seed)
     if validated is None:
         # 关键操作验证失败
@@ -403,6 +403,11 @@ async def discover_and_validate(page, username: str = "test",
 
     ui_result["validated_operations"] = validated
     ui_result["execution_order"] = execution_order
+    # ★ 批六修复5：终态失败跨域记忆落产物（探针报告/对账用，非回放契约）
+    if terminal_failed:
+        ui_result["terminal_failed_operations"] = terminal_failed
+        LOG.info(f"  [批六修复5] 终态失败记忆落库 terminal_failed_operations: "
+                 f"{terminal_failed}")
 
     # 清理空 tab 字段（不污染输出）
     for op_name, op_data in validated.items():
@@ -795,19 +800,64 @@ def _merge_row_link_actions(buttons_by_tab: dict, ui_result: dict) -> int:
     return merged_total
 
 
+# ★ 批六修复5：终态失败跨域记忆（attempted_actions）——单操作全生命周期
+#   （主循环+批+RECONCILE 跨域合计）尝试预算。耗尽后批/reconcile 不再当
+#   「新启用」重跑（r8 实证重置密码/更新密钥对/克隆每轮完整重跑，41 分钟
+#   vs 基线 16 分钟）。第一版「终败即跳过」；预算重置（状态翻转清零）留
+#   r9 观察数据后再定（防过度设计）。
+MAX_LIFETIME_ATTEMPTS = 3
+
+
+def _register_terminal_attempt(action: str, result: dict, attempted_actions: dict) -> bool:
+    """终态失败入册 attempted_actions（白名单 const.TERMINAL_ERROR_TYPES）。
+
+    Returns:
+        bool: 本次失败是否属终态白名单并已计数。
+    """
+    if not result or not isinstance(attempted_actions, dict) or not action:
+        return False
+    if result.get("success"):
+        return False
+    from core.discovery.const import TERMINAL_ERROR_TYPES
+    err_type = result.get("error_type") or ""
+    if err_type not in TERMINAL_ERROR_TYPES:
+        return False
+    attempted_actions[action] = attempted_actions.get(action, 0) + 1
+    LOG.warning(f"    [批六修复5] 终态失败入册: {action}（{err_type}，"
+                f"累计 {attempted_actions[action]}/{MAX_LIFETIME_ATTEMPTS}）")
+    return True
+
+
+def _attempted_exhausted(action: str, attempted_actions) -> bool:
+    """attempted_actions 语义出口：dict 时按预算判定；None/未传（兼容旧
+    调用点/单测 mock）时视为无终态失败记录（零拦截，行为回退修复前）。"""
+    if not attempted_actions:
+        return False
+    return attempted_actions.get(action, 0) >= MAX_LIFETIME_ATTEMPTS
+
+
 def _collect_state_pending(validated: dict, buttons_by_action: dict,
-                           action_roles: dict, executed_actions: set) -> list:
+                           action_roles: dict, executed_actions: set,
+                           attempted_actions: dict = None) -> list:
     """回收状态受阻 pending（批一 1.4 reconcile 候选）。
 
     条件：已尝试未成功 + generic/update 角色（批五 F5-2 放宽）+ 行级位置 +
     未以业务身份成功过（executed_actions）+ 失败签名属状态受阻（禁用跳过 /
     过渡窗口 click_failed）。与既有 _retry_state_blocked_ops 候选口径一致。
+
+    ★ 批六修复5：终态失败白名单类（form_validation/required_field_empty 等）
+    本身不在 state_blocked 签名内，天然不进 pending——此处排除是防御性
+    收口（白名单后续扩充时防漏）；attempted_actions 预算耗尽的过渡窗
+    失败操作同样排除（防止重试黑盒化）。
     """
     pending = []
     for action, res in validated.items():
         if not isinstance(res, dict) or res.get("success"):
             continue
         if action in executed_actions:
+            continue
+        # ★ 批六修复5：终态失败预算耗尽 → 不再回收（跨域重跑抑制）
+        if _attempted_exhausted(action, attempted_actions):
             continue
         if action not in buttons_by_action:
             continue
@@ -845,6 +895,7 @@ async def _check_and_execute_newly_enabled(
     ui_result: dict,
     tab_prefix: str,
     max_depth: int = 5,
+    attempted_actions: dict = None,
 ) -> dict:
     """检查并执行新启用的按钮（通用级联处理）。
 
@@ -883,7 +934,7 @@ async def _check_and_execute_newly_enabled(
     for text, is_enabled in current_states.items():
         if is_enabled and text in button_states and not button_states[text]:
             # 从 disabled → enabled
-            if text not in executed_actions:
+            if text not in executed_actions and not _attempted_exhausted(text, attempted_actions):
                 newly_enabled.append(text)
 
     if not newly_enabled:
@@ -920,6 +971,11 @@ async def _check_and_execute_newly_enabled(
         # ★ 防止递归中已执行的按钮被重复执行
         if text in executed_actions:
             LOG.info(f"{tab_prefix}[STATE-CHANGE] 跳过已执行按钮: {text}")
+            continue
+        # ★ 批六修复5：终态失败预算耗尽 → 跳过（跨域重跑抑制）
+        if _attempted_exhausted(text, attempted_actions):
+            LOG.info(f"{tab_prefix}[STATE-CHANGE] 跳过终态失败已耗尽预算的按钮: {text}"
+                     f"（累计 {attempted_actions.get(text, 0)} 次）")
             continue
         LOG.info(f"{tab_prefix}[STATE-CHANGE] 执行新启用按钮: {text}")
 
@@ -962,12 +1018,28 @@ async def _check_and_execute_newly_enabled(
             sub_results = await _check_and_execute_newly_enabled(
                 page, created_marker, button_states, buttons_by_action,
                 executed_actions, form_filler, tab_name, tab_locator,
-                ui_result, tab_prefix, max_depth - 1
+                ui_result, tab_prefix, max_depth - 1,
+                attempted_actions=attempted_actions,
             )
             results.update(sub_results)
         else:
             error_text = result.get("error_text", "") if result else "未知错误"
             LOG.warning(f"{tab_prefix}[STATE-CHANGE] ✗ {text} 执行失败: {error_text}")
+            # ★ 批六修复5：终态失败入册——白名单类每轮重跑同值必再败
+            #   （r8：重置密码/更新密钥对/克隆批内完整重跑 3 轮）
+            _register_terminal_attempt(text, result, attempted_actions)
+
+        # ★ 批六修复3c：批内每操作结束后清扫残留弹窗——r8 实证 terminal
+        #   失败（required_field_empty）后弹窗残留被下一批内操作误认领，
+        #   失败归因错位 + 伪失败每轮重跑。transition_to_next（含
+        #   _dismiss_all_overlays 带验证清扫）只在主循环操作后与 create
+        #   成功后调用，批路径无兜底。此处复用既有函数（幂等、无弹窗
+        #   no-op），异常不炸批循环。
+        try:
+            from core.discovery.shared.transition_helpers import _dismiss_all_overlays
+            await _dismiss_all_overlays(page)
+        except Exception as _oe:
+            LOG.debug(f"{tab_prefix}[STATE-CHANGE] 批内清扫异常（忽略）: {_oe}")
 
     # 更新状态记录
     button_states.update(current_states)
@@ -1049,6 +1121,7 @@ async def _state_aware_reconcile(
     trigger_action: str = "",
     state_ctx: dict = None,
     max_rounds: int = 12,
+    attempted_actions: dict = None,
 ) -> dict:
     """状态感知调度器（批一 1.4，循环式替代既有递归重试）。
 
@@ -1102,7 +1175,8 @@ async def _state_aware_reconcile(
         return {}
 
     pending = set(_collect_state_pending(
-        validated, buttons_by_action, action_roles, executed_actions))
+        validated, buttons_by_action, action_roles, executed_actions,
+        attempted_actions=attempted_actions))
     if not pending:
         return {}
 
@@ -1124,7 +1198,11 @@ async def _state_aware_reconcile(
             break
 
         # 2. R1 直接执行：pending 中当前已启用且业务身份未消费的
-        ready = [a for a in pending if states.get(a) and a not in business_executed]
+        # ★ 批六修复5：终态失败预算耗尽的 pending 项跳过（pending 是开始时
+        #   的快照，循环内白名单失败已入册——后续轮次不再重试）
+        ready = [a for a in pending
+                 if states.get(a) and a not in business_executed
+                 and not _attempted_exhausted(a, attempted_actions)]
         if ready:
             for action in ready:
                 btn = buttons_by_action.get(action)
@@ -1161,6 +1239,8 @@ async def _state_aware_reconcile(
                 else:
                     err = result.get("error_text", "") or "未知错误"
                     LOG.info(f"{tab_prefix}[STATE-RECONCILE] ✗ {action} 业务失败: {err}")
+                    # ★ 批六修复5：终态失败入册（RECONCILE 域，跨域合计预算）
+                    _register_terminal_attempt(action, result, attempted_actions)
                 # 成败均入 results（对齐旧 STATE-RETRY 契约：调用方 merge
                 # 更新 validated 最新结果——失败结果保留最新错误证据）
                 results[action] = {**result, "_reconcile_meta": {
@@ -1199,9 +1279,13 @@ async def _state_aware_reconcile(
         matrix = state_ctx.get("state_button_matrix") or {}
         cur_enabled = matrix.get(status) or {}
         # blocked pending 的需求状态（matrix 显示可用、当前不可用）
+        # ★ 批六修复5：终态失败预算耗尽的 pending 不再作为恢复驱动
+        #   （为已耗尽项跑恢复转移=为死目标转移，浪费状态翻转）
         needed = {}
         for action in pending:
             if cur_enabled.get(action):
+                continue
+            if _attempted_exhausted(action, attempted_actions):
                 continue
             need_states = [s for s, btns in matrix.items()
                            if s != status and btns.get(action)]
@@ -1496,6 +1580,10 @@ async def _validate_single_tab_crud(
     # 记录所有按钮的初始 enabled/disabled 状态，用于检测状态变化
     button_states = {}  # {button_text: is_enabled}
     executed_actions = set()  # 已执行的按钮集合
+    # ★ 批六修复5：终态失败跨域记忆 {action: 终态失败次数}——主循环/批/
+    #   RECONCILE 跨域共享预算（MAX_LIFETIME_ATTEMPTS），耗尽后批/reconcile
+    #   不再当「新启用」重跑（r8 41 分钟时长膨胀主因）
+    attempted_actions = {}
 
     # ★ 如果 created_marker 已存在（来自 pre_marker），立即预扫描初始状态
     if created_marker:
@@ -1900,6 +1988,8 @@ async def _validate_single_tab_crud(
                 # ★ 失败结果也写入 validated，与 create/update/delete 角色统一
                 # Stage 1 记录实际操作，成功/失败不影响操作记录
                 _merge_validated_result(validated, action, result)
+                # ★ 批六修复5：主循环终态失败入册（跨域预算主域）
+                _register_terminal_attempt(action, result, attempted_actions)
 
         # ★ 通用状态变化检测与级联执行
         # 操作成功后：等待行状态稳定（批一 1.2 双条件 settle，顺带采集矩阵）
@@ -1919,7 +2009,8 @@ async def _validate_single_tab_crud(
 
             cascade_results = await _check_and_execute_newly_enabled(
                 page, created_marker, button_states, buttons_by_action,
-                executed_actions, form_filler, tab_name, tab_locator, ui_result, tab_prefix
+                executed_actions, form_filler, tab_name, tab_locator, ui_result, tab_prefix,
+                attempted_actions=attempted_actions,
             )
 
             # 将级联执行的结果写入 validated，并记录执行顺序
@@ -1936,6 +2027,7 @@ async def _validate_single_tab_crud(
                 page, created_marker, validated, buttons_by_action, action_roles,
                 executed_actions, form_filler, tab_name, tab_locator, tab_prefix,
                 trigger_action=action, state_ctx=state_ctx,
+                attempted_actions=attempted_actions,
             )
             for rc_action, rc_result in reconcile_results.items():
                 if not rc_result:
@@ -1961,6 +2053,18 @@ async def _validate_single_tab_crud(
                      f"should_scan={should_scan}")
 
             if should_scan:
+                # ★ 批六修复6a：扫描前清扫残留弹窗——主循环成功链顺序
+                #   （级联批 → RECONCILE → 扫描）把扫描暴露在 RECONCILE
+                #   残留弹窗遮蔽下（r8 实证：运维模式成功后扫描
+                #   has_visible_menu=False 收集 0，「退出运维模式」4 次
+                #   在 dropdown diag 出现却从未入册）。清扫幂等（无弹窗
+                #   no-op），异常不炸扫描。
+                try:
+                    from core.discovery.shared.transition_helpers import _dismiss_all_overlays
+                    await _dismiss_all_overlays(page)
+                except Exception as _oe:
+                    LOG.debug(f"{tab_prefix}[INCREMENTAL-SCAN] 扫描前清扫异常（忽略）: {_oe}")
+
                 # 获取当前行的选择器（基于 marker）
                 row_selector = await get_row_selector_by_marker(page, created_marker)
                 LOG.info(f"{tab_prefix}[INCREMENTAL-SCAN] row_selector={row_selector}")
@@ -1994,6 +2098,31 @@ async def _validate_single_tab_crud(
                             # 查找对应的新按钮（通常是反义词）
                             # 例如：禁用→启用，锁定→解锁，冻结→解冻
                             LOG.info(f"  {old_text} → 已切换为新状态")
+
+                    # ★ 批六修复6b：切换对互斥新文本兜底入册——既有链只
+                    #   处理 new_buttons；菜单渲染不完整/可见性过滤漏项时，
+                    #   互斥配对文本在扫描快照（all_current_texts）却不在
+                    #   new_buttons（r8：「进入运维模式」成功后「退出运维
+                    #   模式」从未入册）→ 按 const 互斥词表判定配对、构造
+                    #   dropdown 项形态追加，交既有入册链统一处理（角色
+                    #   推断/ordered_actions 插入/回写 dropdowns）。
+                    if disappeared_buttons:
+                        from core.discovery.const import find_toggle_pair_text
+                        _cur_texts = scan_result.get('all_current_texts') or []
+                        _already_new = {b.get('text', '') for b in new_buttons}
+                        for old_text in disappeared_buttons:
+                            pair_text = find_toggle_pair_text(old_text, _cur_texts)
+                            if (pair_text and pair_text not in _already_new
+                                    and pair_text not in buttons_by_action):
+                                LOG.info(f"{tab_prefix}[INCREMENTAL-SCAN] 互斥对兜底收集: "
+                                         f"'{old_text}' → '{pair_text}'（追加 new_buttons 走既有入册链）")
+                                new_buttons.append({
+                                    "text": pair_text,
+                                    "tag": "DROPDOWN_ITEM",
+                                    "location": "dropdown",
+                                    "selector": f'.el-dropdown-menu__item:has-text("{pair_text}")',
+                                    "source": "toggle_pair_rescue",
+                                })
 
                     if new_buttons:
                         LOG.info(f"{tab_prefix}增量发现 {len(new_buttons)} 个新按钮")
@@ -2077,6 +2206,7 @@ async def _validate_single_tab_crud(
             page, created_marker, validated, buttons_by_action, action_roles,
             executed_actions, form_filler, tab_name, tab_locator, tab_prefix,
             trigger_action="", state_ctx=state_ctx,
+            attempted_actions=attempted_actions,
         )
         for rc_action, rc_result in final_reconcile.items():
             if not rc_result:
@@ -2111,7 +2241,9 @@ async def _validate_single_tab_crud(
                 "trigger_locator": btn.get("locator", ""),
             })
 
-    return validated, execution_order
+    # ★ 批六修复5：attempted_actions 随结果上浮（跨域终态失败记忆，
+    #   落 ui.json terminal_failed_operations 供探针报告/对账，非回放契约）
+    return validated, execution_order, attempted_actions
 
 
 async def _validate_business_flow(page, ui_result: dict, username: str,
@@ -2306,6 +2438,7 @@ async def _validate_business_flow(page, ui_result: dict, username: str,
     # 按 Tab 独立验证
     validated = {}
     all_execution_order = []  # ★ 聚合所有 tab 的执行顺序
+    all_attempted = {}        # ★ 批六修复5：聚合所有 tab 的终态失败记忆
     tabs_info = page_structure.get("tabs", [])
 
     for tab_name, tab_buttons in buttons_by_tab.items():
@@ -2367,7 +2500,7 @@ async def _validate_business_flow(page, ui_result: dict, username: str,
                 LOG.warning(f"    [TAB-SWITCH-DIAG] 诊断失败: {e}")
 
         # 在该 Tab 上下文中执行完整 CRUD 验证
-        tab_validated, tab_exec_order = await _validate_single_tab_crud(
+        tab_validated, tab_exec_order, tab_attempted = await _validate_single_tab_crud(
             page, tab_buttons, ui_result, username, tab_name,
             tab_locator=tab_info.get("locator", "") if tab_name and tab_info else "",
             state_ctx=state_ctx,
@@ -2375,6 +2508,13 @@ async def _validate_business_flow(page, ui_result: dict, username: str,
 
         # 聚合 execution_order
         all_execution_order.extend(tab_exec_order)
+
+        # ★ 批六修复5：聚合终态失败记忆（多 Tab 前缀规则与 validated 一致）
+        for a_name, a_count in (tab_attempted or {}).items():
+            if tab_name and len(tabs_info) > 1:
+                all_attempted[f"{tab_name}/{a_name}"] = a_count
+            else:
+                all_attempted[a_name] = a_count
 
         # 合并结果（多 Tab 时加前缀）
         for action, result in tab_validated.items():
@@ -2421,10 +2561,10 @@ async def _validate_business_flow(page, ui_result: dict, username: str,
     if failed_critical:
         LOG.error(f"  Stage 1 关键操作验证失败: {failed_critical}")
         LOG.info(f"  返回 {len(validated)} 个已验证操作（含失败操作）供 Stage 2 使用")
-        return validated, all_execution_order
+        return validated, all_execution_order, all_attempted
 
     LOG.info(f"  Stage 1 验证完成: {len(validated)} 个操作通过")
-    return validated, all_execution_order
+    return validated, all_execution_order, all_attempted
 
 
 
