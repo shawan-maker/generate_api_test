@@ -1831,9 +1831,16 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                     }}
                 }});
                 independentInputs.forEach(inp => {{
+                    // ★ 批六修复8补充（r9 实证）：复合分支独立 input 同加
+                    //   el-input-number 判据 + 默认值采集——EIS 系统盘 = 规格
+                    //   el-select + el-input-number 组合走本分支（D5-composite
+                    //   实证 input[0].inInputNumber=True），此前 inputType=text
+                    //   无 currentValue 致默认值被随机数覆盖。
+                    const _num8 = !!inp.closest('.el-input-number');
                     fields.push(Object.assign({{ label, type: 'input', kb_category: 'input-generic',
-                                 inputType: inp.type || 'text',
+                                 inputType: _num8 ? 'number' : (inp.type || 'text'),
                                  placeholder: inp.placeholder || '',
+                                 currentValue: inp.value || '',
                                  required }}, _buildSelector(inp, label)));
                 }});
             }}

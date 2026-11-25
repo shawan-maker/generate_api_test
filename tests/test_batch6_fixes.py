@@ -505,6 +505,27 @@ class TestFix8NumberRule:
             "el-input-number 容器判据覆盖不足"
         assert src.count("currentValue:") >= 2, "currentValue 采集点不足"
 
+    def test_element_scanner_number_detector_wired(self):
+        """r9 实证：创建链 fields 来自 element_scanner 探测扫描源
+        （_do_create context 非空不重扫）——三个 inputType 赋值点
+        （复合独立 input / 多 input 主输入框 / 单 input）须同修复 8 口径，
+        否则数量/CPU/内存 inputType=text 无 currentValue → 随机数覆盖默认值。"""
+        from core.discovery.ui_scanner import element_scanner
+        # _SCAN_FIELDS_JS 是 _scan_create_dialog 函数内局部 JS（r9 创建 fields 源）
+        src = inspect.getsource(element_scanner._scan_create_dialog)
+        assert src.count("closest('.el-input-number')") >= 3, \
+            "element_scanner el-input-number 判据不足 3 处（r9 实证此源漏修）"
+        assert src.count("currentValue:") >= 3, \
+            "element_scanner currentValue 采集点不足 3 处"
+
+    def test_form_filler_composite_branch_number_wired(self):
+        """form_filler 复合分支（EIS 系统盘 = 规格 el-select + el-input-number
+        组合，r9 D5-composite 实证走此分支）须同 _num8 口径——原修复 8
+        漏了本分支。"""
+        src = _src(form_filler.scan_form_fields)
+        assert src.count("_num8") >= 4, \
+            "复合分支 _num8 缺失（原 3 处 + 复合分支新 1 处）"
+
     # ---------- P-D1 密码规则（v8 弹窗提示原文实证）----------
     # EIS 前端校验「包含数字，但不能出现3个及以上连续或重复的数字」：
     # 旧形态 Test@<6位随机数> 是 6 个位置连续数字、几乎必违规（r8

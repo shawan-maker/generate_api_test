@@ -1657,8 +1657,17 @@ async def _scan_create_dialog(page, kb: ProbeKB = None, framework: str = "elemen
                                  required }, _buildSelector(sel, label + labelSuffix)));
                 });
                 independentInputs.forEach(inp => {
+                    // ★ 批六修复8补充（r9 实证此扫描源漏修）：el-input-number 容器
+                    //   判据 + 默认值采集——与 form_filler.scan_form_fields 同口径。
+                    //   EIS 系统盘 = 规格 el-select + el-input-number 组合走本分支，
+                    //   数量/CPU/内存走单 input 分支，此前全落 inputType=text 无
+                    //   currentValue → generate_fill_data 填随机数覆盖默认值。
+                    const _num8 = !!inp.closest('.el-input-number');
                     fields.push(Object.assign({ label, type: 'input', kb_category: 'input-generic',
-                                 inputType: inp.type || 'text', required }, _buildSelector(inp, label)));
+                                 inputType: _num8 ? 'number' : (inp.type || 'text'),
+                                 placeholder: inp.placeholder || '',
+                                 currentValue: inp.value || '',
+                                 required }, _buildSelector(inp, label)));
                 });
             }
             else if (fi.querySelector('.el-cascader')) {
@@ -1701,13 +1710,26 @@ async def _scan_create_dialog(page, kb: ProbeKB = None, framework: str = "elemen
                         inp.placeholder && (inp.placeholder.includes('请输入') || inp.placeholder.includes('Enter'))
                     ) || allInputs.reduce((max, inp) => inp.offsetWidth > max.offsetWidth ? inp : max, allInputs[0]);
 
+                    // ★ 批六修复8补充：el-input-number 容器判据 + 默认值采集
+                    //   （与 form_filler 多 input 分支同口径）
+                    const _num8 = !!mainInput.closest('.el-input-number');
                     fields.push(Object.assign({ label, type: 'input', kb_category: 'input-generic',
-                                 inputType: mainInput.type || 'text', required }, _buildSelector(mainInput, label)));
+                                 inputType: _num8 ? 'number' : (mainInput.type || 'text'),
+                                 placeholder: mainInput.placeholder || '',
+                                 currentValue: mainInput.value || '',
+                                 required }, _buildSelector(mainInput, label)));
                 } else if (allInputs.length === 1) {
                     // 单个 input
                     const inp = allInputs[0];
+                    // ★ 批六修复8补充：el-input-number 容器判据 + 默认值采集
+                    //   （EIS 数量/CPU/内存 = 单 input 的 el-input-number 走本分支，
+                    //   r9 实证此前落 text 致默认值被随机数覆盖）
+                    const _num8 = !!inp.closest('.el-input-number');
                     fields.push(Object.assign({ label, type: 'input', kb_category: 'input-generic',
-                                 inputType: inp.type || 'text', required }, _buildSelector(inp, label)));
+                                 inputType: _num8 ? 'number' : (inp.type || 'text'),
+                                 placeholder: inp.placeholder || '',
+                                 currentValue: inp.value || '',
+                                 required }, _buildSelector(inp, label)));
                 } else if (ta) {
                     fields.push(Object.assign({ label, type: 'textarea', kb_category: 'textarea-generic',
                                  required }, _buildSelector(ta, label)));
