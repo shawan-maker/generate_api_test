@@ -18,10 +18,40 @@ import logging
 
 LOG = logging.getLogger(__name__)
 
+# ★ 批六修复8：数字字段 label 关键词（小写匹配；覆盖 inputType 缺失的兜底层——
+#   el-input-number 容器判据已在扫描侧修为 inputType='number' 优先生效）。
+#   单源：generate_fill_value / _infer_fill_rule 共用。
+_NUMBER_LABEL_KEYWORDS = (
+    "数量", "cpu", "内存", "容量", "规格", "盘", "核心", "大小",
+    "count", "memory", "ram", "disk", "size", "spec",
+)
+# 数字词命中排除（「磁盘名称」「云盘名」类含盘的名称字段仍是文本——名/称
+# 在 label 中即视为名称字段，词表兜底让位 name_pattern，防误伤）
+_NUMBER_LABEL_EXCLUDES = ("名称", "名字", "别名", "标签", "name", "title", "label")
+# ★ 批六修复8：登录名/用户名类字段词表（→ username_pattern，prefix 维持 test
+#   与原 name_pattern 默认值等值——r9 回归面最小化，仅规则名更准确）
+_USERNAME_LABEL_KEYWORDS = ("登录名", "用户名", "账号名", "username", "login name")
+
+
+def _is_numeric_text(text: str) -> bool:
+    """纯数字文本判定（el-input-number 默认值合法性，批六修复8）。"""
+    try:
+        s = str(text).strip()
+        return bool(s) and s.replace(".", "", 1).isdigit()
+    except Exception:
+        return False
+
+
+def _is_number_label(label_lower: str) -> bool:
+    """数字词 label 判定（命中数字词且非名称类字段，批六修复8 单源）。"""
+    if not any(kw in label_lower for kw in _NUMBER_LABEL_KEYWORDS):
+        return False
+    return not any(ex in label_lower for ex in _NUMBER_LABEL_EXCLUDES)
+
 
 def generate_fill_value(field_type: str, input_type: str,
                         username: str = "test", label: str = "",
-                        placeholder: str = "") -> tuple:
+                        placeholder: str = "", current_value: str = "") -> tuple:
     """生成测试数据值和对应的 fill_rule 元数据。
 
     Stage 1 探测时使用此函数生成测试数据，同时返回 fill_rule 元数据
@@ -76,6 +106,13 @@ def generate_fill_value(field_type: str, input_type: str,
             "rule": "password_pattern", "params": {"prefix": "Test@"}
         }
     if input_type == "number":
+        # ★ 批六修复8：el-input-number 优先保留表单默认值（EIS 实证数字字段
+        #   带默认值且随机数可能超业务范围致校验拒绝；fixed_value 三阶段一致）。
+        #   无默认值才回退 number_pattern 随机 1-100（apply_fill_rule 契约不变）。
+        if _is_numeric_text(current_value):
+            return current_value, {
+                "rule": "fixed_value", "params": {"value": current_value}
+            }
         v = random.randint(1, 100)
         return str(v), {
             "rule": "number_pattern", "params": {"min": 1, "max": 100}
@@ -102,6 +139,25 @@ def generate_fill_value(field_type: str, input_type: str,
         suffix = random.randint(100000, 999999)
         return f"Test@{suffix}", {
             "rule": "password_pattern", "params": {"prefix": "Test@"}
+        }
+
+    # ★ 批六修复8：数字词 label 兜底（数量/CPU/内存/容量/盘/规格——E11 实证
+    #   这些字段被 name_pattern 填文本 test569722）；默认值保留策略同 number 分支
+    if _is_number_label(label_lower):
+        if _is_numeric_text(current_value):
+            return current_value, {
+                "rule": "fixed_value", "params": {"value": current_value}
+            }
+        v = random.randint(1, 100)
+        return str(v), {
+            "rule": "number_pattern", "params": {"min": 1, "max": 100}
+        }
+
+    # ★ 批六修复8：登录名/用户名 → username_pattern（值与原 name_pattern 默认
+    #   等值 test{ts}，仅规则名更准确，Stage 2 apply_fill_rule 走 username 分支）
+    if any(kw in label_lower for kw in _USERNAME_LABEL_KEYWORDS):
+        return f"{username.lower()}{ts}", {
+            "rule": "username_pattern", "params": {"prefix": username.lower()}
         }
 
     # 基于字段类型
@@ -258,7 +314,8 @@ def generate_fill_data(fields: list, username: str = "test") -> dict:
 
         value, _rule = generate_fill_value(
             field_type, input_type, username, label,
-            placeholder=field.get("placeholder", ""))
+            placeholder=field.get("placeholder", ""),
+            current_value=field.get("currentValue", ""))
         fill_data[label] = value
 
     # ★ 确认字段联动（方案批三 3.3）：「确认 X / 再次 X / Confirm X」字段的值
@@ -358,13 +415,15 @@ def generate_fill_rules(fields: list) -> dict:
             continue
 
         # 根据字段标签和类型推断规则
-        rule = _infer_fill_rule(label, field_type, input_type, required)
+        rule = _infer_fill_rule(label, field_type, input_type, required,
+                                current_value=field.get("currentValue", ""))
         rules[label] = rule
 
     return rules
 
 
-def _infer_fill_rule(label: str, field_type: str, input_type: str, required: bool) -> dict:
+def _infer_fill_rule(label: str, field_type: str, input_type: str, required: bool,
+                     current_value: str = "") -> dict:
     """推断字段的填充规则。
 
     基于字段类型、标签关键词和通用模式推断，不硬编码模块特定字段名。
@@ -379,6 +438,9 @@ def _infer_fill_rule(label: str, field_type: str, input_type: str, required: boo
     if input_type == "password":
         return {"rule": "password_pattern", "params": {"prefix": "Test@"}}
     if input_type == "number":
+        # ★ 批六修复8：el-input-number 默认值保留（与 generate_fill_value 同源）
+        if _is_numeric_text(current_value):
+            return {"rule": "fixed_value", "params": {"value": current_value}}
         return {"rule": "number_pattern", "params": {"min": 1, "max": 100}}
 
     # 基于标签关键词推断（覆盖 inputType 缺失的情况）
@@ -391,6 +453,16 @@ def _infer_fill_rule(label: str, field_type: str, input_type: str, required: boo
     password_keywords = ("密码", "password", "pwd")
     if any(kw in label_lower for kw in password_keywords):
         return {"rule": "password_pattern", "params": {"prefix": "Test@"}}
+
+    # ★ 批六修复8：数字词 label 兜底（与 generate_fill_value 同源词表同策略）
+    if _is_number_label(label_lower):
+        if _is_numeric_text(current_value):
+            return {"rule": "fixed_value", "params": {"value": current_value}}
+        return {"rule": "number_pattern", "params": {"min": 1, "max": 100}}
+
+    # ★ 批六修复8：登录名/用户名 → username_pattern（与 generate_fill_value 同源）
+    if any(kw in label_lower for kw in _USERNAME_LABEL_KEYWORDS):
+        return {"rule": "username_pattern", "params": {"prefix": "test"}}
 
     # 基于字段类型推断
     if field_type == "textarea":

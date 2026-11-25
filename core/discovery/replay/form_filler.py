@@ -132,6 +132,9 @@ class FormFiller:
             }
             if f.get("firstOptionText"):
                 entry["firstOptionText"] = f["firstOptionText"]
+            # ★ 批六修复8：el-input-number 默认值透传（保留默认值策略的输入）
+            if f.get("currentValue"):
+                entry["currentValue"] = f["currentValue"]
             # ★ 透传 placeholder、thead_label、visible_index，用于跨会话稳定定位
             if f.get("placeholder"):
                 entry["placeholder"] = f["placeholder"]
@@ -665,6 +668,10 @@ class FormFiller:
                     enhanced = safe_css(selector)
                     await self.page.fill(enhanced, value, timeout=3000)
                     filled += 1
+                    # ★ 批六修复9：恢复 create 段填充可观测性（与 edit 路径
+                    #   「编辑字段: <label> = <value>」同签名——批五改动吞掉了
+                    #   r7b 前的 create 填充日志，r8 排障只能靠 DEBUG-FILL 兜底）
+                    LOG.info(f"    编辑字段: {label} = {value}")
                     continue
 
                 # 回退：通过 label 在 el-form-item 结构中定位 input/textarea
@@ -721,6 +728,9 @@ class FormFiller:
                         enhanced = safe_css(css)
                         await self.page.fill(enhanced, value, timeout=3000)
                 filled += 1
+                # ★ 批六修复9：回退定位路径的成功日志（textarea/普通 input，
+                #   与 selector 优先路径同签名）
+                LOG.info(f"    编辑字段: {label} = {value}")
             except Exception as e:
                 LOG.warning(f"填充字段 {label} 失败: {e}")
 
@@ -1062,7 +1072,8 @@ class FormFiller:
                 value, _rule = generate_fill_value(
                     field.get("type", "input"), field.get("inputType", "text"),
                     username="test", label=label,
-                    placeholder=field.get("placeholder", "")
+                    placeholder=field.get("placeholder", ""),
+                    current_value=field.get("currentValue", "")
                 )
                 if not value:
                     value = f"auto_edited_{ts}"
@@ -2225,6 +2236,7 @@ async def scan_form_fields(page: Page, ui_framework: str = "element-ui", scope_s
                 if (isFallbackLabel) fieldEntry.is_fallback_label = true;
                 if (rawPlaceholder) fieldEntry.placeholder = rawPlaceholder;
                 if (theadLabel) fieldEntry.thead_label = theadLabel;
+                if (isNumber) fieldEntry.currentValue = inp.value || '';  // ★ 批六修复8：默认值采集
                 fields.push(fieldEntry);
             }});
         }}
