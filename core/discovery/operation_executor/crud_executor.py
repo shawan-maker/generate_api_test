@@ -1181,6 +1181,13 @@ async def _state_aware_reconcile(
                             exhausted_edges.add(key)
                             LOG.info(f"{tab_prefix}[STATE-RECONCILE] R2 边耗尽: {key}")
                         del watched_edges[key]
+
+                # ★ 批六修复3c：reconcile 每操作结束后清扫残留弹窗（同批路径）
+                try:
+                    from core.discovery.shared.transition_helpers import _dismiss_all_overlays
+                    await _dismiss_all_overlays(page)
+                except Exception as _oe:
+                    LOG.debug(f"{tab_prefix}[STATE-RECONCILE] 清扫异常（忽略）: {_oe}")
             # 执行后再 settle（可能翻转状态）→ 回到 1
             continue
 
@@ -1260,6 +1267,12 @@ async def _state_aware_reconcile(
         results[restore_action] = {**result, "_reconcile_meta": {
             "triggered_by": first_needing, "intent": "state_restore",
         }}
+        # ★ 批六修复3c：恢复转移执行后清扫残留弹窗（同批路径）
+        try:
+            from core.discovery.shared.transition_helpers import _dismiss_all_overlays
+            await _dismiss_all_overlays(page)
+        except Exception as _oe:
+            LOG.debug(f"{tab_prefix}[STATE-RECONCILE] 清扫异常（忽略）: {_oe}")
         # 回到 1：settle 后重扫 ready
 
     LOG.info(f"{tab_prefix}[STATE-RECONCILE] 结束: 本轮成功 {sum(1 for r in results.values() if r.get('success'))}"
@@ -3476,6 +3489,10 @@ async def _do_edit(page, context: dict) -> dict:
     """执行编辑操作：点击编辑 → 修改字段 → 提交 → 验证。"""
     import logging
     _log = logging.getLogger("crud_executor")
+    # ★ 批六修复4：dialog_detected 先行绑定——批五 F3 守卫 B 分支（submit_blocked）
+    #   在成功段赋值（L3886）之前引用该变量，守卫 B 命中时抛 UnboundLocalError
+    #   （r8 修改Hostname 两轮复现）。函数体开头初始化，成功段正常覆盖。
+    dialog_detected = False
     btn = context["btn"]
     marker = context.get("marker")
     form_filler = context["form_filler"]
@@ -5150,6 +5167,65 @@ async def _do_generic_operation(page, context: dict) -> dict:
     # actual_state 可能是 "drawer: 标题" 或 "dialog: 标题"，提取类型部分
     _container_type = actual_state.split(":")[0].strip() if actual_state else ""
     confirmed = ""
+
+    # ★ 批六修复3a：弹窗归属校验——r8 实证残留弹窗串扰（更新密钥对终态失败后
+    #   弹窗残留，批内修改Hostname 的 observe 命中残留弹窗 title='更新密钥对'，
+    #   generic 路径把它当自己的弹窗处理 → required_field_empty field=密钥对
+    #   错挂到修改Hostname 名下，真实弹窗从未打开，伪失败每轮重跑）。
+    #   判据（宽松防误杀）：规范化 btn 文本是弹窗 title 的子串（r8 实证 4 例
+    #   全满足：'删除'⊂'删除云主机test569722'、'修改Hostname'⊂'修改Hostname'、
+    #   '重装操作系统'⊂'重装操作系统-云主机-test569722'、'更新密钥对'⊂'更新密钥对'）。
+    #   护栏：title 为空（确认型小弹窗，r8 关机弹窗 title='' 业务正常）与
+    #   message-box/popconfirm（全局模态层 title 恒'确认操作'）不做校验。
+    if _container_type in ("drawer", "dialog") and actual_state.split(":", 1):
+        _own_title = actual_state.split(":", 1)[1].strip() if ":" in actual_state else ""
+        if _own_title and trigger_text_normalized and trigger_text_normalized not in " ".join(_own_title.split()):
+            LOG.warning(f"    [批六3a] 弹窗归属不匹配: 本操作='{trigger_text_normalized}' "
+                        f"但弹窗 title='{_own_title}' —— 疑似上一操作残留弹窗，尝试在全部可见弹窗中找归属")
+            _visible_titles = await page.evaluate("""() => {
+                const containers = document.querySelectorAll(
+                    '.el-dialog__wrapper, .el-drawer, .ant-modal-wrap');
+                const out = [];
+                for (const d of containers) {
+                    if (d.style.display === 'none' || d.offsetWidth <= 0 || d.offsetHeight <= 0) continue;
+                    const t = d.querySelector('.el-dialog__title, .el-drawer__header, .ant-modal-title');
+                    out.push({ title: t ? t.textContent.trim() : '', type: d.classList.contains('el-drawer') ? 'drawer' : 'dialog' });
+                }
+                return out;
+            }""")
+            _own_match = next(
+                (v for v in _visible_titles
+                 if trigger_text_normalized in " ".join(v.get("title", "").split())),
+                None,
+            )
+            if _own_match:
+                # 双弹窗叠加：本操作的真实弹窗存在但被残留弹窗遮蔽 → 隐藏非匹配残留弹窗
+                _hidden = await page.evaluate(
+                    """(needle) => {
+                        let count = 0;
+                        const containers = document.querySelectorAll(
+                            '.el-dialog__wrapper, .el-drawer, .ant-modal-wrap');
+                        for (const d of containers) {
+                            if (d.style.display === 'none' || d.offsetWidth <= 0 || d.offsetHeight <= 0) continue;
+                            const t = d.querySelector('.el-dialog__title, .el-drawer__header, .ant-modal-title');
+                            const title = t ? t.textContent.trim() : '';
+                            if (!title.includes(needle)) { d.style.display = 'none'; count++; }
+                        }
+                        return count;
+                    }""",
+                    trigger_text_normalized,
+                )
+                LOG.info(f"    [批六3a] 找到本操作弹窗 (title='{_own_match['title']}')，"
+                         f"隐藏 {_hidden} 个残留弹窗后继续")
+            else:
+                # 全部可见弹窗都不属于本操作 → 清残留 + 落终态（不重试：
+                # 触发点击已发生，重复点击有二次触发业务风险；attempted_actions
+                # 会记住该终态不再重跑，伪失败不再错位归因）
+                from core.discovery.shared.transition_helpers import _dismiss_all_overlays
+                await _dismiss_all_overlays(page)
+                return _fail("dialog_mismatch",
+                             f"{action} 打开的弹窗归属不匹配（title='{_own_title}' 属于其他操作，"
+                             f"已清理残留；本操作弹窗未检测到）")
 
     if _container_type in ("drawer", "dialog"):
         # ── 表单容器（drawer / dialog）：扫描字段 → 填充 → 提交 ──

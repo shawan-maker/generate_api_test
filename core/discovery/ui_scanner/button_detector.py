@@ -342,6 +342,12 @@ async def _close_dialog(page):
     2. 页面级表单：点击表单中的取消/重置按钮
 
     如果页面已导航回（非弹窗模式），跳过此步骤。
+
+    ★ 批六修复3b：关闭动作后验证弹窗确实关闭；未关闭则二轮兜底
+    （关闭按钮 → 取消按钮 → Escape）后仍未清则告警并返回 False。
+    r8 实证根因：原实现点完关闭按钮即返回，不验证——required_field_empty
+    终态路径（crud_executor L5354）调用后弹窗实际未关上，残留弹窗被
+    下一操作误认领，失败归因错位 + 伪失败每轮重跑。
     """
     try:
         # 1. 检查是否有可见的对话框
@@ -358,6 +364,40 @@ async def _close_dialog(page):
             }""")
             await page.wait_for_timeout(500)
             await page.keyboard.press("Escape")
+
+        # 批六3b：验证弹窗已关闭；未关闭走二轮兜底（取消按钮 → Escape × 2）
+        async def _still_visible() -> bool:
+            return await page.evaluate("""() => {
+                const wrappers = document.querySelectorAll('.el-dialog__wrapper, .ant-modal-wrap, .el-drawer');
+                return Array.from(wrappers).some(
+                    w => w.style.display !== 'none' && w.offsetWidth > 0 && w.offsetHeight > 0);
+            }""")
+
+        if has_dialog and await _still_visible():
+            LOG.debug("关闭弹窗: 一轮后仍可见，二轮兜底（取消按钮 + Escape×2）")
+            await page.evaluate("""() => {
+                const cancelKws = ['取 消', '取消', 'cancel'];
+                const containers = document.querySelectorAll('.el-dialog__wrapper, .ant-modal-wrap, .el-drawer');
+                for (const c of containers) {
+                    if (c.style.display === 'none' || c.offsetWidth <= 0) continue;
+                    const btns = c.querySelectorAll('button, .el-button, [role="button"]');
+                    for (const b of btns) {
+                        if (b.offsetWidth <= 0) continue;
+                        const t = (b.textContent || '').replace(/\\s+/g, '').toLowerCase();
+                        if (cancelKws.some(kw => t === kw || t === kw.replace(/\\s+/g, ''))) {
+                            b.click(); return;
+                        }
+                    }
+                }
+            }""")
+            await page.wait_for_timeout(400)
+            for _ in range(2):
+                await page.keyboard.press("Escape")
+                await page.wait_for_timeout(300)
+            if await _still_visible():
+                LOG.warning("关闭弹窗: 二轮兜底后弹窗仍可见（可能存在不可关闭的自定义弹窗）")
+                return False
+            return True
 
         # 2. 检查是否有页面级表单（非弹窗内的表单）
         has_page_form = await page.evaluate("""() => {
@@ -415,8 +455,11 @@ async def _close_dialog(page):
                 await page.keyboard.press("Escape")
                 await page.wait_for_timeout(300)
 
+        return True  # 批六3b：无可见弹窗或已处理页面级表单 → clean
+
     except Exception as e:
         LOG.debug(f"关闭弹窗/表单失败: {e}")
+        return False
 
 
 def _classify_button_location(btn: dict) -> str:
@@ -772,8 +815,17 @@ def _infer_action_role(action: str, btn: dict, delete_actions: list = None) -> s
     # row_action / dropdown：区分删除/编辑/其他
     action_lower = action.lower()
 
-    # 破坏性操作 → delete（使用传入的 delete_actions 列表，避免重复定义关键词）
+    # 破坏性操作 → delete（批六修复1：快照精确匹配优先 + 单源关键词兜底）。
+    # r8 实证根因：入册点（F2-RECOLLECT / INCREMENTAL-SCAN）传入的 delete_actions
+    # 是 Phase A 时点的陈旧快照（hover 菜单项晚于快照收集），晚收集的「删除」
+    # 精确匹配永不命中 → 错判 generic → delete-last 追加末尾策略失效，删除
+    # 被插到位置 1 提前执行（行生命周期终点必须在所有行级操作之后）。
+    # is_destroy_text 与 _find_create_delete_actions 的 DESTROY_KEYWORDS 同源
+    # （shared/button_clicker 单一权威），不会双源漂移。
     if delete_actions and action in delete_actions:
+        return "delete"
+    from core.discovery.shared.button_clicker import is_destroy_text
+    if is_destroy_text(action):
         return "delete"
 
     # 编辑类操作 → update
