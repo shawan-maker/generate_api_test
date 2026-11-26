@@ -5407,6 +5407,24 @@ async def _do_navigation_operation(page, context: dict) -> dict:
     }
 
 
+def _sync_failed_select_labels(fill_details: list) -> list:
+    """★ 批九 P-3（§六）：值同步失败 select 字段 label 清单（纯函数守卫原料）。
+
+    判据：fill_details 中 skipped_reason == 'model_sync_failed' 的字段
+    （_execute_select_with_details verify 失败 + 原生事件补救仍不同步，
+    r10 更新密钥对「密钥对」实证形态）。no_options/expand_failed 等其他
+    原因不在此列——无可选项/展开失败为环境态，4.2 守卫（is-required 空
+    select）与既有路径各自覆盖，直接提交行为对它们保持不变（窄修复防
+    误伤：可选空 select 直接提交成功的既有场景零回归）。
+    """
+    if not isinstance(fill_details, list):
+        return []
+    return [
+        d.get("label", "?") for d in fill_details
+        if isinstance(d, dict) and d.get("skipped_reason") == "model_sync_failed"
+    ]
+
+
 async def _required_selects_still_empty(page, scope_q: str) -> list:
     """★ 4.2 提交前守卫探测：scope 容器内仍为空的必填 select 的 label 列表。
 
@@ -6452,6 +6470,26 @@ async def _do_generic_operation(page, context: dict) -> dict:
                     radio_field_details_local.append(radio_detail)
 
             if filled == 0:
+                # ★ 批九 P-3（§六）：含值同步失败 select 字段的表单禁止
+                #   「无可填字段直接提交」——r10 更新密钥对定案：密钥对点选
+                #   4 步全成功但 model 未同步 → 无可填字段直接提交 → 提交必
+                #   不生效（否定前缀拦截/primary disabled）→ no_confirm_button
+                #   假象终败 131s。诚实终败（form_validation）不盲提交污染
+                #   环境；补救已在 _verify_with_sync_rescue 完成，此处只拦
+                #   「盲提交」退路。
+                _p3_sync_failed = _sync_failed_select_labels(dialog_fill_details)
+                if _p3_sync_failed:
+                    LOG.warning(
+                        f"    [P3-NO-BLIND-SUBMIT] select 字段值同步失败 "
+                        f"{_p3_sync_failed}，禁止无可填字段直接提交"
+                        f"（诚实终败，不盲提交污染环境）")
+                    await _close_dialog(page)
+                    return _fail(
+                        "form_validation",
+                        f"{action} 弹窗中 select 字段值同步失败（点选成功但 "
+                        f"Vue model 未更新）: {', '.join(_p3_sync_failed)}",
+                        error_field=_p3_sync_failed[0],
+                    )
                 LOG.info(f"    无可填字段，尝试直接提交")
 
             # ★ 4.2 必填空 select 提交前中止: pre-fill 尝试后仍有 is-required 且为空的

@@ -3168,7 +3168,10 @@ class MultiStepExecutor:
 
             # Post-fill verification
             await self.page.wait_for_timeout(500)
-            verify = await self._verify_select_filled(label, selector)
+            # ★ 批九 P-3（§六）：verify 失败 → 原生事件补救 → 复读
+            #   （r10 更新密钥对定案：点选成功但 model 未同步）
+            verify, _p3_rescue = await self._verify_with_sync_rescue(
+                label, selector, option_text)
             if not verify.get("filled"):
                 debug_info = verify.get("debug", {})
                 LOG.warning(f"    ⚠️ select 填充后验证失败: {label} 仍为空 "
@@ -3181,7 +3184,9 @@ class MultiStepExecutor:
                          f"hasTagsContainerText={debug_info.get('hasTagsContainerText')}, "
                          f"vueFoundLevel={debug_info.get('vueFoundLevel')}")
                 # ★ Fix 2: 保留已执行的 interaction_steps
-                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "editable_verify_failed", "interaction_steps": interaction_steps}
+                # ★ 批九 P-3：skipped_reason 落 model_sync_failed（r10「unknown」
+                #   丢失真实原因）——direct-submit 守卫与 F3c 重试链按此判定
+                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "skipped_reason": "model_sync_failed", "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "editable_verify_failed", "interaction_steps": interaction_steps}
             LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
 
             LOG.info(f"    [el-select] {label}: 已记录 {len(interaction_steps)} 个操作步骤")
@@ -3220,7 +3225,10 @@ class MultiStepExecutor:
 
             # Post-fill verification
             await self.page.wait_for_timeout(500)
-            verify = await self._verify_select_filled(label, selector)
+            # ★ 批九 P-3（§六）：verify 失败 → 原生事件补救 → 复读
+            #   （r10 更新密钥对定案：点选成功但 model 未同步）
+            verify, _p3_rescue = await self._verify_with_sync_rescue(
+                label, selector, option_text)
             if not verify.get("filled"):
                 debug_info = verify.get("debug", {})
                 LOG.warning(f"    ⚠️ select 填充后验证失败: {label} 仍为空 "
@@ -3233,7 +3241,8 @@ class MultiStepExecutor:
                          f"hasTagsContainerText={debug_info.get('hasTagsContainerText')}, "
                          f"vueFoundLevel={debug_info.get('vueFoundLevel')}")
                 # ★ Fix 2: 保留已执行的 interaction_steps
-                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "readonly_verify_failed", "interaction_steps": interaction_steps}
+                # ★ 批九 P-3：skipped_reason 落 model_sync_failed（同 editable 分支）
+                return False, {"is_editable": is_editable, "option_text": option_text, "verify_failed": True, "skipped_reason": "model_sync_failed", "select_sub_type": select_sub_type, "selection_strategy": selection_strategy, "execution_path": "readonly_verify_failed", "interaction_steps": interaction_steps}
             LOG.debug(f"    ✓ select 填充验证通过: {label} = {verify['displayed_value'][:30]}")
 
             LOG.info(f"    [el-select] {label}: 已记录 {len(interaction_steps)} 个操作步骤")
@@ -5028,6 +5037,85 @@ class MultiStepExecutor:
         return False, {"skipped_reason": "no_clickable_items"}
 
     # ---- 内部工具方法 ----
+
+    async def _rescue_select_model_sync(self, label: str, selector: str,
+                                         option_text: str = "") -> dict:
+        """★ 批九 P-3（§六）：el-select model 同步补救——原生事件补发。
+
+        r10 定案（更新密钥对）：选项 4 步点选全成功但 Vue model 未更新
+        （展示 input 与 model 双空）→ 判「填充失败」后表单被「无可填字段
+        直接提交」→ 提交必不生效（否定前缀拦截 / primary disabled）→
+        no_confirm_button 假象终败。EIS 自定义 el-select（cmss-select 类）
+        可能依赖原生 change/input 事件驱动父组件 onChange 同步链——DOM
+        click 选项不触发。
+
+        同窗单次 evaluate：读展示 input value（.el-select__selected-item
+        回退）→ 不含所选 option 文本 → 对展示 input dispatchEvent 原生
+        change + input（bubbles，触发组件自身同步链）→ 复读。option_text
+        为空（自动首选项）时以「复读后非空」为同步判据（§6.3 反例：单选
+        展示文本与 option 文本一致，判据可靠）。
+
+        Returns:
+            {'rescued': bool, 'reason': str, 'displayed': str}
+            探测异常不炸（返回 rescued=False，调用方落诚实终败）。
+        """
+        try:
+            return await self.page.evaluate("""(selector, optionText) => {
+                const sel = document.querySelector(selector);
+                if (!sel) return { rescued: false, reason: 'no_select' };
+                const input = sel.querySelector('input.el-input__inner');
+                if (!input) return { rescued: false, reason: 'no_input' };
+                const readDisplay = () => {
+                    const v = (input.value || '').trim();
+                    if (v) return v;
+                    const selected = sel.querySelector('.el-select__selected-item');
+                    return selected ? (selected.textContent || '').trim() : '';
+                };
+                const containsOption = (txt) =>
+                    optionText ? txt.includes(optionText) : !!txt;
+                if (containsOption(readDisplay())) {
+                    return { rescued: true, reason: 'already_displayed',
+                             displayed: readDisplay() };
+                }
+                // 补发原生 change + input（bubbles 触发 el-select onChange 同步链）
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                const after = readDisplay();
+                return {
+                    rescued: containsOption(after),
+                    reason: after ? 'synced_after_dispatch' : 'still_empty',
+                    displayed: after,
+                };
+            }""", selector, option_text or "")
+        except Exception as e:
+            LOG.debug(f"    [P3-SYNC-RESCUE] el-select {label}: 补救探测异常: {e}")
+            return {"rescued": False, "reason": f"rescue_error: {e}"}
+
+    async def _verify_with_sync_rescue(self, label: str, selector: str,
+                                       option_text: str = "") -> tuple:
+        """★ 批九 P-3（§六）：verify 失败 → 同步补救 → 复读的编排序。
+
+        编排（方案 §6.2）：verify（多信号权威判定）失败 → _rescue_select_
+        model_sync（读展示值不含 option 文本 → 补发原生 change/input →
+        复读）→ rescued 则以 _verify_select_filled 权威复读收口；全败
+        返回原 verify（调用方落 model_sync_failed 诚实终败，不盲提交）。
+
+        Returns:
+            (verify, rescue_info)：verify 为最终权威判定 dict；
+            rescue_info 为补救过程记录（成功/失败/未触发）。
+        """
+        verify = await self._verify_select_filled(label, selector)
+        if verify.get("filled"):
+            return verify, {}
+        rescue = await self._rescue_select_model_sync(label, selector, option_text)
+        if rescue.get("rescued"):
+            LOG.info(f"    [P3-SYNC-RESCUE] el-select {label}: 原生事件补发后"
+                     f"值同步（{rescue.get('reason')}）: {rescue.get('displayed', '')}")
+            verify = await self._verify_select_filled(label, selector)
+        else:
+            LOG.warning(f"    [P3-SYNC-RESCUE] el-select {label}: 补发原生事件后"
+                        f"仍未同步（{rescue.get('reason')}）→ model_sync_failed")
+        return verify, rescue
 
     async def _verify_select_filled(self, label: str, selector: str = "") -> dict:
         """验证 select 字段填充后是否有值。

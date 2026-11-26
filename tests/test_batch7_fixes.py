@@ -533,8 +533,13 @@ class TestF3Memory:
         })
 
     def test_state_pending_error_texts_single_source(self):
-        """F3-2 豁免表单源五词（与方案 §F3-2 逐字一致）。"""
-        assert STATE_PENDING_ERROR_TEXTS == ('qga 未就绪', '克隆中', '请等待', '未就绪', '正在')
+        """F3-2 豁免表单源（批七五词 + 批九 §七配额类四词扩表，逐字一致）。"""
+        # ★ 批九 §七扩表：'上限为'/'配额不足'/'超出配额'/'quota'（r10「上限为3」
+        #   实证——配额饱和是环境态，不入终态记忆保留状态机恢复窗口）
+        assert STATE_PENDING_ERROR_TEXTS == (
+            'qga 未就绪', '克隆中', '请等待', '未就绪', '正在',
+            '上限为', '配额不足', '超出配额', 'quota',
+        )
 
     def test_exempt_state_pending_not_registered(self):
         """状态性失败（QGA 未就绪/克隆中/正在/请等待）不入册，保留状态机窗口。"""
@@ -550,11 +555,17 @@ class TestF3Memory:
         assert attempted == {}
 
     def test_terminal_api_error_registered(self):
-        """非状态性 api_error（配额/权限类）正常入册。"""
+        """非状态性 api_error（权限/参数类）正常入册。
+
+        ★ 批九 §七修订：配额类（磁盘配额不足/上限为等）由本用例原示例转
+        入豁免表——配额饱和是环境态而非操作缺陷，不入终态记忆保留状态机
+        恢复窗口（r10 待修清单③）。本用例改用权限类示例，意图不变：
+        非状态性业务错误必须正常入册。
+        """
         attempted = {}
         assert ce._register_terminal_attempt(
             "克隆", {"success": False, "error_type": "api_error",
-                     "error_text": "磁盘配额不足，无法创建云主机"}, attempted)
+                     "error_text": "无权限执行此操作，请联系管理员"}, attempted)
         assert attempted["克隆"] == 1
 
     def test_dialog_still_open_registered(self):

@@ -1113,3 +1113,236 @@ class TestBatch9P4F6EditFlowGate:
         # 探测仅无弹窗分支内调用（有弹窗跳转不走 F6，既有边界不变）
         assert src.index("_f6_has_dialog = await page.evaluate") \
             < src.index("_f6_target_has_edit_form(page)")
+
+
+# ============================================================
+# 批九-C（方案 §六 P-3 el-select 值同步 + §七 配额豁免）
+# ============================================================
+
+from core.discovery.replay.form_filler import MultiStepExecutor  # noqa: E402
+
+
+class _RescueFakePage:
+    """P-3 补救测试替身：evaluate 脚本返回（末位重复）+ 可配置抛错。"""
+
+    def __init__(self, evaluate_results, raise_always=False):
+        self._evals = list(evaluate_results) or [{"rescued": False}]
+        self._raise_always = raise_always
+        self.evaluate_calls = 0
+
+    async def evaluate(self, *args, **kwargs):
+        self.evaluate_calls += 1
+        if self._raise_always:
+            raise RuntimeError("evaluate boom (mock)")
+        idx = min(self.evaluate_calls - 1, len(self._evals) - 1)
+        return self._evals[idx]
+
+
+class TestBatch9P3SelectModelSync:
+    """批九 P-3（§六）：el-select 选项点选成功但 Vue model 未同步的补救链。
+
+    r10 定案（更新密钥对）：4 步点选全成功 → 值同步校验失败判「填充失败」
+    → 无可填字段直接提交 → 否定前缀拦截 + primary disabled →
+    no_confirm_button 假象终败 131s。修复：原生事件补救 → 复读验证；
+    仍不同步 → 禁止盲提交，form_validation 诚实终败。
+    """
+
+    @pytest.fixture
+    def executor(self):
+        return MultiStepExecutor(_RescueFakePage([{"rescued": True}]), kb=None)
+
+    # ── _rescue_select_model_sync：脚本化行为 + JS 判据守卫 ──
+
+    @pytest.mark.asyncio
+    async def test_rescue_scripted_pass(self, executor):
+        """补救 evaluate 报 synced_after_dispatch → rescued 透传 + displayed。"""
+        executor.page = _RescueFakePage([
+            {"rescued": True, "reason": "synced_after_dispatch", "displayed": "kp-1"},
+        ])
+        ret = await executor._rescue_select_model_sync("密钥对", ".sel", "kp-1")
+        assert ret["rescued"] is True
+        assert ret["displayed"] == "kp-1"
+        assert executor.page.evaluate_calls == 1
+
+    @pytest.mark.asyncio
+    async def test_rescue_scripted_still_empty(self, executor):
+        """补发事件后仍空 → rescued=False（调用方落诚实终败）。"""
+        executor.page = _RescueFakePage([
+            {"rescued": False, "reason": "still_empty", "displayed": ""},
+        ])
+        ret = await executor._rescue_select_model_sync("密钥对", ".sel", "kp-1")
+        assert ret["rescued"] is False
+        assert ret["reason"] == "still_empty"
+
+    @pytest.mark.asyncio
+    async def test_rescue_evaluate_exception_non_blocking(self, executor):
+        """evaluate 抛错 → 不炸，rescued=False + rescue_error 原因。"""
+        executor.page = _RescueFakePage([], raise_always=True)
+        ret = await executor._rescue_select_model_sync("密钥对", ".sel", "kp-1")
+        assert ret["rescued"] is False
+        assert "rescue_error" in ret["reason"]
+
+    def test_rescue_js_guards(self):
+        """补救 JS 判据守卫：原生 change+input 双补发 + 展示值复读 + 判据。"""
+        src = inspect.getsource(MultiStepExecutor._rescue_select_model_sync)
+        # 原生 change + input 双补发（bubbles 触发组件 onChange 同步链）
+        assert "dispatchEvent(new Event('change', { bubbles: true }))" in src
+        assert "dispatchEvent(new Event('input', { bubbles: true }))" in src
+        # 展示值读取：input.value + .el-select__selected-item 回退（双形态）
+        assert "input.el-input__inner" in src
+        assert "el-select__selected-item" in src
+        # 判据：option_text 存在→包含；为空（自动首选项）→非空
+        assert "optionText ? txt.includes(optionText) : !!txt" in src
+        # 展示已含所选文本 → already_displayed 直接成功（不重复补发）
+        assert "already_displayed" in src
+
+    # ── _verify_with_sync_rescue：编排序 ──
+
+    @pytest.mark.asyncio
+    async def test_orchestration_verify_pass_no_rescue(self, executor):
+        """verify 首过 → 补救不触发（快路径零成本）。"""
+        calls = []
+
+        async def fake_verify(label, selector=""):
+            calls.append("verify")
+            return {"filled": True, "displayed_value": "kp-1"}
+
+        async def fake_rescue(label, selector="", option_text=""):
+            calls.append("rescue")
+            return {"rescued": False}
+
+        executor._verify_select_filled = fake_verify
+        executor._rescue_select_model_sync = fake_rescue
+        verify, rescue = await executor._verify_with_sync_rescue("密钥对", ".sel", "kp-1")
+        assert verify["filled"] is True
+        assert calls == ["verify"], "verify 首过不得触发补救"
+        assert rescue == {}
+
+    @pytest.mark.asyncio
+    async def test_orchestration_rescue_then_reverify(self, executor):
+        """verify 失败 → 补救成功 → 权威复读收口（model 同步链闭环）。"""
+        verify_results = [{"filled": False}, {"filled": True, "displayed_value": "kp-1"}]
+        calls = []
+
+        async def fake_verify(label, selector=""):
+            calls.append("verify")
+            return verify_results[calls.count("verify") - 1]
+
+        async def fake_rescue(label, selector="", option_text=""):
+            calls.append("rescue")
+            return {"rescued": True, "reason": "synced_after_dispatch", "displayed": "kp-1"}
+
+        executor._verify_select_filled = fake_verify
+        executor._rescue_select_model_sync = fake_rescue
+        verify, rescue = await executor._verify_with_sync_rescue("密钥对", ".sel", "kp-1")
+        assert verify["filled"] is True, "补救成功后必须复读收口"
+        assert calls == ["verify", "rescue", "verify"], "编排序：verify→rescue→verify"
+        assert rescue["rescued"] is True
+
+    @pytest.mark.asyncio
+    async def test_orchestration_rescue_fail_no_reverify(self, executor):
+        """补救失败 → 不复读（无意义），返回未填 + 补救记录（诚实终败原料）。"""
+        calls = []
+
+        async def fake_verify(label, selector=""):
+            calls.append("verify")
+            return {"filled": False}
+
+        async def fake_rescue(label, selector="", option_text=""):
+            calls.append("rescue")
+            return {"rescued": False, "reason": "still_empty"}
+
+        executor._verify_select_filled = fake_verify
+        executor._rescue_select_model_sync = fake_rescue
+        verify, rescue = await executor._verify_with_sync_rescue("密钥对", ".sel", "kp-1")
+        assert verify["filled"] is False
+        assert rescue["reason"] == "still_empty"
+        assert calls == ["verify", "rescue"], "补救失败后不得复读"
+
+    # ── _execute_select_with_details 接线 + direct-submit 守卫 ──
+
+    def test_execute_select_wired_source(self):
+        """接线守卫：两分支（editable/readonly）verify 失败均走补救编排，
+        失败 detail 落 model_sync_failed（r10 'unknown' 丢因修复）。"""
+        src = inspect.getsource(MultiStepExecutor._execute_select_with_details)
+        # 两分支均经编排序（Post-fill verification 处）
+        assert src.count("_verify_with_sync_rescue(") == 2, \
+            "editable/readonly 两分支 verify 失败均须走 P-3 编排"
+        # 失败 detail 互锁标记（F3c 重试链与 direct-submit 守卫的判定原料）
+        assert src.count('"skipped_reason": "model_sync_failed"') == 2
+        # 既有 execution_path 标记保留（向后兼容）
+        assert "editable_verify_failed" in src
+        assert "readonly_verify_failed" in src
+
+    def test_sync_failed_labels_pure_fn(self):
+        """守卫原料纯函数：仅 model_sync_failed 入列，其他原因排除。"""
+        details = [
+            {"label": "密钥对", "skipped_reason": "model_sync_failed"},
+            {"label": "镜像", "skipped_reason": "no_options"},
+            {"label": "网络", "skipped_reason": "expand_failed"},
+            {"label": "成功字段", "option_text": "vpc-1"},
+            {"label": "无原因"},
+        ]
+        assert ce._sync_failed_select_labels(details) == ["密钥对"], \
+            "no_options/expand_failed/成功项不得误伤（可选空 select 直接提交零回归）"
+        assert ce._sync_failed_select_labels([]) == []
+        assert ce._sync_failed_select_labels(None) == []
+        assert ce._sync_failed_select_labels("not-a-list") == []
+
+    def test_p3_no_blind_submit_wired_source(self):
+        """direct-submit 守卫接线：model_sync_failed → form_validation 终败，
+        关弹窗、不盲提交；守卫在「无可填字段直接提交」之前。"""
+        src = _src(ce._do_generic_operation)
+        assert "[P3-NO-BLIND-SUBMIT]" in src, "守卫日志签名缺失"
+        assert "_sync_failed_select_labels(dialog_fill_details)" in src, \
+            "守卫未消费 dialog_fill_details"
+        guard_pos = src.index("[P3-NO-BLIND-SUBMIT]")
+        log_pos = src.index("无可填字段，尝试直接提交")
+        assert guard_pos < log_pos, "守卫必须先于直接提交日志拦截"
+        # form_validation 诚实终败 + 弹窗清理（不残留弹窗串扰下一操作）
+        assert '"form_validation"' in src[guard_pos:guard_pos + 2000]
+        assert "_close_dialog(page)" in src[guard_pos:guard_pos + 2000]
+
+
+class TestBatch9QuotaExemption:
+    """批九 §七：配额类终态拒绝豁免——「上限为3」不入 attempted 终态记忆。
+
+    r10 待修清单③：配额饱和是环境态而非操作缺陷；豁免后保留状态机恢复
+    窗口（共享环境配额释放后 reconcile 仍可恢复），不烧终态预算。
+    """
+
+    def test_quota_error_not_registered(self):
+        """配额类 error_text（上限为3/配额不足/超出配额/quota）不入册。"""
+        cases = [
+            "创建云主机失败：云主机数量上限为3",
+            "操作失败：内存配额不足",
+            "创建失败：超出配额限制",
+            "quota exceeded for this project",
+        ]
+        for err_text in cases:
+            attempted = {}
+            registered = ce._register_terminal_attempt(
+                "创建云主机", {"success": False, "error_type": "api_error",
+                               "error_text": err_text}, attempted)
+            assert registered is False, f"配额类文本被误入终态册: {err_text}"
+            assert "创建云主机" not in attempted, \
+                f"配额豁免失效（attempted_actions 被污染）: {err_text}"
+
+    def test_normal_error_still_registered(self):
+        """非状态性业务错误仍正常入册（豁免表不弱化终态记忆边界）。"""
+        attempted = {}
+        registered = ce._register_terminal_attempt(
+            "创建云主机", {"success": False, "error_type": "api_error",
+                           "error_text": "参数不合法：名称格式错误"}, attempted)
+        assert registered is True, "正常业务错误必须正常入册"
+        assert attempted["创建云主机"] == 1
+
+    def test_state_pending_texts_expanded_single_source(self):
+        """豁免表单源扩容核验（批七五词 + 批九四词，lower() 兼容）。"""
+        from core.discovery.const import STATE_PENDING_ERROR_TEXTS
+        assert STATE_PENDING_ERROR_TEXTS == (
+            'qga 未就绪', '克隆中', '请等待', '未就绪', '正在',
+            '上限为', '配额不足', '超出配额', 'quota',
+        )
+        # 全小写约定（消费方对 error_text 整体 lower() 后包含判定）
+        assert all(kw == kw.lower() for kw in STATE_PENDING_ERROR_TEXTS)
