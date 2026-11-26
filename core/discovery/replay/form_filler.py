@@ -1574,58 +1574,66 @@ class FormFiller:
                 "submit_blocked": None, "blocked_reason": ""}
 
     async def _dialog_still_open_check(self, ret: dict, fp_before: str) -> dict:
-        """★ 批五 F3 守卫 B：点击成功后 500ms 复查同指纹弹窗是否关闭。
+        """★ 批五 F3 守卫 B：提交后同指纹弹窗关闭复查（★ 批八修复2：有界轮询）。
 
         点击前无弹窗（fp_before 空）→ 不检查（toolbar 即时提交类）；
-        点击前有弹窗 → 500ms（+loading 完成）后同指纹弹窗仍在 = 提交未生效
-        的正面失败证据（F9 已把弹窗正文移出判定通道，滞留证据由本守卫提供）。
+        点击前有弹窗 → 500ms×6 有界轮询同指纹弹窗是否关闭，指纹变化
+        （弹窗关闭）即提前放行；窗口耗尽仍同指纹 = 提交未生效的正面失败
+        证据（F9 已把弹窗正文移出判定通道，滞留证据由本守卫提供）。
 
-        ★ 批六修复2 豁免：同指纹弹窗仍在时，先检测提交后二次确认浮层
+        ★ 批六修复2 豁免（保留）：轮询中每轮检测提交后二次确认浮层
         （tooltip/alertdialog/el-popper 形态，EIS doubleConfirm 实证
         div[role="tooltip"]）——「弹窗未关」可能是业务在等二次确认，
-        主提交已生效。检测到 → 点击层内确认按钮 → 复查弹窗关闭则放行；
-        点不到确认或点后弹窗仍滞留才维持 dialog_still_open（r8 重装
-        操作系统 3 次尝试全部被此误杀，业务主提交从未完成）。
+        主提交已生效。层出现即点击其确认按钮（仅点击一次，防重复提交），
+        点后继续轮询弹窗关闭。
+
+        ★ 批八修复2（r10 定案）：原 500ms/600ms 一次快照对 EIS 后端处理
+        延迟过紧——r10 重装操作系统/创建快照 3/3 假失败，成功通知在判定
+        后 ~1s 到达（11:36:52 判败 → 11:36:53 通知到达）；r9 同链 600ms
+        内关弹窗放行。一次快照改有界轮询：提前退出保快路径不变，真失败
+        仅多 ~2.5s 判定延迟。
         """
         if not fp_before:
             ret.setdefault("submit_blocked", None)
             ret.setdefault("blocked_reason", "")
             return ret
         try:
-            await self.page.wait_for_timeout(500)
             from .wait_helpers import wait_for_loading_complete
-            await wait_for_loading_complete(self.page)
-            fp_after = await self._active_dialog_fingerprint()
-            if fp_after == fp_before:
-                # ── 批六修复2：二次确认浮层检测（守卫 B 豁免通道）──
+            fp_after = fp_before
+            dbl_handled = False
+            for _attempt in range(6):  # 500ms × 6 = 3s 有界轮询
+                await self.page.wait_for_timeout(500)
+                await wait_for_loading_complete(self.page)
+                fp_after = await self._active_dialog_fingerprint()
+                if fp_after != fp_before:
+                    break  # 弹窗已关闭——提交生效，放行
+                if dbl_handled:
+                    continue  # 二次确认已点击过，只等关闭（防重复提交）
+                # ── 批六修复2：二次确认浮层检测（层出现即点，单次）──
                 dbl = await self._detect_and_click_double_confirm()
                 if dbl.get("clicked"):
-                    LOG.info(f"    [submit_form_v2] 批六修复2: 检测到提交后二次确认层"
-                             f"（{dbl.get('layer_tag', '')}），已点击确认按钮"
-                             f" '{dbl.get('button_text', '')}'")
-                    await self.page.wait_for_timeout(600)
-                    await wait_for_loading_complete(self.page)
-                    fp_after2 = await self._active_dialog_fingerprint()
+                    dbl_handled = True
                     ret["double_confirm_clicked"] = True
                     ret["double_confirm_button_text"] = dbl.get("button_text", "")
                     ret["double_confirm_layer_tag"] = dbl.get("layer_tag", "")
-                    if fp_after2 != fp_before:
-                        LOG.info(f"    [submit_form_v2] 批六修复2: 二次确认完成，"
-                                 f"弹窗已关闭——主提交生效，守卫 B 放行")
-                        ret.setdefault("submit_blocked", None)
-                        ret.setdefault("blocked_reason", "")
-                        return ret
-                    LOG.warning(f"    [submit_form_v2] 批六修复2: 二次确认已点击但"
-                                f"弹窗仍滞留——继续落 dialog_still_open")
-                # ── 豁免通道结束：无二次确认层或点后仍滞留 → 维持原判定 ──
-                LOG.warning(f"    [submit_form_v2] 守卫 B: 提交点击完成但同指纹弹窗"
-                            f" 500ms 后仍开启，判 dialog_still_open")
-                ret["submit_blocked"] = "dialog_still_open"
-                ret["blocked_reason"] = (f"提交点击已执行但弹窗未关闭"
-                                         f"（指纹: {fp_before[:60]}）——提交未生效")
-            else:
+                    LOG.info(f"    [submit_form_v2] 批六修复2: 检测到提交后二次确认层"
+                             f"（{dbl.get('layer_tag', '')}），已点击确认按钮"
+                             f" '{dbl.get('button_text', '')}'——轮询窗口内继续等弹窗关闭")
+            if fp_after != fp_before:
+                if ret.get("double_confirm_clicked"):
+                    LOG.info(f"    [submit_form_v2] 批六修复2: 二次确认完成，"
+                             f"弹窗已关闭——主提交生效，守卫 B 放行")
                 ret.setdefault("submit_blocked", None)
                 ret.setdefault("blocked_reason", "")
+                return ret
+            if ret.get("double_confirm_clicked"):
+                LOG.warning(f"    [submit_form_v2] 批六修复2: 二次确认已点击但"
+                            f"弹窗仍滞留——继续落 dialog_still_open")
+            LOG.warning(f"    [submit_form_v2] 守卫 B: 提交点击完成但同指纹弹窗"
+                        f" 3s 轮询后仍开启，判 dialog_still_open")
+            ret["submit_blocked"] = "dialog_still_open"
+            ret["blocked_reason"] = (f"提交点击已执行但弹窗未关闭"
+                                     f"（指纹: {fp_before[:60]}）——提交未生效")
         except Exception as e:
             LOG.debug(f"    [F3-guard-B] 弹窗复查异常（放行）: {e}")
             ret.setdefault("submit_blocked", None)

@@ -206,6 +206,20 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
         #    使用 Vue 实例的 show() 方法展开菜单（与 click_row_more_item 相同方式）
         dropdown_locator_str = f"{row_selector} .el-dropdown"
 
+        # ── ★ 批八修复1：真实 hover 先行展开（与 button_driver click_row_more_item
+        #    展开策略同源）——r10 定案：F6 导航往返（go_back）后 ~15s 内行
+        #    .el-dropdown 的 __vue__ 不可用，本扫描两次（11:34:08/11:47:10）退化
+        #    dispatchEvent 且 has_visible_menu=False，「退出运维模式」唯一收集
+        #    窗一无所获；同窗口点击路径全程实证可用（expand_strategy='hover'）。
+        #    hover 先行把菜单打开，原 JS 链保持原序兜底（vue_show 幂等，合成
+        #    mouseenter 不会收起已开菜单）；hover 失败不阻断扫描。
+        try:
+            _dd_loc = page.locator(f"{row_selector} .el-dropdown").first
+            await _dd_loc.hover(timeout=2000)
+            LOG.info("  [INCREMENTAL-SCAN-DEBUG] dropdown_real_hover=ok")
+        except Exception as _hover_err:
+            LOG.debug(f"  [incremental-scan] 真实 hover 展开失败（JS 兜底链继续）: {_hover_err}")
+
         expand_result = await page.evaluate(f"""() => {{
             const row = document.querySelector('{row_selector}');
             if (!row) return {{ expanded: false, reason: 'no_row' }};
