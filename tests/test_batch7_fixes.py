@@ -32,6 +32,29 @@ from core.discovery.shared import fill_helpers
 # 测试基建
 # ============================================================
 
+class _FakeLocator:
+    """最小 Locator 替身（F4 Primary 回退测试用）。"""
+
+    def __init__(self, page, selector, count=0, visible=False):
+        self.page = page
+        self.selector = selector
+        self._count = count
+        self._visible = visible
+
+    @property
+    def first(self):
+        return self
+
+    async def count(self):
+        return self._count
+
+    async def is_visible(self):
+        return self._visible
+
+    async def click(self, *args, **kwargs):
+        self.page.locator_clicks.append(self.selector)
+
+
 class FakePage:
     """最小 Playwright Page 替身。"""
 
@@ -41,6 +64,12 @@ class FakePage:
         self._eval_calls = 0
         self.sleeps = 0
         self.fills = []
+        self.locator_calls = []
+        self.locator_clicks = []
+
+    def locator(self, selector):
+        self.locator_calls.append(selector)
+        return _FakeLocator(self, selector, count=1, visible=True)
 
     async def evaluate(self, *args, **kwargs):
         if self._evals:
@@ -548,3 +577,161 @@ class TestF3Memory:
                 {"success": False, "error_type": "api_error", "error_text": text},
                 attempted)
         assert attempted == {}
+
+
+# ============================================================
+# G2：F4 Primary 回退 scope 收紧 / F5 关闭词表 / F8 弹窗归属 token 覆盖
+# ============================================================
+
+class TestF4PrimaryScope:
+
+    @pytest.mark.asyncio
+    async def test_no_active_dialog_disables_fallback(self, monkeypatch):
+        """无活跃弹窗 → Primary 回退禁用（r9 A3 全页误点防回归），不触碰 locator。"""
+        async def no_fp(self):
+            return ""
+
+        async def no_guard(self, scope_selector=""):
+            return None
+
+        async def no_detect(self, scope_selector=""):
+            return ""
+
+        async def not_clicked(page, text, **kwargs):
+            return {"clicked": False}
+
+        monkeypatch.setattr(ff_mod.FormFiller, "_active_dialog_fingerprint", no_fp)
+        monkeypatch.setattr(ff_mod.FormFiller, "_submit_button_disabled_guard", no_guard)
+        monkeypatch.setattr(ff_mod.FormFiller, "_detect_submit_button_text", no_detect)
+        monkeypatch.setattr(
+            "core.discovery.shared.button_clicker.click_page_button", not_clicked)
+
+        page = FakePage()
+        ff = ff_mod.FormFiller(page)
+        result = await ff.submit_form_v2()
+        assert result.get("text") == "" and result.get("locator") == ""
+        assert result.get("primary_fallback_disabled") == "no_active_dialog"
+        assert page.locator_calls == [], "回退禁用时不得触碰 page.locator"
+
+    @pytest.mark.asyncio
+    async def test_fallback_scoped_to_active_dialog(self, monkeypatch):
+        """有活跃弹窗 → 回退 locator/JS 都限定弹窗容器内（A3 误点实证形态）。"""
+        async def fp(self):
+            return "dialog|更新密钥对"
+
+        async def no_guard(self, scope_selector=""):
+            return None
+
+        async def no_detect(self, scope_selector=""):
+            return ""
+
+        async def not_clicked(page, text, **kwargs):
+            return {"clicked": False}
+
+        async def passthrough_check(self, ret, fp_before):
+            return ret
+
+        async def no_wait(page):
+            pass
+
+        monkeypatch.setattr(ff_mod.FormFiller, "_active_dialog_fingerprint", fp)
+        monkeypatch.setattr(ff_mod.FormFiller, "_submit_button_disabled_guard", no_guard)
+        monkeypatch.setattr(ff_mod.FormFiller, "_detect_submit_button_text", no_detect)
+        monkeypatch.setattr(
+            "core.discovery.shared.button_clicker.click_page_button", not_clicked)
+        monkeypatch.setattr(ff_mod.FormFiller, "_dialog_still_open_check", passthrough_check)
+        monkeypatch.setattr(
+            "core.discovery.replay.wait_helpers.wait_for_loading_complete", no_wait)
+
+        page = FakePage(evaluate_results=["更新并重启云主机"])
+        ff = ff_mod.FormFiller(page)
+        result = await ff.submit_form_v2()
+        assert page.locator_calls, "应走 Primary 回退"
+        assert ".el-dialog__wrapper:visible button.el-button--primary" in page.locator_calls[0]
+        assert page.locator_clicks, "弹窗内 primary 应被点击"
+        assert result.get("text") == "更新并重启云主机"
+
+    @pytest.mark.asyncio
+    async def test_negative_prefix_primary_skipped(self, monkeypatch):
+        """弹窗内 primary 命中否定前缀（'放弃更新'）→ 跳过不点击。"""
+        async def fp(self):
+            return "dialog|更新密钥对"
+
+        async def no_guard(self, scope_selector=""):
+            return None
+
+        async def no_detect(self, scope_selector=""):
+            return ""
+
+        async def not_clicked(page, text, **kwargs):
+            return {"clicked": False}
+
+        monkeypatch.setattr(ff_mod.FormFiller, "_active_dialog_fingerprint", fp)
+        monkeypatch.setattr(ff_mod.FormFiller, "_submit_button_disabled_guard", no_guard)
+        monkeypatch.setattr(ff_mod.FormFiller, "_detect_submit_button_text", no_detect)
+        monkeypatch.setattr(
+            "core.discovery.shared.button_clicker.click_page_button", not_clicked)
+
+        page = FakePage(evaluate_results=["放弃更新"])
+        ff = ff_mod.FormFiller(page)
+        result = await ff.submit_form_v2()
+        assert result.get("text") == ""
+        assert page.locator_clicks == [], "否定前缀按钮不得被点击"
+
+
+class TestF5CancelTexts:
+
+    def test_close_added_to_cancel_texts(self):
+        """'关闭' 入 CANCEL_TEXTS（r9 A4：执行命令弹窗 footer 只有"关闭"）。"""
+        assert "关闭" in const.CANCEL_TEXTS
+
+    def test_semantic_separation_kept(self):
+        """'关闭' 不进提交/确认词表（关闭≠提交语义）。"""
+        assert "关闭" not in const.SUBMIT_TEXTS
+        assert "关闭" not in const.CONFIRM_TEXTS
+
+    def test_wired_into_close_chain(self):
+        """只读弹窗主链 confirm_dialog(confirm=False) 消费 CANCEL_TEXTS（单源）。"""
+        from core.discovery.replay.button_driver import confirm_dialog
+        src = _src(confirm_dialog)
+        assert "CANCEL_TEXTS" in src
+
+
+class TestF8TitleClaimsAction:
+
+    def test_continuous_substring_baseline_kept(self):
+        """①连续子串：批六 r8 实证 4 例全命中形态零收窄。"""
+        assert ce._title_claims_action("删除", "删除云主机test569722")
+        assert ce._title_claims_action("更新密钥对", "更新密钥对")
+        assert ce._title_claims_action("修改Hostname", "修改Hostname")
+        assert ce._title_claims_action("重装操作系统", "重装操作系统-云主机-test569722")
+
+    def test_subject_word_insertion_now_claims(self):
+        """r9 B2 定案形态：'创建镜像'弹窗 title='创建云主机镜像' → 判归属成立。"""
+        assert ce._title_claims_action("创建镜像", "创建云主机镜像")
+        assert ce._title_claims_action("删除镜像", "删除云主机镜像")
+
+    def test_two_char_token_coverage(self):
+        """③2字滑块全命中：容忍非白名单词插入（'修改密码'对'修改管理员密码'）。"""
+        assert ce._title_claims_action("修改密码", "修改管理员密码")
+
+    def test_zero_overlap_still_mismatch(self):
+        """F8.3 防误认领边界：完全不重叠仍判 mismatch（残留弹窗不被误领）。"""
+        assert not ce._title_claims_action("删除", "创建云主机镜像")
+        assert not ce._title_claims_action("创建镜像", "创建云主机")
+
+    def test_empty_inputs_safe(self):
+        assert not ce._title_claims_action("", "任意标题")
+        assert not ce._title_claims_action("任意操作", "")
+
+    def test_subject_words_single_source(self):
+        """主体词白名单单源；长词在前（'云主机'先于'主机'剔除）。"""
+        assert const.DIALOG_TITLE_SUBJECT_WORDS == ("云主机", "主机", "实例", "虚拟机")
+        assert (const.DIALOG_TITLE_SUBJECT_WORDS.index("云主机")
+                < const.DIALOG_TITLE_SUBJECT_WORDS.index("主机"))
+
+    def test_wired_into_3a_block(self):
+        """3a 主判据与残留隐藏名单均走 _title_claims_action（判据单源防漂移）。"""
+        src = _src(ce._do_generic_operation)
+        assert "_title_claims_action" in src
+        assert "_hide_idx" in src

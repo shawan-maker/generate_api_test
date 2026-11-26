@@ -447,6 +447,35 @@ def _merge_validated_result(validated: dict, key: str, result) -> object:
     return result
 
 
+def _title_claims_action(op_norm: str, title_norm: str) -> bool:
+    """★ 批七 F8：弹窗归属 token 覆盖匹配（3a 判据放宽）。
+
+    r9 B2 定案：操作'创建镜像'的弹窗 title='创建云主机镜像'——批六连续子串
+    判据误杀自己弹窗 4 次（dialog_mismatch 伪终态）。判定序（零收窄叠加）：
+      ① 连续子串（批六原判据保留——r8 实证 4 例全命中形态）
+      ② title 剔除主体词白名单（DIALOG_TITLE_SUBJECT_WORDS）后连续子串
+        （'创建云主机镜像'剔'云主机'→'创建镜像' ⊂）
+      ③ 操作名偶长 ≥4 时 2 字滑块全部命中 title（token 覆盖，容忍主体词/
+        修饰词插入；奇数尾巴单字噪声大不启用）
+    防误认领边界（F8.3）：完全不重叠（'删除' 对 '创建云主机镜像'）仍 False。
+    入参须为去空格归一化文本。
+    """
+    if not op_norm or not title_norm:
+        return False
+    if op_norm in title_norm:
+        return True
+    stripped = title_norm
+    for w in const.DIALOG_TITLE_SUBJECT_WORDS:
+        stripped = stripped.replace(w, "")
+    if op_norm in stripped:
+        return True
+    if len(op_norm) >= 4 and len(op_norm) % 2 == 0:
+        tokens = [op_norm[i:i + 2] for i in range(0, len(op_norm), 2)]
+        if all(t in title_norm for t in tokens):
+            return True
+    return False
+
+
 async def _scan_row_state_snapshot(page, created_marker: str) -> dict:
     """扫描当前行按钮状态 + 读行权威状态（批一 1.1/1.3 基座）。
 
@@ -5689,15 +5718,17 @@ async def _do_generic_operation(page, context: dict) -> dict:
     #   弹窗残留，批内修改Hostname 的 observe 命中残留弹窗 title='更新密钥对'，
     #   generic 路径把它当自己的弹窗处理 → required_field_empty field=密钥对
     #   错挂到修改Hostname 名下，真实弹窗从未打开，伪失败每轮重跑）。
-    #   判据（宽松防误杀）：规范化 btn 文本是弹窗 title 的子串（r8 实证 4 例
-    #   全满足：'删除'⊂'删除云主机test569722'、'修改Hostname'⊂'修改Hostname'、
-    #   '重装操作系统'⊂'重装操作系统-云主机-test569722'、'更新密钥对'⊂'更新密钥对'）。
+    #   ★ 批七 F8 判据放宽（r9 B2 定案：'创建镜像'弹窗 title='创建云主机镜像'，
+    #   连续子串判据误杀自己弹窗 4 次）：_title_claims_action token 覆盖匹配
+    #   （①连续子串 ②主体词剔除 ③2字滑块全命中），主体词白名单单源 const。
     #   护栏：title 为空（确认型小弹窗，r8 关机弹窗 title='' 业务正常）与
     #   message-box/popconfirm（全局模态层 title 恒'确认操作'）不做校验。
     if _container_type in ("drawer", "dialog") and actual_state.split(":", 1):
         _own_title = actual_state.split(":", 1)[1].strip() if ":" in actual_state else ""
-        if _own_title and trigger_text_normalized and trigger_text_normalized not in " ".join(_own_title.split()):
-            LOG.warning(f"    [批六3a] 弹窗归属不匹配: 本操作='{trigger_text_normalized}' "
+        _own_title_norm = " ".join(_own_title.split())
+        if (_own_title and trigger_text_normalized
+                and not _title_claims_action(trigger_text_normalized, _own_title_norm)):
+            LOG.warning(f"    [批六3a/F8] 弹窗归属不匹配: 本操作='{trigger_text_normalized}' "
                         f"但弹窗 title='{_own_title}' —— 疑似上一操作残留弹窗，尝试在全部可见弹窗中找归属")
             _visible_titles = await page.evaluate("""() => {
                 const containers = document.querySelectorAll(
@@ -5706,33 +5737,42 @@ async def _do_generic_operation(page, context: dict) -> dict:
                 for (const d of containers) {
                     if (d.style.display === 'none' || d.offsetWidth <= 0 || d.offsetHeight <= 0) continue;
                     const t = d.querySelector('.el-dialog__title, .el-drawer__header, .ant-modal-title');
-                    out.push({ title: t ? t.textContent.trim() : '', type: d.classList.contains('el-drawer') ? 'drawer' : 'dialog' });
+                    out.push({ idx: out.length, title: t ? t.textContent.trim() : '',
+                               type: d.classList.contains('el-drawer') ? 'drawer' : 'dialog' });
                 }
                 return out;
             }""")
             _own_match = next(
                 (v for v in _visible_titles
-                 if trigger_text_normalized in " ".join(v.get("title", "").split())),
+                 if _title_claims_action(
+                     trigger_text_normalized, " ".join(v.get("title", "").split()))),
                 None,
             )
             if _own_match:
                 # 双弹窗叠加：本操作的真实弹窗存在但被残留弹窗遮蔽 → 隐藏非匹配残留弹窗
+                # （隐藏名单 Python 侧按同判据定案，JS 只按序号执行——判据单源防漂移）
+                _hide_idx = [v.get("idx") for v in _visible_titles
+                             if not _title_claims_action(
+                                 trigger_text_normalized,
+                                 " ".join(v.get("title", "").split()))]
                 _hidden = await page.evaluate(
-                    """(needle) => {
-                        let count = 0;
+                    """(hideIdx) => {
+                        const visible = [];
                         const containers = document.querySelectorAll(
                             '.el-dialog__wrapper, .el-drawer, .ant-modal-wrap');
                         for (const d of containers) {
                             if (d.style.display === 'none' || d.offsetWidth <= 0 || d.offsetHeight <= 0) continue;
-                            const t = d.querySelector('.el-dialog__title, .el-drawer__header, .ant-modal-title');
-                            const title = t ? t.textContent.trim() : '';
-                            if (!title.includes(needle)) { d.style.display = 'none'; count++; }
+                            visible.push(d);
+                        }
+                        let count = 0;
+                        for (const i of hideIdx) {
+                            if (visible[i]) { visible[i].style.display = 'none'; count++; }
                         }
                         return count;
                     }""",
-                    trigger_text_normalized,
+                    _hide_idx,
                 )
-                LOG.info(f"    [批六3a] 找到本操作弹窗 (title='{_own_match['title']}')，"
+                LOG.info(f"    [批六3a/F8] 找到本操作弹窗 (title='{_own_match['title']}')，"
                          f"隐藏 {_hidden} 个残留弹窗后继续")
             else:
                 # 全部可见弹窗都不属于本操作 → 清残留 + 落终态（不重试：

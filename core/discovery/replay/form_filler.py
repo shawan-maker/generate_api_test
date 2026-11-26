@@ -1514,30 +1514,53 @@ class FormFiller:
                 }
                 return await self._dialog_still_open_check(ret, _fp_before)
 
-        # 最终回退: primary 按钮
+        # 最终回退: primary 按钮（★ 批七 F4：scope 收紧——仅活跃弹窗容器内）
+        # r9 A3 定案：无 scope 全页 .first 会误点工具栏「创建云主机」跳页 →
+        # F6 无角色 URL 变化假成功，更新密钥对从未真正提交。结构判据一次
+        # 治本：回退仅限 _fp_before 指认的活跃弹窗 wrapper 内的 primary
+        # （文本词表保持第一优先不动）；无活跃弹窗 → 回退禁用返回未提交。
+        if not _fp_before:
+            LOG.warning(f"    [submit_form_v2] 所有策略均失败，且无活跃弹窗——"
+                        f"Primary 回退禁用（批七 F4 防全页误点）")
+            return {"text": "", "locator": "", "xpath_index": -1, "clean_text": "",
+                    "submit_blocked": None, "blocked_reason": "",
+                    "primary_fallback_disabled": "no_active_dialog"}
         try:
             from .locator_helpers import safe_css
-            primary = self.page.locator(safe_css('button.el-button--primary', 'element-ui')).first
+            _primary_scope = safe_css(
+                ".el-dialog__wrapper:visible button.el-button--primary, "
+                ".el-drawer:visible button.el-button--primary, "
+                ".el-message-box__wrapper:visible button.el-button--primary, "
+                ".ant-modal-wrap:visible button.el-button--primary", "element-ui")
+            primary = self.page.locator(_primary_scope).first
             if await primary.count() > 0 and await primary.is_visible():
                 actual_text = await self.page.evaluate("""() => {
-                    const btns = Array.from(document.querySelectorAll('button.el-button--primary'));
-                    for (const b of btns) {
-                        if (b.offsetWidth > 0 && b.offsetHeight > 0 && !b.disabled) {
-                            return b.textContent.trim();
+                    const containers = document.querySelectorAll(
+                        '.el-dialog__wrapper, .el-drawer, .el-message-box__wrapper, .ant-modal-wrap');
+                    for (const c of containers) {
+                        if (c.offsetWidth <= 0 || c.offsetHeight <= 0) continue;
+                        if (c.style.display === 'none') continue;
+                        const btns = c.querySelectorAll('button.el-button--primary');
+                        for (const b of btns) {
+                            if (b.offsetWidth > 0 && b.offsetHeight > 0 && !b.disabled) {
+                                return b.textContent.trim();
+                            }
                         }
                     }
-                    return "primary";
+                    return "";
                 }""")
-                if const.starts_with_negative_prefix(actual_text):
+                if not actual_text:
+                    LOG.debug("    [submit_form_v2] 活跃弹窗内无可见非禁用 primary 按钮，回退不点击")
+                elif const.starts_with_negative_prefix(actual_text):
                     LOG.warning(f"    [submit_form_v2] primary 回退命中否定前缀按钮 '{actual_text}'，跳过")
                 else:
                     await primary.click()
                     from .wait_helpers import wait_for_loading_complete
                     await wait_for_loading_complete(self.page)
-                    LOG.info(f"    [submit_form_v2] Primary 回退成功: '{actual_text}'")
+                    LOG.info(f"    [submit_form_v2] Primary 回退成功（弹窗内）: '{actual_text}'")
                     ret = {
                         "text": actual_text,
-                        "locator": "button.el-button--primary",
+                        "locator": _primary_scope,
                         "click_strategy": "playwright",
                         "xpath_index": -1,
                         "clean_text": "",
