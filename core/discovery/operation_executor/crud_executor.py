@@ -22,7 +22,7 @@ from core.discovery.replay.form_filler import (
     FormFiller, read_form_errors,
 )
 from core.discovery.shared import generate_fill_data, generate_fill_rules
-from core.discovery.shared.button_clicker import click_page_button
+from core.discovery.shared.button_clicker import click_page_button, is_destroy_text
 from core.discovery.operation_executor.base_executor import (
     _install_message_capture, _get_captured_messages,
     _verify_operation_success, _check_data_changed,
@@ -947,13 +947,59 @@ def _record_state_matrix(state_ctx: dict, status, states: dict) -> None:
     row.update(states)
 
 
-def _record_state_transition(state_ctx: dict, action, from_status, to_status) -> None:
+def _is_nav_without_form(result) -> bool:
+    """★ 批九 F3 转移边质量门单源判据：page-nav 且无表单字段的执行结果。
+
+    导航型操作（查看详情/网络配置类，批七 F6 分流产物）不是状态转移
+    手段——执行前后 status 恰好不同属观察巧合（r11 实证 网络配置
+    Stopping→Stopped 伪边被 R1 两次消费各耗 ~30s 空转，均未解锁任何
+    pending）。判据单源两用：
+      - 记录门：_record_state_transition 记边前拦截（新边不入册）
+      - 消费门：R1 边候选循环跳过（对存量伪边生效）
+    result 非 dict / 无 interaction_mode / 有 form_fields → False（非本
+    判据管辖，原样放行——dialog 确认类与 EDIT-FLOW 类真边零损失）。
+    """
+    if not isinstance(result, dict):
+        return False
+    if result.get("interaction_mode") != "page-nav":
+        return False
+    nav_info = result.get("nav_info") or {}
+    return not nav_info.get("form_fields")
+
+
+def _semantic_target_for(state_ctx: dict, action, from_status):
+    """★ 批九 F4：语义目标态单源查找——已知转移边 (action, from) 的 to 态。
+
+    数据驱动（转移边语义，跨轮种子累积），不预设「操作名→目标态」映射；
+    首跑无边时返回 None（_wait_row_states_stable 回落双条件稳态，行为
+    与现状一致）。用于成功后 post-settle 的语义目标态等待（慢翻转/
+    过渡态场景不再依赖「值两次相同」碰运气）。
+    """
+    if not state_ctx or not action or not from_status:
+        return None
+    for _edge in (state_ctx.get("state_transitions") or []):
+        if (_edge.get("action") == action
+                and _edge.get("from") == from_status
+                and _edge.get("to")):
+            return _edge.get("to")
+    return None
+
+
+def _record_state_transition(state_ctx: dict, action, from_status, to_status,
+                             result: dict = None) -> None:
     """转移边采集：{action, from, to} 同三元组去重保序。
 
     任一端不可读（None）或两端相同（非状态翻转）时不记录。
+
+    ★ 批九 F3 记录门：result 为 page-nav 无表单（导航型操作）时不记边
+    （_is_nav_without_form 单源判据——观察巧合边不进入恢复转移候选池）。
     """
     if (not state_ctx or not action or not from_status or not to_status
             or from_status == to_status):
+        return
+    if _is_nav_without_form(result):
+        LOG.info(f"  [EDGE-SKIP-NAV] {action} {from_status}→{to_status}"
+                 f" 不记边（page-nav 无表单：观察巧合非转移手段）")
         return
     edges = state_ctx.setdefault("state_transitions", [])
     key = (action, from_status, to_status)
@@ -1155,6 +1201,7 @@ async def _check_and_execute_newly_enabled(
     tab_prefix: str,
     max_depth: int = 5,
     attempted_actions: dict = None,
+    deferred_destroy: list = None,
 ) -> dict:
     """检查并执行新启用的按钮（通用级联处理）。
 
@@ -1173,6 +1220,8 @@ async def _check_and_execute_newly_enabled(
         ui_result: UI 结果
         tab_prefix: 日志前缀
         max_depth: 最大递归深度
+        deferred_destroy: ★ 批九 G2 延迟删除清单（主循环收尾统一执行，
+            级联批发现的 destroy 类入册，绝不批内执行）
 
     Returns:
         dict: 执行结果 {action: result}
@@ -1240,6 +1289,16 @@ async def _check_and_execute_newly_enabled(
         if _attempted_exhausted(text, attempted_actions):
             LOG.info(f"{tab_prefix}[STATE-CHANGE] 跳过终态失败已耗尽预算的按钮: {text}"
                      f"（累计 {attempted_actions.get(text, 0)} 次）")
+            continue
+        # ★ 批九 G2：destroy 类不进级联批——删除是 marker 行生命周期终点，
+        #   批中间执行会掐断后续一切 marker 定位操作与 reconcile 恢复窗口
+        #   （r11 实证删除第 2 位执行 → 6 操作连锁 row_not_found + 恢复的
+        #   最后两轮 reconcile 机会一并被灭）。defer 收尾统一执行（幂等去重）。
+        if is_destroy_text(text):
+            LOG.info(f"{tab_prefix}[STATE-CHANGE][DESTROY-DEFER] {text}"
+                     f"（删除类不入级联批，收尾统一执行）")
+            if isinstance(deferred_destroy, list) and text not in deferred_destroy:
+                deferred_destroy.append(text)
             continue
         LOG.info(f"{tab_prefix}[STATE-CHANGE] 执行新启用按钮: {text}")
 
@@ -1313,6 +1372,7 @@ async def _check_and_execute_newly_enabled(
                 executed_actions, form_filler, tab_name, tab_locator,
                 ui_result, tab_prefix, max_depth - 1,
                 attempted_actions=attempted_actions,
+                deferred_destroy=deferred_destroy,
             )
             results.update(sub_results)
         else:
@@ -1343,7 +1403,8 @@ async def _check_and_execute_newly_enabled(
 async def _wait_row_states_stable(page, created_marker: str,
                                   max_wait_ms: int = 180000,
                                   poll_interval_ms: int = 5000,
-                                  state_ctx: dict = None) -> dict:
+                                  state_ctx: dict = None,
+                                  target_status: str = None) -> dict:
     """等待行状态稳定（批一 1.2 重写：双条件 + 权威 status）。
 
     判定（不预设「过渡态特征」——「含 ing/中」特征枚举必错（Running 含
@@ -1356,12 +1417,18 @@ async def _wait_row_states_stable(page, created_marker: str,
     超时不硬失败：记录 state_wait_timeout 返回最后一次观测（重试链兜底）。
     稳态时顺带采集状态×按钮矩阵（批一 1.3，state_ctx 提供时）。
 
+    ★ 批九 F4 语义目标态等待：target_status 提供时（已知转移边 to 态），
+    status 命中目标即视为稳态返回——不等「两次相同」（慢翻转/过渡态
+    场景「两次相同」可能在中间态提前收敛，r11 实证 Stopping >10s）。
+    仍受 max_wait_ms 封顶；超时回落双条件口径的最后一次观测。
+
     Args:
         page: Playwright Page
         created_marker: 行标识
         max_wait_ms: 最长等待上限（毫秒），超时返回最后一次观测
         poll_interval_ms: 轮询间隔（毫秒）
         state_ctx: 状态采集上下文（批一 1.3；None 时仅判定不采集）
+        target_status: 语义目标态（批九 F4；None 时纯双条件判定）
 
     Returns:
         dict: {"states": {button_text: is_enabled},
@@ -1375,6 +1442,13 @@ async def _wait_row_states_stable(page, created_marker: str,
         if not prev.get("states"):
             return {"states": {}, "status": None, "qga_ready": None, "timed_out": False}
 
+    # ★ 批九 F4：初扫已命中语义目标态 → 立即返回（矩阵同双条件路径采集）
+    if target_status is not None and prev.get("status") == target_status:
+        _record_state_matrix(state_ctx,
+                             prev.get("status"),
+                             prev.get("states") or {})
+        return {**prev, "timed_out": False}
+
     waited = 0
     while waited < max_wait_ms:
         await page.wait_for_timeout(poll_interval_ms)
@@ -1383,6 +1457,11 @@ async def _wait_row_states_stable(page, created_marker: str,
         states_equal = bool(cur.get("states")) and cur.get("states") == prev.get("states")
         prev_status = prev.get("status")
         cur_status = cur.get("status")
+        # ★ 批九 F4：语义目标态命中即返回（先于双条件——已知预期目标时
+        #   「两次相同」只是更弱的证据）
+        if target_status is not None and cur_status == target_status:
+            _record_state_matrix(state_ctx, cur_status, cur.get("states") or {})
+            return {**cur, "timed_out": False}
         # status 可读时双条件；不可读时退回菜单集合单条件（现状行为）
         if prev_status is not None and cur_status is not None:
             stable = states_equal and cur_status == prev_status
@@ -1478,6 +1557,7 @@ async def _state_aware_reconcile(
     business_executed = set()  # R3：业务身份已执行（本次 reconcile 调用内）
     recovery_done = set()      # 本次调用已走过的边（含转移失败）
     watched_edges = {}         # R2 判定：edge_key -> 解锁 pending 成败追踪
+    transient_waits = 0        # ★ 批九 F2：过渡态再稳态计数（上限 2 次）
 
     LOG.info(f"{tab_prefix}[STATE-RECONCILE] 启动: pending={sorted(pending)}"
              f"（触发: {trigger_action or '主循环收尾'}）")
@@ -1498,11 +1578,25 @@ async def _state_aware_reconcile(
         # 2. R1 直接执行：pending 中当前已启用且业务身份未消费的
         # ★ 批六修复5：终态失败预算耗尽的 pending 项跳过（pending 是开始时
         #   的快照，循环内白名单失败已入册——后续轮次不再重试）
+        # ★ 批九 G2：destroy 类不 ready——删除统一收尾执行，R1 不为删除
+        #   翻转状态、不直接执行删除（r11 实证删除在级联/R1 增益层先行
+        #   执行即 marker 行灭，后续 marker 定位操作连锁全败）。
         ready = [a for a in pending
                  if states.get(a) and a not in business_executed
-                 and not _attempted_exhausted(a, attempted_actions)]
+                 and not _attempted_exhausted(a, attempted_actions)
+                 and not is_destroy_text(a)]
         if ready:
-            for action in ready:
+            # ★ 批九 F1：轮内动态队列——成功项翻转状态后按 post 快照重算
+            #   调度序（解锁 pending 绝对优先），替代「按轮首快照消费到底」
+            #   的 stale ready 模式（r11 实证 硬重启 在新旧矩阵行都可用 →
+            #   预检照常通过 → 暂停 创造的 Paused 窗口被同轮后续项摧毁，
+            #   恢复 终身未执行）。新序每次执行要么消费 business_executed
+            #   （R3 每身份一次）要么被 attempted 过滤——单调递减必然终止。
+            queue = list(ready)
+            qi = 0
+            while qi < len(queue):
+                action = queue[qi]
+                qi += 1
                 btn = buttons_by_action.get(action)
                 if not btn:
                     pending.discard(action)
@@ -1560,13 +1654,49 @@ async def _state_aware_reconcile(
                     executed_actions.add(action)
                     LOG.info(f"{tab_prefix}[STATE-RECONCILE] ✓ {action} 业务成功")
                     # 执行可能再次翻转行状态 → settle 后记转移边（1.3）
+                    # ★ 批九 F4：post-settle 语义目标态等待——已知边
+                    #   (action, from=status) 的 to 态时命中即返回（首跑无边
+                    #   返回 None，回落双条件，行为与现状一致）
                     post = await _wait_row_states_stable(
-                        page, created_marker, state_ctx=state_ctx)
+                        page, created_marker, state_ctx=state_ctx,
+                        target_status=_semantic_target_for(state_ctx, action, status))
                     if post.get("status") is not None:
                         result["row_state_after"] = post.get("status")
-                    _record_state_transition(state_ctx, action, status, post.get("status"))
+                    _record_state_transition(state_ctx, action, status,
+                                             post.get("status"), result=result)
                     # ★ 批七 F2-2：成功 = 状态翻转 → R1 预检快照以 post settle 刷新
                     _r1_snap = post
+                    # ★ 批九 F1：轮内定向消费——状态翻转即重算调度序。本次
+                    #   翻转解锁的 pending（轮首不可用、post 态可用）绝对优先
+                    #   （窗口优先序：其只在当前状态活着的窗口内可执行）；
+                    #   旧 ready 中 post 态仍可执行者随行、不可用者出列
+                    #   （pending 不丢——交下一内嵌轮 settle 重评）。
+                    post_status = post.get("status")
+                    post_states = post.get("states") or {}
+                    if (post_status and post_status != status
+                            and isinstance(post_states, dict) and post_states):
+                        consumed = set(queue[:qi])
+                        rest = list(queue[qi:])
+                        unlocked = [a for a in pending
+                                    if post_states.get(a)
+                                    and not states.get(a)
+                                    and a not in business_executed
+                                    and a not in consumed
+                                    and a not in rest
+                                    and not _attempted_exhausted(a, attempted_actions)]
+                        still_ready = [a for a in rest if post_states.get(a)]
+                        dropped = [a for a in rest if not post_states.get(a)]
+                        if unlocked:
+                            LOG.info(f"{tab_prefix}[STATE-RECONCILE][WINDOW-UNLOCKED] "
+                                     f"状态 {status} → {post_status} 解锁 pending: "
+                                     f"{unlocked}（窗口优先，抢先消费）")
+                        if dropped:
+                            LOG.info(f"{tab_prefix}[STATE-RECONCILE][WINDOW-UNLOCKED] "
+                                     f"旧 ready 出列（{post_status} 态不可用，"
+                                     f"交下轮 settle 重评）: {dropped}")
+                        queue = queue[:qi] + unlocked + still_ready
+                        status = post_status
+                        states = post_states
                 else:
                     err = result.get("error_text", "") or "未知错误"
                     LOG.info(f"{tab_prefix}[STATE-RECONCILE] ✗ {action} 业务失败: {err}")
@@ -1618,6 +1748,10 @@ async def _state_aware_reconcile(
                 continue
             if _attempted_exhausted(action, attempted_actions):
                 continue
+            # ★ 批九 G2：destroy 类不作为恢复驱动——删除收尾统一执行，
+            #    不为删除翻转状态（对 deferred 项跑恢复转移 = 无意义状态翻转）
+            if is_destroy_text(action):
+                continue
             need_states = [s for s, btns in matrix.items()
                            if s != status and btns.get(action)]
             if need_states:
@@ -1629,6 +1763,13 @@ async def _state_aware_reconcile(
         # 找可用转移边：from=当前状态、to∈需求状态、未封禁未走过、操作当前可点
         candidate = None
         for edge in (state_ctx.get("state_transitions") or []):
+            # ★ 批九 F3 消费门：对存量伪边生效——该 action 的最新执行结果为
+            #    page-nav 无表单 → 观察巧合边非状态转移手段，跳过（r11 实证
+            #    网络配置 Stopping→Stopped 伪边被消费两次各耗 ~30s 空转）
+            if _is_nav_without_form(validated.get(edge.get("action"))):
+                LOG.info(f"{tab_prefix}[STATE-RECONCILE][EDGE-SKIP-NAV] 跳过伪转移边: "
+                         f"{edge.get('action')} {edge.get('from')}→{edge.get('to')}")
+                continue
             key = (edge.get("action"), edge.get("from"), edge.get("to"))
             if (key in exhausted_edges
                     or key in recovery_done
@@ -1640,6 +1781,25 @@ async def _state_aware_reconcile(
                 candidate = (edge, key)
                 break
         if not candidate:
+            # ★ 批九 F2：过渡态再稳态——「无出边 + 仍有可恢复 pending + 当前
+            #   status 从未作为稳态入矩阵」= 过渡态（数据驱动判据：不预设
+            #   「含 ing/中」文本特征，从未在任何 settle 点被观测过的 status
+            #   即过渡态）。有界再 settle 重评（上限 2 次，每次受既有 180s
+            #   封顶）——r11 实证 Stopping 无出边即整体 break，行 15s 后回
+            #   Running，差 15s 即可再驱动一轮 暂停→恢复 完整恢复。
+            _pending_alive = any(
+                (a not in business_executed
+                 and not _attempted_exhausted(a, attempted_actions)
+                 and not is_destroy_text(a))
+                for a in pending)
+            if (_pending_alive and transient_waits < 2
+                    and status is not None
+                    and status not in matrix):
+                transient_waits += 1
+                LOG.info(f"{tab_prefix}[STATE-RECONCILE][TRANSIENT-WAIT] "
+                         f"状态 {status} 未入已观测矩阵（过渡态），"
+                         f"再稳态第 {transient_waits}/2 次后重评")
+                continue
             LOG.info(f"{tab_prefix}[STATE-RECONCILE] 无可用恢复边，结束")
             break
 
@@ -1663,11 +1823,16 @@ async def _state_aware_reconcile(
             result["row_state_before"] = status
         if result.get("success"):
             executed_actions.add(restore_action)
+            # ★ 批九 F4：恢复转移 post-settle 语义目标态等待——目标态即
+            #    edge["to"]（转移驱动的语义终点，恒已知），命中即返回，
+            #    不依赖「两次相同」（过渡态/慢翻转不再截断转移链）
             post = await _wait_row_states_stable(
-                page, created_marker, state_ctx=state_ctx)
+                page, created_marker, state_ctx=state_ctx,
+                target_status=edge.get("to"))
             if post.get("status") is not None:
                 result["row_state_after"] = post.get("status")
-            _record_state_transition(state_ctx, restore_action, status, post.get("status"))
+            _record_state_transition(state_ctx, restore_action, status,
+                                     post.get("status"), result=result)
             LOG.info(f"{tab_prefix}[STATE-RECONCILE] ✓ 恢复转移成功:"
                      f" {status} → {post.get('status')}")
             # R2 追踪：到达后解锁的 pending 全部失败 → 该边耗尽
@@ -1699,6 +1864,7 @@ async def _rediscover_marker_dropdowns(
     page, ui_result: dict, framework: str, created_marker: str,
     buttons_by_action: dict, action_roles: dict, ordered_actions: list,
     tab_name: str, delete_actions: list, current_action: str, tab_prefix: str = "",
+    deferred_destroy: list = None,
 ) -> list:
     """★ 批五 F2-1：create 成功后 marker 锁行重收集下拉菜单项并入册主循环。
 
@@ -1743,10 +1909,12 @@ async def _rediscover_marker_dropdowns(
         buttons_by_action[text] = btn
         role = _infer_action_role(text, btn, delete_actions=delete_actions)
         action_roles[text] = role
-        # 位置：delete 类放最后，其余插到当前操作（create）之后（与增量扫描同口径）
+        # 位置：★ 批九 G1——delete 类入 deferred_destroy（收尾统一执行，
+        #   不入主序），其余插到当前操作（create）之后（与增量扫描同口径）
         if role == "delete":
-            ordered_actions.append(text)
-            insert_pos = len(ordered_actions) - 1
+            if isinstance(deferred_destroy, list) and text not in deferred_destroy:
+                deferred_destroy.append(text)
+            insert_pos = -1  # deferred（不在主序，收尾统一执行）
         else:
             try:
                 current_idx = ordered_actions.index(current_action)
@@ -1904,8 +2072,12 @@ async def _validate_single_tab_crud(
         if key not in ordered_actions:
             ordered_actions.append(key)
 
-    # 6. 删除最后
-    ordered_actions.extend(_delete_actions)
+    # 6. ★ 批九 G1：删除项不入主循环序——deferred_destroy 清单收尾统一
+    #    执行（主循环收尾 reconcile + clear_table_search 之后，全部非删除
+    #    操作已终态，「删除最后」由结构保证而非排序技巧）。级联批/R1 增益
+    #    层由 G2 守卫同源 defer——三条执行路径收敛为单一收尾路径，r11 型
+    #    「删除先行 → marker 行灭 → N 操作连锁 row_not_found」结构性消失。
+    deferred_destroy = list(_delete_actions)
 
     # ★ 初始化按钮状态追踪（通用方案，替代硬编码的 STATE_TOGGLE_BUTTONS）
     # 记录所有按钮的初始 enabled/disabled 状态，用于检测状态变化
@@ -2177,6 +2349,7 @@ async def _validate_single_tab_crud(
                         page, ui_result, framework, created_marker,
                         buttons_by_action, action_roles, ordered_actions,
                         tab_name, _delete_actions, action, tab_prefix,
+                        deferred_destroy=deferred_destroy,
                     )
             else:
                 fallback = await _extract_fallback_marker(page)
@@ -2380,12 +2553,14 @@ async def _validate_single_tab_crud(
                 result["row_state_before"] = _row_state_before
             if settle.get("status") is not None:
                 result["row_state_after"] = settle["status"]
-            _record_state_transition(state_ctx, action, _row_state_before, settle.get("status"))
+            _record_state_transition(state_ctx, action, _row_state_before,
+                                      settle.get("status"), result=result)
 
             cascade_results = await _check_and_execute_newly_enabled(
                 page, created_marker, button_states, buttons_by_action,
                 executed_actions, form_filler, tab_name, tab_locator, ui_result, tab_prefix,
                 attempted_actions=attempted_actions,
+                deferred_destroy=deferred_destroy,
             )
 
             # 将级联执行的结果写入 validated，并记录执行顺序
@@ -2544,10 +2719,12 @@ async def _validate_single_tab_crud(
                             action_roles[new_action] = new_role
 
                             # 插入到 ordered_actions 的合适位置
-                            # delete 类操作放最后，其他操作放当前位置后面
+                            # ★ 批九 G1——delete 类入 deferred_destroy（收尾
+                            # 统一执行，不入主序），其他操作放当前位置后面
                             if new_role == "delete":
-                                ordered_actions.append(new_action)
-                                insert_pos = len(ordered_actions) - 1
+                                if new_action not in deferred_destroy:
+                                    deferred_destroy.append(new_action)
+                                insert_pos = -1  # deferred（收尾统一执行）
                             else:
                                 # 在当前 action 后面插入
                                 try:
@@ -2558,8 +2735,10 @@ async def _validate_single_tab_crud(
                                     ordered_actions.append(new_action)
                                     insert_pos = len(ordered_actions) - 1
 
-                            LOG.info(f"{tab_prefix}  + {new_action} (角色: {new_role}, 插入位置: {insert_pos}, "
-                                     f"ordered_actions={ordered_actions})")
+                            _pos_note = (f"deferred_destroy={deferred_destroy}"
+                                         if insert_pos == -1
+                                         else f"插入位置: {insert_pos}, ordered_actions={ordered_actions}")
+                            LOG.info(f"{tab_prefix}  + {new_action} (角色: {new_role}, {_pos_note})")
 
         # 操作后确保回到列表页（统一使用 shared/transition_to_next）
         try:
@@ -2593,6 +2772,41 @@ async def _validate_single_tab_crud(
                                   action_roles.get(rc_action, "generic"),
                                   triggered_by=rc_meta.get("triggered_by") or "")
 
+        # ★ 批九 P-5 诚实短路：final reconcile 后仍未回收的 pending 中，
+        #    「矩阵全态零观测」项（任何已观测稳态都未见其启用——r11 实证
+        #    标签管理 在 6 态 enabled 清单全部零出现，R1 needed 恒空 →
+        #    永久 pending）给 skipped_state_window 终态（error_type=skipped
+        #    → detection_status=skipped + 专属 wait_reason），不沿用
+        #    click_failed 判失败——不猜测其窗口、不假装可恢复、不做假成功。
+        #    边界：矩阵为空（无状态采集环境）不短路——零观测态下无从谈
+        #    「全态零观测」，estack 类行为不变；destroy 项交收尾删除执行。
+        _matrix_all = (state_ctx or {}).get("state_button_matrix") or {}
+        if _matrix_all:
+            _leftover_pending = _collect_state_pending(
+                validated, buttons_by_action, action_roles, executed_actions,
+                attempted_actions=attempted_actions)
+            for pend_action in _leftover_pending:
+                if is_destroy_text(pend_action):
+                    continue
+                if any(row.get(pend_action) for row in _matrix_all.values()):
+                    continue  # 有已观测启用态 → 状态机仍有路径，不短路
+                _pend_btn = buttons_by_action.get(pend_action) or {}
+                _sc = {
+                    "success": False,
+                    "error_type": "skipped",
+                    "error_text": ("状态窗口未观测（矩阵全态零观测，无状态机"
+                                   "恢复路径）——诚实短路，不判 click_failed"),
+                    "failure_type": "skipped",
+                    "failure_reason": "状态窗口未观测（矩阵全态零观测）",
+                    "wait_reason": "state_window_unobserved",
+                    "skip_reason": "state_window_unobserved",
+                    "trigger_text": _pend_btn.get("text", ""),
+                }
+                _merge_validated_result(validated, pend_action, _sc)
+                LOG.info(f"{tab_prefix}[STATE-RECONCILE][P5-SHORTCIRCUIT] "
+                         f"{pend_action} 矩阵全态零观测 → skipped_state_window"
+                         f"（诚实短路）")
+
         # ★ 批五 F2 自清洁：清空搜索框恢复列表——搜索先行留下的过滤态在
         # Tab 收尾必须恢复，防污染下轮探测与共享环境（幂等，无搜索框 no-op）。
         try:
@@ -2600,6 +2814,65 @@ async def _validate_single_tab_crud(
             await clear_table_search(page)
         except Exception as _ce:
             LOG.debug(f"{tab_prefix}清空搜索异常（不阻塞收尾）: {_ce}")
+
+    # ★ 批九 G1：收尾删除——deferred_destroy 逐个经既有删除链执行。此时点
+    #    主循环全部非删除操作已终态、final reconcile 已消化 pending、搜索
+    #    过滤已清空——「删除最后」恒成立（结构保证而非排序技巧）。删除成功
+    #    即 marker 行生命周期终结，其后无任何 marker 定位操作——r11 型
+    #    「删除先行 → 6 操作连锁 row_not_found」结构性消失（含 P-2 末轮
+    #    reconcile 恢复窗口被掐灭的咬合断点）。
+    if deferred_destroy:
+        LOG.info(f"{tab_prefix}[DESTROY-FINAL] 收尾删除清单: {deferred_destroy}")
+        for del_action in list(deferred_destroy):
+            btn = buttons_by_action.get(del_action)
+            if not btn:
+                continue
+            _prior = validated.get(del_action)
+            if isinstance(_prior, dict) and _prior.get("success"):
+                # 幂等防御：既有成功结果不重复执行（执行方已记录 execution_order）
+                LOG.debug(f"{tab_prefix}[DESTROY-FINAL] {del_action} 已有成功结果，跳过")
+                continue
+            btn_location = btn.get("location", "")
+            LOG.info(f"{tab_prefix}[DESTROY-FINAL] 执行删除: {del_action}"
+                     f"（位置: {btn_location}）")
+            if btn_location == "row_action" and not created_marker:
+                LOG.warning(f"{tab_prefix}{del_action} 跳过: create 失败且无可用 marker")
+                skip_result = skipped("create 失败且无可用 marker")
+                skip_result["trigger_text"] = btn.get("text", "")
+                skip_result["btn_location"] = btn_location
+                skip_result["skip_reason"] = "no_marker_available"
+                _merge_validated_result(validated, del_action, skip_result)
+                continue
+            # ★ P0-A：每次执行重装捕获器，隔离前序操作消息残留
+            await _install_message_capture(page)
+            if btn_location == "row_action":
+                result = await _error_driven_retry(
+                    page, _do_delete, {
+                        "btn": btn, "marker": created_marker,
+                    }
+                )
+            else:
+                if btn_location == "toolbar" and created_marker:
+                    selected = await _ensure_row_selected(page, created_marker)
+                    if selected:
+                        LOG.debug(f"{tab_prefix}已勾选表格行供批量删除使用")
+                result = await _error_driven_retry(
+                    page, _do_generic_operation, {
+                        "btn": btn, "action": del_action, "marker": created_marker,
+                        "form_filler": form_filler,
+                        "tab_name": tab_name, "tab_locator": tab_locator,
+                    }
+                )
+            result = result or {}
+            if result.get("success"):
+                validated[del_action] = result
+                created_marker = None
+                _record_execution(del_action, "main", "delete")
+                LOG.info(f"{tab_prefix}[DESTROY-FINAL] ✓ {del_action} 删除成功")
+            else:
+                _merge_validated_result(validated, del_action, result)
+                LOG.info(f"{tab_prefix}[DESTROY-FINAL] ✗ {del_action} 删除失败: "
+                         f"{result.get('error_text', '未知错误')}")
 
     # ★ 记录未验证的 toolbar 按钮
     validated_actions = set(validated.keys())
