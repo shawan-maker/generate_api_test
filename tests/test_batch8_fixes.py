@@ -95,14 +95,16 @@ class GuardFakePage:
         self.sleeps += 1
 
 
-# _scan_row_after_operation 的 evaluate 调用序（行存在 → 直查按钮 → 展开结果
-# → 菜单可见 → 菜单按钮收集），全成功路径预设：
+# _scan_row_after_operation 的 evaluate 调用序（行存在 → 直查按钮 → 批九
+# SCAN-SWEEP 残留弹窗探测 → 展开结果 → 菜单可见 → 菜单按钮收集），全成功
+# 路径预设（批九 §五 在 hover 前插入一次探测 evaluate，无残留仅 +10ms）：
 _SCAN_EVALS = [
     True,                                                  # 1. row_exists
     {"buttons": [], "allTexts": ["取消", "确定"]},          # 2. 直查按钮
-    {"expanded": True, "method": "vue_show", "dropdownIndex": 2},  # 3. 展开结果
-    True,                                                  # 4. has_visible_menu
-    {"buttons": [], "menuInfo": [], "allItems": ["关机"]},  # 5. 菜单收集
+    0,   # 3. 批九 SCAN-SWEEP 残留弹窗探测（0=无残留 → 不清扫不重试）
+    {"expanded": True, "method": "vue_show", "dropdownIndex": 2},  # 4. 展开结果
+    True,                                                  # 5. has_visible_menu
+    {"buttons": [], "menuInfo": [], "allItems": ["关机"]},  # 6. 菜单收集
 ]
 
 
@@ -158,10 +160,10 @@ class TestBatch8Fix1ScanHoverFirst:
         assert hovers, "扫描未做真实 hover 展开先行"
         assert hovers[0][1] == ".el-table__row:nth-child(1) .el-dropdown", \
             "hover 必须锚定行内 .el-dropdown（与点击路径同源策略）"
-        # hover 事件必须先于第 3 次 evaluate（展开结果采集）
+        # hover 事件必须先于第 4 次 evaluate（批九 sweep 探测插位后展开结果采集后移）
         hover_idx = page.events.index(hovers[0])
         expand_idx = [i for i, e in enumerate(page.events)
-                      if e[0] == "evaluate" and e[1] == 2][0]
+                      if e[0] == "evaluate" and e[1] == 3][0]
         assert hover_idx < expand_idx, "hover 先行被破坏（JS 链先跑）"
 
     @pytest.mark.asyncio
@@ -170,8 +172,8 @@ class TestBatch8Fix1ScanHoverFirst:
         page = ScanFakePage(evaluate_results=_SCAN_EVALS, hover_fail=True)
         result = await ce._scan_row_after_operation(
             page, ".el-table__row:nth-child(1)", "test663637", {"关机"})
-        # 展开链 evaluate（第 3 次）仍被调用
-        assert any(e == ("evaluate", 2) for e in page.events), \
+        # 展开链 evaluate（第 4 次，批九 sweep 探测插位后）仍被调用
+        assert any(e == ("evaluate", 3) for e in page.events), \
             "hover 失败后 JS 兜底展开链未执行"
         assert result is not None
 
@@ -190,8 +192,14 @@ class TestBatch8Fix1ScanHoverFirst:
         """源码守卫：hover 先行存在且 try 包裹（失败不阻断）。"""
         src = _src(ce._scan_row_after_operation)
         assert "_dd_loc.hover(timeout=2000)" in src, "真实 hover 先行未接线"
-        assert "真实 hover 展开失败（JS 兜底链继续）" in src, \
-            "hover 失败必须走 JS 兜底链而非中断"
+        # 批九 §五：hover 失败行升 info 级带 reason（旧 debug 级被吞致归因链
+        # 断裂）；清扫过残留弹窗时允许重试一次
+        assert "dropdown_real_hover=fail" in src, \
+            "hover 失败日志签名缺失（须 info 级可归因）"
+        assert "dropdown_real_hover=ok" in src, \
+            "hover 成功日志签名缺失（成功/失败行须对称可归因）"
+        assert "(1, 2) if _hover_swept else (1,)" in src, \
+            "清扫后 hover 重试一次未接线"
         # hover 块在 JS 展开链 evaluate 之前
         assert src.index("_dd_loc.hover") < src.index("expand_result = await page.evaluate")
 

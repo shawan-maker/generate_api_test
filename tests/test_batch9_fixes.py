@@ -858,3 +858,258 @@ class TestBatch9P5HonestShortcircuit:
         src = _src(ce._validate_single_tab_crud)
         p5_block = src[src.find("★ 批九 P-5"):src.find("★ 批五 F2 自清洁")]
         assert "_merge_validated_result(validated, pend_action, _sc)" in p5_block
+
+
+# ============================================================
+# 批九-B（方案 §三 P-4 F6 收紧 + §五 SCAN-SWEEP）
+# ============================================================
+
+# _scan_row_after_operation 全成功路径 evaluate 序（批九-B 后）：
+# row_exists → 直查按钮 → SCAN-SWEEP 残留探测 → 展开结果 → 菜单可见 → 菜单收集
+_SWEEP_EVALS_CLEAN = [
+    True,                                                   # 0. row_exists
+    {"buttons": [], "allTexts": ["取消", "确定"]},           # 1. 直查按钮
+    0,                                                      # 2. SCAN-SWEEP 探测（0=无残留）
+    {"expanded": True, "method": "vue_show", "dropdownIndex": 0},  # 3. 展开结果
+    True,                                                   # 4. has_visible_menu
+    {"buttons": [], "menuInfo": [], "allItems": ["关机"]},  # 5. 菜单收集
+]
+
+_ROW_SEL = ".el-table__row:nth-child(1)"
+
+
+class _SweepHoverLocator:
+    """hover 替身：按调用序逐次给定成败（hover_fails 序列，末位重复）。"""
+
+    def __init__(self, page, selector, fail_pattern):
+        self._page = page
+        self._selector = selector
+        self._fail_pattern = list(fail_pattern) or [False]
+
+    @property
+    def first(self):
+        return self
+
+    async def hover(self, timeout=None):
+        attempt = len(self._page.hover_events)
+        fail = self._fail_pattern[min(attempt, len(self._fail_pattern) - 1)]
+        if fail:
+            self._page.hover_events.append(("hover", self._selector, "fail"))
+            raise RuntimeError("hover target detached (mock)")
+        self._page.hover_events.append(("hover", self._selector, "ok"))
+
+
+class SweepFakePage:
+    """SCAN-SWEEP 替身：evaluate 序列（可指定抛错位）+ hover 尝试流 + dismiss 计数。"""
+
+    def __init__(self, evaluate_results, hover_fails=(), raise_at=None):
+        self._evals = list(evaluate_results)
+        self._eval_calls = 0
+        self.events = []            # ('evaluate', i) / ('evaluate-raise', i)
+        self.hover_events = []      # ('hover', selector, 'ok'|'fail')
+        self._hover_fails = list(hover_fails)
+        self._raise_at = raise_at
+        self.dismiss_calls = 0
+
+    def locator(self, selector):
+        return _SweepHoverLocator(self, selector, self._hover_fails)
+
+    async def evaluate(self, *args, **kwargs):
+        idx = self._eval_calls
+        self._eval_calls += 1
+        if idx == self._raise_at:
+            self.events.append(("evaluate-raise", idx))
+            raise RuntimeError(f"evaluate boom at {idx} (mock)")
+        self.events.append(("evaluate", idx))
+        if idx < len(self._evals):
+            return self._evals[idx]
+        return self._evals[-1] if self._evals else None
+
+    async def wait_for_timeout(self, ms):
+        pass
+
+
+def _patch_dismiss(monkeypatch, fail=False):
+    """替身清扫 helper：计数 + 可配置抛错（真实签名兼容 ui_framework kwarg）。"""
+
+    async def fake_dismiss(page, ui_framework="element-ui"):
+        page.dismiss_calls += 1
+        if fail:
+            raise RuntimeError("dismiss boom (mock)")
+        return True
+
+    monkeypatch.setattr(
+        "core.discovery.shared.transition_helpers._dismiss_all_overlays", fake_dismiss)
+
+
+class TestBatch9ScanSweep:
+    """批九 §五 SCAN-SWEEP：hover 前残留弹窗探测 → 清扫 → 重试 hover 一次。
+
+    r11 归因缺口（退出运维模式 hover 被残留弹窗遮挡）的防御位；探测/
+    清扫异常不阻断扫描（回落 JS 兜底链）。
+    """
+
+    @pytest.mark.asyncio
+    async def test_no_residual_single_hover(self, monkeypatch):
+        """无残留弹窗 → 不清扫、单次 hover（快路径成本仅 +1 次 evaluate）。"""
+        _patch_dismiss(monkeypatch)
+        page = SweepFakePage(_SWEEP_EVALS_CLEAN)
+        result = await ce._scan_row_after_operation(
+            page, _ROW_SEL, "test663637", {"关机"})
+        assert page.dismiss_calls == 0, "无残留不得触发清扫"
+        assert page.hover_events == [("hover", f"{_ROW_SEL} .el-dropdown", "ok")], \
+            "无残留场景 hover 必须恰好一次"
+        assert "关机" in result["all_current_texts"], "菜单收集未生效"
+
+    @pytest.mark.asyncio
+    async def test_residual_swept_retry_hover_success(self, monkeypatch):
+        """有残留 → 清扫一次 → 首次 hover 失败允许重试，重试成功后扫描完成。"""
+        _patch_dismiss(monkeypatch)
+        evals = list(_SWEEP_EVALS_CLEAN)
+        evals[2] = 2   # SCAN-SWEEP 探测：2 个可见残留弹窗
+        page = SweepFakePage(evals, hover_fails=[True, False])
+        result = await ce._scan_row_after_operation(
+            page, _ROW_SEL, "test663637", {"关机"})
+        assert page.dismiss_calls == 1, "残留弹窗未被清扫"
+        assert len(page.hover_events) == 2, "清扫后 hover 重试未接线"
+        assert page.hover_events[0][2] == "fail" and page.hover_events[1][2] == "ok"
+        assert "关机" in result["all_current_texts"], "重试成功后菜单收集未生效"
+
+    @pytest.mark.asyncio
+    async def test_residual_both_hover_fail_js_fallback(self, monkeypatch):
+        """清扫后两次 hover 均失败 → 不中断，JS 兜底展开链照常执行。"""
+        _patch_dismiss(monkeypatch)
+        evals = list(_SWEEP_EVALS_CLEAN)
+        evals[2] = 1   # 有残留 → 触发清扫与重试资格
+        page = SweepFakePage(evals, hover_fails=[True, True])
+        result = await ce._scan_row_after_operation(
+            page, _ROW_SEL, "test663637", {"关机"})
+        assert page.dismiss_calls == 1
+        assert len(page.hover_events) == 2, "重试资格耗尽前不得提前放弃"
+        # 展开链 evaluate（第 4 次调用，idx=3）在两次 hover 失败后仍执行
+        assert any(e == ("evaluate", 3) for e in page.events), \
+            "hover 双败后 JS 兜底展开链未执行"
+        assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_probe_exception_non_blocking(self, monkeypatch):
+        """残留探测 evaluate 抛错 → 吞掉继续（不清扫不重试），JS 链照常。"""
+        _patch_dismiss(monkeypatch)
+        page = SweepFakePage(_SWEEP_EVALS_CLEAN, raise_at=2)
+        result = await ce._scan_row_after_operation(
+            page, _ROW_SEL, "test663637", {"关机"})
+        assert page.dismiss_calls == 0, "探测失败不得触发清扫"
+        assert len(page.hover_events) == 1, "探测失败无清扫 → 无重试资格"
+        assert any(e == ("evaluate", 3) for e in page.events), \
+            "探测异常后 JS 兜底展开链未执行"
+        assert "关机" in result["all_current_texts"]
+        assert ("evaluate-raise", 2) in page.events
+
+    @pytest.mark.asyncio
+    async def test_dismiss_exception_single_hover(self, monkeypatch):
+        """清扫 helper 抛错 → 不炸、无重试资格（_hover_swept 不置位），扫描继续。"""
+        _patch_dismiss(monkeypatch, fail=True)
+        evals = list(_SWEEP_EVALS_CLEAN)
+        evals[2] = 1
+        page = SweepFakePage(evals)
+        result = await ce._scan_row_after_operation(
+            page, _ROW_SEL, "test663637", {"关机"})
+        assert page.dismiss_calls == 1, "有残留必须尝试清扫（失败允许）"
+        assert len(page.hover_events) == 1, "清扫失败不得授予重试资格"
+        assert "关机" in result["all_current_texts"], "清扫失败不得阻断扫描"
+
+    def test_scan_sweep_wired_source(self):
+        """源码守卫：探测位（row_exists 之后 hover 之前）+ 四形态选择器 + 重试环。"""
+        src = _src(ce._scan_row_after_operation)
+        assert "[SCAN-SWEEP]" in src, "SCAN-SWEEP 日志签名缺失"
+        assert "_dismiss_all_overlays" in src, "清扫 helper 未接线（幂等单源复用）"
+        # 探测在 row_exists 门之后、hover 之前
+        assert src.index("_residual_dialogs = await page.evaluate") \
+            > src.index("row_exists = await page.evaluate")
+        assert src.index("_residual_dialogs = await page.evaluate") \
+            < src.index("_dd_loc.hover")
+        # 重试环：清扫过才有第二次资格
+        assert "(1, 2) if _hover_swept else (1,)" in src
+        # 四形态选择器与 F6 弹窗探测同源（单一权威口径）
+        assert ".el-dialog__wrapper, .el-drawer, .el-message-box, .ant-modal-wrap" in src
+
+
+class TestBatch9P4F6EditFlowGate:
+    """批九 P-4（§三）：F6 导航型分流收紧——编辑表单双判据互锁。
+
+    r11 用户界面复核定案：规格变更/系统盘扩容 2 项判定成功但业务零变更
+    （目标页 has_form=True 被无视、零填写零提交）；r9 对照为真完成 19s。
+    判据 A（可编辑输入计数，排除 disabled/readonly/is-disabled）∧ 判据 B
+    （确定类 footer 按钮）互锁：只读详情页（input 全 disabled）A 不命中、
+    搜索页无确定按钮 B 不命中 → 均保持 F6 快路径（网络配置 ~5s 不回吐）。
+    """
+
+    def test_edit_form_probe_matrix(self):
+        """互锁判定四态矩阵：A∧B 唯一命中，缺一即回落 F6 快路径。"""
+        assert ce._f6_target_is_edit_form(
+            {"editableInputs": 3, "hasSubmitBtn": True}) is True, \
+            "编辑型目标页（changeSpec 类）必须命中 EDIT-FLOW"
+        # 只读详情页（vmDetail 类）：el-form 布局但 input 全 disabled/readonly
+        assert ce._f6_target_is_edit_form(
+            {"editableInputs": 0, "hasSubmitBtn": True}) is False, \
+            "无可编辑输入不得命中（只读详情页假阳性防护）"
+        # 搜索页：可编辑输入存在但无确定类 footer 按钮
+        assert ce._f6_target_is_edit_form(
+            {"editableInputs": 2, "hasSubmitBtn": False}) is False, \
+            "无确定类按钮不得命中（搜索框页假阳性防护）"
+        assert ce._f6_target_is_edit_form(
+            {"editableInputs": 0, "hasSubmitBtn": False}) is False
+        # None/空 dict 防御（evaluate 返回异常形态）
+        assert ce._f6_target_is_edit_form({}) is False
+        assert ce._f6_target_is_edit_form(None) is False
+
+    def test_probe_js_guards(self):
+        """探测 JS 判据守卫：词表注入单源 + 可编辑性三重排除 + 可见性。"""
+        src = _src(ce._f6_target_has_edit_form)
+        # 判据 B 词表经 const 单源注入（不双源漂移）
+        assert "js_page_nav_edit_submit_texts()" in src, \
+            "词表必须经 const 单源函数注入"
+        # 判据 A：el-form 内 input/textarea 范围限定
+        assert "document.querySelectorAll('.el-form input, .el-form textarea')" in src
+        # 可编辑性排除：disabled / readonly / is-disabled 容器
+        assert "inp.disabled || inp.readOnly" in src
+        assert "inp.closest('.is-disabled')" in src
+        # 非可输入型 input 排除（button/checkbox/radio 等不计可编辑项）
+        assert "['button', 'submit', 'reset', 'hidden', 'file'," in src
+        assert "'checkbox', 'radio'].includes(t)" in src
+        # 可见性（不可见 input 不计数——teleport 隐藏 DOM 不误判）
+        assert "inp.offsetWidth" in src
+
+    def test_wordlist_single_source(self):
+        """词表单源守卫：窄表口径（区别于 SUBMIT_TEXTS 宽表）+ JS 注入形态。"""
+        from core.discovery import const as const_mod
+        import json
+        assert const_mod.PAGE_NAV_EDIT_SUBMIT_KEYWORDS == \
+            ("确定", "保存", "提交", "应用", "更新"), \
+            "词表口径漂移（r11/r12 对照基线）"
+        dumped = const_mod.js_page_nav_edit_submit_texts()
+        assert json.loads(dumped) == list(const_mod.PAGE_NAV_EDIT_SUBMIT_KEYWORDS), \
+            "JS 注入形态必须可解析为同集数组"
+        # 窄表边界：SUBMIT_TEXTS 语义重叠项不得反向混入本表（先例同源检查）
+        assert "立即创建" not in const_mod.PAGE_NAV_EDIT_SUBMIT_KEYWORDS
+
+    def test_f6_wired_source(self):
+        """接线守卫：探测先于快路径判定；EDIT-FLOW 分支不提前 return（落回探索链）。"""
+        src = _src(ce._do_generic_operation)
+        assert "_f6_target_has_edit_form(page)" in src, "编辑表单探测未接线"
+        assert "_f6_target_is_edit_form(_f6_edit_probe)" in src, "互锁判定未接线"
+        assert "[F6-EDIT-FLOW]" in src, "EDIT-FLOW 分流日志签名缺失"
+        # 探测必须先于 F6 快路径判定
+        assert src.index("_f6_target_has_edit_form(page)") \
+            < src.index("[F6] 导航型菜单项判定成功")
+        # EDIT-FLOW 分支不得提前 return（否则探索链不可达，修复失效）
+        edit_block = src[src.index("_f6_target_is_edit_form(_f6_edit_probe)"):
+                         src.index("[F6] 导航型菜单项判定成功")]
+        assert "return" not in edit_block, \
+            "EDIT-FLOW 分支提前 return：未落回探索链（r9 已验证可完成页内提交）"
+        # 快路径保持既有产物形态（批七 adjudication_note + 导航回列表）
+        assert "批七F6" in src
+        assert "_navigate_back_to_list" in src
+        # 探测仅无弹窗分支内调用（有弹窗跳转不走 F6，既有边界不变）
+        assert src.index("_f6_has_dialog = await page.evaluate") \
+            < src.index("_f6_target_has_edit_form(page)")

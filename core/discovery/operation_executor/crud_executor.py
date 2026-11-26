@@ -206,19 +206,54 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
         #    使用 Vue 实例的 show() 方法展开菜单（与 click_row_more_item 相同方式）
         dropdown_locator_str = f"{row_selector} .el-dropdown"
 
+        # ── ★ 批九 SCAN-SWEEP（§五）：hover 前单次 evaluate 检测可见残留
+        #    弹窗——黄金翻转窗内（F6 导航往返 go_back 后 ~15s）残留弹窗会
+        #    遮挡 hover 目标（r11 退出运维模式归因缺口的防御位）。有则
+        #    [SCAN-SWEEP] 记数并复用 _dismiss_all_overlays（幂等单源
+        #    helper，批六修复3c 同源）清扫；探测/清扫异常不阻断扫描
+        #    （回落 JS 兜底链）。无残留仅 +1 次 evaluate（~10ms）。
+        _hover_swept = False
+        try:
+            _residual_dialogs = await page.evaluate("""() => {
+                const dialogs = document.querySelectorAll(
+                    '.el-dialog__wrapper, .el-drawer, .el-message-box, .ant-modal-wrap');
+                let n = 0;
+                for (const d of dialogs) { if (d.offsetWidth > 0) n++; }
+                return n;
+            }""")
+            if _residual_dialogs:
+                LOG.info(f"  [SCAN-SWEEP] 检测到 {_residual_dialogs} 个残留弹窗，"
+                         f"清扫后重试 hover")
+                try:
+                    from core.discovery.shared.transition_helpers import _dismiss_all_overlays
+                    await _dismiss_all_overlays(page)
+                    _hover_swept = True
+                except Exception as _sweep_err:
+                    LOG.info(f"  [SCAN-SWEEP] 清扫异常（hover 照常执行）: {_sweep_err}")
+        except Exception as _sweep_probe_err:
+            LOG.debug(f"  [SCAN-SWEEP] 残留弹窗探测异常（忽略）: {_sweep_probe_err}")
+
         # ── ★ 批八修复1：真实 hover 先行展开（与 button_driver click_row_more_item
         #    展开策略同源）——r10 定案：F6 导航往返（go_back）后 ~15s 内行
         #    .el-dropdown 的 __vue__ 不可用，本扫描两次（11:34:08/11:47:10）退化
         #    dispatchEvent 且 has_visible_menu=False，「退出运维模式」唯一收集
         #    窗一无所获；同窗口点击路径全程实证可用（expand_strategy='hover'）。
         #    hover 先行把菜单打开，原 JS 链保持原序兜底（vue_show 幂等，合成
-        #    mouseenter 不会收起已开菜单）；hover 失败不阻断扫描。
-        try:
-            _dd_loc = page.locator(f"{row_selector} .el-dropdown").first
-            await _dd_loc.hover(timeout=2000)
-            LOG.info("  [INCREMENTAL-SCAN-DEBUG] dropdown_real_hover=ok")
-        except Exception as _hover_err:
-            LOG.debug(f"  [incremental-scan] 真实 hover 展开失败（JS 兜底链继续）: {_hover_err}")
+        #    mouseenter 不会收起已开菜单）。
+        #    ★ 批九 §五：清扫过残留弹窗 → hover 失败重试一次；失败行升 info
+        #    带 reason 与成功行对称——黄金翻转窗 hover 成败可直接从日志归因
+        #    （批八 debug 级失败被吞致归因链断裂）。hover 失败不阻断扫描。
+        for _hover_attempt in (1, 2) if _hover_swept else (1,):
+            try:
+                _dd_loc = page.locator(f"{row_selector} .el-dropdown").first
+                await _dd_loc.hover(timeout=2000)
+                LOG.info("  [INCREMENTAL-SCAN-DEBUG] dropdown_real_hover=ok")
+                break
+            except Exception as _hover_err:
+                if _hover_attempt == 1 and _hover_swept:
+                    continue
+                LOG.info(f"  [INCREMENTAL-SCAN-DEBUG] "
+                         f"dropdown_real_hover=fail: {_hover_err}")
 
         expand_result = await page.evaluate(f"""() => {{
             const row = document.querySelector('{row_selector}');
@@ -5407,6 +5442,69 @@ async def _required_selects_still_empty(page, scope_q: str) -> list:
     }})()""")
 
 
+async def _f6_target_has_edit_form(page) -> dict:
+    """★ 批九 P-4（方案 §三）：F6 分流收紧——目标页编辑表单探测（同窗单次
+    evaluate，返回双判据原料）。
+
+    - 判据 A：.el-form 内**可见且可编辑**（非 disabled/非 readonly/非
+      is-disabled 容器）的 input/textarea 计数——用可编辑性而非 .el-form
+      存在性：只读详情页（vmDetail 类）el-form 布局展示描述项但 input 全
+      disabled/readonly → A 不命中（反例防护第一道）；
+    - 判据 B：页面存在可见确定类 footer 按钮（词表单源
+      PAGE_NAV_EDIT_SUBMIT_KEYWORDS，文本包含匹配）——详情页 tab 内即便
+      有可见搜索框命中 A，无确定类 footer → B 不命中（反例防护第二道）。
+      双条件互锁防两类假阳性；命中任一页面均保持 F6 快路径。
+
+    返回 {'editableInputs': int, 'hasSubmitBtn': bool}，判定见
+    _f6_target_is_edit_form（单源互锁条件）。
+    """
+    from core.discovery.const import js_page_nav_edit_submit_texts
+    return await page.evaluate(f"""() => {{
+        const submitWords = {js_page_nav_edit_submit_texts()};
+        // 判据 A：el-form 内可见且可编辑的输入项（排除 button/submit/
+        // reset/hidden/file/checkbox/radio 型 input——可编辑性指用户可输入）
+        let editableInputs = 0;
+        document.querySelectorAll('.el-form input, .el-form textarea')
+            .forEach(inp => {{
+                const t = (inp.type || '').toLowerCase();
+                if (['button', 'submit', 'reset', 'hidden', 'file',
+                     'checkbox', 'radio'].includes(t)) return;
+                if (!inp.offsetWidth && !inp.getClientRects().length) return;
+                if (inp.disabled || inp.readOnly) return;
+                if (inp.closest('.is-disabled')) return;
+                editableInputs++;
+            }});
+        // 判据 B：可见确定类提交按钮（button/.el-button，文本包含词表任一
+        //   关键词；此探测仅在无弹窗分支内调用，无需再排除 dialog 容器）
+        let hasSubmitBtn = false;
+        for (const btn of document.querySelectorAll('button, .el-button')) {{
+            if (!btn.offsetWidth) continue;
+            const txt = (btn.textContent || '').trim();
+            if (!txt) continue;
+            if (submitWords.some(w => txt.includes(w))) {{
+                hasSubmitBtn = true;
+                break;
+            }}
+        }}
+        return {{ editableInputs, hasSubmitBtn }};
+    }}""")
+
+
+def _f6_target_is_edit_form(probe: dict) -> bool:
+    """F6 收紧判定：可编辑输入（A）∧ 确定类 footer 按钮（B）双条件互锁。
+
+    命中 → 目标页为编辑型表单页（changeSpec/expandVmVolume 类）：不判
+    导航成功，落回 _explore_and_operate_in_new_page 既有探索链（r9 已
+    验证可完成页内「确定」提交 19s）；否则维持 F6 导航快路径（网络配置
+    ~5s 收益不回吐）。
+    None/异常形态防御：evaluate 返回 None → False（回落 F6 快路径，
+    与批九前行为一致——探测失败不得炸掉整个操作）。
+    """
+    if not probe:
+        return False
+    return bool(probe.get("editableInputs")) and bool(probe.get("hasSubmitBtn"))
+
+
 async def _do_generic_operation(page, context: dict) -> dict:
     """执行通用操作（lock/unlock/reset/authorize 等）。"""
     # Lazy imports to avoid circular dependencies
@@ -5874,45 +5972,70 @@ async def _do_generic_operation(page, context: dict) -> dict:
                 return false;
             }""")
             if not _f6_has_dialog:
-                LOG.info(f"    [F6] 导航型菜单项判定成功: 无弹窗跳转且目标 URL 含 marker "
-                         f"'{marker}'，点击即交互完成，不进 EDIT-FLOW")
-                # 导航回列表页，保持主循环会话一致（与既有探索路径同一出口）
-                await _navigate_back_to_list(page, url_before, tab_name=_tab_name,
-                                             tab_locator=_tab_locator)
-                selectors = {"trigger": btn_text}
-                if row_selector:
-                    selectors["row_selector"] = row_selector
-                # nav_info 携带 navigated_url → builder 走 _build_page_nav_steps：
-                #   find_row → click_row_more/click_button → wait_for_url →
-                #   assert read_complete → navigate_back（无表单无提交，
-                #   submit_result.button_text 置空抑制虚假「确定」点击步骤）
-                result = {
-                    "success": True,
-                    "trigger_text": trigger_text_normalized,
-                    "selectors": selectors,
-                    "nav_info": {
-                        "navigated_url": url_after,
-                        "form_fields": [],
-                        "submit_result": {"button_text": ""},
-                    },
-                    "interaction_mode": "page-nav",
-                    "adjudication_note": (
-                        f"[批七F6] 导航型菜单项分流：无弹窗 URL 跳转且目标含 marker → "
-                        f"点击即交互完成，判导航成功（不进 EDIT-FLOW）"
-                    ),
-                }
-                # dropdown 类操作不落 trigger_locator_verified（raw locator 回放
-                # 不可靠，对齐本函数尾部既有先例），让 builder 走 dropdown_item 分支
-                if btn_location not in ("dropdown",) and _verified_trigger_locator:
-                    result["trigger_locator_verified"] = _verified_trigger_locator
-                if _verified_dropdown_item_text:
-                    result["dropdown_item_text_verified"] = _verified_dropdown_item_text
-                    if _verified_expand_strategy:
-                        result["expand_strategy_verified"] = _verified_expand_strategy
-                if _needs_checkbox:
-                    result["needs_checkbox"] = True
-                    result["checkbox_locator"] = _checkbox_locator or ".el-checkbox__input"
-                return result
+                # ★ 批九 P-4（方案 §三）：编辑表单探测先行——双判据互锁
+                #   （A 可编辑输入 ∧ B 确定类 footer 按钮，见
+                #   _f6_target_has_edit_form）命中 → 目标页为编辑型表单页
+                #   （changeSpec/expandVmVolume 类），不判导航成功，落回
+                #   下方既有 EDIT-FLOW 探索链（r9 对照真完成：页内「确定」
+                #   提交 19s；r11 假成功：0 填写 0 提交即判导航成功，业务
+                #   零变更，判定 21 中 2 项假成功的根因）。
+                #   未命中 → 维持 F6 导航快路径（网络配置 ~5s，r10 4 分钟
+                #   收益不回吐——只读详情页 input 全 disabled/readonly，A
+                #   不命中；纯导航页无表单无确定按钮）。
+                #   ★ 探测异常防御（SCAN-SWEEP 同款口径）：evaluate 抛错
+                #   → 回落 F6 快路径判定（与批九前行为一致），探测失败不
+                #   得炸掉整个操作（None 形态见 _f6_target_is_edit_form）。
+                _f6_is_edit = False
+                try:
+                    _f6_edit_probe = await _f6_target_has_edit_form(page)
+                    _f6_is_edit = _f6_target_is_edit_form(_f6_edit_probe)
+                except Exception as _f6_probe_err:
+                    LOG.info(f"    [F6-EDIT-PROBE] 编辑表单探测异常"
+                             f"（回落 F6 快路径）: {_f6_probe_err}")
+                if _f6_is_edit:
+                    LOG.info(f"    [F6-EDIT-FLOW] 目标页为编辑型表单页"
+                             f"（可编辑输入 {_f6_edit_probe.get('editableInputs')} 项 + "
+                             f"确定类按钮），不判导航成功，落回 EDIT-FLOW 探索链（批九 P-4）")
+                else:
+                    LOG.info(f"    [F6] 导航型菜单项判定成功: 无弹窗跳转且目标 URL 含 marker "
+                             f"'{marker}'，点击即交互完成，不进 EDIT-FLOW")
+                    # 导航回列表页，保持主循环会话一致（与既有探索路径同一出口）
+                    await _navigate_back_to_list(page, url_before, tab_name=_tab_name,
+                                                 tab_locator=_tab_locator)
+                    selectors = {"trigger": btn_text}
+                    if row_selector:
+                        selectors["row_selector"] = row_selector
+                    # nav_info 携带 navigated_url → builder 走 _build_page_nav_steps：
+                    #   find_row → click_row_more/click_button → wait_for_url →
+                    #   assert read_complete → navigate_back（无表单无提交，
+                    #   submit_result.button_text 置空抑制虚假「确定」点击步骤）
+                    result = {
+                        "success": True,
+                        "trigger_text": trigger_text_normalized,
+                        "selectors": selectors,
+                        "nav_info": {
+                            "navigated_url": url_after,
+                            "form_fields": [],
+                            "submit_result": {"button_text": ""},
+                        },
+                        "interaction_mode": "page-nav",
+                        "adjudication_note": (
+                            f"[批七F6] 导航型菜单项分流：无弹窗 URL 跳转且目标含 marker → "
+                            f"点击即交互完成，判导航成功（不进 EDIT-FLOW）"
+                        ),
+                    }
+                    # dropdown 类操作不落 trigger_locator_verified（raw locator 回放
+                    # 不可靠，对齐本函数尾部既有先例），让 builder 走 dropdown_item 分支
+                    if btn_location not in ("dropdown",) and _verified_trigger_locator:
+                        result["trigger_locator_verified"] = _verified_trigger_locator
+                    if _verified_dropdown_item_text:
+                        result["dropdown_item_text_verified"] = _verified_dropdown_item_text
+                        if _verified_expand_strategy:
+                            result["expand_strategy_verified"] = _verified_expand_strategy
+                    if _needs_checkbox:
+                        result["needs_checkbox"] = True
+                        result["checkbox_locator"] = _checkbox_locator or ".el-checkbox__input"
+                    return result
 
         # 使用递归探索函数，探测并执行新页面的操作
         nav_info = await _explore_and_operate_in_new_page(

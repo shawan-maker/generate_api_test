@@ -81,6 +81,26 @@ def js_double_confirm_texts() -> str:
     return _json.dumps(DOUBLE_CONFIRM_BUTTON_TEXTS)
 
 
+# ★ 批九 P-4（方案 §三）：F6 导航型分流收紧——目标页「编辑表单」双判据
+#   之 B（确定类 footer 按钮存在性）的语义词表。判据 A（el-form 内可编辑
+#   输入计数）∧ B 互锁命中 → 编辑型目标页（changeSpec/expandVmVolume 类）
+#   不判导航成功，落回 EDIT-FLOW 探索链（r9 已验证可完成页内提交）。
+#   反例防护靠可编辑性而非 .el-form 存在性：只读详情页（vmDetail 类）
+#   el-form 布局但 input 全 disabled/readonly → A 不命中 → 网络配置保持
+#   F6 ~5s 快路径（r10 4 分钟收益不回吐）。
+#   与 SUBMIT_TEXTS 边界：SUBMIT_TEXTS 是表单提交点击序（宽表，含
+#   「立即创建/完成/修改」）；本表只回答「目标页是否编辑型」存在性判定
+#   （窄表，「应用」为全页编辑提交常见文本）。先例同源：
+#   DESTROY_KEYWORDS / TOGGLE_PAIR_KEYWORDS / DOUBLE_CONFIRM_BUTTON_TEXTS。
+PAGE_NAV_EDIT_SUBMIT_KEYWORDS = ('确定', '保存', '提交', '应用', '更新')
+
+
+def js_page_nav_edit_submit_texts() -> str:
+    """F6 编辑型目标页判定按钮词表 → JS 数组字面量（注入 page.evaluate 用）。"""
+    import json as _json
+    return _json.dumps(PAGE_NAV_EDIT_SUBMIT_KEYWORDS)
+
+
 # ★ 批六修复5：终态失败类型白名单——attempted_actions 只收「环境不可自愈」
 #   实证类（r8：重置密码/更新密钥对/克隆每轮被批/RECONCILE 当新启用完整
 #   重跑，41 分钟 vs 基线 16 分钟的主因）。click_failed/skipped/no_signal
