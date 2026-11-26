@@ -309,6 +309,13 @@ class TestStateAwareReconcile:
         settle_seq = ScriptedSettle(settles)
         monkeypatch.setattr(ce, "_wait_row_states_stable", settle_seq)
 
+        # 批七 F2 预检①（marker 行存在）需要真 page；本组 page=None 替身
+        # 聚焦 R1/R2/R3 调度语义（预检门契约由 test_batch7_fixes.py 专项覆盖）
+        async def fake_row_sel(page, marker):
+            return "#row-stub"
+
+        monkeypatch.setattr(ce, "get_row_selector_by_marker", fake_row_sel)
+
         async def fake_install(page):
             pass
 

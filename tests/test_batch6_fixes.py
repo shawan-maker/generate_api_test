@@ -258,10 +258,12 @@ class TestFix4DialogDetectedInit:
 class TestFix5AttemptedActions:
 
     def test_terminal_error_types_whitelist(self):
-        """白名单六类（方案 §修复5）。"""
+        """白名单基线六类（方案 §修复5）；批七 F3-1 扩至九类（+dialog_still_open/
+        readonly_dialog_error/api_error，见 test_batch7_fixes.py 九类契约测试）。"""
         assert TERMINAL_ERROR_TYPES == frozenset({
             'required_field_empty', 'form_validation', 'no_confirm_button',
             'confirm_word_missing', 'no_fields', 'dialog_mismatch',
+            'dialog_still_open', 'readonly_dialog_error', 'api_error',
         })
 
     def test_register_terminal_attempt_counts(self):

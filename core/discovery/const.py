@@ -80,11 +80,14 @@ def js_double_confirm_texts() -> str:
 
 # ★ 批六修复5：终态失败类型白名单——attempted_actions 只收「环境不可自愈」
 #   实证类（r8：重置密码/更新密钥对/克隆每轮被批/RECONCILE 当新启用完整
-#   重跑，41 分钟 vs 基线 16 分钟的主因）。click_failed/skipped/dialog_still_open/
-#   no_signal 不入册——状态机域管理，保留 reconcile 恢复能力：
+#   重跑，41 分钟 vs 基线 16 分钟的主因）。click_failed/skipped/no_signal
+#   不入册——状态机域管理，保留 reconcile 恢复能力：
 #   - click_failed/skipped(disabled)：过渡窗/状态门控，状态翻转后可自愈；
-#   - dialog_still_open：修复 2 落地后大幅减少，暂不入册防误杀；
 #   - no_signal：消息误判风险留观察。
+#   ★ 批七 F3-1 修订：dialog_still_open 由「暂不入册」转正式入册——r9 实证
+#   （登录名错值/表单校验拒绝导致的提交未生效）换状态必同败，非状态机域；
+#   readonly_dialog_error/api_error 同批入册，其中状态性错误文本（QGA 未
+#   就绪/克隆中类）经 STATE_PENDING_ERROR_TEXTS 豁免保留状态机窗口。
 #   dialog_mismatch：修复 3a 新终态（残留弹窗属其他操作，本操作从未真正
 #   打开——重试只会再次撞错，不可自愈）。
 TERMINAL_ERROR_TYPES = frozenset({
@@ -94,7 +97,26 @@ TERMINAL_ERROR_TYPES = frozenset({
     'confirm_word_missing',   # 确认词字段无法取词（placeholder 无引号词）
     'no_fields',              # 弹窗无可编辑字段（结构缺失）
     'dialog_mismatch',        # 弹窗归属不匹配（修复 3a 终态）
+    # ★ 批七 F3-1：以下三类为 r9 新增实证终态——
+    'dialog_still_open',      # 提交未生效（登录名错值/表单校验拒绝），换状态必同败
+    'readonly_dialog_error',  # 只读弹窗检出失败信号（结构/环境性，重试无意义）
+    'api_error',              # 后端明确业务错误；状态性错误另有豁免表（STATE_PENDING_ERROR_TEXTS）
 })
+
+# ★ 批七 F3-2：状态性失败豁免表——错误文本含状态语义（QGA 未就绪/克隆中/
+#   正在/请等待）→ 不入 attempted_actions 终态记忆，保留状态机恢复窗口。
+#   这是 F3 白名单扩充与状态机不冲突的关键边界（方案 §三/§四）：api_error
+#   类业务错误可能是资源过渡态拒绝（r9 实证「QGA 未就绪」），入册会把
+#   「等一等就能好」的操作判成环境不可自愈。匹配对 error_text 整体
+#   lower() 后做包含判定（中文不受 lower 影响，英文关键字须小写书写）。
+STATE_PENDING_ERROR_TEXTS = ('qga 未就绪', '克隆中', '请等待', '未就绪', '正在')
+
+# ★ 批七 F1：克隆类操作关键词（资源供给型——产物有「克隆中→稳定态」后置
+#   窗口）。操作名命中任一关键词 → 成功后等克隆产物就绪再继续
+#   （crud_executor._wait_clone_product_ready），防后续行级操作撞
+#   「克隆中, 请等待克隆完成」error toast（r9 实证）。
+#   「复制」不收（部分系统用作剪贴板语义，误判成本高于收益）。
+CLONE_ACTION_KEYWORDS = ('克隆', 'clone')
 
 
 # ★ 批六修复6b：状态切换按钮对互斥词表（前缀互补判定，单源——不写死

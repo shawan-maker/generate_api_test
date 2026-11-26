@@ -456,24 +456,33 @@ async def _scan_row_state_snapshot(page, created_marker: str) -> dict:
     estack 行数据同构（第 4 轮 estack 启用操作日志同样有 command.row），
     读不到时 status=None 静默降级，不破坏任何现有环境。
 
+    ★ 批七 F2：新增 vue_states 并行口径——仅以 Vue 实例 disabled prop
+      为权威的 {按钮文本: 是否可点} 映射（原生 button disabled 属性等价
+      视为 Vue prop 真值）。既有 states 保持「native disabled + 样式类」
+      混合口径不变（状态稳态判定/矩阵采集等既有消费点零变化）——r5 实证
+      EIS 可操作互斥项也带 cmss-disabled 样式类，样式类判定对「能否执行」
+      有误杀，预检门（_preflight_executable）须用 vue_states。
+
     Args:
         page: Playwright Page
         created_marker: 行标识
 
     Returns:
         dict: {"states": {button_text: is_enabled},
+               "vue_states": {button_text: is_enabled},   # ★ 批七 F2
                "status": str|None, "qga_ready": bool|None}
     """
     row_selector = await get_row_selector_by_marker(page, created_marker)
     if not row_selector:
-        return {"states": {}, "status": None, "qga_ready": None}
+        return {"states": {}, "vue_states": {}, "status": None, "qga_ready": None}
 
     try:
-        result = await page.evaluate(f"""() => {{
+        part1 = await page.evaluate(f"""() => {{
             const row = document.querySelector('{row_selector}');
             if (!row) return {{}};
 
             const states = {{}};
+            const vueStates = {{}};
 
             // 1. 行内直接按钮
             row.querySelectorAll('.cell .el-button').forEach(btn => {{
@@ -483,11 +492,18 @@ async def _scan_row_state_snapshot(page, created_marker: str) -> dict:
                         || btn.classList.contains('cmss-disabled')
                         || btn.classList.contains('is-disabled');
                     states[text] = !disabled;
+                    // ★ 批七 F2：权威口径仅 Vue prop / 原生 disabled，不看样式类
+                    const vueDisabled = btn.disabled === true
+                        || !!(btn.__vue__ && btn.__vue__.disabled === true);
+                    vueStates[text] = !vueDisabled;
                 }}
             }});
 
-            return states;
+            return {{states, vueStates}};
         }}""")
+        part1 = part1 or {}
+        result = part1.get("states") or {}
+        vue_states = part1.get("vueStates") or {}
 
         # 2. 展开 dropdown 并扫描内部按钮（顺带读行权威状态，批一 1.1）
         dropdown_expand = await page.evaluate(f"""() => {{
@@ -524,6 +540,7 @@ async def _scan_row_state_snapshot(page, created_marker: str) -> dict:
                 const menuId = params.menuId;
                 const dropdownIndex = params.dropdownIndex;
                 const states = {{}};
+                const vueStates = {{}};
                 let targetMenu = null;
 
                 // 优先通过 menuId 定位
@@ -563,6 +580,9 @@ async def _scan_row_state_snapshot(page, created_marker: str) -> dict:
                                 || item.classList.contains('is-disabled')
                                 || (item.__vue__ && item.__vue__.disabled === true);
                             states[text] = !disabled;
+                            // ★ 批七 F2：权威口径仅 Vue prop（r5 实证可操作
+                            //   互斥项也带 cmss-disabled 样式类）
+                            vueStates[text] = !(item.__vue__ && item.__vue__.disabled === true);
                         }}
 
                         // ★ 批一 1.1：菜单项 Vue command.row → 行权威状态
@@ -586,21 +606,24 @@ async def _scan_row_state_snapshot(page, created_marker: str) -> dict:
                     }});
                 }}
 
-                return {{states, rowStatus, qgaReady}};
+                return {{states, vueStates, rowStatus, qgaReady}};
             }}""", {"menuId": menu_id, "dropdownIndex": dropdown_index})
 
             result.update(dropdown_states.get("states") or {})
+            vue_states.update(dropdown_states.get("vueStates") or {})
             return {
                 "states": result,
+                "vue_states": vue_states,
                 "status": dropdown_states.get("rowStatus"),
                 "qga_ready": dropdown_states.get("qgaReady"),
             }
 
-        return {"states": result, "status": None, "qga_ready": None}
+        return {"states": result, "vue_states": vue_states,
+                "status": None, "qga_ready": None}
 
     except Exception as e:
         LOG.warning(f"  [scan_button_states] 扫描失败: {e}")
-        return {"states": {}, "status": None, "qga_ready": None}
+        return {"states": {}, "vue_states": {}, "status": None, "qga_ready": None}
 
 
 async def _scan_all_button_states(page, created_marker: str) -> dict:
@@ -655,6 +678,189 @@ async def _wait_qga_ready(page, created_marker: str,
         await page.wait_for_timeout(poll_interval_ms)
         waited += poll_interval_ms
     return False
+
+
+def _norm_btn_text(s) -> str:
+    """按钮文本归一（去全部空白）——DOM 文本与收集名可能存在空格差异。"""
+    return "".join(str(s or "").split())
+
+
+async def _preflight_executable(page, btn: dict, marker: str,
+                                snapshot: dict = None,
+                                tab_prefix: str = "") -> dict:
+    """★ 批七 F2：调度统一预检门——发起尝试前快检「当前是否可执行」。
+
+    盲试模型治理（r9 实证：重启 5 次尝试 1 真 4 盲，每盲 = 完整
+    click→弹窗扫描→校验失败链 10-40s；预检 = 锁行扫描 1-2s）：
+      ① marker 行存在——不可见时 SEARCH-FIRST 过滤后复查（单源复用
+         button_driver.search_filter_table，多用户环境行序漂移治理同源）；
+      ② 菜单项/按钮 Vue disabled prop 权威口径（vue_states，仅 Vue 实例
+         disabled prop，不含样式类误杀口径）。
+    任一不过 → 返回不过原因，调用方不进 _error_driven_retry、记 wait_reason
+    失败结果交状态机窗口（skipped/按钮被禁用 → pending 回收口径不变）——
+    只消除「明知不可执行的完整流程成本」，不改变「遍历所有业务」语义。
+
+    判定安全边界：无正向禁用证据即放行——vue_states 中无该按钮文本
+    （DOM 口径漂移/非 dropdown command 环境/文本归一差异）时放行执行，
+    零误杀；非行级位置（toolbar 等）跳过 ②（行内菜单 states 与工具栏
+    按钮不同 DOM，禁用判定无意义，仅做 ① 行存在检查）。
+
+    Args:
+        page: Playwright Page
+        btn: 按钮信息 dict（text/location）
+        marker: 行标识（空 → 直接放行，无行依赖）
+        snapshot: 可选预扫快照（_scan_row_state_snapshot 结果；提供时 ②
+                  复用不再扫描——main 循环既有预扫零额外成本）
+
+    Returns:
+        dict: {"pass": bool,
+               "wait_reason": "" | "row_not_found" | "disabled",
+               "detail": str}
+    """
+    if not marker:
+        return {"pass": True, "wait_reason": "", "detail": "无 marker，放行"}
+
+    # ① marker 行存在（快查；不可见 → SEARCH-FIRST 过滤后复查）
+    try:
+        row_sel = await get_row_selector_by_marker(page, marker)
+    except Exception as _pe:
+        LOG.debug(f"{tab_prefix}[F2-预检] 行快查异常（放行执行）: {_pe}")
+        return {"pass": True, "wait_reason": "", "detail": "行快查异常，放行"}
+    if not row_sel:
+        from core.discovery.replay.button_driver import search_filter_table
+        try:
+            if await search_filter_table(page, marker):
+                row_sel = await get_row_selector_by_marker(page, marker)
+        except Exception as _se:
+            LOG.debug(f"{tab_prefix}[F2-预检] SEARCH-FIRST 异常（放行执行）: {_se}")
+            return {"pass": True, "wait_reason": "", "detail": "搜索先行异常，放行"}
+        if not row_sel:
+            return {"pass": False, "wait_reason": "row_not_found",
+                    "detail": f"marker 行不可见（搜索先行后仍未找到）: {marker}"}
+
+    # ② 菜单项/按钮禁用检查（权威 Vue prop 口径；仅行级位置）
+    btn = btn or {}
+    btn_location = btn.get("location", "toolbar")
+    if btn_location not in ("row_action", "dropdown"):
+        return {"pass": True, "wait_reason": "",
+                "detail": f"非行级位置({btn_location})，行存在即放行"}
+
+    btn_text = btn.get("text", "") or ""
+    btn_norm = _norm_btn_text(btn_text)
+    if not btn_norm:
+        return {"pass": True, "wait_reason": "", "detail": "按钮文本为空，放行"}
+
+    try:
+        snap = snapshot if isinstance(snapshot, dict) else None
+        if snap is None:
+            snap = await _scan_row_state_snapshot(page, marker)
+        vue_states = snap.get("vue_states") or {}
+    except Exception as _se2:
+        LOG.debug(f"{tab_prefix}[F2-预检] 禁用扫描异常（放行执行）: {_se2}")
+        return {"pass": True, "wait_reason": "", "detail": "禁用扫描异常，放行"}
+
+    for txt, enabled in vue_states.items():
+        if _norm_btn_text(txt) == btn_norm and enabled is False:
+            return {"pass": False, "wait_reason": "disabled",
+                    "detail": f"按钮被禁用（预检，Vue disabled prop）: {btn_text}"}
+    return {"pass": True, "wait_reason": "", "detail": ""}
+
+
+async def _wait_clone_product_ready(page, product_name: str, marker: str = "",
+                                    result: dict = None,
+                                    timeout_s: int = 180,
+                                    interval_s: int = 10) -> bool:
+    """★ 批七 F1：克隆产物就绪等待（资源供给型操作后置窗口）。
+
+    克隆成功后、返回调度器前：SEARCH-FIRST 按产物名过滤 → 轮询「产物行
+    出现且状态不含『克隆中』」→ 放行。r9 实证克隆成功后立刻执行后续行级
+    操作会撞「克隆中, 请等待克隆完成」error 样式 toast（EIS 环境怪癖：
+    进行中提示挂 error 样式，词表判定是通用逻辑不该为单一环境特化——
+    源头解法是等产物就绪，不是改词表）。
+
+    判据（P-1 定案）：行出现为主信号（r9 克隆产物已清理、「克隆中」精确
+    文案未捕获）；行文本含「克隆中」或 Vue status 处过渡枚举（clon/
+    provision/creating）→ 未就绪继续等。status 不可读（None）时行出现
+    即就绪——与 _read_row_status 静默降级口径一致，estack 等环境零影响。
+
+    一次性有界（默认 180s，间隔 10s，P-1 实证 VM 过渡分钟级）：超时记
+    warning + 观测入产物（result["provisioning_wait"]）继续执行，不挂死
+    （与 QGA 等待同模式）。
+
+    结束后恢复列表视图：有 marker → 重新按 marker 过滤（后续操作锁行
+    主口径，对齐 element_scanner 搜索先行持久过滤行为）；无 marker →
+    清空搜索恢复全列表。
+
+    Returns:
+        bool: True=产物就绪；False=超时（不阻塞调用方）
+    """
+    from core.discovery.replay.button_driver import search_filter_table, clear_table_search
+    start = time.time()
+    ready = False
+    last_note = "未开始"
+
+    try:
+        try:
+            await search_filter_table(page, product_name)
+        except Exception as _fe:
+            LOG.debug(f"    [F1-克隆等待] SEARCH-FIRST 异常（按行扫描兜底）: {_fe}")
+        while True:
+            elapsed = time.time() - start
+            try:
+                row_sel = await get_row_selector_by_marker(page, product_name)
+            except Exception:
+                row_sel = ""
+            if not row_sel:
+                last_note = "产物行未出现"
+            else:
+                row_text = ""
+                try:
+                    row_text = await page.evaluate(
+                        f"() => ((document.querySelector('{row_sel}') || {{}}).textContent || '')")
+                except Exception:
+                    pass
+                if "克隆中" in row_text:
+                    last_note = f"产物状态含「克隆中」（行文本: {row_text[:60]}）"
+                else:
+                    snap_status = ""
+                    try:
+                        _snap = await _scan_row_state_snapshot(page, product_name)
+                        snap_status = _snap.get("status") or ""
+                    except Exception:
+                        pass
+                    _s_low = (snap_status or "").lower()
+                    if any(kw in _s_low for kw in ("clon", "provision", "creating")):
+                        last_note = f"产物 Vue status 过渡态: {snap_status}"
+                    else:
+                        ready = True
+                        last_note = f"产物就绪（Vue status={snap_status or '不可读'}）"
+                        break
+            if elapsed >= timeout_s:
+                break
+            await page.wait_for_timeout(interval_s * 1000)
+    finally:
+        try:
+            if marker:
+                await search_filter_table(page, marker)
+            else:
+                await clear_table_search(page)
+        except Exception as _re:
+            LOG.debug(f"    [F1-克隆等待] 列表视图恢复异常（忽略）: {_re}")
+
+    waited_s = round(time.time() - start, 1)
+    if ready:
+        LOG.info(f"    [F1-克隆等待] 产物 '{product_name}' 就绪（{waited_s}s）: {last_note}")
+    else:
+        LOG.warning(f"    [F1-克隆等待] 产物 '{product_name}' 等待超时（{waited_s}s，"
+                    f"最后观测: {last_note}）——不挂死，继续执行")
+    if isinstance(result, dict):
+        result["provisioning_wait"] = {
+            "product": product_name,
+            "ready": ready,
+            "waited_s": waited_s,
+            "last_observation": last_note,
+        }
+    return ready
 
 
 # ============================================================
@@ -811,6 +1017,11 @@ MAX_LIFETIME_ATTEMPTS = 3
 def _register_terminal_attempt(action: str, result: dict, attempted_actions: dict) -> bool:
     """终态失败入册 attempted_actions（白名单 const.TERMINAL_ERROR_TYPES）。
 
+    ★ 批七 F3-2：状态性失败豁免——错误文本命中 STATE_PENDING_ERROR_TEXTS
+      （'QGA 未就绪'/'克隆中'/'请等待'/'未就绪'/'正在'）不入册，保留状态机
+      恢复窗口（api_error 白名单扩容与状态机不冲突的关键边界：该类业务
+      错误可能是资源过渡态拒绝，等一等就能好，入册即误杀）。
+
     Returns:
         bool: 本次失败是否属终态白名单并已计数。
     """
@@ -818,9 +1029,14 @@ def _register_terminal_attempt(action: str, result: dict, attempted_actions: dic
         return False
     if result.get("success"):
         return False
-    from core.discovery.const import TERMINAL_ERROR_TYPES
+    from core.discovery.const import TERMINAL_ERROR_TYPES, STATE_PENDING_ERROR_TEXTS
     err_type = result.get("error_type") or ""
     if err_type not in TERMINAL_ERROR_TYPES:
+        return False
+    err_text = (result.get("error_text") or "").lower()
+    if any(kw in err_text for kw in STATE_PENDING_ERROR_TEXTS):
+        LOG.info(f"    [批七F3] 状态性失败不入册（保留状态机窗口）: {action}"
+                 f"（{err_type}: {err_text[:60]}）")
         return False
     attempted_actions[action] = attempted_actions.get(action, 0) + 1
     LOG.warning(f"    [批六修复5] 终态失败入册: {action}（{err_type}，"
@@ -966,6 +1182,11 @@ async def _check_and_execute_newly_enabled(
         LOG.info(f"{tab_prefix}[STATE-CHANGE] 行已稳态"
                  f"（status={stable.get('status')}），开始批量执行")
 
+        # ★ 批七 F2-2：批内预检快照缓存——稳态等待的末次扫描（含 vue_states）
+        #   作为首项预检快照零成本复用；前序项成功（状态翻转证据）后置空，
+        #   下项预检时重扫。失败项不失效（状态大概率未变）。
+        _batch_snap = stable if isinstance(stable, dict) else None
+
     # 逐一执行
     for text in newly_enabled:
         # ★ 防止递归中已执行的按钮被重复执行
@@ -991,6 +1212,33 @@ async def _check_and_execute_newly_enabled(
             "tab": tab_name,
         })
 
+        # ★ 批七 F2-2：批内每按钮前预检——批扫描快照到执行时刻之间，
+        #   稳态等待与前序项执行可能已翻转行状态（r9 级联批固有失败主因）。
+        #   预检不过 → 记 wait_reason 失败结果（skipped/按钮被禁用签名，
+        #   经 validated merge 后 pending 回收口径不变）跳过本项，不进
+        #   _error_driven_retry 完整链。快照缓存见上方 _batch_snap 注释。
+        if _batch_snap is None:
+            _batch_snap = await _scan_row_state_snapshot(page, created_marker)
+        _pf_b = await _preflight_executable(
+            page, btn_info, created_marker,
+            snapshot=_batch_snap, tab_prefix=tab_prefix)
+        if not _pf_b.get("pass"):
+            _pf_b_reason = _pf_b.get("wait_reason", "")
+            _pf_b_detail = _pf_b.get("detail", "")
+            LOG.info(f"{tab_prefix}[STATE-CHANGE][F2-预检] 跳过 {text}: "
+                     f"{_pf_b_reason} —— {_pf_b_detail}")
+            results[text] = {
+                "success": False,
+                "error_type": "skipped" if _pf_b_reason == "disabled" else "row_not_found",
+                "error_text": _pf_b_detail,
+                "failure_type": "skipped" if _pf_b_reason == "disabled" else "row_not_found",
+                "failure_reason": _pf_b_detail,
+                "wait_reason": _pf_b_reason,
+                "preflight": True,
+                "trigger_text": text,
+            }
+            continue
+
         # 执行
         result = await _error_driven_retry(
             page, _do_generic_operation, {
@@ -1012,6 +1260,8 @@ async def _check_and_execute_newly_enabled(
 
         if result and result.get("success"):
             LOG.info(f"{tab_prefix}[STATE-CHANGE] ✓ {text} 执行成功")
+            # ★ 批七 F2-2：成功 = 状态翻转证据 → 批内预检快照失效重扫
+            _batch_snap = None
 
             # 递归检查级联
             await page.wait_for_timeout(1500)
@@ -1197,6 +1447,11 @@ async def _state_aware_reconcile(
         if not states:
             break
 
+        # ★ 批七 F2-2：R1 预检快照缓存——settle 末次扫描（含 vue_states）
+        #   为本轮首项快照；前序项成功后以 post settle 刷新（状态翻转后
+        #   的权威视图），失败项不失效。
+        _r1_snap = settle
+
         # 2. R1 直接执行：pending 中当前已启用且业务身份未消费的
         # ★ 批六修复5：终态失败预算耗尽的 pending 项跳过（pending 是开始时
         #   的快照，循环内白名单失败已入册——后续轮次不再重试）
@@ -1208,6 +1463,37 @@ async def _state_aware_reconcile(
                 btn = buttons_by_action.get(action)
                 if not btn:
                     pending.discard(action)
+                    continue
+                # ★ 批七 F2-2：R1 业务执行前预检——settle 快照到执行时刻之间，
+                #   同批前序项执行可能已翻转行状态（r9 级联批同型问题）。
+                #   预检不过 → 不消费 R3 业务身份、不 discard pending（仍留
+                #   状态机窗口——下一轮 settle 重新判 ready），记 wait_reason
+                #   失败结果交调用方 merge（skipped/按钮被禁用 → pending
+                #   回收口径不变）。
+                if _r1_snap is None:
+                    _r1_snap = await _scan_row_state_snapshot(page, created_marker)
+                _pf_r = await _preflight_executable(
+                    page, btn, created_marker,
+                    snapshot=_r1_snap, tab_prefix=tab_prefix)
+                if not _pf_r.get("pass"):
+                    _pf_r_reason = _pf_r.get("wait_reason", "")
+                    _pf_r_detail = _pf_r.get("detail", "")
+                    LOG.info(f"{tab_prefix}[STATE-RECONCILE][F2-预检] 跳过 {action}: "
+                             f"{_pf_r_reason} —— {_pf_r_detail}")
+                    results[action] = {
+                        "success": False,
+                        "error_type": "skipped" if _pf_r_reason == "disabled" else "row_not_found",
+                        "error_text": _pf_r_detail,
+                        "failure_type": "skipped" if _pf_r_reason == "disabled" else "row_not_found",
+                        "failure_reason": _pf_r_detail,
+                        "wait_reason": _pf_r_reason,
+                        "preflight": True,
+                        "trigger_text": btn.get("text", ""),
+                        "_reconcile_meta": {
+                            "triggered_by": trigger_action,
+                            "intent": "business_validate",
+                        },
+                    }
                     continue
                 LOG.info(f"{tab_prefix}[STATE-RECONCILE] R1 业务执行: {action}"
                          f"（当前状态: {status}）")
@@ -1236,6 +1522,8 @@ async def _state_aware_reconcile(
                     if post.get("status") is not None:
                         result["row_state_after"] = post.get("status")
                     _record_state_transition(state_ctx, action, status, post.get("status"))
+                    # ★ 批七 F2-2：成功 = 状态翻转 → R1 预检快照以 post settle 刷新
+                    _r1_snap = post
                 else:
                     err = result.get("error_text", "") or "未知错误"
                     LOG.info(f"{tab_prefix}[STATE-RECONCILE] ✗ {action} 业务失败: {err}")
@@ -1683,6 +1971,18 @@ async def _validate_single_tab_crud(
         if _skip_batch:
             continue
 
+        # ★ 批七 F3-3：main 循环预算接线——终态失败白名单类（form_validation/
+        #   required_field_empty/dialog_still_open/api_error 等，跨主循环/批/
+        #   RECONCILE 域累计）耗尽 MAX_LIFETIME_ATTEMPTS → 跳过，与 cascade
+        #   （newly_enabled 过滤）/reconcile（R1 ready 过滤）同一出口语义。
+        #   validated 保留既有终败证据不覆盖（产物如实呈现最新真实错误）；
+        #   状态性失败（QGA 未就绪/克隆中类）经 F3-2 豁免不入册，不受此限。
+        if _attempted_exhausted(action, attempted_actions):
+            LOG.info(f"{tab_prefix}跳过 {action}: 终态失败预算耗尽"
+                     f"（累计 {attempted_actions.get(action, 0)}/{MAX_LIFETIME_ATTEMPTS}，"
+                     f"validated 保留最新失败证据）")
+            continue
+
         btn_text = btn.get("text", "")
         btn_location = btn.get("location", "toolbar")
         role = action_roles.get(action, "generic")
@@ -1699,6 +1999,38 @@ async def _validate_single_tab_crud(
                 and not btn.get("_is_switch")):
             _pre_snapshot = await _scan_row_state_snapshot(page, created_marker)
             _row_state_before = _pre_snapshot.get("status")
+
+        # ★ 批七 F2-1：main 循环预检门——明知不可执行不进完整尝试流程
+        #   （r9 实证重启 5 次尝试 1 真 4 盲，每盲 10-40s 完整链）。预检
+        #   复用上方预扫快照（行级位置零额外扫描成本）；toolbar 位置仅做
+        #   行存在快查（含 SEARCH-FIRST 补救——行不可见时工具栏批量操作
+        #   的勾选也会失败，预检顺带把行过滤出来）。
+        #   预检不过 → 记 wait_reason 失败结果交状态机窗口：disabled 用
+        #   skipped+按钮被禁用 签名（_collect_state_pending 回收口径不变）、
+        #   row_not_found 如实记录；不改变「遍历所有业务」语义。
+        if role in ("generic", "update", "delete") and not btn.get("_is_switch"):
+            _pf_snap = (_pre_snapshot
+                        if (created_marker and btn_location in ("row_action", "dropdown"))
+                        else None)
+            _pf = await _preflight_executable(
+                page, btn, created_marker,
+                snapshot=_pf_snap, tab_prefix=tab_prefix)
+            if not _pf.get("pass"):
+                _pf_reason = _pf.get("wait_reason", "")
+                _pf_detail = _pf.get("detail", "")
+                LOG.info(f"{tab_prefix}[F2-预检] 跳过 {action}: {_pf_reason} —— {_pf_detail}")
+                _merge_validated_result(validated, action, {
+                    "success": False,
+                    "error_type": "skipped" if _pf_reason == "disabled" else "row_not_found",
+                    "error_text": _pf_detail,
+                    "failure_type": "skipped" if _pf_reason == "disabled" else "row_not_found",
+                    "failure_reason": _pf_detail,
+                    "wait_reason": _pf_reason,
+                    "preflight": True,
+                    "trigger_text": btn.get("text", ""),
+                    "btn_location": btn_location,
+                })
+                continue
 
         # ★ P0-A: 每个操作开始时重装消息捕获器（清空 captured 数组 + 重打 __op_baseline 基线）。
         # 此前只在 Tab 切换时装一次（_validate_business_flow），同 Tab 内前序操作的通知
@@ -2670,10 +3002,22 @@ async def _error_driven_retry(page, operation_fn, context: dict) -> dict:
             qga_wait_done = True
             qga_ok = await _wait_qga_ready(page, context.get("marker"), timeout_ms=60000)
             if qga_ok:
-                LOG.info("    [QGA-WAIT] QGA 已就绪，重试操作")
-                last_error_key = None
+                LOG.info(f"    [QGA-WAIT] QGA 已就绪，重试操作")
+                last_error_key = ""
                 continue
-            LOG.warning("    [QGA-WAIT] QGA 等待超时或不可读，按常规错误处理")
+            LOG.warning(f"    [QGA-WAIT] QGA 等待超时或不可读，按常规错误处理")
+
+        # ★ 批七 F2-3：状态性首败不进第 2 轮——skipped(禁用)/row_not_found
+        #   类失败源于行状态门控/行不可见，10 秒内状态不可能翻转，第 2 轮
+        #   必然同败（r9 实证 12 组「第 2 轮 skipped」全部与第 1 轮同错，
+        #   每组白付一轮完整流程成本）。直接返回交状态机窗口（pending/
+        #   reconcile）恢复；「按钮被禁用」文本兜底覆盖口径差异。
+        if (round_num == 0
+                and (error_type in ("skipped", "row_not_found")
+                     or "按钮被禁用" in (error_text or ""))):
+            LOG.info(f"    [F2-3] 状态性首败不进第 2 轮: [{error_type}]"
+                     f" {error_text[:80]}（交状态机窗口恢复）")
+            return result
 
         # P2: 不可重试错误 → 立即返回
         if error_type in TERMINAL_ERRORS:
@@ -4792,6 +5136,9 @@ async def _do_generic_operation(page, context: dict) -> dict:
     fields = []
     filled = 0
     actual_state = ""
+    # ★ 批七 F1：克隆类操作产物名（「名称」字段填充值，form_filler 写回的
+    #   filled_value）——成功后等产物就绪再返回调度器
+    _clone_product = ""
 
     def _fail(error_type: str, error_text: str, **kwargs):
         """统一的失败结果生成器，自动合并所有已收集的交互数据"""
@@ -5542,6 +5889,19 @@ async def _do_generic_operation(page, context: dict) -> dict:
             LOG.info(f"    扫描到 {len(fields)} 个字段: {[f.get('label', '?') for f in fields]}")
             filled = await form_filler.fill_edit_form(fields, context.get("edit_overrides"))
             LOG.info(f"    填充了 {filled} 个字段")
+
+            # ★ 批七 F1：克隆类操作产物名提取——「名称」字段填充值即产物名
+            #   （r9 实证：克隆弹窗 L1437 编辑字段: 名称 = test595657 即克隆
+            #   产物 VM 名，无需从列表反推）。form_filler.fill_edit_form 已把
+            #   填充值写回 field dict（filled_value）。
+            if any(_kw in (action or "") for _kw in const.CLONE_ACTION_KEYWORDS):
+                for _f in fields:
+                    _lbl = _f.get("label") or ""
+                    if (any(_kw in _lbl for _kw in ("名称", "name"))
+                            and _f.get("filled_value")):
+                        _clone_product = str(_f["filled_value"]).strip()
+                        LOG.info(f"    [F1-克隆] {action} 产物名（名称字段值）: {_clone_product}")
+                        break
 
             # 收集填充的字段详情（用于 playbook 生成）
             edit_field_details = []
@@ -6328,6 +6688,17 @@ async def _do_generic_operation(page, context: dict) -> dict:
     # ★ 提取 radio 字段到操作结果顶层
     if radio_field_details_local:
         result["radio_field_details"] = radio_field_details_local
+
+    # ★ 批七 F1：克隆产物就绪等待——克隆成功后、返回调度器前，等产物从
+    #   「克隆中」到稳定态（r9 实证：克隆成功后立刻执行后续行级操作会撞
+    #   「克隆中, 请等待克隆完成」error 样式 toast）。单点接线覆盖全部
+    #   调用域（main 循环/STATE-CHANGE 批/RECONCILE R1 均经本函数）；
+    #   一次性有界（180s），超时记 warning + 观测入产物继续执行不挂死
+    #   （与 QGA 等待同模式）。
+    if _clone_product:
+        result["clone_product"] = _clone_product
+        await _wait_clone_product_ready(
+            page, _clone_product, marker=marker, result=result)
 
     return result
 

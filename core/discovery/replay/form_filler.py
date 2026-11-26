@@ -1117,11 +1117,16 @@ class FormFiller:
                         await self.page.keyboard.type(str(value), delay=50)
                         await self.page.keyboard.press("Tab")
                         filled += 1
+                        # ★ 批七 F1：填充值写回 field dict（in-place，调用方持有
+                        #   同一 list 引用）——克隆类操作「名称」字段值即产物名，
+                        #   供 crud_executor 成功后产物就绪等待；不改变既有返回契约
+                        field["filled_value"] = str(value)
                         LOG.info(f"    编辑字段(number): {label} = {value}")
                     else:
                         await self.page.fill(enhanced, "", timeout=3000)
                         await self.page.fill(enhanced, value, timeout=3000)
                         filled += 1
+                        field["filled_value"] = str(value)  # ★ 批七 F1（同上）
                         LOG.info(f"    编辑字段: {label} = {value}")
                 else:
                     # 从选择器注册表获取 form item 选择器
@@ -1135,6 +1140,7 @@ class FormFiller:
                     await self.page.fill(enhanced, "", timeout=3000)
                     await self.page.fill(enhanced, value, timeout=3000)
                     filled += 1
+                    field["filled_value"] = str(value)  # ★ 批七 F1（同上）
                     LOG.info(f"    编辑字段(回退): {label} = {value}")
             except Exception as e:
                 LOG.debug(f"    编辑字段 {label} 失败: {e}")
