@@ -166,9 +166,16 @@ def generate_fill_value(field_type: str, input_type: str,
             "rule": "number_pattern", "params": {"min": 1, "max": 100}
         }
 
-    # ★ 批六修复8：登录名/用户名 → username_pattern（值与原 name_pattern 默认
-    #   等值 test{ts}，仅规则名更准确，Stage 2 apply_fill_rule 走 username 分支）
+    # ★ 批七 F7（B1）：凭证回显类分支——重置密码等弹窗打开时登录名已回显
+    #   实际凭证（EIS 实证 value='root'），回显值也是"默认值"（既有验收规则
+    #   「有默认值的字段一律保持默认」的自然延伸）→ 保留原值不覆盖。
+    #   r9 实证：生成 test{ts} 覆盖回显登录名 → 提交未生效 dialog_still_open ×5；
+    #   回显保留后主路径自愈，F3 的 dialog_still_open 入册转为防御性兜底。
     if any(kw in label_lower for kw in _USERNAME_LABEL_KEYWORDS):
+        if current_value and current_value.strip():
+            return current_value, {
+                "rule": "fixed_value", "params": {"value": current_value}
+            }
         return f"{username.lower()}{ts}", {
             "rule": "username_pattern", "params": {"prefix": username.lower()}
         }
@@ -473,8 +480,10 @@ def _infer_fill_rule(label: str, field_type: str, input_type: str, required: boo
             return {"rule": "fixed_value", "params": {"value": current_value}}
         return {"rule": "number_pattern", "params": {"min": 1, "max": 100}}
 
-    # ★ 批六修复8：登录名/用户名 → username_pattern（与 generate_fill_value 同源）
+    # ★ 批七 F7（B1）：凭证回显类分支（与 generate_fill_value 同源同判据）
     if any(kw in label_lower for kw in _USERNAME_LABEL_KEYWORDS):
+        if current_value and current_value.strip():
+            return {"rule": "fixed_value", "params": {"value": current_value}}
         return {"rule": "username_pattern", "params": {"prefix": "test"}}
 
     # 基于字段类型推断

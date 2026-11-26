@@ -5568,6 +5568,65 @@ async def _do_generic_operation(page, context: dict) -> dict:
     if url_before != url_after:
         LOG.info(f"    检测到页面跳转: {url_before[:40]} → {url_after[:40]}")
 
+        # ★ 批七 F6（B3）：导航型菜单项分流——URL 跳转且无弹窗弹出且
+        #   跳转目标 URL 含 marker → 菜单项=导航链接语义：点击即交互完成，
+        #   直接判导航成功，不进 EDIT-FLOW 探索（navigation_executor 的
+        #   「找提交按钮」路径对导航型是错路径：网络配置跳 vmDetail 后
+        #   扫 9 tabs×2 轮全超时 ~4 分钟，r9 实证 no_submit_button），
+        #   分流后 ~5s 判成功。边界：有弹窗的跳转（提交后跳列表页类，
+        #   弹窗+提交动作在先）不落此分支；marker 不在目标 URL 的跳转
+        #   （如创建页跳转）同样走既有探索——无弹窗+marker 命中双条件
+        #   天然隔离误判。
+        if marker and marker in url_after:
+            _f6_has_dialog = await page.evaluate("""() => {
+                const dialogs = document.querySelectorAll(
+                    '.el-dialog__wrapper, .el-drawer, .el-message-box, .ant-modal-wrap');
+                for (const d of dialogs) {
+                    if (d.offsetWidth > 0) return true;
+                }
+                return false;
+            }""")
+            if not _f6_has_dialog:
+                LOG.info(f"    [F6] 导航型菜单项判定成功: 无弹窗跳转且目标 URL 含 marker "
+                         f"'{marker}'，点击即交互完成，不进 EDIT-FLOW")
+                # 导航回列表页，保持主循环会话一致（与既有探索路径同一出口）
+                await _navigate_back_to_list(page, url_before, tab_name=_tab_name,
+                                             tab_locator=_tab_locator)
+                selectors = {"trigger": btn_text}
+                if row_selector:
+                    selectors["row_selector"] = row_selector
+                # nav_info 携带 navigated_url → builder 走 _build_page_nav_steps：
+                #   find_row → click_row_more/click_button → wait_for_url →
+                #   assert read_complete → navigate_back（无表单无提交，
+                #   submit_result.button_text 置空抑制虚假「确定」点击步骤）
+                result = {
+                    "success": True,
+                    "trigger_text": trigger_text_normalized,
+                    "selectors": selectors,
+                    "nav_info": {
+                        "navigated_url": url_after,
+                        "form_fields": [],
+                        "submit_result": {"button_text": ""},
+                    },
+                    "interaction_mode": "page-nav",
+                    "adjudication_note": (
+                        f"[批七F6] 导航型菜单项分流：无弹窗 URL 跳转且目标含 marker → "
+                        f"点击即交互完成，判导航成功（不进 EDIT-FLOW）"
+                    ),
+                }
+                # dropdown 类操作不落 trigger_locator_verified（raw locator 回放
+                # 不可靠，对齐本函数尾部既有先例），让 builder 走 dropdown_item 分支
+                if btn_location not in ("dropdown",) and _verified_trigger_locator:
+                    result["trigger_locator_verified"] = _verified_trigger_locator
+                if _verified_dropdown_item_text:
+                    result["dropdown_item_text_verified"] = _verified_dropdown_item_text
+                    if _verified_expand_strategy:
+                        result["expand_strategy_verified"] = _verified_expand_strategy
+                if _needs_checkbox:
+                    result["needs_checkbox"] = True
+                    result["checkbox_locator"] = _checkbox_locator or ".el-checkbox__input"
+                return result
+
         # 使用递归探索函数，探测并执行新页面的操作
         nav_info = await _explore_and_operate_in_new_page(
             page=page,
@@ -6608,6 +6667,22 @@ async def _do_generic_operation(page, context: dict) -> dict:
         return { dialog_remains: hasOpenDialog, has_form_in_dialog: hasForm };
     }""")
 
+    # ★ 批七 F9（B4）：已捕获 success 通知 > DOM field 红字——判定优先级修正。
+    #   r9 实证：退出运维模式业务实际成功（成功通知已捕获），但残留弹窗/空标题
+    #   弹窗内的 field 红字「密码不能为空」在此处（先扫红字后读消息）把操作判死，
+    #   成功验证（_verify_operation_success）根本没被调用。read_form_errors 全页
+    #   扫描不区分红字归属，红字可能来自与本次操作无关的残留弹窗。
+    #   修正：先读捕获消息，有 success 语义通知 → 红字不参与裁决，交由成功验证
+    #   定案（P0-A 每操作开始重装捕获器清空数组，无上一操作残留 success 误判
+    #   风险）；无 success 消息保持既有红字失败语义（error_type=severity，
+    #   error-driven retry 依赖不变）。互斥对菜单项消失仅作旁证，不做判定依据。
+    captured_msgs = await _get_captured_messages(page)
+    _f9_overridden_red_text = ""
+    _has_success_msg = any(
+        const.classify_notification(m.get("text", ""), m.get("className", "")) == "success"
+        for m in captured_msgs
+    )
+
     # 检查错误
     errors = await read_form_errors(page)
     if errors:
@@ -6620,11 +6695,13 @@ async def _do_generic_operation(page, context: dict) -> dict:
             filtered_errors.append(e)
 
         if filtered_errors:
-            first = filtered_errors[0]
-            return _fail(first.get("severity", "unknown"), first.get("error_text", ""))
-
-    # 读取捕获的消息（操作后可能已消失）
-    captured_msgs = await _get_captured_messages(page)
+            if _has_success_msg:
+                _f9_overridden_red_text = filtered_errors[0].get("error_text", "")
+                LOG.info(f"    [F9] 检测到 field 红字但已捕获 success 通知，红字不参与裁决: "
+                         f"{_f9_overridden_red_text[:50]}")
+            else:
+                first = filtered_errors[0]
+                return _fail(first.get("severity", "unknown"), first.get("error_text", ""))
 
     # [DIAG] 诊断：打印捕获到的所有消息
     LOG.info(f"    [DIAG-captured-msgs] 共捕获 {len(captured_msgs)} 条消息:")
@@ -6683,6 +6760,14 @@ async def _do_generic_operation(page, context: dict) -> dict:
         "dialog_remains": post_state["dialog_remains"],
         "has_form_in_dialog": post_state["has_form_in_dialog"],
     }
+
+    # ★ 批七 F9：红字被 success 通知推翻时记录裁决依据（流入 ui.json 产物，
+    #   供 r10 验收与人工复核；互斥对菜单项消失仅佐证不写入判定依据）
+    if _f9_overridden_red_text:
+        result["adjudication_note"] = (
+            f"[批七F9] field 红字「{_f9_overridden_red_text[:60]}」被已捕获 success 通知推翻"
+            f"（判定优先级：success 通知 > field 红字）"
+        )
 
     # success 为 True 才会执行到这里（not success 已在上方 return _fail）
 

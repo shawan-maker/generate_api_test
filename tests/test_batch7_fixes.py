@@ -1,7 +1,7 @@
 """
-test_batch7_fixes.py — 批七（r9 遗留源头治理）G1 组单元测试
+test_batch7_fixes.py — 批七（r9 遗留源头治理）分批单元测试
 
-测试目标（docs/debug/eis云主机批七修改方案.md §二）：
+G1 组（调度治理）：
 - F1 克隆产物就绪等待：const.CLONE_ACTION_KEYWORDS 单源；
   _wait_clone_product_ready（行出现主信号 / 克隆中文案拒放行 / Vue 过渡
   枚举拒放行 / 超时不挂死 / 列表视图恢复 / 观测入产物）；
@@ -12,6 +12,21 @@ test_batch7_fixes.py — 批七（r9 遗留源头治理）G1 组单元测试
 - _scan_row_state_snapshot vue_states 新口径（并行返回，既有消费点零变化）
 - F3 失败二分记忆：TERMINAL_ERROR_TYPES 扩三类 + STATE_PENDING_ERROR_TEXTS
   状态性豁免 + _register_terminal_attempt 豁免逻辑 + main 循环预算接线
+
+G2 组（提交链治理）：F4 Primary 回退弹窗内收紧 + F5 CANCEL_TEXTS 补'关闭'
++ F8 弹窗归属 token 覆盖匹配
+
+G3 组（判定链治理）：
+- F6 导航型菜单项分流：无弹窗 URL 跳转 + marker 命中 → 判导航成功不进
+  EDIT-FLOW（B3 网络配置 ~4min → ~5s）；结果形态经 builder 序列化
+  （click_row_more → wait_for_url → read_complete → navigate_back，
+  无虚假「确定」点击步骤）
+- F7 凭证回显保留：登录名/用户名类字段有非空 currentValue（弹窗回显）
+  → fixed_value 保留不覆盖（B1 重置密码 dialog_still_open ×5 根治）；
+  双源同步（generate_fill_value / _infer_fill_rule）+ Stage 2 回放闭环
+- F9 成功信号优先：已捕获 success 通知 > DOM field 红字（B4 退出运维模式
+  实证：先扫红字后读消息的早退点把业务成功判死）；推翻时裁决依据记入
+  adjudication_note 流入 ui.json
 """
 import inspect
 
@@ -735,3 +750,186 @@ class TestF8TitleClaimsAction:
         src = _src(ce._do_generic_operation)
         assert "_title_claims_action" in src
         assert "_hide_idx" in src
+
+
+# ============================================================
+# G3：F6 导航型菜单项分流 / F7 凭证回显保留 / F9 成功信号优先
+# ============================================================
+
+class TestF6NavigationMenuDeduction:
+
+    def test_wired_before_edit_flow_exploration(self):
+        """F6 分流必须先于 page_nav 分支的 EDIT-FLOW 探索调用（不进探索=治本）。"""
+        src = _src(ce._do_generic_operation)
+        f6_pos = src.find("_f6_has_dialog")
+        assert f6_pos > 0, "F6 分流缺失"
+        calls = [m.start() for m in __import__("re").finditer(
+            r"_explore_and_operate_in_new_page\(", src)]
+        assert len(calls) >= 2, "page_nav 分支的探索调用缺失"
+        # 第 1 个调用是 new_tab 分支（page=new_page），第 2 个是 page_nav 分支
+        assert f6_pos < calls[1], "F6 分流必须先于 EDIT-FLOW 探索"
+
+    def test_conditions_double_gate(self):
+        """双条件保守边界：marker 命中目标 URL + 无弹窗弹出（防误判删除后跳列表等）。"""
+        src = _src(ce._do_generic_operation)
+        assert "if marker and marker in url_after:" in src
+        assert "if not _f6_has_dialog:" in src
+        # 弹窗可见性检查覆盖四形态容器（与 F4 对齐）
+        for kw in (".el-dialog__wrapper", ".el-drawer", ".el-message-box", ".ant-modal-wrap"):
+            assert kw in src
+
+    def test_result_shape_page_nav(self):
+        """F6 结果形态：nav_info.navigated_url → builder 走 page-nav 序列化；
+        无表单无提交（submit_result.button_text 置空抑制虚假「确定」点击）。"""
+        src = _src(ce._do_generic_operation)
+        assert '"navigated_url": url_after' in src
+        assert '"form_fields": []' in src
+        assert '"submit_result": {"button_text": ""}' in src
+        assert '"interaction_mode": "page-nav"' in src
+
+    def test_navigate_back_kept_and_dropdown_locator_excluded(self):
+        """跳转后导航回列表（会话一致）；dropdown 类不落 raw locator（回放不可靠，
+        对齐本函数尾部既有先例），builder 走 dropdown_item/click_row_more 分支。"""
+        src = _src(ce._do_generic_operation)
+        assert "_navigate_back_to_list(page, url_before" in src
+        assert 'if btn_location not in ("dropdown",) and _verified_trigger_locator:' in src
+        assert "_verified_dropdown_item_text" in src
+
+    def test_page_nav_steps_serialization_shape(self):
+        """行为测试：F6 结果形态经 _build_page_nav_steps → find_row →
+        click_row_more → wait_for_url → assert read_complete → navigate_back，
+        不生成虚假「确定」点击步骤。"""
+        from core.discovery.playbook_builder.builder import _build_page_nav_steps
+        op_data = {
+            "trigger_text": "网络配置",
+            "selectors": {"trigger": "网络配置", "row_selector": "更多 > 网络配置"},
+            "nav_info": {
+                "navigated_url": "https://eis.example/vmDetail/test595047",
+                "form_fields": [],
+                "submit_result": {"button_text": ""},
+            },
+            "dropdown_item_text_verified": "网络配置",
+            "interaction_mode": "page-nav",
+            "navigate_back_url": "https://eis.example/vm/list",
+        }
+        steps = _build_page_nav_steps(op_data)
+        actions = [s["action"] for s in steps]
+        assert "find_row" in actions
+        assert "click_row_more" in actions
+        wait_step = next(s for s in steps if s["action"] == "wait_for_url")
+        assert "vmDetail" in wait_step["url_pattern"]
+        assert_step = next(s for s in steps if s["action"] == "assert_success")
+        assert assert_step["assert_mode"] == "read_complete"
+        assert steps[-1]["action"] == "navigate_back"
+        # 无提交动作 → 无「确定」点击步骤（旧默认会生成 button_text='确定'）
+        assert not any(s["action"] == "click_button" and s.get("text") == "确定"
+                       for s in steps), "导航型操作不得生成虚假提交点击步骤"
+
+
+class TestF7CredentialEcho:
+
+    def test_echo_login_name_preserved(self):
+        """B1：重置密码弹窗打开时登录名回显 'root' → 保留原值不覆盖
+        （fixed_value 三阶段一致：Stage 1 填 root / 落盘规则 / Stage 2 重建 root）。"""
+        value, rule = fill_helpers.generate_fill_value(
+            "input", "text", "test", "登录名", current_value="root")
+        assert value == "root"
+        assert rule == {"rule": "fixed_value", "params": {"value": "root"}}
+
+    def test_echo_username_label_preserved(self):
+        """'用户名' 同判据（词表单源 _USERNAME_LABEL_KEYWORDS）。"""
+        value, rule = fill_helpers.generate_fill_value(
+            "input", "text", "test", "用户名", current_value="admin")
+        assert value == "admin"
+        assert rule["rule"] == "fixed_value"
+
+    def test_no_echo_falls_back_username_pattern(self):
+        """无回显（current_value 空）→ 既有 username_pattern 语义不变（零回归）。"""
+        value, rule = fill_helpers.generate_fill_value(
+            "input", "text", "test", "登录名", current_value="")
+        assert rule == {"rule": "username_pattern", "params": {"prefix": "test"}}
+        assert value.startswith("test")
+
+    def test_whitespace_only_echo_treated_as_empty(self):
+        value, rule = fill_helpers.generate_fill_value(
+            "input", "text", "test", "登录名", current_value="   ")
+        assert rule["rule"] == "username_pattern"
+
+    def test_infer_fill_rule_synced(self):
+        """双源同步：_infer_fill_rule（generate_fill_rules 路径）与
+        generate_fill_value 同判据同策略（防 Stage 1 值与落盘规则漂移）。"""
+        rule = fill_helpers._infer_fill_rule(
+            "登录名", "input", "text", True, current_value="root")
+        assert rule == {"rule": "fixed_value", "params": {"value": "root"}}
+        rule2 = fill_helpers._infer_fill_rule(
+            "登录名", "input", "text", True, current_value="")
+        assert rule2 == {"rule": "username_pattern", "params": {"prefix": "test"}}
+
+    def test_apply_fill_rule_fixed_value_roundtrip(self):
+        """Stage 2 回放闭环：fixed_value 规则重建同值。"""
+        assert fill_helpers.apply_fill_rule(
+            {"rule": "fixed_value", "params": {"value": "root"}}) == "root"
+
+    @pytest.mark.asyncio
+    async def test_edit_fill_path_uses_echo_value(self):
+        """端到端：fill_edit_form 对回显登录名填回显值（不再随机覆盖），
+        filled_value 写回字段（F1 通道同源）。"""
+        filler = ff_mod.FormFiller(FakePage())
+        fields = [{
+            "label": "登录名", "type": "input", "inputType": "text",
+            "kb_category": "input-generic", "currentValue": "root",
+            "selector": ".el-dialog__wrapper .el-input__inner",
+        }]
+        page = filler.page
+        filled = await filler.fill_edit_form(fields, modifications=None)
+        assert filled == 1
+        values = [v for _, v in page.fills]
+        assert "root" in values, "回显登录名必须被保留填充"
+        assert not any(v.startswith("test") and v[4:].isdigit() for v in values), \
+            "不得生成随机用户名覆盖回显凭证"
+        assert fields[0].get("filled_value") == "root"
+
+
+class TestF9SuccessPriority:
+
+    def test_success_message_read_before_red_text(self):
+        """F9 裁决序：先读捕获消息（success 判定）后扫 field 红字——
+        B4 推翻根因是先扫红字的早退点（read_form_errors 全页扫描不区分
+        红字归属，残留弹窗红字在成功验证前把操作判死）。"""
+        src = _src(ce._do_generic_operation)
+        f9_start = src.find("批七 F9（B4）")
+        assert f9_start > 0, "F9 注释块缺失"
+        seg = src[f9_start:]
+        captured_pos = seg.find("captured_msgs = await _get_captured_messages(page)")
+        errors_pos = seg.find("errors = await read_form_errors(page)")
+        assert 0 < captured_pos < errors_pos, "F9 段内必须先读捕获消息后扫红字"
+
+    def test_success_overrides_red_text_gate(self):
+        """有 success 语义消息 → 红字不参与裁决（if 分支跳过）；
+        无 success 消息 → 既有红字失败语义不变（error_type=severity，
+        error-driven retry 依赖）。"""
+        src = _src(ce._do_generic_operation)
+        assert "if _has_success_msg:" in src
+        assert 'return _fail(first.get("severity"' in src
+        assert "const.classify_notification" in src, "复用单源分类器（不新增词表）"
+
+    def test_no_stale_success_risk(self):
+        """P0-A 保障：每操作开始重装捕获器清空数组（上一操作残留 success
+        不会误推翻本轮红字失败）——_do_generic_operation 调用点在位。"""
+        src = _src(ce._do_generic_operation)
+        assert "await _install_message_capture(page)" in src
+
+    def test_adjudication_note_flows_into_result(self):
+        """推翻发生时裁决依据记入 result['adjudication_note']（流入 ui.json，
+        供 r10 验收与人工复核；互斥对菜单项消失仅佐证不做判定依据）。"""
+        src = _src(ce._do_generic_operation)
+        assert '"adjudication_note"' in src
+        assert "被已捕获 success 通知推翻" in src
+
+    def test_verifier_strategy_f_already_gated(self):
+        """定案记录：B4 实际推翻点在 crud_executor 早退而非 success_verifier
+        ——verifier 策略 F（field 红字扫描）本就有 matched_method None 门，
+        已捕获 success 后不会扫红字（方案实施位置修正的回归守卫）。"""
+        from core.discovery.shared import success_verifier as sv
+        src = _src(sv.verify_operation_success)
+        assert "if matched_method is None and failure_reason is None:" in src
