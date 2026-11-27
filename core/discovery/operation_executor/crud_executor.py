@@ -301,9 +301,22 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
             //    _scan_row_state_snapshot 展开段同源）——menuId 优先
             //    定位，根治 dropdownIndex 克隆行漂移与全页回退捡他行
             //    菜单两大缺口（r12 缺口③定位部分）
-            const menu = dropdown.querySelector('.el-dropdown-menu')
+            // ★ 批十一 F1：menuId 扩源 vm.popperElm.id 兜底——探针
+            //    P1c 定案：Element UI popper.js 首次 show() 把菜单容器
+            //    从 cell 移动到 document.body（此后 cell 查询域恒空），
+            //    vm.show() 真实生效但三链行内查询全空 → has_visible_menu
+            //    =False（r13 十轮 menuId=None 7 轮根因）。popperElm 是
+            //    VuePopper mixin 实例引用，show 前后全程恒指本行菜单
+            //    （cell/body 两形态），其 id 即全页唯一菜单 id——消费端
+            //    getElementById 链零改动即全链复活。无 popperElm 形态
+            //    （自研组件/estack 等）返回 undefined 静默回落既有链。
+            const _domMenu = dropdown.querySelector('.el-dropdown-menu')
                 || dropdown.parentElement?.querySelector('.el-dropdown-menu');
-            const menuId = menu ? menu.id || menu.getAttribute('data-popper-id') : null;
+            const menuId = _domMenu
+                ? (_domMenu.id || _domMenu.getAttribute('data-popper-id'))
+                : (dropdown.__vue__?.popperElm?.id
+                   || dropdown.__vue__?.popperElm?.getAttribute?.('data-popper-id')
+                   || null);
 
             // 方法 1: 调用 Vue 实例的 show/handleMouseEnter
             if (dropdown.__vue__) {{
@@ -372,15 +385,23 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
         # ★ 批十 F3：dispatchEvent 假展开有界复核——合成事件偶发生效滞后
         #    （r12 09:28:01 has_visible_menu=False 判零收集后 1s 菜单实际
         #    弹出的假阴性收窄），2 次 × 800ms 轮询同定位链复核；仍 False
-        #    才判零收集。vue_show 路径 9 轮实证可靠，不复核不加延迟。
+        #    才判零收集。
+        #    ★ 批十一 F3：复核门条件扩为「menuId 空」——r13 证伪批十-B
+        #    「vue_show 路径 9 轮实证可靠」注释（十轮中 7 轮 menuId=None）；
+        #    探针 P1c 定案 None 的机制=popper.js appendToBody 后 cell
+        #    查询域恒空（非展开失败），vue_show 轮与 dispatchEvent 轮的
+        #    可靠性分界实为「menuId 是否可得」。F1 popperElm 扩源后
+        #    menuId 恒非空（组件异常除外），复核门趋零触发——从「盲等」
+        #    降级为「组件异常兜底」。
         if (not has_visible_menu
-                and expand_result.get('method') == 'dispatchEvent'):
+                and not expand_result.get('menuId')):
             for _recheck_round in (1, 2):
                 await page.wait_for_timeout(800)
                 has_visible_menu = await page.evaluate(
                     _menu_visible_js, _menu_visible_args)
                 LOG.info(f"  [INCREMENTAL-SCAN-DEBUG] "
-                         f"dispatchEvent 展开复核第 {_recheck_round} 轮: "
+                         f"menuId 空复核第 {_recheck_round} 轮"
+                         f"(method={expand_result.get('method')}): "
                          f"has_visible_menu={has_visible_menu}")
                 if has_visible_menu:
                     break
@@ -684,9 +705,18 @@ async def _scan_row_state_snapshot(page, created_marker: str) -> dict:
             }}
 
             // 获取此 dropdown 关联的 menu 元素标识
-            const menu = dropdown.querySelector('.el-dropdown-menu')
+            // ★ 批十一 F1：menuId 扩源 vm.popperElm.id 兜底（与
+            //    _scan_row_after_operation 展开段同源）——探针 P1c 定案
+            //    popper.js appendToBody 后 cell 查询域恒空，popperElm
+            //    实例引用全程恒指本行菜单，消费端 getElementById 链零
+            //    改动（无 popperElm 形态静默回落既有链）。
+            const _domMenu2 = dropdown.querySelector('.el-dropdown-menu')
                 || dropdown.parentElement?.querySelector('.el-dropdown-menu');
-            const menuId = menu ? menu.id || menu.getAttribute('data-popper-id') : null;
+            const menuId = _domMenu2
+                ? (_domMenu2.id || _domMenu2.getAttribute('data-popper-id'))
+                : (dropdown.__vue__?.popperElm?.id
+                   || dropdown.__vue__?.popperElm?.getAttribute?.('data-popper-id')
+                   || null);
             const dropdownIndex = Array.from(document.querySelectorAll('.el-dropdown')).indexOf(dropdown);
 
             return {{ expanded: true, menuId, dropdownIndex }};
@@ -2010,6 +2040,28 @@ async def _state_aware_reconcile(
 
         # 3. R1 恢复转移（status 可读 + 有矩阵数据才走；不可读 → 降级结束）
         if status is None or not state_ctx:
+            # ★ 批十一 F3：status=None 单轮有界重读——settle 轮询窗恰落在
+            #    「行重渲染/菜单重建」瞬态时 status 读 None 即整轮判降级
+            #    （r13 型：开机成功行已 Running 仍 None，pending 拖至终局
+            #    14）。本轮内重扫一次 snapshot：得值即证明行已恢复可读，
+            #    continue 回轮首重新 settle（ready/恢复转移按全新视图计算，
+            #    不用重读局部数据拼接调度）；仍 None 按既有降级语义结束。
+            #    state_ctx 缺失时恢复转移无矩阵可用，重读无意义，维持原
+            #    降级路径零变化。有界性：continue 仍受 max_rounds 12 轮
+            #    挂死保险约束，不新增等待上界。
+            _reread_rescued = False
+            if status is None and state_ctx:
+                try:
+                    _re_snap = await _scan_row_state_snapshot(page, created_marker)
+                    _re_status = _re_snap.get("status")
+                    LOG.info(f"{tab_prefix}[STATE-RECONCILE][R1-REREAD] "
+                             f"status=None 单轮重读: status={_re_status}")
+                    _reread_rescued = _re_status is not None
+                except Exception as _re_err:
+                    LOG.debug(f"{tab_prefix}[STATE-RECONCILE][R1-REREAD] "
+                              f"重读异常（忽略，按降级）: {_re_err}")
+            if _reread_rescued:
+                continue
             LOG.info(f"{tab_prefix}[STATE-RECONCILE] 无 ready 且状态不可读，结束（降级）")
             break
 

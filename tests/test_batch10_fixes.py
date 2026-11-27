@@ -554,8 +554,8 @@ class TestBatch10F3MenuIdUnified:
 
     @pytest.mark.asyncio
     async def test_success_path_evaluate_sequence_unchanged(self):
-        """vue_show 全成功路径：evaluate 序不因 F3/F4 增加（复核仅限
-        dispatchEvent 假展开场景）。"""
+        """vue_show 全成功路径：evaluate 序不因 F3/F4 增加（批十一
+        后复核仅限 menuId 空场景，menuId 非空全成功路径零复核开销）。"""
         page = _ScanCapturePage(_B10_SUCCESS_EVALS)
         result = await ce._scan_row_after_operation(
             page, ".el-table__row:nth-child(1)", "test663637", {"关机"})
@@ -565,14 +565,17 @@ class TestBatch10F3MenuIdUnified:
 
     @pytest.mark.asyncio
     async def test_dispatchevent_recheck_recovers_and_proceeds(self):
-        """dispatchEvent 假展开复核：初判 False → 复核轮转 True → 菜单
-        收集照常执行（合成事件滞后假阴性收窄，r12 09:28 链）。"""
+        """dispatchEvent + menuId 空假展开复核：初判 False → 复核轮转
+        True → 菜单收集照常执行（合成事件滞后假阴性收窄，r12 09:28 链）。
+        ★ 批十一 F3 契约同步：复核门判据由 method 改为 menuId 空
+        （r13 证伪「vue_show 9 轮可靠」——7/10 None；menuId 是否可得
+        才是可靠性分界），本用例 menuId 置 None 对齐新判据。"""
         evals = [
             True,                                                    # 0. row_exists
             {"buttons": [], "allTexts": ["取消", "确定"]},           # 1. 直查按钮
             0,                                                       # 2. SCAN-SWEEP
             {"expanded": True, "method": "dispatchEvent",
-             "dropdownIndex": 0, "menuId": "menu-abc"},              # 3. 展开
+             "dropdownIndex": 0, "menuId": None},                    # 3. 展开
             False,                                                   # 4. 初判 False
             True,                                                    # 5. 复核轮 1 转 True
             {"buttons": [], "menuInfo": [],
@@ -589,11 +592,12 @@ class TestBatch10F3MenuIdUnified:
 
     @pytest.mark.asyncio
     async def test_dispatchevent_recheck_bounded_at_two(self):
-        """有界复核：恒 False 最多 2 轮（+ 初判共 3 次可见性检查），
-        仍 False 判零收集不进菜单扫描。"""
+        """有界复核：menuId 空 + 恒 False 最多 2 轮（+ 初判共 3 次可见性
+        检查），仍 False 判零收集不进菜单扫描。★ 批十一 F3 契约同步：
+        menuId 置 None 对齐新判据（method 判据已证伪）。"""
         evals = list(_B10_SUCCESS_EVALS)
         evals[3] = {"expanded": True, "method": "dispatchEvent",
-                    "dropdownIndex": 0, "menuId": "menu-abc"}
+                    "dropdownIndex": 0, "menuId": None}
         evals[4] = False
         page = _ScanCapturePage(evals + [False, False,  # 复核 2 轮恒 False
                                          {"buttons": [], "menuInfo": [],
@@ -607,8 +611,10 @@ class TestBatch10F3MenuIdUnified:
 
     @pytest.mark.asyncio
     async def test_vue_show_false_no_recheck(self):
-        """vue_show 路径不复核（9 轮实证可靠）：False 即判零收集，
-        无复核轮延迟、不进菜单扫描。"""
+        """vue_show + menuId 非空 + 初判 False 不复核：menuId 可得即
+        展开真实生效（批十一 P1c 定案「menuId 是否可得」是可靠性分界，
+        证伪本用例批十原注释「vue_show 路径 9 轮实证可靠」），False 即
+        判零收集，无复核轮延迟、不进菜单扫描。"""
         evals = [
             True,                                                    # 0. row_exists
             {"buttons": [], "allTexts": ["取消", "确定"]},           # 1. 直查按钮
@@ -627,10 +633,13 @@ class TestBatch10F3MenuIdUnified:
 
     def test_expand_js_captures_menu_id(self):
         """展开 JS 抓取 menuId（与 _scan_row_state_snapshot 同源）——
-        targetMenu 优先定位的锚点来源。"""
+        targetMenu 优先定位的锚点来源。★ 批十一 F1 契约同步：menuId
+        抓取扩源 _domMenu 优先 + vm.popperElm.id 兜底（appendToBody 后
+        cell 域恒空），同源形态断言对齐新字面。"""
         src = _src(ce._scan_row_after_operation)
-        assert "menu.id || menu.getAttribute('data-popper-id')" in src, \
+        assert "_domMenu.id || _domMenu.getAttribute('data-popper-id')" in src, \
             "menuId 抓取须与级联链同源形态"
+        assert "popperElm?.id" in src, "批十一 F1 popperElm 兜底须在位"
         assert "data-popper-id" in src
         assert src.count("menuId") >= 5, "menuId 须贯通展开/可见性/收集链"
 
