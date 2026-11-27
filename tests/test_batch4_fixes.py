@@ -442,20 +442,33 @@ class TestRequiredSelectsGuard:
 class TestScanRowStateSnapshotFString:
 
     def test_snapshot_js_builds_without_nameerror(self):
-        """L518 状态快照 f-string 必须可构造（注释 {row: {...}} 花括号已转义）。
+        """(params) 形态 f-string 必须全部可构造（花括号已转义）。
 
-        回归实证: 未转义时 f-string 求值抛 NameError('row')，被 except 吞掉后
+        回归实证: 未转义时 f-string 求值抛 NameError，被 except 吞掉后
         _scan_row_state_snapshot 恒返回空快照 → 批一状态机 R1-R4 整链路死代码。
+        批十-B 后 (params) 块增至 3 个（可见性判定/菜单收集/状态快照），
+        守卫升级为全块逐一构造（新增块同受花括号转义守护）；状态快照块
+        （rowStatus/qgaReady）保留原断言。
         """
+        from core.discovery.operation_executor import crud_executor as ce
         src = open(r"D:\Mobile\API_AI_test\core\discovery\operation_executor\crud_executor.py",
                    encoding="utf-8").read()
-        m = re.search(r'f"""\(params\) => \{\{(.*?)"""', src, re.S)
-        assert m, "L518 状态快照 f-string 未找到"
-        ns = {"menuId": None, "dropdownIndex": None}
-        exec(compile("js = " + m.group(0), "<test>", "exec"), ns)
-        js = ns["js"]
-        assert "{row: {...}}" in js, "注释花括号渲染丢失"
-        assert "rowStatus" in js and "qgaReady" in js
+        blocks = re.findall(r'f"""\(params\) => \{\{.*?"""', src, re.S)
+        assert blocks, "(params) 形态 f-string 块未找到"
+        assert len(blocks) >= 3, \
+            f"(params) 块须含可见性/收集/状态快照 3 块，实际 {len(blocks)}"
+        ns = {"menuId": None, "dropdownIndex": None,
+              "_ROW_BY_MARKER_JS": ce._ROW_BY_MARKER_JS,
+              "existing_actions": set()}
+        snapshot_js = None
+        for blk in blocks:
+            ns_i = dict(ns)
+            exec(compile("js = " + blk, "<test>", "exec"), ns_i)
+            js_i = ns_i["js"]
+            if "rowStatus" in js_i and "qgaReady" in js_i:
+                snapshot_js = js_i
+        assert snapshot_js is not None, "状态快照 f-string（rowStatus/qgaReady）未找到"
+        assert "{row: {...}}" in snapshot_js, "注释花括号渲染丢失"
 
     def test_no_unescaped_js_template_interpolations(self):
         """crud_executor 全文件 f-string 不含未转义的 JS 模板插值（'row'/'...'）。"""

@@ -120,6 +120,35 @@ class ButtonStateTracker:
         self.executed_buttons.add(button_text)
 
 
+# ★ 批十 F4：文本锚定找行 JS 前缀（生成/使用同域同构单源）——与生成侧
+#   get_row_selector_by_marker 完全同域：可见 tab-pane →
+#   .el-table__body-wrapper → 按 marker 文本找行。根治两类失锚（r12
+#   定案）：① 位置式 nth-child 失锚——克隆产物行插入致 marker 行
+#   nth-child(1)→(2) 位置漂移，row_selector 命中固定列克隆/隐藏行；
+#   ② 查询域断裂——生成侧 scope 查找 / 使用侧 document 全局
+#   querySelector（批九前已定位的 L123 全局 querySelector 缺陷顺带根治）。
+#   消费方约定：嵌入前先定义 markerText 局部变量（f-string 注入生成
+#   marker 或 params 取值），片段产出 row（找不到为 null）。
+_ROW_BY_MARKER_JS = """
+    const _panes = document.querySelectorAll('.el-tab-pane');
+    let _scope = document;
+    for (const _p of _panes) {
+        const _s = window.getComputedStyle(_p);
+        if (_s.display !== 'none' && _s.visibility !== 'hidden') {
+            _scope = _p;
+            break;
+        }
+    }
+    const _wrapper = _scope !== document
+        ? _scope.querySelector('.el-table__body-wrapper')
+        : document.querySelector('.el-table__body-wrapper');
+    const row = _wrapper
+        ? Array.from(_wrapper.querySelectorAll('.el-table__row')).find(
+              r => (r.textContent || '').includes(markerText))
+        : null;
+"""
+
+
 async def _scan_row_after_operation(page, row_selector: str, marker: str, existing_actions: set) -> dict:
     """操作执行后，增量扫描当前行，发现新出现的按钮和文本变化的按钮。
 
@@ -145,9 +174,10 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
     try:
         LOG.info(f"  [INCREMENTAL-SCAN-DEBUG] 开始扫描: row_selector={row_selector}, marker={marker}")
 
-        # 1. 验证行仍然存在
+        # 1. 验证行仍然存在（★ 批十 F4：文本锚定找行，同生成侧 domain）
         row_exists = await page.evaluate(f"""() => {{
-            const row = document.querySelector('{row_selector}');
+            const markerText = '{marker}';
+            {_ROW_BY_MARKER_JS}
             return row ? true : false;
         }}""")
 
@@ -158,8 +188,10 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
             return result
 
         # 2. 扫描当前行的所有操作按钮（直接可见的 .el-button）
+        #    ★ 批十 F4：文本锚定找行（row_selector 位置式仅留日志）
         scan_result = await page.evaluate(f"""() => {{
-            const row = document.querySelector('{row_selector}');
+            const markerText = '{marker}';
+            {_ROW_BY_MARKER_JS}
             if (!row) return {{ buttons: [], allTexts: [] }};
 
             const buttons = [];
@@ -204,7 +236,6 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
 
         # 4. ★ FIX-2: 扫描 dropdown 菜单（Element UI 将菜单 teleport 到 body）
         #    使用 Vue 实例的 show() 方法展开菜单（与 click_row_more_item 相同方式）
-        dropdown_locator_str = f"{row_selector} .el-dropdown"
 
         # ── ★ 批九 SCAN-SWEEP（§五）：hover 前单次 evaluate 检测可见残留
         #    弹窗——黄金翻转窗内（F6 导航往返 go_back 后 ~15s）残留弹窗会
@@ -256,7 +287,8 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
                          f"dropdown_real_hover=fail: {_hover_err}")
 
         expand_result = await page.evaluate(f"""() => {{
-            const row = document.querySelector('{row_selector}');
+            const markerText = '{marker}';
+            {_ROW_BY_MARKER_JS}
             if (!row) return {{ expanded: false, reason: 'no_row' }};
 
             const dropdown = row.querySelector('.el-dropdown');
@@ -265,23 +297,31 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
             // 记录 dropdown 索引，用于后续精确定位 menu
             const dropdownIndex = Array.from(document.querySelectorAll('.el-dropdown')).indexOf(dropdown);
 
+            // ★ 批十 F3：抓取此 dropdown 关联 menu 的稳定标识（与
+            //    _scan_row_state_snapshot 展开段同源）——menuId 优先
+            //    定位，根治 dropdownIndex 克隆行漂移与全页回退捡他行
+            //    菜单两大缺口（r12 缺口③定位部分）
+            const menu = dropdown.querySelector('.el-dropdown-menu')
+                || dropdown.parentElement?.querySelector('.el-dropdown-menu');
+            const menuId = menu ? menu.id || menu.getAttribute('data-popper-id') : null;
+
             // 方法 1: 调用 Vue 实例的 show/handleMouseEnter
             if (dropdown.__vue__) {{
                 const vm = dropdown.__vue__;
                 if (typeof vm.show === 'function') {{
                     vm.show();
-                    return {{ expanded: true, method: 'vue_show', dropdownIndex }};
+                    return {{ expanded: true, method: 'vue_show', dropdownIndex, menuId }};
                 }}
                 if (typeof vm.handleMouseEnter === 'function') {{
                     vm.handleMouseEnter();
-                    return {{ expanded: true, method: 'vue_handleMouseEnter', dropdownIndex }};
+                    return {{ expanded: true, method: 'vue_handleMouseEnter', dropdownIndex, menuId }};
                 }}
             }}
 
             // 方法 2: 派发 mouseenter + mouseover 事件
             dropdown.dispatchEvent(new MouseEvent('mouseenter', {{ bubbles: false }}));
             dropdown.dispatchEvent(new MouseEvent('mouseover', {{ bubbles: true }}));
-            return {{ expanded: true, method: 'dispatchEvent', dropdownIndex }};
+            return {{ expanded: true, method: 'dispatchEvent', dropdownIndex, menuId }};
         }}""")
 
         LOG.info(f"  [INCREMENTAL-SCAN-DEBUG] dropdown_expand={expand_result}")
@@ -290,48 +330,87 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
         await page.wait_for_timeout(1500)
 
         dropdown_index = expand_result.get('dropdownIndex')
+        # ★ 批十 F3：menuId 优先定位（展开 JS 同源抓取）
+        menu_id = expand_result.get('menuId')
 
-        # 检查是否有可见的 dropdown 菜单（只检查目标行的 menu）
-        has_visible_menu = await page.evaluate(f"""(dropdownIndex) => {{
-            // 通过 dropdown 索引定位关联的 menu
-            const dropdowns = document.querySelectorAll('.el-dropdown');
-            if (typeof dropdownIndex === 'number' && dropdownIndex < dropdowns.length) {{
-                const dropdown = dropdowns[dropdownIndex];
-                const menu = dropdown.querySelector('.el-dropdown-menu')
-                    || dropdown.parentElement?.querySelector('.el-dropdown-menu');
-                if (menu && menu.offsetWidth > 0 && menu.offsetHeight > 0) return true;
+        # ★ 批十 F3：菜单可见性判定单源 JS（初判 + dispatchEvent 复核轮询
+        #    共用）。定位链：menuId（getElementById）→ 行 scope
+        #    .el-dropdown-menu（文本锚定行内，批十 F4）→ dropdownIndex。
+        #    删除「回退检查任何可见 menu」全页回退——批五 Gap B 病根：
+        #    捡到别的行的菜单污染收集（r12 09:28 链扫描 26 项按钮全消失
+        #    仅剩取消/确定，指向扫描命中弹层容器即此回退作恶）。
+        _menu_visible_js = f"""(params) => {{
+            let targetMenu = null;
+            if (params.menuId) {{
+                targetMenu = document.getElementById(params.menuId)
+                    || document.querySelector(`[data-popper-id="${{params.menuId}}"]`);
             }}
-            // 回退：检查任何可见 menu
-            const menus = document.querySelectorAll('.el-dropdown-menu');
-            return Array.from(menus).some(m => m.offsetWidth > 0 && m.offsetHeight > 0);
-        }}""", dropdown_index)
+            if (!targetMenu) {{
+                const markerText = params.marker;
+                {_ROW_BY_MARKER_JS}
+                if (row) targetMenu = row.querySelector('.el-dropdown-menu');
+            }}
+            if (!targetMenu && typeof params.dropdownIndex === 'number') {{
+                const dropdowns = document.querySelectorAll('.el-dropdown');
+                if (params.dropdownIndex < dropdowns.length) {{
+                    const dropdown = dropdowns[params.dropdownIndex];
+                    targetMenu = dropdown.querySelector('.el-dropdown-menu')
+                        || dropdown.parentElement?.querySelector('.el-dropdown-menu');
+                }}
+            }}
+            return !!(targetMenu
+                && targetMenu.offsetWidth > 0 && targetMenu.offsetHeight > 0);
+        }}"""
+        _menu_visible_args = {"menuId": menu_id,
+                              "dropdownIndex": dropdown_index,
+                              "marker": marker}
+
+        has_visible_menu = await page.evaluate(_menu_visible_js, _menu_visible_args)
 
         LOG.info(f"  [INCREMENTAL-SCAN-DEBUG] has_visible_menu={has_visible_menu}")
 
+        # ★ 批十 F3：dispatchEvent 假展开有界复核——合成事件偶发生效滞后
+        #    （r12 09:28:01 has_visible_menu=False 判零收集后 1s 菜单实际
+        #    弹出的假阴性收窄），2 次 × 800ms 轮询同定位链复核；仍 False
+        #    才判零收集。vue_show 路径 9 轮实证可靠，不复核不加延迟。
+        if (not has_visible_menu
+                and expand_result.get('method') == 'dispatchEvent'):
+            for _recheck_round in (1, 2):
+                await page.wait_for_timeout(800)
+                has_visible_menu = await page.evaluate(
+                    _menu_visible_js, _menu_visible_args)
+                LOG.info(f"  [INCREMENTAL-SCAN-DEBUG] "
+                         f"dispatchEvent 展开复核第 {_recheck_round} 轮: "
+                         f"has_visible_menu={has_visible_menu}")
+                if has_visible_menu:
+                    break
+
         if has_visible_menu:
             # ★ 只扫描目标行的 dropdown menu（避免混入其他行的按钮）
-            dropdown_buttons = await page.evaluate(f"""(dropdownIndex) => {{
+            #    ★ 批十 F3：targetMenu 定位链与可见性判定同构——menuId →
+            #    行 scope（文本锚定）→ dropdownIndex，删除「回退找第一个
+            #    可见 menu」全页回退（批五 Gap B 病根）。
+            dropdown_buttons = await page.evaluate(f"""(params) => {{
                 const existingTexts = {list(existing_actions)};
                 const buttons = [];
                 const allItems = [];
 
-                // 通过 dropdown 索引定位目标 menu
                 let targetMenu = null;
-                const dropdowns = document.querySelectorAll('.el-dropdown');
-                if (typeof dropdownIndex === 'number' && dropdownIndex < dropdowns.length) {{
-                    const dropdown = dropdowns[dropdownIndex];
-                    targetMenu = dropdown.querySelector('.el-dropdown-menu')
-                        || dropdown.parentElement?.querySelector('.el-dropdown-menu');
+                if (params.menuId) {{
+                    targetMenu = document.getElementById(params.menuId)
+                        || document.querySelector(`[data-popper-id="${{params.menuId}}"]`);
                 }}
-
-                // 回退：找第一个可见的 menu
                 if (!targetMenu) {{
-                    const menus = document.querySelectorAll('.el-dropdown-menu');
-                    for (const menu of menus) {{
-                        if (menu.offsetWidth > 0 && menu.offsetHeight > 0) {{
-                            targetMenu = menu;
-                            break;
-                        }}
+                    const markerText = params.marker;
+                    {_ROW_BY_MARKER_JS}
+                    if (row) targetMenu = row.querySelector('.el-dropdown-menu');
+                }}
+                if (!targetMenu && typeof params.dropdownIndex === 'number') {{
+                    const dropdowns = document.querySelectorAll('.el-dropdown');
+                    if (params.dropdownIndex < dropdowns.length) {{
+                        const dropdown = dropdowns[params.dropdownIndex];
+                        targetMenu = dropdown.querySelector('.el-dropdown-menu')
+                            || dropdown.parentElement?.querySelector('.el-dropdown-menu');
                     }}
                 }}
 
@@ -380,7 +459,9 @@ async def _scan_row_after_operation(page, row_selector: str, marker: str, existi
                 }}
 
                 return {{ buttons: buttons, menuInfo: menuInfo, existingTexts: existingTexts, allItems: allItems }};
-            }}""", dropdown_index)
+            }}""", {"menuId": menu_id,
+                    "dropdownIndex": dropdown_index,
+                    "marker": marker})
 
             LOG.info(f"  [INCREMENTAL-SCAN-DEBUG] dropdown_scan_result={dropdown_buttons}")
 
@@ -556,7 +637,8 @@ async def _scan_row_state_snapshot(page, created_marker: str) -> dict:
 
     try:
         part1 = await page.evaluate(f"""() => {{
-            const row = document.querySelector('{row_selector}');
+            const markerText = '{created_marker}';
+            {_ROW_BY_MARKER_JS}
             if (!row) return {{}};
 
             const states = {{}};
@@ -584,8 +666,10 @@ async def _scan_row_state_snapshot(page, created_marker: str) -> dict:
         vue_states = part1.get("vueStates") or {}
 
         # 2. 展开 dropdown 并扫描内部按钮（顺带读行权威状态，批一 1.1）
+        #    ★ 批十 F4：文本锚定找行（与 _scan_row_after_operation 同源）
         dropdown_expand = await page.evaluate(f"""() => {{
-            const row = document.querySelector('{row_selector}');
+            const markerText = '{created_marker}';
+            {_ROW_BY_MARKER_JS}
             if (!row) return {{ error: 'no_row' }};
 
             const dropdown = row.querySelector('.el-dropdown');
@@ -627,6 +711,16 @@ async def _scan_row_state_snapshot(page, created_marker: str) -> dict:
                         || document.querySelector(`[data-popper-id="${{menuId}}"]`);
                 }}
 
+                // ★ 批十 F3：行 scope 回退（文本锚定行内 .el-dropdown-menu，
+                //    与 _scan_row_after_operation 定位链同构）——替代原
+                //    「最后回退：找第一个可见的 menu」全页回退（批五 Gap B
+                //    病根：捡到别的行的菜单污染状态采集）
+                if (!targetMenu) {{
+                    const markerText = params.marker;
+                    {_ROW_BY_MARKER_JS}
+                    if (row) targetMenu = row.querySelector('.el-dropdown-menu');
+                }}
+
                 // 回退：通过 dropdown 索引定位
                 if (!targetMenu && typeof dropdownIndex === 'number') {{
                     const dropdowns = document.querySelectorAll('.el-dropdown');
@@ -634,17 +728,6 @@ async def _scan_row_state_snapshot(page, created_marker: str) -> dict:
                         const dropdown = dropdowns[dropdownIndex];
                         targetMenu = dropdown.querySelector('.el-dropdown-menu')
                             || dropdown.parentElement?.querySelector('.el-dropdown-menu');
-                    }}
-                }}
-
-                // 最后回退：找第一个可见的 menu
-                if (!targetMenu) {{
-                    const menus = document.querySelectorAll('.el-dropdown-menu');
-                    for (const menu of menus) {{
-                        if (menu.offsetWidth > 0 && menu.offsetHeight > 0) {{
-                            targetMenu = menu;
-                            break;
-                        }}
                     }}
                 }}
 
@@ -685,7 +768,8 @@ async def _scan_row_state_snapshot(page, created_marker: str) -> dict:
                 }}
 
                 return {{states, vueStates, rowStatus, qgaReady}};
-            }}""", {"menuId": menu_id, "dropdownIndex": dropdown_index})
+            }}""", {"menuId": menu_id, "dropdownIndex": dropdown_index,
+                    "marker": created_marker})
 
             result.update(dropdown_states.get("states") or {})
             vue_states.update(dropdown_states.get("vueStates") or {})

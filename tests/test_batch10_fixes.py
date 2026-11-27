@@ -498,3 +498,225 @@ class TestBatch10F9SubmitB:
         skip_log_pos = src.find("[submitB-SKIP-RETRY]")
         assert 0 < gate_pos < retry_pos, "判据定义须先于重试块"
         assert 0 < skip_log_pos < retry_pos, "跳过日志须在重试门内先于执行"
+
+
+# ============================================================
+# 批十-B F3 扫描链 menuId 统一 + dispatchEvent 有界复核（行为）
+# ============================================================
+
+class _ScanCapturePage:
+    """evaluate 捕获替身：记录渲染 JS + 按调用序返回预设结果。
+
+    locator().first.hover() 恒成功（批十-B 未动 hover locator 侧，
+    按方案 F4「分两步走：evaluate 侧先行」）。
+    """
+
+    def __init__(self, results):
+        self._results = list(results)
+        self.captured = []
+        self._i = 0
+
+    def locator(self, selector):
+        return self
+
+    @property
+    def first(self):
+        return self
+
+    async def hover(self, timeout=None):
+        pass
+
+    async def evaluate(self, js, *args, **kwargs):
+        self.captured.append(str(js))
+        self.evaluate_args = args
+        idx = min(self._i, len(self._results) - 1)
+        self._i += 1
+        return self._results[idx]
+
+    async def wait_for_timeout(self, ms):
+        pass
+
+
+# 全成功路径 evaluate 序（批十-B 后不变：row_exists → 直查按钮 →
+# SCAN-SWEEP 探测 → 展开结果（含 menuId）→ 可见性 → 菜单收集）
+_B10_SUCCESS_EVALS = [
+    True,                                                   # 0. row_exists
+    {"buttons": [], "allTexts": ["取消", "确定"]},          # 1. 直查按钮
+    0,                                                      # 2. SCAN-SWEEP
+    {"expanded": True, "method": "vue_show",
+     "dropdownIndex": 0, "menuId": "menu-abc"},             # 3. 展开
+    True,                                                   # 4. 可见性
+    {"buttons": [], "menuInfo": [], "allItems": ["退出运维模式"]},  # 5. 收集
+]
+
+
+class TestBatch10F3MenuIdUnified:
+
+    @pytest.mark.asyncio
+    async def test_success_path_evaluate_sequence_unchanged(self):
+        """vue_show 全成功路径：evaluate 序不因 F3/F4 增加（复核仅限
+        dispatchEvent 假展开场景）。"""
+        page = _ScanCapturePage(_B10_SUCCESS_EVALS)
+        result = await ce._scan_row_after_operation(
+            page, ".el-table__row:nth-child(1)", "test663637", {"关机"})
+        assert len(page.captured) == 6, \
+            f"成功路径 evaluate 数须保持 6，实际 {len(page.captured)}"
+        assert "退出运维模式" in result["all_current_texts"]
+
+    @pytest.mark.asyncio
+    async def test_dispatchevent_recheck_recovers_and_proceeds(self):
+        """dispatchEvent 假展开复核：初判 False → 复核轮转 True → 菜单
+        收集照常执行（合成事件滞后假阴性收窄，r12 09:28 链）。"""
+        evals = [
+            True,                                                    # 0. row_exists
+            {"buttons": [], "allTexts": ["取消", "确定"]},           # 1. 直查按钮
+            0,                                                       # 2. SCAN-SWEEP
+            {"expanded": True, "method": "dispatchEvent",
+             "dropdownIndex": 0, "menuId": "menu-abc"},              # 3. 展开
+            False,                                                   # 4. 初判 False
+            True,                                                    # 5. 复核轮 1 转 True
+            {"buttons": [], "menuInfo": [],
+             "allItems": ["退出运维模式"]},                          # 6. 菜单收集
+        ]
+        page = _ScanCapturePage(evals)
+        result = await ce._scan_row_after_operation(
+            page, ".el-table__row:nth-child(1)", "test663637", {"关机"})
+        assert "退出运维模式" in result["all_current_texts"], \
+            "复核转 True 后菜单收集必须执行"
+        # 可见性 JS 单源复用：初判与复核轮是同一段 JS（防判据漂移）
+        visible_js = page.captured[4]
+        assert page.captured[5] == visible_js, "复核轮须复用同一可见性 JS"
+
+    @pytest.mark.asyncio
+    async def test_dispatchevent_recheck_bounded_at_two(self):
+        """有界复核：恒 False 最多 2 轮（+ 初判共 3 次可见性检查），
+        仍 False 判零收集不进菜单扫描。"""
+        evals = list(_B10_SUCCESS_EVALS)
+        evals[3] = {"expanded": True, "method": "dispatchEvent",
+                    "dropdownIndex": 0, "menuId": "menu-abc"}
+        evals[4] = False
+        page = _ScanCapturePage(evals + [False, False,  # 复核 2 轮恒 False
+                                         {"buttons": [], "menuInfo": [],
+                                          "allItems": ["不应收集"]}])
+        result = await ce._scan_row_after_operation(
+            page, ".el-table__row:nth-child(1)", "test663637", {"关机"})
+        # 初判 + 复核 2 = 3 次可见性检查；无第 7 次 evaluate（菜单收集不进）
+        assert len(page.captured) == 7, \
+            f"恒 False 须有界于 2 轮复核（共 7 evaluate），实际 {len(page.captured)}"
+        assert "不应收集" not in result["all_current_texts"]
+
+    @pytest.mark.asyncio
+    async def test_vue_show_false_no_recheck(self):
+        """vue_show 路径不复核（9 轮实证可靠）：False 即判零收集，
+        无复核轮延迟、不进菜单扫描。"""
+        evals = [
+            True,                                                    # 0. row_exists
+            {"buttons": [], "allTexts": ["取消", "确定"]},           # 1. 直查按钮
+            0,                                                       # 2. SCAN-SWEEP
+            {"expanded": True, "method": "vue_show",
+             "dropdownIndex": 0, "menuId": "menu-abc"},             # 3. 展开
+            False,                                                   # 4. 初判 False
+        ]
+        page = _ScanCapturePage(evals)
+        result = await ce._scan_row_after_operation(
+            page, ".el-table__row:nth-child(1)", "test663637", {"关机"})
+        # vue_show 无复核、可见性 False 不进菜单收集 → 共 5 次 evaluate
+        assert len(page.captured) == 5, \
+            f"vue_show False 不得触发复核（5 evaluate），实际 {len(page.captured)}"
+        assert "不应收集" not in result["all_current_texts"]
+
+    def test_expand_js_captures_menu_id(self):
+        """展开 JS 抓取 menuId（与 _scan_row_state_snapshot 同源）——
+        targetMenu 优先定位的锚点来源。"""
+        src = _src(ce._scan_row_after_operation)
+        assert "menu.id || menu.getAttribute('data-popper-id')" in src, \
+            "menuId 抓取须与级联链同源形态"
+        assert "data-popper-id" in src
+        assert src.count("menuId") >= 5, "menuId 须贯通展开/可见性/收集链"
+
+    def test_no_full_page_menu_fallback(self):
+        """删除全页回退守卫（代码形态，注释可引用历史名不误伤）：
+        两扫描链不再含「捡第一个可见 menu」赋值与全页 some() 判定。"""
+        for fn in (ce._scan_row_after_operation, ce._scan_row_state_snapshot):
+            src = _src(fn)
+            assert "targetMenu = menu;" not in src, \
+                f"{fn.__name__} 仍含「捡第一个可见 menu」回退赋值"
+            assert "Array.from(menus).some" not in src, \
+                f"{fn.__name__} 仍含全页菜单可见性回退"
+
+    def test_locate_chain_order_wired(self):
+        """定位链序守卫：menuId → 行 scope（marker 文本）→ dropdownIndex
+        （menuId 在 row-scope 之前，row-scope 在 dropdownIndex 之前）。"""
+        src = _src(ce._scan_row_after_operation)
+        vis_block = src[src.find("_menu_visible_js = f"):src.find("has_visible_menu = await page.evaluate")]
+        mid_pos = vis_block.find("if (params.menuId)")
+        row_pos = vis_block.find("if (!targetMenu) {{", mid_pos)
+        idx_pos = vis_block.find("typeof params.dropdownIndex")
+        assert 0 < mid_pos < row_pos < idx_pos, "定位链序必须 menuId → 行 scope → dropdownIndex"
+
+
+# ============================================================
+# 批十-B F4 row_selector 文本锚定（行为 + 源码守卫）
+# ============================================================
+
+class TestBatch10F4TextAnchoredRow:
+
+    @pytest.mark.asyncio
+    async def test_row_located_by_marker_text_in_js(self):
+        """F4 行为验证：行定位 JS（含 .el-table__row 的段）以 markerText
+        文本找行渲染——位置式 row_selector 不再进任何 evaluate JS。
+        SCAN-SWEEP 弹窗探测段（.el-dialog__wrapper 计数，批九 §五）与
+        行定位无关，不在 markerText 约束内，但同受位置式行查询禁令约束。"""
+        page = _ScanCapturePage(_B10_SUCCESS_EVALS)
+        await ce._scan_row_after_operation(
+            page, ".el-table__row:nth-child(1)", "test663637", {"关机"})
+        positional = ".el-table__row:nth-child(1)"
+        for i, js in enumerate(page.captured):
+            if ".el-table__row" in js:  # 行定位段：必须文本锚定找行
+                assert "markerText" in js or "params.marker" in js, \
+                    f"第 {i} 段行定位 JS 未按 marker 文本找行"
+            assert f"document.querySelector('{positional}')" not in js, \
+                f"第 {i} 段 JS 仍含位置式行查询"
+
+    @pytest.mark.asyncio
+    async def test_row_absent_short_circuit(self):
+        """行不存在（row_exists=False）→ 空结果短路（现状行为保持）。"""
+        page = _ScanCapturePage([False])
+        result = await ce._scan_row_after_operation(
+            page, ".el-table__row:nth-child(1)", "test663637", {"关机"})
+        assert result == {"new_buttons": [], "disappeared_buttons": [],
+                          "all_current_texts": set()}
+        assert len(page.captured) == 1, "行不存在须单次探测即短路"
+
+    def test_row_by_marker_snippet_same_domain(self):
+        """_ROW_BY_MARKER_JS 与生成侧 get_row_selector_by_marker 同域：
+        可见 tab-pane → .el-table__body-wrapper → 文本找行。"""
+        assert hasattr(ce, "_ROW_BY_MARKER_JS")
+        snippet = ce._ROW_BY_MARKER_JS
+        assert ".el-tab-pane" in snippet
+        assert ".el-table__body-wrapper" in snippet
+        assert "markerText" in snippet
+        # 生成侧同域（同 scope 形态）
+        from core.discovery.shared import row_interaction as ri
+        assert ".el-tab-pane" in ri._TAB_SCOPE_JS
+        assert ".el-table__body-wrapper" in _src(ri.get_row_selector_by_marker)
+
+    def test_no_positional_row_query_left_in_scan_chains(self):
+        """源码守卫：两扫描链不再含位置式行查询（F4 主断言）。"""
+        for fn in (ce._scan_row_after_operation, ce._scan_row_state_snapshot):
+            src = _src(fn)
+            assert "document.querySelector('{row_selector}')" not in src, \
+                f"{fn.__name__} 仍含位置式行查询（失锚病根）"
+            assert "_ROW_BY_MARKER_JS" in src, \
+                f"{fn.__name__} 须消费文本锚定找行单源片段"
+
+    def test_snapshot_locate_chain_row_scope_fallback(self):
+        """_scan_row_state_snapshot 定位链：menuId → 行 scope →
+        dropdownIndex（原「最后回退：第一个可见 menu」删除后行 scope 补位）。"""
+        src = _src(ce._scan_row_state_snapshot)
+        menuid_pos = src.find('if (menuId) {{')
+        row_pos = src.find("批十 F3：行 scope 回退", menuid_pos)
+        idx_pos = src.find("回退：通过 dropdown 索引定位", row_pos)
+        assert 0 < menuid_pos < row_pos < idx_pos, \
+            "snapshot 定位链序必须 menuId → 行 scope → dropdownIndex"
+
