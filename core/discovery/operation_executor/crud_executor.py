@@ -733,6 +733,7 @@ async def _scan_row_state_snapshot(page, created_marker: str) -> dict:
 
                 let rowStatus = null;
                 let qgaReady = null;
+                let maintenance = null;   // ★ 批十 F5：运维正交维度标志
                 if (targetMenu) {{
                     targetMenu.querySelectorAll('.el-dropdown-menu__item').forEach(item => {{
                         const text = item.textContent.trim();
@@ -764,10 +765,16 @@ async def _scan_row_state_snapshot(page, created_marker: str) -> dict:
                         if (qgaReady === null && row.qgaReady !== undefined) {{
                             qgaReady = (row.qgaReady === true);
                         }}
+                        // ★ 批十 F5：运维正交维度标志（command.row.maintenance
+                        //   布尔，与 status/qgaReady 同模式读取）——reconcile
+                        //   MAINT-FIRST 消费的数据通道。
+                        if (maintenance === null && row.maintenance !== undefined) {{
+                            maintenance = (row.maintenance === true);
+                        }}
                     }});
                 }}
 
-                return {{states, vueStates, rowStatus, qgaReady}};
+                return {{states, vueStates, rowStatus, qgaReady, maintenance}};
             }}""", {"menuId": menu_id, "dropdownIndex": dropdown_index,
                     "marker": created_marker})
 
@@ -778,14 +785,16 @@ async def _scan_row_state_snapshot(page, created_marker: str) -> dict:
                 "vue_states": vue_states,
                 "status": dropdown_states.get("rowStatus"),
                 "qga_ready": dropdown_states.get("qgaReady"),
+                "maintenance": dropdown_states.get("maintenance"),
             }
 
         return {"states": result, "vue_states": vue_states,
-                "status": None, "qga_ready": None}
+                "status": None, "qga_ready": None, "maintenance": None}
 
     except Exception as e:
         LOG.warning(f"  [scan_button_states] 扫描失败: {e}")
-        return {"states": {}, "vue_states": {}, "status": None, "qga_ready": None}
+        return {"states": {}, "vue_states": {}, "status": None,
+                "qga_ready": None, "maintenance": None}
 
 
 async def _scan_all_button_states(page, created_marker: str) -> dict:
@@ -1049,8 +1058,26 @@ def _init_state_ctx(state_seed: dict = None) -> dict:
         if key in seen or not all(key):
             continue
         seen.add(key)
-        transitions.append({"action": key[0], "from": key[1], "to": key[2]})
-    return {"state_button_matrix": matrix, "state_transitions": transitions}
+        # ★ 批十 F7：种子跨轮保留 validated 标志（记边时带的执行证据；
+        #   存量旧边无标志 → 消费端首碰拦截）。
+        _edge = {"action": key[0], "from": key[1], "to": key[2]}
+        if edge.get("validated") is True:
+            _edge["validated"] = True
+        transitions.append(_edge)
+    # ★ 批十 F5：运维正交维度恢复边种子（PAIR-SCAN 采集，maintenance
+    #   True→False 的切换对 B 侧项）——跨轮累积，reconcile MAINT-FIRST
+    #   消费；畸形条目过滤 + action 去重保序。
+    maint_edges = []
+    seen_m = set()
+    for edge in (seed.get("maintenance_edges") or []):
+        if (isinstance(edge, dict) and edge.get("action")
+                and edge.get("action") not in seen_m):
+            seen_m.add(edge.get("action"))
+            maint_edges.append({"action": edge.get("action"),
+                                "maintenance": True,
+                                "source": edge.get("source", "seed")})
+    return {"state_button_matrix": matrix, "state_transitions": transitions,
+            "maintenance_edges": maint_edges}
 
 
 def _record_state_matrix(state_ctx: dict, status, states: dict) -> None:
@@ -1125,7 +1152,33 @@ def _record_state_transition(state_ctx: dict, action, from_status, to_status,
     for e in edges:
         if (e.get("action"), e.get("from"), e.get("to")) == key:
             return
-    edges.append({"action": action, "from": from_status, "to": to_status})
+    # ★ 批十 F7：记边带 validated 标志——记边前提即该 action 刚执行成功
+    #   （有 validated 执行证据）；消费端以该标志做首碰拦截（存量伪边
+    #   无标志 → 首碰拦截），种子跨轮累积时 _init_state_ctx 保留该标志。
+    edges.append({"action": action, "from": from_status, "to": to_status,
+                  "validated": True})
+
+
+def _split_toggle_side_actions(actions: list, buttons_by_action: dict) -> tuple:
+    """★ 批十 F8：装配序切换对侧分离单源——非切换对在前、切换对侧排尾。
+
+    判定 const.is_toggle_pair_side 单源（进入/退出运维模式、冻结/解冻、
+    锁定/解锁、启用/停用、开启/关闭 前缀对，不写死运维模式文本）。
+    r12 P5 定案：切换对 A 侧（进入运维模式）在 main 中段第 24 位执行，
+    其后操作全在运维态窗口下进行——8 项运维锁死 + 删除收尾全灭的干扰
+    半径放大。装配排尾后非切换对操作全部在正常态完成，切换对翻转的
+    干扰半径收窄到收尾段。switch 类由上游过滤（不传入）。
+
+    Returns:
+        tuple: (normal_actions, toggle_side_actions)——保序分离
+    """
+    normal, toggle_side = [], []
+    for action in actions or []:
+        if const.is_toggle_pair_side(action):
+            toggle_side.append(action)
+        else:
+            normal.append(action)
+    return normal, toggle_side
 
 
 _ROW_LINK_ACTION = "查看详情（名称链接）"
@@ -1611,7 +1664,9 @@ async def _wait_row_states_stable(page, created_marker: str,
 
     Returns:
         dict: {"states": {button_text: is_enabled},
-               "status": str|None, "qga_ready": bool|None, "timed_out": bool}
+               "status": str|None, "qga_ready": bool|None,
+               "maintenance": bool|None,   # ★ 批十 F5：运维正交维度
+               "timed_out": bool}
     """
     prev = await _scan_row_state_snapshot(page, created_marker)
     if not prev.get("states"):
@@ -1619,7 +1674,8 @@ async def _wait_row_states_stable(page, created_marker: str,
         await page.wait_for_timeout(poll_interval_ms)
         prev = await _scan_row_state_snapshot(page, created_marker)
         if not prev.get("states"):
-            return {"states": {}, "status": None, "qga_ready": None, "timed_out": False}
+            return {"states": {}, "status": None, "qga_ready": None,
+                    "maintenance": None, "timed_out": False}
 
     # ★ 批九 F4：初扫已命中语义目标态 → 立即返回（矩阵同双条件路径采集）
     if target_status is not None and prev.get("status") == target_status:
@@ -1764,6 +1820,47 @@ async def _state_aware_reconcile(
                  if states.get(a) and a not in business_executed
                  and not _attempted_exhausted(a, attempted_actions)
                  and not is_destroy_text(a)]
+
+        # ★ 批十 F5：运维正交维度恢复优先——maintenance=True 可读且 ready
+        #   含已登记运维边项（切换对 B 侧：PAIR-SCAN 采集 + maintenance_edges
+        #   跨轮种子）时该项排队首（解锁其余 pending 的前置——r12 定证运维
+        #   是正交维度不属 6 态矩阵：不退出运维模式则关机/删除等 8 项运维
+        #   锁死 + DESTROY-FINAL 全灭；先解锁再执行其余项）。maintenance
+        #   不可读/无登记项 → 零重排，行为不变。
+        if (ready and settle.get("maintenance") is True and state_ctx):
+            _maint_actions = {
+                e.get("action")
+                for e in (state_ctx.get("maintenance_edges") or [])}
+            _maint_ready = [a for a in ready if a in _maint_actions]
+            if _maint_ready:
+                ready = (_maint_ready
+                         + [a for a in ready if a not in _maint_ready])
+                LOG.info(f"{tab_prefix}[STATE-RECONCILE][MAINT-FIRST] "
+                         f"运维维度恢复优先（maintenance=True）: "
+                         f"{_maint_ready} 排队首（解锁其余 pending 前置）")
+
+        if not ready and pending:
+            # ★ 批十 F10：R1 ready 判定可观测性——无 ready 轮次输出逐项未
+            #    就绪原因枚举（r12 P4 疑点：09:18:37 对 Stopped 态开机应
+            #    ready 未执行，成因未定案；r13 真机按此日志定案是否需要
+            #    行为修复）。原因枚举覆盖四类未就绪 + 基础可用性。
+            _reasons = []
+            for a in sorted(pending):
+                if is_destroy_text(a):
+                    _reasons.append(f"{a}=deferred_destroy")
+                elif a in business_executed:
+                    _reasons.append(f"{a}=business_executed")
+                elif _attempted_exhausted(a, attempted_actions):
+                    _reasons.append(f"{a}=attempted_exhausted")
+                elif states.get(a):
+                    _reasons.append(f"{a}=ready_other")
+                else:
+                    _reasons.append(f"{a}=state_disabled")
+            LOG.info(f"{tab_prefix}[STATE-RECONCILE][R1-READY-DECISION] "
+                     f"pending {len(pending)} 项均不 ready"
+                     f"（status={status}, timed_out={settle.get('timed_out')}）: "
+                     f"{_reasons}")
+
         if ready:
             # ★ 批九 F1：轮内动态队列——成功项翻转状态后按 post 快照重算
             #   调度序（解锁 pending 绝对优先），替代「按轮首快照消费到底」
@@ -1949,6 +2046,17 @@ async def _state_aware_reconcile(
                 LOG.info(f"{tab_prefix}[STATE-RECONCILE][EDGE-SKIP-NAV] 跳过伪转移边: "
                          f"{edge.get('action')} {edge.get('from')}→{edge.get('to')}")
                 continue
+            # ★ 批十 F7：边候选角色门——无 validated 标志的边不消费（存量
+            #    伪边首碰拦截）。批九 F3 消费门依赖 validated.get(action) 的
+            #    本轮执行记录，首次消费时记录未建立即漏拦（r12 定案：网络
+            #    配置 Stopping→Stopped 伪边首碰空耗 23s）；批九 F3 记录门后
+            #    的新边记边即带 validated=True（执行证据随边），存量旧边
+            #    （记录门前入册）无标志 → 拦截。种子跨轮保留该标志。
+            if not edge.get("validated"):
+                LOG.info(f"{tab_prefix}[STATE-RECONCILE][EDGE-SKIP-UNVALIDATED] "
+                         f"跳过无 validated 标志边（存量伪边首碰拦截）: "
+                         f"{edge.get('action')} {edge.get('from')}→{edge.get('to')}")
+                continue
             key = (edge.get("action"), edge.get("from"), edge.get("to"))
             if (key in exhausted_edges
                     or key in recovery_done
@@ -1960,23 +2068,28 @@ async def _state_aware_reconcile(
                 candidate = (edge, key)
                 break
         if not candidate:
-            # ★ 批九 F2：过渡态再稳态——「无出边 + 仍有可恢复 pending + 当前
-            #   status 从未作为稳态入矩阵」= 过渡态（数据驱动判据：不预设
-            #   「含 ing/中」文本特征，从未在任何 settle 点被观测过的 status
-            #   即过渡态）。有界再 settle 重评（上限 2 次，每次受既有 180s
-            #   封顶）——r11 实证 Stopping 无出边即整体 break，行 15s 后回
-            #   Running，差 15s 即可再驱动一轮 暂停→恢复 完整恢复。
+            # ★ 批九 F2 + 批十 F6 数据驱动过渡态判据：过渡态判定不再仅看
+            #   「status 从未入矩阵」（批九 F2 条件②——已观测过渡态入矩阵
+            #   keys 后永不触发，r12 P2 定证 Stopping 已入矩阵但无出边时
+            #   同样卡死）；扩展为「从未入矩阵 OR 该态无出边记录」（无出
+            #   边=从未观测过离开该态的成功转移）→ 有界再 settle 重评
+            #   （上限 2 次，每次受既有 180s 封顶）——r11 实证 Stopping
+            #   无出边即整体 break，行 15s 后回 Running，差 15s 即可再
+            #   驱动一轮 暂停→恢复 完整恢复。
             _pending_alive = any(
                 (a not in business_executed
                  and not _attempted_exhausted(a, attempted_actions)
                  and not is_destroy_text(a))
                 for a in pending)
+            _no_out_edges = not any(
+                e.get("from") == status
+                for e in (state_ctx.get("state_transitions") or []))
             if (_pending_alive and transient_waits < 2
                     and status is not None
-                    and status not in matrix):
+                    and (status not in matrix or _no_out_edges)):
                 transient_waits += 1
                 LOG.info(f"{tab_prefix}[STATE-RECONCILE][TRANSIENT-WAIT] "
-                         f"状态 {status} 未入已观测矩阵（过渡态），"
+                         f"状态 {status} 未入已观测矩阵或无出边记录（过渡态），"
                          f"再稳态第 {transient_waits}/2 次后重评")
                 continue
             LOG.info(f"{tab_prefix}[STATE-RECONCILE] 无可用恢复边，结束")
@@ -2338,11 +2451,23 @@ async def _validate_single_tab_crud(
         ordered_actions.append(_query_action)
 
     # 4. 其他操作（编辑等）
-    for action in buttons_by_action:
+    #    ★ 批十 F8：切换对侧操作排尾（_split_toggle_side_actions 单源）——
+    #    缩小正交维度（运维/冻结/锁定）翻转的干扰半径（r12 P5 定案：
+    #    进入运维模式 main 中段第 24 位执行，其后操作全在运维态窗口
+    #    下进行）。非切换对在前，切换对侧（进入运维模式/冻结/锁定等）
+    #    在后，row switch 依旧最尾。
+    _other_actions = [
+        action for action in buttons_by_action
         if (action not in ordered_actions
-                and action not in _delete_actions
-                and not buttons_by_action[action].get("_is_switch")):
-            ordered_actions.append(action)
+            and action not in _delete_actions
+            and not buttons_by_action[action].get("_is_switch"))]
+    _normal_others, _toggle_sides = _split_toggle_side_actions(
+        _other_actions, buttons_by_action)
+    if _toggle_sides:
+        LOG.info(f"{tab_prefix}[ASSEMBLE-F8] 切换对侧操作装配排尾: "
+                 f"{_toggle_sides}")
+    ordered_actions.extend(_normal_others)
+    ordered_actions.extend(_toggle_sides)
 
     # 5. Row switch（行内开关，新增之后的普通业务操作）
     for sw in row_switches:
@@ -2863,6 +2988,23 @@ async def _validate_single_tab_crud(
                 if _pair_new_actions:
                     LOG.info(f"{tab_prefix}[PAIR-SCAN] 定向重收集新增 "
                              f"{len(_pair_new_actions)} 项: {_pair_new_actions}")
+                    # ★ 批十 F5：运维维度恢复边采集——A 侧成功瞬间的对侧项
+                    #    即运维维度恢复手段（maintenance True→False），记入
+                    #    state_ctx.maintenance_edges（ui.json 种子三键跨轮
+                    #    持久化），reconcile R1 MAINT-FIRST 消费。切换对
+                    #    动态发现（PAIR-SCAN 重收集产物），不写死运维文本。
+                    if state_ctx:
+                        _maint_edges = state_ctx.setdefault(
+                            "maintenance_edges", [])
+                        for _bside in _pair_new_actions:
+                            if not any(e.get("action") == _bside
+                                       for e in _maint_edges):
+                                _maint_edges.append({
+                                    "action": _bside,
+                                    "maintenance": True,
+                                    "source": "pair_scan"})
+                                LOG.info(f"{tab_prefix}[MAINT-EDGE] "
+                                         f"记录运维维度恢复边: {_bside}")
                 else:
                     LOG.info(f"{tab_prefix}[PAIR-SCAN] 定向重收集无新增"
                              f"（对侧已在册或当前窗口不可见）")
@@ -3183,6 +3325,8 @@ async def _validate_business_flow(page, ui_result: dict, username: str,
     state_ctx = _init_state_ctx(state_seed)
     ui_result["state_button_matrix"] = state_ctx["state_button_matrix"]
     ui_result["state_transitions"] = state_ctx["state_transitions"]
+    # ★ 批十 F5：运维维度恢复边随产物落盘（跨轮种子三键）
+    ui_result["maintenance_edges"] = state_ctx.get("maintenance_edges", [])
     if state_ctx["state_transitions"]:
         LOG.info(f"  [STATE-CTX] 载入跨轮转移边 {len(state_ctx['state_transitions'])} 条"
                  f" / 矩阵状态 {len(state_ctx['state_button_matrix'])} 个")

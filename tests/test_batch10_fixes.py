@@ -720,3 +720,470 @@ class TestBatch10F4TextAnchoredRow:
         assert 0 < menuid_pos < row_pos < idx_pos, \
             "snapshot 定位链序必须 menuId → 行 scope → dropdownIndex"
 
+
+# ============================================================
+# 批十-C 测试基建：reconcile settle 序列替身
+# ============================================================
+
+class SettleScript:
+    """_wait_row_states_stable 序列替身（越界重复最后一个）。"""
+
+    def __init__(self, seq):
+        self.seq = list(seq)
+        self.calls = 0
+
+    async def __call__(self, page, created_marker, state_ctx=None,
+                      target_status=None, **kw):
+        idx = min(self.calls, len(self.seq) - 1)
+        self.calls += 1
+        return dict(self.seq[idx])
+
+
+def patch_reconcile(monkeypatch, settle_seq, results_by_action):
+    """_state_aware_reconcile 打桩：settle 序列 + 执行脚本。
+
+    返回 (settle, calls)：calls 记录 _error_driven_retry 实际执行的
+    action 序（R1 业务执行与恢复转移共用同一 retry 入口）。
+    """
+    settle = SettleScript(settle_seq)
+    monkeypatch.setattr(ce, "_wait_row_states_stable", settle)
+
+    async def fake_install(page):
+        pass
+
+    monkeypatch.setattr(ce, "_install_message_capture", fake_install)
+
+    async def fake_preflight(page, btn, marker, snapshot=None, tab_prefix=""):
+        return {"pass": True, "wait_reason": "", "detail": ""}
+
+    monkeypatch.setattr(ce, "_preflight_executable", fake_preflight)
+
+    calls = []
+
+    async def fake_retry(page, fn, context):
+        action = context["action"]
+        script = results_by_action.get(action) or [{"success": False}]
+        idx = calls.count(action)
+        calls.append(action)
+        return script[min(idx, len(script) - 1)]
+
+    monkeypatch.setattr(ce, "_error_driven_retry", fake_retry)
+
+    async def fake_dismiss(page):
+        pass
+
+    monkeypatch.setattr(
+        "core.discovery.shared.transition_helpers._dismiss_all_overlays",
+        fake_dismiss)
+    return settle, calls
+
+
+def _failed_pending_result():
+    """pending 回收口径的失败签名（skipped/按钮被禁用）。"""
+    return {"success": False, "error_type": "skipped",
+            "error_text": "按钮被禁用"}
+
+
+# ============================================================
+# 批十-C F5 运维正交维度恢复边（三键持久化链 + MAINT-FIRST 消费）
+# ============================================================
+
+class TestBatch10F5MaintenanceDimension:
+
+    def test_snapshot_reads_maintenance_channel(self):
+        """F5-1 数据通道：snapshot JS 读 command.row.maintenance，
+        全返回分支带 maintenance 键（非展开/异常分支 None 降级）。"""
+        src = _src(ce._scan_row_state_snapshot)
+        assert "row.maintenance !== undefined" in src
+        assert "maintenance = (row.maintenance === true)" in src
+        assert "rowStatus, qgaReady, maintenance}}" in src
+        assert '"maintenance": dropdown_states.get("maintenance")' in src
+        assert src.count('"maintenance": None') == 2, \
+            "非展开分支与异常分支必须显式 None（键契约一致）"
+
+    @pytest.mark.asyncio
+    async def test_settle_propagates_maintenance_all_paths(
+            self, monkeypatch):
+        """F5-1 透传：稳态返回经 {**cur} 展开携带 maintenance；首扫空
+        早退分支显式 maintenance=None（MAINT-FIRST 读值契约一致）。"""
+        snap = {"states": {"关机": True}, "vue_states": {},
+                "status": "Running", "qga_ready": None, "maintenance": True}
+
+        async def fake_snap(page, created_marker):
+            return dict(snap)
+
+        monkeypatch.setattr(ce, "_scan_row_state_snapshot", fake_snap)
+        out = await ce._wait_row_states_stable(FakePage(), "test663637")
+        assert out["maintenance"] is True
+        assert out["timed_out"] is False
+
+        async def fake_snap_empty(page, created_marker):
+            return {"states": {}, "vue_states": {}, "status": None,
+                    "qga_ready": None, "maintenance": None}
+
+        monkeypatch.setattr(ce, "_scan_row_state_snapshot", fake_snap_empty)
+        out = await ce._wait_row_states_stable(FakePage(), "test663637")
+        assert out["maintenance"] is None
+
+    def test_settle_early_return_contract(self):
+        """settle 早退分支契约守卫：显式 maintenance 键 + docstring 记录。"""
+        src = _src(ce._wait_row_states_stable)
+        assert '"maintenance": None, "timed_out": False}' in src
+        assert '"maintenance": bool|None' in src, "docstring 须记录新键"
+
+    def test_init_state_ctx_maintenance_seed_dedupe(self):
+        """F5-3 种子装载：畸形过滤 + action 去重保序 + source 缺省 seed。"""
+        ctx = ce._init_state_ctx({"maintenance_edges": [
+            {"action": "退出运维模式", "source": "pair_scan"},
+            {"action": "退出运维模式", "source": "dup"},  # 同 action 去重
+            {"maintenance": True},                          # 无 action 过滤
+            "解冻",                                        # 非 dict 过滤
+        ]})
+        assert ctx["maintenance_edges"] == [
+            {"action": "退出运维模式", "maintenance": True,
+             "source": "pair_scan"}]
+        ctx2 = ce._init_state_ctx({"maintenance_edges": [
+            {"action": "退出运维模式"}, {"action": "解冻"}]})
+        assert ctx2["maintenance_edges"] == [
+            {"action": "退出运维模式", "maintenance": True, "source": "seed"},
+            {"action": "解冻", "maintenance": True, "source": "seed"}]
+
+    def test_pair_scan_registers_maintenance_edge(self):
+        """F5-2 采集接线：PAIR-SCAN 定向重收集新增项入
+        maintenance_edges（state_ctx 缺失静默跳过 + action 去重）。"""
+        src = _src(ce._validate_single_tab_crud)
+        pair_pos = src.find("★ 批十 F2")
+        maint_pos = src.find("[MAINT-EDGE]")
+        cascade_pos = src.find("cascade_results = await ")
+        assert 0 < pair_pos < maint_pos < cascade_pos, \
+            "MAINT-EDGE 采集须在 PAIR-SCAN 块内、级联批之前"
+        block = src[pair_pos:maint_pos + 400]
+        assert "if state_ctx:" in block, "state_ctx 缺失时静默跳过（不炸）"
+        assert '"maintenance_edges", []' in block
+        assert '"source": "pair_scan"' in block
+        assert 'any(e.get("action") == _bside' in block, "action 去重防重复登记"
+
+    def test_ui_result_writeback_and_run_seed_wired(self):
+        """F5-5 三键持久化闭环：crud 写回 ui_result + run.py 种子装载
+        + 异常退出兜底注入（批一 1.3 三键口径对称扩展）。"""
+        src = _src(ce._validate_business_flow)
+        assert ('ui_result["maintenance_edges"] = '
+                'state_ctx.get("maintenance_edges", [])') in src
+        import io
+        import os
+        run_py = os.path.normpath(os.path.join(
+            os.path.dirname(ce.__file__), "..", "run.py"))
+        run_src = io.open(run_py, encoding="utf-8").read()
+        assert ('seed["maintenance_edges"] = '
+                'old["maintenance_edges"]') in run_src, \
+            "_load_state_seed 须装载 maintenance_edges（跨轮种子）"
+        assert 'if "maintenance_edges" not in ui_result:' in run_src, \
+            "异常退出兜底须保留旧轮种子（防断代）"
+        assert ('ui_result["maintenance_edges"] = '
+                'state_seed.get("maintenance_edges", [])') in run_src
+
+    @pytest.mark.asyncio
+    async def test_maint_first_reorders_to_head(self, monkeypatch, caplog):
+        """F5-4 消费：maintenance=True 可读且 ready 含已登记运维边项 →
+        排队首（r12 定证：不退出运维模式则 8 项运维锁死+删除收尾全灭）。"""
+        caplog.set_level(logging.INFO)
+        settle_seq = [{
+            "states": {"退出运维模式": True, "重启": True},
+            "status": "Running", "qga_ready": None,
+            "maintenance": True, "timed_out": False,
+        }]
+        _, calls = patch_reconcile(
+            monkeypatch, settle_seq,
+            {"退出运维模式": [{"success": True}], "重启": [{"success": True}]})
+        validated = {"退出运维模式": _failed_pending_result(),
+                     "重启": _failed_pending_result()}
+        buttons = {"退出运维模式": make_btn(), "重启": make_btn()}
+        state_ctx = ce._init_state_ctx({"maintenance_edges": [
+            {"action": "退出运维模式", "source": "pair_scan"}]})
+        results = await ce._state_aware_reconcile(
+            FakePage(), "test663637", validated, buttons, {}, set(),
+            None, "", "", "[t] ",
+            state_ctx=state_ctx, attempted_actions={})
+        assert calls[0] == "退出运维模式", "运维维度恢复项必须排队首"
+        assert calls == ["退出运维模式", "重启"]
+        assert "[STATE-RECONCILE][MAINT-FIRST]" in caplog.text
+        assert results["退出运维模式"]["success"] is True
+        assert results["重启"]["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_maint_first_no_reorder_when_flag_unreadable(
+            self, monkeypatch, caplog):
+        """maintenance 不可读（None）→ 零重排零日志（行为不变）。"""
+        caplog.set_level(logging.INFO)
+        settle_seq = [{
+            "states": {"重启": True}, "status": "Running",
+            "qga_ready": None, "maintenance": None, "timed_out": False,
+        }]
+        _, calls = patch_reconcile(
+            monkeypatch, settle_seq, {"重启": [{"success": True}]})
+        validated = {"重启": _failed_pending_result()}
+        buttons = {"重启": make_btn()}
+        state_ctx = ce._init_state_ctx({"maintenance_edges": [
+            {"action": "退出运维模式", "source": "pair_scan"}]})
+        results = await ce._state_aware_reconcile(
+            FakePage(), "test663637", validated, buttons, {}, set(),
+            None, "", "", "[t] ",
+            state_ctx=state_ctx, attempted_actions={})
+        assert calls == ["重启"]
+        assert "[STATE-RECONCILE][MAINT-FIRST]" not in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_maint_first_no_reorder_when_item_unregistered(
+            self, monkeypatch, caplog):
+        """maintenance=True 但 ready 项未登记运维边 → 零重排
+        （重排仅限已登记项，不猜测其他项语义）。"""
+        caplog.set_level(logging.INFO)
+        settle_seq = [{
+            "states": {"重启": True, "关机": True}, "status": "Running",
+            "qga_ready": None, "maintenance": True, "timed_out": False,
+        }]
+        _, calls = patch_reconcile(
+            monkeypatch, settle_seq,
+            {"重启": [{"success": True}], "关机": [{"success": True}]})
+        validated = {"重启": _failed_pending_result(),
+                     "关机": _failed_pending_result()}
+        buttons = {"重启": make_btn(), "关机": make_btn()}
+        state_ctx = ce._init_state_ctx()  # 无登记运维边
+        results = await ce._state_aware_reconcile(
+            FakePage(), "test663637", validated, buttons, {}, set(),
+            None, "", "", "[t] ",
+            state_ctx=state_ctx, attempted_actions={})
+        assert set(calls) == {"重启", "关机"}  # set 迭代序不定，不锁顺序
+        assert "[STATE-RECONCILE][MAINT-FIRST]" not in caplog.text
+
+    def test_maint_first_wired_in_reconcile(self):
+        """源码守卫：MAINT-FIRST 位于 ready 计算后、F10 日志前。"""
+        src = _src(ce._state_aware_reconcile)
+        assert 'settle.get("maintenance") is True' in src
+        assert "[STATE-RECONCILE][MAINT-FIRST]" in src
+        ready_pos = src.find("ready = [a for a in pending")
+        maint_pos = src.find("[STATE-RECONCILE][MAINT-FIRST]")
+        log_pos = src.find("[STATE-RECONCILE][R1-READY-DECISION]")
+        assert 0 < ready_pos < maint_pos < log_pos, \
+            "MAINT-FIRST 须在 ready 计算后、F10 可观测日志前"
+
+
+# ============================================================
+# 批十-C F6 TRANSIENT-WAIT 判据数据驱动扩展（r12 P2 主修）
+# ============================================================
+
+class TestBatch10F6TransientWait:
+
+    @pytest.mark.asyncio
+    async def test_transient_wait_fires_when_in_matrix_but_no_out_edges(
+            self, monkeypatch, caplog):
+        """r12 P2 场景闭合：Stopping 已入已观测矩阵（批九 F2 条件②
+        永不触发）但无出边记录 → F6 扩展判据仍进入有界再稳态，行回
+        Running 后解锁 关机 业务执行（r11 差 15s 即可恢复的实证机制化）。"""
+        caplog.set_level(logging.INFO)
+        settle_seq = [
+            {"states": {"关机": False}, "status": "Stopping",
+             "qga_ready": None, "maintenance": None, "timed_out": False},
+            {"states": {"关机": True}, "status": "Running",
+             "qga_ready": None, "maintenance": None, "timed_out": False},
+            {"states": {"关机": False}, "status": "Stopped",
+             "qga_ready": None, "maintenance": None, "timed_out": False},
+        ]
+        _, calls = patch_reconcile(
+            monkeypatch, settle_seq, {"关机": [{"success": True}]})
+        validated = {"关机": _failed_pending_result()}
+        buttons = {"关机": make_btn()}
+        state_ctx = ce._init_state_ctx({
+            # Stopping 已入矩阵：旧判据「status not in matrix」为 False
+            "state_button_matrix": {"Stopping": {"关机": False},
+                                    "Running": {"关机": True}},
+            # 无任何 from=Stopping 的出边 → _no_out_edges=True
+            "state_transitions": [
+                {"action": "关机", "from": "Running", "to": "Stopped",
+                 "validated": True}],
+        })
+        results = await ce._state_aware_reconcile(
+            FakePage(), "test663637", validated, buttons, {}, set(),
+            None, "", "", "[t] ",
+            state_ctx=state_ctx, attempted_actions={})
+        assert "[TRANSIENT-WAIT]" in caplog.text
+        assert "状态 Stopping" in caplog.text, "须点名 Stopping 无出边过渡态"
+        assert calls == ["关机"], "再稳态解锁后必须执行关机业务"
+        assert results["关机"]["success"] is True
+
+    def test_transient_wait_guard_shapes(self):
+        """源码守卫：判据「未入矩阵 OR 该态无出边」+ 有界 2 次。"""
+        src = _src(ce._state_aware_reconcile)
+        assert "_no_out_edges = not any(" in src
+        assert "(status not in matrix or _no_out_edges)" in src
+        assert "transient_waits < 2" in src
+        assert "e.get(\"from\") == status" in src, \
+            "出边判定须按 from==当前态过滤（数据驱动）"
+
+
+# ============================================================
+# 批十-C F7 边候选 validated 角色门（r12 P3 首碰拦截）
+# ============================================================
+
+class TestBatch10F7EdgeValidatedGate:
+
+    def test_record_state_transition_stamps_validated_true(self):
+        """记边即带执行证据标志（记边前提＝该 action 刚执行成功）。"""
+        ctx = ce._init_state_ctx()
+        ce._record_state_transition(ctx, "关机", "Running", "Stopped")
+        assert ctx["state_transitions"] == [
+            {"action": "关机", "from": "Running", "to": "Stopped",
+             "validated": True}]
+        # 同三元组去重（标志不产生第二条边）
+        ce._record_state_transition(ctx, "关机", "Running", "Stopped")
+        assert len(ctx["state_transitions"]) == 1
+
+    def test_init_state_ctx_preserves_validated_flag(self):
+        """种子跨轮保留标志：有标志保序保留；无标志存量旧边保持无标志
+        （消费端首碰拦截语义）。"""
+        ctx = ce._init_state_ctx({"state_transitions": [
+            {"action": "关机", "from": "Running", "to": "Stopped",
+             "validated": True},
+            {"action": "网络配置", "from": "Running", "to": "Stopped"},
+        ]})
+        assert ctx["state_transitions"][0]["validated"] is True
+        assert "validated" not in ctx["state_transitions"][1]
+
+    @pytest.mark.asyncio
+    async def test_reconcile_first_touch_intercepts_pseudo_edge(
+            self, monkeypatch, caplog):
+        """r12 P3 场景：存量伪边（网络配置 Stopping→Stopped 观察巧合）
+        首次消费时无 validated 执行记录可查（批九 F3 消费门漏拦）——
+        F7 边自带标志门在候选循环首碰拦截，真边（关机）照常驱动恢复。"""
+        caplog.set_level(logging.INFO)
+        settle_seq = [
+            {"states": {"网络配置": True, "关机": True, "开机": False},
+             "status": "Running", "qga_ready": None,
+             "maintenance": None, "timed_out": False},
+            {"states": {"开机": True, "关机": False},
+             "status": "Stopped", "qga_ready": None,
+             "maintenance": None, "timed_out": False},
+        ]
+        _, calls = patch_reconcile(
+            monkeypatch, settle_seq,
+            {"关机": [{"success": True}], "开机": [{"success": True}]})
+        validated = {"开机": _failed_pending_result()}
+        buttons = {"开机": make_btn(), "关机": make_btn(),
+                   "网络配置": make_btn()}
+        state_ctx = ce._init_state_ctx({
+            "state_button_matrix": {"Running": {"开机": False},
+                                    "Stopped": {"开机": True}},
+            # 伪边在前（无标志存量形态）；真边在后
+            "state_transitions": [
+                {"action": "网络配置", "from": "Running", "to": "Stopped"},
+                {"action": "关机", "from": "Running", "to": "Stopped",
+                 "validated": True}],
+        })
+        results = await ce._state_aware_reconcile(
+            FakePage(), "test663637", validated, buttons, {}, set(),
+            None, "", "", "[t] ",
+            state_ctx=state_ctx, attempted_actions={})
+        assert "网络配置" not in calls, "伪边必须首碰拦截（不被消费）"
+        assert calls == ["关机", "开机"], "真边关机驱动恢复后执行开机"
+        assert "[EDGE-SKIP-UNVALIDATED]" in caplog.text
+        assert "网络配置" in caplog.text
+        assert results["关机"]["_reconcile_meta"]["intent"] == "state_restore"
+
+    def test_unvalidated_gate_position(self):
+        """源码守卫：F7 门在批九 F3 消费门之后、key 去重/状态匹配之前
+        （首碰即拦，不进候选判定）。"""
+        src = _src(ce._state_aware_reconcile)
+        nav_pos = src.find("[STATE-RECONCILE][EDGE-SKIP-NAV]")
+        gate_pos = src.find("[EDGE-SKIP-UNVALIDATED]")
+        assert 0 < nav_pos < gate_pos
+        assert src.find('edge.get("from") != status', gate_pos) > gate_pos, \
+            "F7 门须在候选状态匹配检查之前"
+
+
+# ============================================================
+# 批十-C F8 装配序切换对侧排尾（r12 P5）
+# ============================================================
+
+class TestBatch10F8ToggleSideAssembly:
+
+    def test_split_toggle_side_actions_pure(self):
+        """纯函数分离：非切换对在前、切换对侧排尾，保序；判定单源
+        const.is_toggle_pair_side（不写死运维模式文本）。"""
+        normal, toggle = ce._split_toggle_side_actions(
+            ["创建", "进入运维模式", "查询", "冻结", "编辑"], {})
+        assert normal == ["创建", "查询", "编辑"]
+        assert toggle == ["进入运维模式", "冻结"]
+        assert ce._split_toggle_side_actions(None, {}) == ([], [])
+        assert ce._split_toggle_side_actions([], {}) == ([], [])
+
+    def test_assembly_order_normal_toggle_rowswitch(self):
+        """装配接线守卫：step 4 消费分离函数——非切换对 → 切换对侧 →
+        row switch 依旧最尾（r12 P5：切换对翻转干扰半径收窄到收尾段）。"""
+        src = _src(ce._validate_single_tab_crud)
+        split_pos = src.find("_split_toggle_side_actions(")
+        normal_pos = src.find("ordered_actions.extend(_normal_others)")
+        toggle_pos = src.find("ordered_actions.extend(_toggle_sides)")
+        row_pos = src.find("# 5. Row switch")
+        log_pos = src.find("[ASSEMBLE-F8]")
+        assert 0 < split_pos < normal_pos < toggle_pos < row_pos, \
+            "装配序必须 非切换对 → 切换对侧 → row switch"
+        assert 0 < log_pos < toggle_pos
+
+
+# ============================================================
+# 批十-C F10 R1 ready 判定可观测性（r12 P4 疑点定案日志）
+# ============================================================
+
+class TestBatch10F10ReadyObservability:
+
+    @pytest.mark.asyncio
+    async def test_ready_decision_logs_reasons(self, monkeypatch, caplog):
+        """无 ready 轮次逐项原因枚举 + 基础上下文（r13 真机按此日志
+        定案 P4 是否需要行为修复）。
+
+        可达原因：deferred_destroy（删除类）/ state_disabled（当前态禁用，
+        含预算未耗尽的过渡窗失败项）。attempted_exhausted /
+        business_executed / ready_other 为防御性枚举分支——attempted
+        预算耗尽项在 _collect_state_pending 收集时即被过滤（批六
+        修复5）、业务执行路径恒配 pending.discard，当前接线不可经
+        行为触发，形状契约由 test_ready_decision_guard_shapes 守卫。
+        """
+        caplog.set_level(logging.INFO)
+        settle_seq = [{
+            "states": {"删除": False, "挂载": False, "重启": False},
+            "status": "Running", "qga_ready": None,
+            "maintenance": None, "timed_out": False,
+        }]
+        _, calls = patch_reconcile(monkeypatch, settle_seq, {})
+        validated = {
+            "删除": _failed_pending_result(),
+            # 预算 2/3（未耗尽可回收）但当前态禁用 → state_disabled
+            "重启": _failed_pending_result(),
+            "挂载": _failed_pending_result(),
+        }
+        buttons = {"删除": make_btn(), "重启": make_btn(),
+                   "挂载": make_btn()}
+        state_ctx = ce._init_state_ctx()
+        results = await ce._state_aware_reconcile(
+            FakePage(), "test663637", validated, buttons, {}, set(),
+            None, "", "", "[t] ",
+            state_ctx=state_ctx, attempted_actions={"重启": 2})
+        assert calls == [], "无 ready 轮次不得执行任何操作"
+        assert "[STATE-RECONCILE][R1-READY-DECISION]" in caplog.text
+        assert "pending 3 项均不 ready" in caplog.text
+        assert "删除=deferred_destroy" in caplog.text
+        assert "重启=state_disabled" in caplog.text
+        assert "挂载=state_disabled" in caplog.text
+        assert "status=Running" in caplog.text
+        assert "timed_out=False" in caplog.text
+
+    def test_ready_decision_guard_shapes(self):
+        """源码守卫：原因枚举五分支 + 基础上下文字段。"""
+        src = _src(ce._state_aware_reconcile)
+        assert "[STATE-RECONCILE][R1-READY-DECISION]" in src
+        for reason in ("=deferred_destroy", "=business_executed",
+                       "=attempted_exhausted", "=ready_other",
+                       "=state_disabled"):
+            assert reason in src, f"原因枚举缺 {reason} 分支"
+        assert "timed_out={settle.get('timed_out')}" in src
+

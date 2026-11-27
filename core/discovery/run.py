@@ -283,6 +283,9 @@ def _load_state_seed(project_dir: Path, module_name: str):
             seed["state_button_matrix"] = old["state_button_matrix"]
         if isinstance(old.get("state_transitions"), list):
             seed["state_transitions"] = old["state_transitions"]
+        # ★ 批十 F5：运维维度恢复边种子（PAIR-SCAN 采集，随 ui.json 落盘）
+        if isinstance(old.get("maintenance_edges"), list):
+            seed["maintenance_edges"] = old["maintenance_edges"]
         return seed or None
     except Exception as e:
         LOG.warning(f"  状态种子加载失败（按冷启动处理）: {e}")
@@ -450,6 +453,9 @@ async def run_stage1(page, project_dir: Path, module_name: str, target_url: str,
             ui_result["state_button_matrix"] = state_seed.get("state_button_matrix", {})
         if "state_transitions" not in ui_result:
             ui_result["state_transitions"] = state_seed.get("state_transitions", [])
+        # ★ 批十 F5：运维维度恢复边种子兜底保留（异常退出防断代，同上两键）
+        if "maintenance_edges" not in ui_result:
+            ui_result["maintenance_edges"] = state_seed.get("maintenance_edges", [])
 
     # 保存（所有注入字段已就绪）
     ws_dir = get_workspace_dir(project_dir)

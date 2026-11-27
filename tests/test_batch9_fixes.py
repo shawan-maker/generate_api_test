@@ -219,13 +219,14 @@ class TestBatch9F1WindowUnlocked:
         assert {"暂停", "恢复", "硬重启"} <= executed
         assert "[WINDOW-UNLOCKED]" in caplog.text
         # 恢复 边对两序均确定：Paused 态执行 → post-settle 回 Running
-        assert {"action": "恢复", "from": "Paused", "to": "Running"} \
-            in ctx["state_transitions"]
+        # ★ 批十 F7：记边带 validated 标志
+        assert {"action": "恢复", "from": "Paused", "to": "Running",
+                "validated": True} in ctx["state_transitions"]
         # 暂停 Running→Paused 边仅在 暂停 先行序下成立（另一序下 暂停
         # post-settle 越界重复尾快照 Running→Running，两端相同静默跳过）
         if seq[0] == "暂停":
-            assert {"action": "暂停", "from": "Running", "to": "Paused"} \
-                in ctx["state_transitions"]
+            assert {"action": "暂停", "from": "Running", "to": "Paused",
+                    "validated": True} in ctx["state_transitions"]
 
     @pytest.mark.asyncio
     async def test_stale_ready_dropped_when_not_executable_in_post_state(
@@ -334,8 +335,11 @@ class TestBatch9F2TransientWait:
                 "Paused": {"恢复": True, "暂停": False},
             },
             "state_transitions": [
-                {"action": "暂停", "from": "Running", "to": "Paused"},
-                {"action": "恢复", "from": "Paused", "to": "Running"},
+                # ★ 批十 F7：真边种子带 validated（无标志边被首碰拦截）
+                {"action": "暂停", "from": "Running", "to": "Paused",
+                 "validated": True},
+                {"action": "恢复", "from": "Paused", "to": "Running",
+                 "validated": True},
             ],
         })
         executed = set()
@@ -367,9 +371,13 @@ class TestBatch9F2TransientWait:
         assert "无可用恢复边，结束" in caplog.text
 
     @pytest.mark.asyncio
-    async def test_no_transient_wait_when_status_observed(self, monkeypatch, caplog):
-        """status 是已观测稳态（在矩阵中）但无出边 → 不 TRANSIENT，直接
-        结束（F2 只对「从未作为稳态入矩阵」的过渡态生效）。"""
+    async def test_no_transient_wait_when_status_observed_with_out_edges(
+            self, monkeypatch, caplog):
+        """★ 批十 F6 后契约：status 已入矩阵且该态有出边记录 → 非过渡
+        态，不 TRANSIENT 直接结束。原「在矩阵即不 TRANSIENT」契约被
+        r12 P2 推翻（Stopping 已入矩阵但无出边同样卡死）——无出边场景
+        由 test_batch10_fixes C 批用例覆盖（in-matrix + no-out-edges →
+        有界再稳态）。"""
         caplog.set_level(logging.INFO)
         settles = [make_snapshot({"恢复": False}, "Paused")]
         h = ReconcileHarness(monkeypatch, settles, {})
@@ -380,6 +388,12 @@ class TestBatch9F2TransientWait:
                 "Running": {"恢复": True},
                 "Paused": {"恢复": False},
             },
+            # Paused 有出边记录（恢复 Paused→Running）→ 有出边稳态不
+            # TRANSIENT；恢复 当前禁用 → 边不构成候选（须零执行零等待）
+            "state_transitions": [
+                {"action": "恢复", "from": "Paused", "to": "Running",
+                 "validated": True},
+            ],
         })
         results = await ce._state_aware_reconcile(**h.args(
             validated, buttons, state_ctx=ctx))
@@ -429,17 +443,20 @@ class TestBatch9F3EdgeQualityGate:
         assert "[EDGE-SKIP-NAV]" in caplog.text
 
     def test_record_gate_keeps_real_edges(self):
-        """dialog 确认类与 result=None（旧调用兼容）照常记边——真边零损失。"""
+        """dialog 确认类与 result=None（旧调用兼容）照常记边——真边零损失。
+
+        ★ 批十 F7：真边记边即带 validated 标志（dialog 类与非 page-nav
+        类路径均盖章，种子跨轮由 _init_state_ctx 保留）。"""
         ctx1 = ce._init_state_ctx()
         ce._record_state_transition(ctx1, "关机", "Running", "Stopped",
                                      result={"interaction_mode": "dialog"})
-        assert {"action": "关机", "from": "Running", "to": "Stopped"} \
-            in ctx1["state_transitions"]
+        assert {"action": "关机", "from": "Running", "to": "Stopped",
+                "validated": True} in ctx1["state_transitions"]
         ctx2 = ce._init_state_ctx()
         ce._record_state_transition(ctx2, "开机", "Stopped", "Running",
                                     result=None)
-        assert {"action": "开机", "from": "Stopped", "to": "Running"} \
-            in ctx2["state_transitions"]
+        assert {"action": "开机", "from": "Stopped", "to": "Running",
+                "validated": True} in ctx2["state_transitions"]
 
     @pytest.mark.asyncio
     async def test_consume_gate_skips_stale_pseudo_edge(self, monkeypatch, caplog):
@@ -499,8 +516,11 @@ class TestBatch9F3EdgeQualityGate:
                 "Running": {"网络配置": True, "恢复": False},
                 "Stopped": {"恢复": True},
             },
+            # ★ 批十 F7：dialog 真边种子带 validated（对照伪边用例——
+            # 伪边天然无标志，被首碰拦截）
             "state_transitions": [
-                {"action": "网络配置", "from": "Running", "to": "Stopped"},
+                {"action": "网络配置", "from": "Running", "to": "Stopped",
+                 "validated": True},
             ],
         })
         executed = set()

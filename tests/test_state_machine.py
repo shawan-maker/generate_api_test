@@ -66,7 +66,9 @@ class TestInitStateCtx:
 
     def test_cold_start(self):
         ctx = ce._init_state_ctx(None)
-        assert ctx == {"state_button_matrix": {}, "state_transitions": []}
+        # ★ 批十 F5：种子三键（maintenance_edges 随批十新增，冷启动空清单）
+        assert ctx == {"state_button_matrix": {}, "state_transitions": [],
+                       "maintenance_edges": []}
 
     def test_valid_seed(self):
         seed = {
@@ -126,8 +128,11 @@ class TestRecordStateTransition:
         ctx = ce._init_state_ctx()
         ce._record_state_transition(ctx, "关机", "Running", "Stopped")
         ce._record_state_transition(ctx, "关机", "Running", "Stopped")  # 重复
+        # ★ 批十 F7：记边即带 validated 标志（记边前提＝该 action 刚执行
+        #   成功；消费端以此做存量伪边首碰拦截）
         assert ctx["state_transitions"] == [
-            {"action": "关机", "from": "Running", "to": "Stopped"}
+            {"action": "关机", "from": "Running", "to": "Stopped",
+             "validated": True}
         ]
 
     def test_guards(self):
@@ -389,7 +394,9 @@ class TestStateAwareReconcile:
                 "Running": {"重启": True, "开机": False},
                 "Stopped": {"开机": True, "重启": False},
             },
-            "state_transitions": [{"action": "开机", "from": "Stopped", "to": "Running"}],
+            # ★ 批十 F7：真边种子带 validated 标志（无标志边被首碰拦截）
+            "state_transitions": [{"action": "开机", "from": "Stopped",
+                                   "to": "Running", "validated": True}],
         })
         executed = set()
         results = await ce._state_aware_reconcile(**self._reconcile_args(
@@ -401,7 +408,8 @@ class TestStateAwareReconcile:
         assert results["重启"]["success"] is True
         assert {"开机", "重启"} <= executed
         # 转移边：开机 Stopped→Running（本调用观测）
-        assert {"action": "开机", "from": "Stopped", "to": "Running"} in ctx["state_transitions"]
+        assert {"action": "开机", "from": "Stopped", "to": "Running",
+                "validated": True} in ctx["state_transitions"]
 
     @pytest.mark.asyncio
     async def test_r2_edge_exhausted_after_unlocked_all_fail(self, monkeypatch):
@@ -423,7 +431,9 @@ class TestStateAwareReconcile:
                 "Running": {"重启": True},
                 "Stopped": {"开机": True, "重启": False},
             },
-            "state_transitions": [{"action": "开机", "from": "Stopped", "to": "Running"}],
+            # ★ 批十 F7：真边种子带 validated 标志（无标志边被首碰拦截）
+            "state_transitions": [{"action": "开机", "from": "Stopped",
+                                   "to": "Running", "validated": True}],
         })
         executed = set()
         results = await ce._state_aware_reconcile(**self._reconcile_args(
@@ -455,7 +465,10 @@ class TestStateAwareReconcile:
         buttons = {"开机": make_btn(), "编辑": make_btn()}
         ctx = ce._init_state_ctx({
             "state_button_matrix": {"Stopped": {"编辑": True}},   # 矩阵说 Stopped 可用
-            "state_transitions": [{"action": "开机", "from": "Stopped", "to": "Running"}],
+            # ★ 批十 F7：真边种子带 validated——F7 首碰拦截不适用（真边），
+            #   无驱动（无 needed）依然零转移（R1 驱动性守卫更强口径）
+            "state_transitions": [{"action": "开机", "from": "Stopped",
+                                   "to": "Running", "validated": True}],
         })
         results = await ce._state_aware_reconcile(**self._reconcile_args(validated, buttons, state_ctx=ctx))
         # 菜单显示编辑禁用 → 不进 ready；矩阵说当前可用 → 不构成 needed → 结束，无任何执行
