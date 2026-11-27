@@ -1112,7 +1112,13 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
         async def _on_request(request):
             url = request.url
             method = request.method
-            if '/estack/api' in url and method in ('POST', 'PUT', 'PATCH', 'DELETE'):
+            # ★ 批十 F9：域名判据通用化——原 '/estack/api' 写死 estack 域，
+            #   EIS API 为 /api/eis/...，监听器对 EIS 全盲，「捕获 0 请求」
+            #   恒真（r12 09:28 链定案：真提交成功仍报 0 → JS click 盲重试
+            #   在列表页盲点 primary 按钮产残留弹窗）。改资源类型判据
+            #   （XHR/fetch）跨环境通用；写类方法过滤保持既有口径。
+            if (request.resource_type in ('xhr', 'fetch')
+                    and method in ('POST', 'PUT', 'PATCH', 'DELETE')):
                 _captured_requests.append({
                     'url': url,
                     'method': method,
@@ -1120,11 +1126,14 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
                 })
 
         async def _on_response(response):
-            url = response.url
-            if '/estack/api' in url:
+            # ★ 批十 F9：同上通用化——写类响应才计数（防后台 GET 轮询噪声
+            #   抑制真静默失败场景的重试救援）
+            resp_req = response.request
+            if (resp_req.resource_type in ('xhr', 'fetch')
+                    and resp_req.method in ('POST', 'PUT', 'PATCH', 'DELETE')):
                 _captured_requests.append({
-                    'url': url,
-                    'method': response.request.method,
+                    'url': response.url,
+                    'method': resp_req.method,
                     'status': response.status
                 })
 
@@ -1281,7 +1290,30 @@ async def _explore_and_operate_in_new_page(page, action: str, new_url: str, dept
                 LOG.info(f"      请求: {req['method']} {req['url'][-80:]} post='{req.get('post_data', '')[:100]}'")
 
         # === 如果 Playwright click 未触发 API 请求，尝试 JS click 备选 ===
-        if len(_captured_requests) == 0 and btn_click_result.get("clicked"):
+        # ★ 批十 F9：重试判据收窄——r12 定案（09:28:01 残留弹窗链）：真提交
+        #   已生效（URL 已变 + 成功消息已捕获）时网络计数 0 属监听窗误判，
+        #   盲重试会在错误页面按文本盲点 primary 按钮产残留弹窗（与 __vue__
+        #   失效窗叠加污染后续扫描与归因）。仅「URL 未变 + 无成功消息」的
+        #   真静默失败场景才允许 JS click 重试。
+        _url_before_click = (_capture_alive or {}).get("url") or ""
+        _url_changed = bool(_url_before_click
+                            and str(page.url or "").rstrip('/') != str(_url_before_click).rstrip('/'))
+        _retry_msg_texts = [str(_m.get("text", "")) for _m in
+                            ((_instant_toast or {}).get("captureMsgs") or [])
+                            if isinstance(_m, dict)]
+        _retry_msg_texts += [str(_m.get("text", "")) for _m in
+                             ((_post_diag or {}).get("messages") or [])
+                             if isinstance(_m, dict)]
+        _has_success_msg = any("成功" in _t for _t in _retry_msg_texts)
+        _skip_js_retry = bool(_url_changed or _has_success_msg)
+
+        if (_skip_js_retry and len(_captured_requests) == 0
+                and btn_click_result.get("clicked")):
+            LOG.info(f"    [submitB-SKIP-RETRY] URL已变={_url_changed} "
+                     f"成功消息已捕获={_has_success_msg}"
+                     f"（网络计数 0 为监听窗误判），跳过 JS click 盲重试")
+
+        if (not _skip_js_retry) and len(_captured_requests) == 0 and btn_click_result.get("clicked"):
             LOG.info(f"    [DIAG-submitB-js-retry] Playwright click 未触发 API，尝试 JS click...")
             # 重新安装网络监听
             _captured_requests.clear()

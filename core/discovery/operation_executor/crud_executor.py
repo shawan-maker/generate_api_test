@@ -1237,10 +1237,20 @@ async def _check_and_execute_newly_enabled(
     max_depth: int = 5,
     attempted_actions: dict = None,
     deferred_destroy: list = None,
+    ordered_actions: list = None,
+    action_roles: dict = None,
+    delete_actions=None,
+    trigger_action: str = "",
 ) -> dict:
     """检查并执行新启用的按钮（通用级联处理）。
 
-    扫描当前行所有按钮状态，对比历史记录，发现从 disabled → enabled 的按钮立即执行。
+    扫描当前行所有按钮状态，对比历史记录：
+      - newly_enabled：已知按钮 disabled → enabled 翻转；
+      - ★ 批十 F1 newly_discovered：新出现菜单项（text 不在历史基线，
+        首现即检测——r12 定案：互斥切换对 B 侧「退出运维模式」运维态
+        首现后被首轮 update 入册为 True，永无翻转可检，diff 条件机制性
+        漏收）。
+    通道检出即入册（_register_new_buttons 单源 helper）后同链执行，
     支持递归处理级联（A 执行后启用 B，B 执行后启用 C）。
 
     Args:
@@ -1257,6 +1267,11 @@ async def _check_and_execute_newly_enabled(
         max_depth: 最大递归深度
         deferred_destroy: ★ 批九 G2 延迟删除清单（主循环收尾统一执行，
             级联批发现的 destroy 类入册，绝不批内执行）
+        ordered_actions: ★ 批十 F1——主循环执行序（新发现项入册插位；
+            None（旧调用方/单测桩）时跳过册注册，执行链不受影响）
+        action_roles: ★ 批十 F1——角色册（新发现项角色推断入册）
+        delete_actions: ★ 批十 F1——删除项集合（角色推断传参）
+        trigger_action: ★ 批十 F1——触发本次级联的主操作（入册插位锚点）
 
     Returns:
         dict: 执行结果 {action: result}
@@ -1274,18 +1289,57 @@ async def _check_and_execute_newly_enabled(
 
     # 找出新启用的按钮（之前 disabled，现在 enabled）
     newly_enabled = []
+    # ★ 批十 F1：新出现菜单项通道（text 不在历史基线 → 首现即检测）。
+    #   r12 定案（缺口①）：diff 条件 `text in button_states and not
+    #   button_states[text]` 机制性排除新出现菜单项——「退出运维模式」在
+    #   行正常态从未出现（STATE-INIT 基线无此项），运维态首现后被首轮
+    #   button_states.update 入册为 True，从此永无 False→True 翻转可检，
+    #   9+ 轮级联扫描每轮读到 enabled 每轮跳过（漏收根因，与时间窗无关）。
+    #   本通道按「首现 + 当前可用 + 非已知 UI 噪声」检出，与 newly_enabled
+    #   同链执行（稳态等待/F2-预检/destroy defer/预算全套既有保护）。
+    newly_discovered = []
     for text, is_enabled in current_states.items():
-        if is_enabled and text in button_states and not button_states[text]:
-            # 从 disabled → enabled
-            if text not in executed_actions and not _attempted_exhausted(text, attempted_actions):
+        if text in executed_actions or _attempted_exhausted(text, attempted_actions):
+            continue
+        if text in button_states:
+            if is_enabled and not button_states[text]:
+                # 从 disabled → enabled
                 newly_enabled.append(text)
+        elif is_enabled and not const.is_known_ui_noise(text):
+            newly_discovered.append(text)
+            # ★ 立即入历史基线（现值 True）——递归轮不再重复检出（防切换
+            #   对 B 侧在 A 侧解锁项之前被提前执行自毁级联窗）；稳态门
+            #   timed_out 提前返回时册已入不丢单（主循环/reconcile 均可见）
+            button_states[text] = is_enabled
 
-    if not newly_enabled:
+    if not newly_enabled and not newly_discovered:
         # 更新状态记录
         button_states.update(current_states)
         return results
 
-    LOG.info(f"{tab_prefix}[STATE-CHANGE] 发现 {len(newly_enabled)} 个新启用按钮: {newly_enabled}")
+    if newly_enabled:
+        LOG.info(f"{tab_prefix}[STATE-CHANGE] 发现 {len(newly_enabled)} 个新启用按钮: {newly_enabled}")
+
+    # ★ 批十 F1：新发现项入册（与 should_scan 同源单源 helper）——入册
+    #   先于稳态门：timed_out 本轮放弃级联执行时册已入，主循环按
+    #   ordered_actions 插位执行、reconcile pending 亦可见（缺口④
+    #   「pending 无该项」的册侧根治）。旧调用方未传册上下文（None）时
+    #   跳过注册仅执行（执行结果仍随 results 汇入 validated）。
+    if newly_discovered:
+        LOG.info(f"{tab_prefix}[STATE-CHANGE][NEW-MENU-ITEM] 发现 "
+                 f"{len(newly_discovered)} 个新出现菜单项: {newly_discovered}")
+        if isinstance(ordered_actions, list) and isinstance(action_roles, dict):
+            _register_new_buttons(
+                [{"text": text,
+                  "tag": "DROPDOWN_ITEM",
+                  "location": "dropdown",
+                  "selector": f'.el-dropdown-menu__item:has-text("{text}")',
+                  "source": "state_change_new_menu_item"}
+                 for text in newly_discovered],
+                buttons_by_action, ui_result, action_roles, ordered_actions,
+                deferred_destroy, executed_actions, tab_name, trigger_action,
+                tab_prefix, delete_actions=delete_actions,
+            )
 
     # ★ 批五 F7：级联批量执行前稳态等待——主循环状态翻转后行处过渡窗
     # （关机✓→Stopping），过渡窗内对 newly_enabled 连续执行必连败（r7b
@@ -1314,8 +1368,10 @@ async def _check_and_execute_newly_enabled(
         #   下项预检时重扫。失败项不失效（状态大概率未变）。
         _batch_snap = stable if isinstance(stable, dict) else None
 
-    # 逐一执行
-    for text in newly_enabled:
+    # 逐一执行（★ 批十 F1：newly_discovered 排在 newly_enabled 之后——
+    # 切换对 B 侧（如 退出运维模式）先让 A 侧解锁项执行完再翻转回去，
+    # 避免 B 侧提前执行把 A 侧解锁项重新禁用）
+    for text in newly_enabled + newly_discovered:
         # ★ 防止递归中已执行的按钮被重复执行
         if text in executed_actions:
             LOG.info(f"{tab_prefix}[STATE-CHANGE] 跳过已执行按钮: {text}")
@@ -1408,6 +1464,10 @@ async def _check_and_execute_newly_enabled(
                 ui_result, tab_prefix, max_depth - 1,
                 attempted_actions=attempted_actions,
                 deferred_destroy=deferred_destroy,
+                ordered_actions=ordered_actions,
+                action_roles=action_roles,
+                delete_actions=delete_actions,
+                trigger_action=trigger_action,
             )
             results.update(sub_results)
         else:
@@ -1893,6 +1953,105 @@ async def _state_aware_reconcile(
     LOG.info(f"{tab_prefix}[STATE-RECONCILE] 结束: 本轮成功 {sum(1 for r in results.values() if r.get('success'))}"
              f" 个操作，剩余 pending {len(pending)} 个")
     return results
+
+
+def _register_new_buttons(
+    new_buttons: list,
+    buttons_by_action: dict,
+    ui_result: dict,
+    action_roles: dict,
+    ordered_actions: list,
+    deferred_destroy: list,
+    executed_actions: set,
+    tab_name: str,
+    trigger_action: str,
+    tab_prefix: str,
+    delete_actions=None,
+) -> list:
+    """★ 批十 F1：增量入册单源 helper——新发现按钮注册进执行册。
+
+    should_scan（INCREMENTAL-SCAN）与 STATE-CHANGE 新菜单项通道（F1）
+    两处共用，消灭批五定案的「双通道入册不同源」。入册语义与日志格式自
+    should_scan 内联块逐字迁移（r12/r13 日志解析口径不变）：
+      - 已在 buttons_by_action → 跳过；
+      - 已在 executed_actions（级联已执行）→ 仅注册 buttons_by_action
+        供后续扫描去重，不入主序；
+      - 其余：buttons_by_action + ui_result.dropdowns [WRITEBACK]（Stage 2
+        回放数据）+ 角色推断 + delete 类入 deferred_destroy（批九 G1）/
+        其余插到 trigger_action 之后。
+
+    Args:
+        new_buttons: 新按钮信息列表（dict：text/tag/location/selector…）
+        trigger_action: 入册插位锚点操作（新项插到其后；不在册时 append）
+        delete_actions: 删除项集合（角色推断传参）
+
+    Returns:
+        list: 实际新入册（进主序或 deferred）的 action 名清单
+    """
+    registered = []
+    for new_btn in new_buttons:
+        new_btn["tab"] = tab_name  # 标记 tab
+        new_action = new_btn.get("text", "")
+
+        # 去重检查
+        if new_action in buttons_by_action:
+            LOG.info(f"{tab_prefix}  [SKIP] {new_action} 已在 buttons_by_action 中，跳过")
+            continue
+
+        # ★ 跳过 STATE-CHANGE 链中已执行过的按钮
+        # INCREMENTAL-SCAN 可能重新发现已在级联中执行的状态切换按钮
+        # （初始 disabled 的按钮在 STATE-CHANGE 后变为 enabled，被识别为"新"）
+        if new_action in executed_actions:
+            LOG.info(f"{tab_prefix}  [SKIP] {new_action} 已在 STATE-CHANGE 中执行过，跳过")
+            # 仍注册到 buttons_by_action（供后续 INCREMENTAL-SCAN 去重），但不加入 ordered_actions
+            buttons_by_action[new_action] = new_btn
+            continue
+
+        buttons_by_action[new_action] = new_btn
+
+        # ★ 回写到 ui_result["dropdowns"]：确保增量发现的下拉菜单项
+        # 写入 _ui.json，供 Stage 2 回放时使用
+        if new_btn.get("location") == "dropdown":
+            dropdowns_list = ui_result.setdefault("dropdowns", [])
+            if not any(d.get("text") == new_action and d.get("tab") == tab_name
+                       for d in dropdowns_list):
+                dropdowns_list.append({
+                    "text": new_action,
+                    "parent": new_btn.get("parent", "更多"),
+                    "tag": "DROPDOWN_ITEM",
+                    "location": "dropdown",
+                    "action": new_action,
+                    "tab": tab_name,
+                })
+                LOG.info(f"{tab_prefix}  [WRITEBACK] {new_action} → ui_result.dropdowns")
+
+        # 推断角色
+        new_role = _infer_action_role(new_action, new_btn, delete_actions=delete_actions)
+        action_roles[new_action] = new_role
+
+        # 插入到 ordered_actions 的合适位置
+        # ★ 批九 G1——delete 类入 deferred_destroy（收尾统一执行，
+        # 不入主序），其他操作放 trigger_action 后面
+        if new_role == "delete":
+            if new_action not in deferred_destroy:
+                deferred_destroy.append(new_action)
+            insert_pos = -1  # deferred（收尾统一执行）
+        else:
+            # 在 trigger_action 后面插入
+            try:
+                current_idx = ordered_actions.index(trigger_action)
+                ordered_actions.insert(current_idx + 1, new_action)
+                insert_pos = current_idx + 1
+            except ValueError:
+                ordered_actions.append(new_action)
+                insert_pos = len(ordered_actions) - 1
+
+        _pos_note = (f"deferred_destroy={deferred_destroy}"
+                     if insert_pos == -1
+                     else f"插入位置: {insert_pos}, ordered_actions={ordered_actions}")
+        LOG.info(f"{tab_prefix}  + {new_action} (角色: {new_role}, {_pos_note})")
+        registered.append(new_action)
+    return registered
 
 
 async def _rediscover_marker_dropdowns(
@@ -2591,11 +2750,48 @@ async def _validate_single_tab_crud(
             _record_state_transition(state_ctx, action, _row_state_before,
                                       settle.get("status"), result=result)
 
+            # ★ 批十 F2：状态切换对侧成功 → 立即 marker 锁行定向重收集
+            #   （缺口②主修，黄金窗保证）。should_scan 钩子在代码序上位于
+            #   级联/reconcile 之后——r12 实证 8.7 分钟级联批把扫描推到
+            #   __vue__ 失效窗（09:28:10 has_visible_menu=False 漏收
+            #   「退出运维模式」，行锁运维态 → 12 项 pending + 删除收尾
+            #   全灭）。切换对侧（进入运维模式/冻结/锁定…）成功的瞬间
+            #   __vue__ 必新鲜（刚完成点击+验证），此刻重收集确定性检出
+            #   对侧新菜单项并入册（主循环下一项即执行；级联批经批十 F1
+            #   新菜单项通道亦可执行），无需等 reconcile。切换对判定
+            #   TOGGLE_PAIR_KEYWORDS 前缀单源（const.is_toggle_pair_side），
+            #   不写死运维模式文本。r11 成功路径（14:14:21 扫描检出
+            #   退出运维模式）的机制化。
+            if const.is_toggle_pair_side(action):
+                LOG.info(f"{tab_prefix}[PAIR-SCAN] {action} 为状态切换对侧，"
+                         f"触发 marker 锁行定向重收集（黄金窗）")
+                try:
+                    _pair_new_actions = await _rediscover_marker_dropdowns(
+                        page, ui_result, framework, created_marker,
+                        buttons_by_action, action_roles, ordered_actions,
+                        tab_name, _delete_actions, action, tab_prefix,
+                        deferred_destroy=deferred_destroy,
+                    )
+                except Exception as _pe:
+                    LOG.warning(f"{tab_prefix}[PAIR-SCAN] 定向重收集异常"
+                                f"（忽略，交 should_scan/级联通道兜底）: {_pe}")
+                    _pair_new_actions = []
+                if _pair_new_actions:
+                    LOG.info(f"{tab_prefix}[PAIR-SCAN] 定向重收集新增 "
+                             f"{len(_pair_new_actions)} 项: {_pair_new_actions}")
+                else:
+                    LOG.info(f"{tab_prefix}[PAIR-SCAN] 定向重收集无新增"
+                             f"（对侧已在册或当前窗口不可见）")
+
             cascade_results = await _check_and_execute_newly_enabled(
                 page, created_marker, button_states, buttons_by_action,
                 executed_actions, form_filler, tab_name, tab_locator, ui_result, tab_prefix,
                 attempted_actions=attempted_actions,
                 deferred_destroy=deferred_destroy,
+                ordered_actions=ordered_actions,
+                action_roles=action_roles,
+                delete_actions=_delete_actions,
+                trigger_action=action,
             )
 
             # 将级联执行的结果写入 validated，并记录执行顺序
@@ -2712,68 +2908,17 @@ async def _validate_single_tab_crud(
                     if new_buttons:
                         LOG.info(f"{tab_prefix}增量发现 {len(new_buttons)} 个新按钮")
 
-                        # 将新按钮加入待验证队列
-                        for new_btn in new_buttons:
-                            new_btn["tab"] = tab_name  # 标记 tab
-                            new_action = new_btn.get("text", "")
-
-                            # 去重检查
-                            if new_action in buttons_by_action:
-                                LOG.info(f"{tab_prefix}  [SKIP] {new_action} 已在 buttons_by_action 中，跳过")
-                                continue
-
-                            # ★ 跳过 STATE-CHANGE 链中已执行过的按钮
-                            # INCREMENTAL-SCAN 可能重新发现已在级联中执行的状态切换按钮
-                            # （初始 disabled 的按钮在 STATE-CHANGE 后变为 enabled，被识别为"新"）
-                            if new_action in executed_actions:
-                                LOG.info(f"{tab_prefix}  [SKIP] {new_action} 已在 STATE-CHANGE 中执行过，跳过")
-                                # 仍注册到 buttons_by_action（供后续 INCREMENTAL-SCAN 去重），但不加入 ordered_actions
-                                buttons_by_action[new_action] = new_btn
-                                continue
-
-                            buttons_by_action[new_action] = new_btn
-
-                            # ★ 回写到 ui_result["dropdowns"]：确保增量发现的下拉菜单项
-                            # 写入 _ui.json，供 Stage 2 回放时使用
-                            if new_btn.get("location") == "dropdown":
-                                dropdowns_list = ui_result.setdefault("dropdowns", [])
-                                if not any(d.get("text") == new_action and d.get("tab") == tab_name
-                                           for d in dropdowns_list):
-                                    dropdowns_list.append({
-                                        "text": new_action,
-                                        "parent": new_btn.get("parent", "更多"),
-                                        "tag": "DROPDOWN_ITEM",
-                                        "location": "dropdown",
-                                        "action": new_action,
-                                        "tab": tab_name,
-                                    })
-                                    LOG.info(f"{tab_prefix}  [WRITEBACK] {new_action} → ui_result.dropdowns")
-
-                            # 推断角色
-                            new_role = _infer_action_role(new_action, new_btn, delete_actions=_delete_actions)
-                            action_roles[new_action] = new_role
-
-                            # 插入到 ordered_actions 的合适位置
-                            # ★ 批九 G1——delete 类入 deferred_destroy（收尾
-                            # 统一执行，不入主序），其他操作放当前位置后面
-                            if new_role == "delete":
-                                if new_action not in deferred_destroy:
-                                    deferred_destroy.append(new_action)
-                                insert_pos = -1  # deferred（收尾统一执行）
-                            else:
-                                # 在当前 action 后面插入
-                                try:
-                                    current_idx = ordered_actions.index(action)
-                                    ordered_actions.insert(current_idx + 1, new_action)
-                                    insert_pos = current_idx + 1
-                                except ValueError:
-                                    ordered_actions.append(new_action)
-                                    insert_pos = len(ordered_actions) - 1
-
-                            _pos_note = (f"deferred_destroy={deferred_destroy}"
-                                         if insert_pos == -1
-                                         else f"插入位置: {insert_pos}, ordered_actions={ordered_actions}")
-                            LOG.info(f"{tab_prefix}  + {new_action} (角色: {new_role}, {_pos_note})")
+                        # ★ 批十 F1：增量入册抽共享单源 helper——should_scan
+                        #   与 STATE-CHANGE 新菜单项通道共用同一入册链（批五
+                        #   定案「双通道入册不同源」顺带统一），行为与日志
+                        #   格式逐字保持（r13 日志解析口径不变）
+                        _register_new_buttons(
+                            new_buttons,
+                            buttons_by_action, ui_result, action_roles,
+                            ordered_actions, deferred_destroy, executed_actions,
+                            tab_name, action, tab_prefix,
+                            delete_actions=_delete_actions,
+                        )
 
         # 操作后确保回到列表页（统一使用 shared/transition_to_next）
         try:

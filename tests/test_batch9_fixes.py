@@ -813,11 +813,16 @@ class TestBatch9G1FinalDestroyPath:
         assert "insert_pos = -1" in src_rediscover
         assert "deferred_destroy: list" in src_rediscover, \
             "重收集签名须接受 deferred_destroy 清单"
-        src_main = _src(ce._validate_single_tab_crud)
-        assert "if new_action not in deferred_destroy:" in src_main
-        assert "deferred_destroy.append(new_action)" in src_main
+        # ★ 批十 F1 契约同步：主循环增量入册块抽至单源 helper
+        # _register_new_buttons（should_scan 与 STATE-CHANGE 新菜单项通道
+        # 共用），delete 角色 defer 断言重定向到 helper 源码——行为语义
+        # 不弱化（册注册链唯一权威源）
+        src_reg = _src(ce._register_new_buttons)
+        assert "new_action not in deferred_destroy" in src_reg
+        assert "deferred_destroy.append(new_action)" in src_reg
         # 主循环两处调用方传参：marker 重收集 + 级联批（批九 G2 修复——
         # 批调用漏传会让批内 defer 的删除项整轮丢失）
+        src_main = _src(ce._validate_single_tab_crud)
         assert src_main.count("deferred_destroy=deferred_destroy") >= 2
 
     def test_final_destroy_reuses_existing_chain(self):

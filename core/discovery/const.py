@@ -199,8 +199,42 @@ def find_toggle_pair_text(old_text: str, candidates) -> str:
         break
     return ""
 
+# ★ 批十 F1：STATE-CHANGE 新菜单项通道的 UI 噪声词表——弹窗确认按钮与
+#   行内常驻基线（r11/r12 实证 取消/确定 恒在 direct_buttons 基线；
+#   STATE-INIT 正常已入册历史基线，此表防其他环境弹窗按钮混入「新出现
+#   菜单项」执行通道）。匹配为归一化后精确全等（is_known_ui_noise），
+#   不做前缀/包含判定——「取消挂载」类业务项不得误杀。小写英文
+#   （ok/cancel 等）按 lower() 归一比对。
+KNOWN_UI_NOISE = (
+    '取消', '确定', '确认', '关闭', '知道了', '我知道了',
+    'ok', 'cancel', 'yes', 'no',
+)
+
+
+def is_known_ui_noise(text: str) -> bool:
+    """文本是否为已知 UI 噪声按钮（批十 F1 单源，精确全等非前缀）。"""
+    norm = "".join(str(text or "").split())
+    return bool(norm) and norm.lower() in KNOWN_UI_NOISE
+
+
+def is_toggle_pair_side(text: str) -> bool:
+    """文本是否命中互斥切换对任一侧前缀（批十 F2 单源）。
+
+    「进入运维模式/退出运维模式/冻结/解冻/锁定/解锁/启用/停用/开启/关闭」
+    类切换对侧操作成功后立即触发 marker 锁行定向重收集（[PAIR-SCAN]
+    黄金窗）——对侧新菜单项首现即入册，不写死具体操作名。
+    """
+    if not text:
+        return False
+    norm = "".join(str(text or "").split())
+    if not norm:
+        return False
+    return any(norm.startswith(a) or norm.startswith(b)
+               for a, b in TOGGLE_PAIR_KEYWORDS)
+
+
 # ★ 批五 F3：placeholder 确认词单源正则——「请输入 "DELETE" 确认删除」类
-# 危险操作确认输入框，从 placeholder 提取引号包裹词（1-40 字符）作为填充值。
+#   危险操作确认输入框，从 placeholder 提取引号包裹词（1-40 字符）作为填充值。
 # 与 button_driver._preprocess_confirm_form 的 JS 正则同构（中西引号全支持）；
 # 单源化目的：值生成层（generate_fill_value）与确认弹窗预处理层共用同判据，
 # 消灭「删除确认」字段被 name_pattern 填随机值的实证根因（r7b test500861）。
